@@ -118,6 +118,52 @@ export async function readFrame(input: NodeJS.ReadableStream): Promise<Record<st
   });
 }
 
+/** Stateful framing reader — keeps a buffer across calls so multiple frames in
+ * one TCP chunk (or a frame split across chunks) are handled correctly. Complete
+ * frames are drained into a ready-queue; read() pulls from it or waits. */
+export class FrameReader {
+  private buf = "";
+  private readonly ready: Array<Record<string, unknown>> = [];
+  private pending: Array<(f: Record<string, unknown>) => void> = [];
+  constructor(private readonly input: NodeJS.ReadableStream) {
+    this.input.setEncoding("utf8");
+    this.input.on("data", (chunk: string) => this.onData(chunk));
+  }
+  private onData(chunk: string): void {
+    this.buf += chunk;
+    this.drain();
+  }
+  /** Parse every complete frame currently in buf into the ready-queue, resolving
+   * any pending readers. */
+  private drain(): void {
+    while (true) {
+      const headerEnd = this.buf.indexOf("\r\n\r\n");
+      if (headerEnd < 0) return;
+      const header = this.buf.slice(0, headerEnd);
+      const m = /Content-Length:\s*(\d+)/i.exec(header);
+      if (!m) return;
+      const len = parseInt(m[1]!, 10);
+      const bodyStart = headerEnd + 4;
+      if (Buffer.byteLength(this.buf.slice(bodyStart)) < len) return;
+      const body = this.buf.slice(bodyStart, bodyStart + len);
+      this.buf = this.buf.slice(bodyStart + len);
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(body); } catch { continue; }
+      const resolve = this.pending.shift();
+      if (resolve) resolve(parsed);
+      else this.ready.push(parsed);
+    }
+  }
+  /** Read the next framed message: pull from the ready-queue, else wait. */
+  read(): Promise<Record<string, unknown>> {
+    if (this.ready.length > 0) return Promise.resolve(this.ready.shift()!);
+    return new Promise((resolve) => {
+      this.pending.push(resolve);
+      this.drain(); // in case buf already holds a complete frame
+    });
+  }
+}
+
 /** main() — run as a child process: read requests, write responses/events. */
 export async function main(): Promise<void> {
   const server = new DapServerStub();
