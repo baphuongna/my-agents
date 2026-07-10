@@ -111,10 +111,23 @@ export class DapClient extends EventEmitter {
     return this.request("continue", { threadId: threadId ?? this.currentThreadId });
   }
 
-  /** Step over / in / out. */
-  async next(threadId?: number): Promise<void> { await this.request("next", { threadId: threadId ?? this.currentThreadId }); }
-  async stepIn(threadId?: number): Promise<void> { await this.request("stepIn", { threadId: threadId ?? this.currentThreadId }); }
-  async stepOut(threadId?: number): Promise<void> { await this.request("stepOut", { threadId: threadId ?? this.currentThreadId }); }
+  /** Step over / in / out. R43: require an explicit threadId or currentThreadId —
+   *  sending `threadId: undefined` would be rejected by most adapters. */
+  async next(threadId?: number): Promise<void> {
+    const tid = threadId ?? this.currentThreadId;
+    if (tid === undefined) throw new Error("DapClient.next: no current thread (await 'stopped' event first or pass threadId)");
+    await this.request("next", { threadId: tid });
+  }
+  async stepIn(threadId?: number): Promise<void> {
+    const tid = threadId ?? this.currentThreadId;
+    if (tid === undefined) throw new Error("DapClient.stepIn: no current thread (await 'stopped' event first or pass threadId)");
+    await this.request("stepIn", { threadId: tid });
+  }
+  async stepOut(threadId?: number): Promise<void> {
+    const tid = threadId ?? this.currentThreadId;
+    if (tid === undefined) throw new Error("DapClient.stepOut: no current thread (await 'stopped' event first or pass threadId)");
+    await this.request("stepOut", { threadId: tid });
+  }
 
   /** Get threads / stack trace / scopes / variables. */
   async threads(): Promise<{ threads: { id: number; name: string }[] }> {
@@ -132,7 +145,10 @@ export class DapClient extends EventEmitter {
 
   /** Evaluate an expression in a given frame. */
   async evaluate(expression: string, frameId?: number): Promise<{ result: string; type?: string; variablesReference: number }> {
-    return this.request("evaluate", { expression, frameId, context: frameId ? "watch" : "repl" });
+    // R43: frameId 0 is a valid DAP frame id; use explicit null/undefined check
+    // (the previous truthy check treated 0 as "no frame" and picked the wrong context).
+    const hasFrame = frameId !== undefined && frameId !== null;
+    return this.request("evaluate", { expression, frameId, context: hasFrame ? "watch" : "repl" });
   }
 
   /** Disconnect + exit. */

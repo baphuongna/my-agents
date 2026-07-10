@@ -52,21 +52,31 @@ export class HindsightReviewer {
    * Review a (question, answer) pair. The critic stream is parsed for the first
    * JSON object it emits; if parsing fails, the result is reported as a single
    * "error" issue with the raw text.
+   *
+   * R43: per-call timeout (default 30s) so a hung critic cannot stall the loop
+   * (mirrors the R42 LSP/DAP timeout pattern).
    */
   async review(
     question: string,
     answer: string,
     history?: History,
+    opts: { timeoutMs?: number } = {},
   ): Promise<HindsightResult> {
     const prompt = buildHindsightPrompt(question, answer);
     const emptyHistory: History = history ?? { append() {}, entries: () => [] };
+    const timeoutMs = opts.timeoutMs ?? 30_000;
     try {
-      const { events } = await this.critic.stream(prompt, emptyHistory);
-      const text = events
+      const result = await Promise.race([
+        this.critic.stream(prompt, emptyHistory),
+        new Promise<{ events: never[] }>((_, reject) =>
+          setTimeout(() => reject(new Error(`hindsight critic timed out after ${timeoutMs}ms`)), timeoutMs),
+        ),
+      ]);
+      const text = result.events
         .filter((e) => e.kind === "text")
         .map((e) => (e.kind === "text" ? e.text : ""))
         .join("");
-      const usage = collectUsage(events);
+      const usage = collectUsage(result.events as unknown as { kind: string }[]);
       const parsed = tryParseHindsight(text);
       if (parsed) return { ...parsed, usage };
       return {
@@ -100,19 +110,42 @@ function collectUsage(events: { kind: string }[]): TokenUsage {
 }
 
 function tryParseHindsight(text: string): Omit<HindsightResult, "usage"> | null {
-  // Extract the first JSON object from the text (handles stray whitespace/fences).
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  const slice = text.slice(start, end + 1);
-  try {
-    const obj = JSON.parse(slice) as { issues?: HindsightIssue[]; summary?: string; approved?: boolean };
-    return {
-      issues: Array.isArray(obj.issues) ? obj.issues : [],
-      summary: typeof obj.summary === "string" ? obj.summary : "",
-      approved: obj.approved === true,
-    };
-  } catch {
-    return null;
+  // R43: find a JSON object whose braces balance (the previous lastIndexOf("}")
+  // broke when a string value contained "}", e.g. {"summary":"has } brace"}).
+  // Scan left-to-right, tracking depth + string state, and try to parse each
+  // candidate object's substring.
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] !== "{") { i++; continue; }
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let end = -1;
+    for (let j = i; j < text.length; j++) {
+      const c = text[j]!;
+      if (inString) {
+        if (escape) { escape = false; continue; }
+        if (c === "\\") { escape = true; continue; }
+        if (c === '"') inString = false;
+        continue;
+      }
+      if (c === '"') { inString = true; continue; }
+      if (c === "{") depth++;
+      else if (c === "}") { depth--; if (depth === 0) { end = j; break; } }
+    }
+    if (end === -1) return null;
+    const candidate = text.slice(i, end + 1);
+    try {
+      const obj = JSON.parse(candidate) as { issues?: HindsightIssue[]; summary?: string; approved?: boolean };
+      return {
+        issues: Array.isArray(obj.issues) ? obj.issues : [],
+        summary: typeof obj.summary === "string" ? obj.summary : "",
+        approved: obj.approved === true,
+      };
+    } catch {
+      // not valid JSON at this depth — keep scanning
+      i = end + 1;
+    }
   }
+  return null;
 }

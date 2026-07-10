@@ -36,15 +36,16 @@ export class CollabRelay extends EventEmitter {
   openRoom(room: string, owner: RoomClient): void {
     this.join(room, owner, "owner");
   }
-  /** Join a room with a role. Replaces any existing client with the same id. */
+  /** Join a room with a role. R43: refuses same-id rejoin (which would orphan the
+   *  previous client and confuse leave/identity tracking — caller must leave first). */
   join(room: string, client: RoomClient, role: RoomRole): void {
+    const list = this.rooms.get(room);
+    if (list && list.some((c) => c.id === client.id)) {
+      throw new Error(`collab: client id "${client.id}" already in room "${room}" (leave first)`);
+    }
     client.room = room;
     client.role = role;
-    let list = this.rooms.get(room);
-    if (!list) { list = []; this.rooms.set(room, list); }
-    // Replace existing client with the same id.
-    const existing = list.findIndex((c) => c.id === client.id);
-    if (existing >= 0) list[existing] = client; else list.push(client);
+    if (!list) { this.rooms.set(room, [client]); } else { list.push(client); }
     this.emit("join", { room, client, role });
   }
   /** Leave a room. */
