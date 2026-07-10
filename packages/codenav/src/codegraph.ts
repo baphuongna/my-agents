@@ -75,6 +75,7 @@ export async function buildCodegraph(root: string): Promise<Codegraph> {
     const ext = extname(rel);
     const matchers = IMPORT_MATCHERS[ext];
     if (!matchers) continue;
+    const canonicalRel = canonical(rel);
     const targets = new Set<string>();
     for (const re of matchers) {
       re.lastIndex = 0;
@@ -82,43 +83,41 @@ export async function buildCodegraph(root: string): Promise<Codegraph> {
       while ((m = re.exec(content)) !== null) {
         const spec = m[1];
         if (!spec) continue;
-        const resolved = resolveSpecifier(spec, rel, root);
+        const resolved = resolveSpecifier(spec, rel);
         if (resolved) targets.add(resolved);
       }
     }
     if (targets.size > 0) {
-      edges.set(rel, targets);
+      edges.set(canonicalRel, targets);
       for (const t of targets) {
         let rev = reverse.get(t);
         if (!rev) {
           rev = new Set();
           reverse.set(t, rev);
         }
-        rev.add(rel);
+        rev.add(canonicalRel);
       }
     }
   }
   return { edges, reverse };
 }
 
-/** Resolve an import specifier (relative/alias) to a repo-relative path. */
-function resolveSpecifier(spec: string, importerRel: string, root: string): string | null {
-  // Relative specifiers (./ or ../).
+/** Strip the extension for a canonical (extension-less) graph key. */
+function canonical(p: string): string {
+  const ext = extname(p);
+  return ext ? p.slice(0, p.length - ext.length) : p;
+}
+
+/** Resolve an import specifier (relative/alias) to a canonical repo-relative path. */
+function resolveSpecifier(spec: string, importerRel: string): string | null {
+  // Relative specifiers (./ or ../) — canonical (extension-less).
   if (spec.startsWith(".")) {
     const importerDir = dirname(importerRel);
-    let candidate = normalize(join(importerDir, spec));
-    // Try with extensions + index.
-    for (const ext of [".ts", ".tsx", ".js", ".mjs", ".py", ".rs", ""]) {
-      const withExt = ext ? candidate + ext : candidate;
-      // Verify existence is skipped for speed; the path is the relevance key.
-      void root;
-      return withExt.replace(/\/index$/, "/index.ts");
-    }
-    return candidate;
+    return canonical(normalize(join(importerDir, spec)));
   }
-  // Python module path → path/to/module.py
-  if (/^\./.test(spec) === false && importerRel.endsWith(".py")) {
-    return spec.replace(/\./g, "/") + ".py";
+  // Python module path → path/to/module (canonical, no .py)
+  if (importerRel.endsWith(".py") && !spec.includes("/")) {
+    return spec.replace(/\./g, "/");
   }
   // Bare specifiers (node_modules, crates) — out-of-graph; ignore.
   return null;
@@ -126,12 +125,13 @@ function resolveSpecifier(spec: string, importerRel: string, root: string): stri
 
 /** Files related to `path`: imports + importers, ranked (importers first). */
 export function related(graph: Codegraph, path: string): { path: string; relation: "imports" | "imported-by" }[] {
+  const key = canonical(path);
   const result: { path: string; relation: "imports" | "imported-by" }[] = [];
   // Imported-by (who depends on this file) — usually the higher-relevance direction.
-  const importers = graph.reverse.get(path);
+  const importers = graph.reverse.get(key);
   if (importers) for (const f of importers) result.push({ path: f, relation: "imported-by" });
   // Imports (what this file depends on).
-  const imports = graph.edges.get(path);
+  const imports = graph.edges.get(key);
   if (imports) for (const f of imports) result.push({ path: f, relation: "imports" });
   return result;
 }

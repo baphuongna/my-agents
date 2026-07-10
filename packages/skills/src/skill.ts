@@ -121,8 +121,17 @@ function parseSimpleYaml(yaml: string): SkillFrontmatter {
         fm[key] = [];
       } else {
         currentListKey = null;
-        // strip quotes
-        fm[key] = val.replace(/^["']|["']$/g, "");
+        // inline list: [a, b, c]
+        const inlineList = /^\[(.*)\]$/.exec(val);
+        if (inlineList) {
+          fm[key] = (inlineList[1] ?? "")
+            .split(",")
+            .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+            .filter((s) => s.length > 0);
+        } else {
+          // strip quotes
+          fm[key] = val.replace(/^["']|["']$/g, "");
+        }
       }
     }
   }

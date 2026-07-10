@@ -47,7 +47,7 @@ export function makeCodeExecTool(
         },
         required: ["language", "script"],
       },
-      requiredMode: "WorkspaceWrite",
+      requiredMode: "DangerFullAccess", // arbitrary code exec — as dangerous as bash
     },
     async run(args): Promise<ToolResult> {
       if (!isRecord(args)) return err("code", "args required");
@@ -219,7 +219,10 @@ def __reader():
             p.update(m); p['ev'].set()
 threading.Thread(target=__reader, daemon=True).start()
 `;
-  return helper + "\n" + script + "\n";
+  // Linear-script contract: exit after the script completes + no pending calls
+  // (otherwise the daemon reader thread + open stdin keep the process alive).
+  const trailer = `import os; os._exit(0 if not __pending else 1)`;
+  return helper + "\n" + script + "\n" + trailer + "\n";
 }
 
 export { randomUUID };
