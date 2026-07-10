@@ -1,0 +1,5 @@
+[toolchain]
+# Pinned for reproducibility. AGENTS.md §Stack — Rust stable for napi natives.
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
