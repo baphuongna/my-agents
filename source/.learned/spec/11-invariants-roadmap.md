@@ -106,7 +106,7 @@ A founding spec that pretends to decide everything is lying. These remain open, 
 | Term | Meaning | Source |
 |---|---|---|
 | **ragfs** | unified context FS — one URI namespace over memory/skills/knowledge/files | OpenViking |
-| **hashline** | content-addressed edit (BLAKE3 16-hex content tag for version binding + line anchors; full-text equality gate before apply — R27-13) | oh-my-pi |
+| **hashline** | content-addressed edit — TWO models: (a) per-line perfect-hash anchors (3-char base64 + `:R{retry}` collision resolution, hash-range replace, stale-detection via recompute; pi-hashline-edit-pro) + (b) whole-file BLAKE3-16hex version tag + full-text equality gate before apply (oh-my-pi, R27-13) | pi-hashline-edit-pro · oh-my-pi |
 | **LaneBoard** | liveness aggregator classifying workers Healthy/Stalled/TransportDead/Unknown/AwaitingHuman (R27-19; C8/R28 adds Unknown) | claw-code |
 | **Trident** | 3-stage compaction (Supersede→Collapse→Cluster) | claw-code |
 | **ProviderProfile** | declarative provider metadata record (auth/endpoints/hooks) | hermes |

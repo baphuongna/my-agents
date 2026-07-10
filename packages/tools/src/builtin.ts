@@ -14,6 +14,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
+import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
 
 const READONLY: Mode = "ReadOnly";
 const WORKSPACE: Mode = "WorkspaceWrite";
@@ -23,7 +24,14 @@ const SHELL: Mode = "DangerFullAccess";
 export const readTool: ToolImpl = {
   meta: {
     name: "read",
-    args: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+    args: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        hashed: { type: "boolean", description: "return HASH│content per line (hashline anchors for replace)" },
+      },
+      required: ["path"],
+    },
     requiredMode: READONLY,
   },
   async run(args): Promise<ToolResult> {
@@ -35,7 +43,13 @@ export const readTool: ToolImpl = {
       if (Buffer.byteLength(content) > MAX_READ_BYTES) {
         content = content.slice(0, MAX_READ_BYTES) + "\n…[truncated: >50KB]";
       }
-      return ok("read", { path: args.path, content });
+      const hashed = isRecord(args) && args.hashed === true;
+      return ok("read", {
+        path: args.path,
+        content: hashed ? formatHashed(content) : content,
+        fingerprint: fileFingerprint(content),
+        hashed,
+      });
     } catch (e) {
       return err("read", e instanceof Error ? e.message : String(e));
     }
@@ -233,11 +247,54 @@ export const grepTool: ToolImpl = {
   },
 };
 
+// ─── replace (hashline: hash-anchored range replace + stale detection) ────
+export const replaceTool: ToolImpl = {
+  meta: {
+    name: "replace",
+    args: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        startHash: { type: "string", description: "3-char HASH anchor of the first line to replace" },
+        endHash: { type: "string", description: "3-char HASH anchor of the last line (inclusive); === startHash for single line" },
+        contentLines: { type: "array", items: { type: "string" }, description: "replacement lines (without HASH│ prefix)" },
+      },
+      required: ["path", "startHash", "endHash", "contentLines"],
+    },
+    requiredMode: WORKSPACE,
+  },
+  async run(args): Promise<ToolResult> {
+    if (!isRecord(args) || typeof args.path !== "string") return err("replace", "path required");
+    if (typeof args.startHash !== "string" || typeof args.endHash !== "string")
+      return err("replace", "startHash + endHash required");
+    if (!isValidAnchor(args.startHash) || !isValidAnchor(args.endHash))
+      return err("replace", `anchors must be 3-char base64 (A-Za-z0-9-_); got start="${args.startHash}" end="${args.endHash}"`);
+    if (!Array.isArray(args.contentLines) || !args.contentLines.every((l) => typeof l === "string"))
+      return err("replace", "contentLines must be a string array");
+    try {
+      const current = await readFile(args.path, "utf8");
+      // Stale detection: recompute hashes on CURRENT content; anchor must match.
+      const res = replaceByHash(current, args.startHash, args.endHash, args.contentLines);
+      if (!res.ok || !res.content)
+        return err("replace", res.error ?? "replace failed");
+      await writeFile(args.path, res.content, "utf8");
+      return ok("replace", {
+        path: args.path,
+        replacedLines: res.replacedCount,
+        fingerprint: fileFingerprint(res.content),
+      });
+    } catch (e) {
+      return err("replace", e instanceof Error ? e.message : String(e));
+    }
+  },
+};
+
 /** All built-in tools, ready to register. */
 export const builtinTools: ToolImpl[] = [
   readTool,
   writeTool,
   editTool,
+  replaceTool,
   bashTool,
   globTool,
   grepTool,
