@@ -140,6 +140,9 @@ export interface TurnContext {
   budget: BudgetConfig;
   approval: ApprovalChannel;
   emit: (te: TurnEvent) => void;
+  /** Workspace root for path-containment (§7 F1 fix): all file tools resolve
+   * paths inside this root. Defaults to process.cwd() when unset. */
+  workspace?: string;
   lane?: {
     taskId: LaneId;
     setBlockedOn(b: "approval" | undefined): void;

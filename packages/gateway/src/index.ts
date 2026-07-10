@@ -102,6 +102,10 @@ export interface GatewayOptions {
   /** HTML served at `/` (the dashboard SPA). The host wires @my-agent/web's
    * dashboardHtml() here — gateway stays UI-independent (layering). */
   rootHtml?: string;
+  /** M8 fix: allow binding to a non-loopback host. The default loopback bind is
+   * safe; setting this to true is required (with a logged warning) for any
+   * network-facing bind, since the gateway's WS/HTTP surface is unauthenticated. */
+  allowExternalBind?: boolean;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -109,11 +113,12 @@ export interface GatewayOptions {
 export class Gateway {
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
-  private readonly subscribers = new Map<WebSocket, number>(); // ws → last delivered seq
+  private readonly subscribers = new Map<WebSocket, { session: string; since: number }>(); // ws → subscribed session + cursor
   private seq = 0;
-  /** Bounded retained-event buffer for replay-from-cursor (§25.6). */
-  private retained: WireEnvelope[] = [];
-  private readonly retainBound = 10_000;
+  /** HIGH-2 fix: per-session retained-event buffers (was a single global buffer →
+   * cross-session leak). Keyed by sessionId. */
+  private readonly retainedBySession = new Map<string, WireEnvelope[]>();
+  private readonly retainBound = 10_000; // per session
   readonly readiness: ReadinessRegistry;
   readonly host: string;
   readonly port: number;
@@ -121,6 +126,15 @@ export class Gateway {
   constructor(opts: GatewayOptions = {}) {
     this.host = opts.host ?? "127.0.0.1";
     this.port = opts.port ?? 0;
+    // M8 fix: refuse a non-loopback bind unless explicitly opted in (the gateway
+    // is unauthenticated; binding it to 0.0.0.0 is a full compromise).
+    const loopback = new Set(["127.0.0.1", "::1", "localhost", ""]);
+    if (!loopback.has(this.host) && !opts.allowExternalBind) {
+      throw new Error(`gateway refuses non-loopback bind ${this.host} without allowExternalBind:true`);
+    }
+    if (!loopback.has(this.host)) {
+      console.warn(`[gateway] WARNING: binding to non-loopback ${this.host} (unauthenticated surface exposed)`);
+    }
     this.readiness = opts.readiness ?? new ReadinessRegistry();
     this.rootHtml = opts.rootHtml;
   }
@@ -135,7 +149,19 @@ export class Gateway {
       this.http.on("upgrade", (req, socket, head) => {
         const url = new URL(req.url ?? "/", `http://${this.host}`);
         if (url.pathname === "/events") {
-          this.wss!.handleUpgrade(req, socket, head, (ws) => this.handleWs(ws, url));
+          // HIGH-1 fix: enforce the Origin allowlist (defends against cross-site
+          // WebSocket hijacking — a visited website could otherwise read all events).
+          const origin = req.headers.origin;
+          const port = (this.http?.address() as { port?: number } | null)?.port ?? this.port;
+          const allowed = new Set([
+            `http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`,
+          ]);
+          if (origin && !allowed.has(origin)) {
+            socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+            socket.destroy();
+            return;
+          }
+          this.wss!.handleUpgrade(req, socket, head, (ws) => this.handleWs(ws, url, !!origin));
         } else {
           socket.destroy();
         }
@@ -171,7 +197,16 @@ export class Gateway {
       case "/":
       case "/index.html": {
         if (this.rootHtml) {
-          res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          // HIGH-3 fix: anti-clickjacking + nosniff headers (§25.2). A full
+          // session-cookie + CSRF double-submit lands when the dashboard grows
+          // mutating routes; for the read-only SPA these headers close the
+          // clickjacking/XSS-MIME vectors.
+          res.writeHead(200, {
+            "content-type": "text/html; charset=utf-8",
+            "x-frame-options": "DENY",
+            "x-content-type-options": "nosniff",
+            "content-security-policy": "frame-ancestors 'none'; default-src 'self' ws: wss:",
+          });
           res.end(this.rootHtml);
           return;
         }
@@ -189,12 +224,15 @@ export class Gateway {
     this.healthyTurns++;
   }
 
-  private handleWs(ws: WebSocket, url: URL): void {
+  private handleWs(ws: WebSocket, url: URL, hasOrigin: boolean): void {
     const since = parseInt(url.searchParams.get("since") ?? "0", 10);
-    this.subscribers.set(ws, since);
-    // §25.6 replay-from-cursor: deliver retained events with seq > since.
-    // ws.send() buffers until the socket opens, so this is safe at upgrade time.
-    for (const env of this.retained) {
+    // HIGH-2 fix: each subscriber binds to ONE session (query param `session`).
+    // Live events + replay are filtered to that session only (no cross-session leak).
+    const session = url.searchParams.get("session") ?? "default";
+    this.subscribers.set(ws, { session, since });
+    const retained = this.retainedBySession.get(session) ?? [];
+    // §25.6 replay-from-cursor: deliver this session's retained events > since.
+    for (const env of retained) {
       if (env.seq > since) ws.send(JSON.stringify(env));
     }
     ws.on("close", () => this.subscribers.delete(ws));
@@ -203,16 +241,16 @@ export class Gateway {
     });
   }
 
-  /** Broadcast a RuntimeEvent to all WS subscribers (replay-from-cursor). */
+  /** Broadcast a RuntimeEvent to that session's WS subscribers only (HIGH-2). */
   broadcast(sessionId: string, event: unknown): WireEnvelope {
     const envelope = frame({ sessionId, seq: ++this.seq, event });
-    // retain for late-subscriber replay (bounded)
-    this.retained.push(envelope);
-    if (this.retained.length > this.retainBound) {
-      this.retained = this.retained.slice(-this.retainBound);
-    }
-    for (const [ws, since] of this.subscribers) {
-      if (envelope.seq > since && ws.readyState === ws.OPEN) {
+    // retain per-session (bounded)
+    const buf = this.retainedBySession.get(sessionId) ?? [];
+    buf.push(envelope);
+    if (buf.length > this.retainBound) this.retainedBySession.set(sessionId, buf.slice(-this.retainBound));
+    else this.retainedBySession.set(sessionId, buf);
+    for (const [ws, sub] of this.subscribers) {
+      if (sub.session === sessionId && envelope.seq > sub.since && ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify(envelope));
       }
     }

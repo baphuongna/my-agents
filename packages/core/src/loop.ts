@@ -52,6 +52,11 @@ export interface RunTurnOptions {
   toolSchemas?: readonly import("./types.js").OpenAITool[];
   /** §7 tool executor. If absent, tool calls are emitted but not executed (Tier 0). */
   tools?: ToolExecutor;
+  /** §7 workspace root for path-containment (F1 fix). Defaults to process.cwd(). */
+  workspace?: string;
+  /** §7 human-in-the-loop approval channel (F4 fix). If absent, runTurn uses a
+   * fail-closed stub (denies DangerFullAccess). Transports inject a real one. */
+  approval?: import("./types.js").ApprovalChannel;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
   maxToolRounds?: number;
   signal?: AbortSignal;
@@ -197,7 +202,11 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
             session: opts.session,
             history: opts.session.history,
             budget: opts.budget,
-            approval: makeStubApproval(),
+            // F4 fix: accept a caller-injected approval channel; fall back to the
+            // fail-closed stub only when none is provided.
+            approval: opts.approval ?? makeStubApproval(),
+            // F1 fix: thread the workspace root for path-containment.
+            workspace: opts.workspace ?? process.cwd(),
             emit: emitTurn,
           };
           const toolResult = await opts.tools.execute(result.toolCalls, ctx);

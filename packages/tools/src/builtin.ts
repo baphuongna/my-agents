@@ -15,7 +15,19 @@ import { join, relative, resolve } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
+import { resolveInsideWorkspace, resolveExistingInsideWorkspace } from "./path-safety.js";
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
+
+/** F1 fix: contain a tool's path inside the ctx workspace. Returns the safe
+ * absolute path, or an error result on escape. `mode:"write"` is lexical-only;
+ * `mode:"read"` canonicalizes (symlink-escape aware). */
+function contain(ctx: { workspace?: string }, path: string, mode: "write" | "read"):
+  | { ok: true; abs: string }
+  | { ok: false; err: ReturnType<typeof err> } {
+  const ws = ctx.workspace ?? process.cwd();
+  const r = mode === "write" ? resolveInsideWorkspace(path, ws) : resolveExistingInsideWorkspace(path, ws);
+  return r.ok ? { ok: true, abs: r.abs } : { ok: false, err: err("path", r.reason + ": " + r.detail) };
+}
 
 const READONLY: Mode = "ReadOnly";
 const WORKSPACE: Mode = "WorkspaceWrite";
@@ -35,10 +47,12 @@ export const readTool: ToolImpl = {
     },
     requiredMode: READONLY,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.path !== "string") return err("read", "path required");
+    const c = contain(ctx, args.path, "read");
+    if (!c.ok) return c.err;
     try {
-      let content = await readFile(args.path, "utf8");
+      let content = await readFile(c.abs, "utf8");
       // Size cap (the read-tool contract: 2000 lines / 50KB — see AGENTS.md).
       const MAX_READ_BYTES = 50 * 1024;
       if (Buffer.byteLength(content) > MAX_READ_BYTES) {
@@ -68,11 +82,13 @@ export const writeTool: ToolImpl = {
     },
     requiredMode: WORKSPACE,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.path !== "string" || typeof args.content !== "string")
       return err("write", "path + content required");
+    const c = contain(ctx, args.path, "write");
+    if (!c.ok) return c.err;
     try {
-      await writeFile(args.path, args.content, "utf8");
+      await writeFile(c.abs, args.content, "utf8");
       return ok("write", { path: args.path, bytes: args.content.length });
     } catch (e) {
       return err("write", e instanceof Error ? e.message : String(e));
@@ -95,13 +111,15 @@ export const editTool: ToolImpl = {
     },
     requiredMode: WORKSPACE,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.path !== "string")
       return err("edit", "path required");
+    const c = contain(ctx, args.path, "write");
+    if (!c.ok) return c.err;
     if (typeof args.oldText !== "string" || typeof args.newText !== "string")
       return err("edit", "oldText + newText required");
     try {
-      const original = await readFile(args.path, "utf8");
+      const original = await readFile(c.abs, "utf8");
       if (!original.includes(args.oldText))
         return err("edit", "oldText not found in file");
       if (args.oldText === args.newText) return err("edit", "no-op (oldText === newText)");
@@ -110,7 +128,7 @@ export const editTool: ToolImpl = {
       const second = original.indexOf(args.oldText, first + 1);
       if (second !== -1) return err("edit", "oldText is ambiguous (appears >1 time)");
       const updated = original.replace(args.oldText, args.newText);
-      await writeFile(args.path, updated, "utf8");
+      await writeFile(c.abs, updated, "utf8");
       return ok("edit", { path: args.path, replaced: 1 });
     } catch (e) {
       return err("edit", e instanceof Error ? e.message : String(e));
@@ -278,7 +296,7 @@ export const replaceTool: ToolImpl = {
     },
     requiredMode: WORKSPACE,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.path !== "string") return err("replace", "path required");
     if (typeof args.startHash !== "string" || typeof args.endHash !== "string")
       return err("replace", "startHash + endHash required");
@@ -286,13 +304,15 @@ export const replaceTool: ToolImpl = {
       return err("replace", `anchors must be 3-char base64 (A-Za-z0-9-_); got start="${args.startHash}" end="${args.endHash}"`);
     if (!Array.isArray(args.contentLines) || !args.contentLines.every((l) => typeof l === "string"))
       return err("replace", "contentLines must be a string array");
+    const c = contain(ctx, args.path, "write");
+    if (!c.ok) return c.err;
     try {
-      const current = await readFile(args.path, "utf8");
+      const current = await readFile(c.abs, "utf8");
       // Stale detection: recompute hashes on CURRENT content; anchor must match.
       const res = replaceByHash(current, args.startHash, args.endHash, args.contentLines);
       if (!res.ok || !res.content)
         return err("replace", res.error ?? "replace failed");
-      await writeFile(args.path, res.content, "utf8");
+      await writeFile(c.abs, res.content, "utf8");
       return ok("replace", {
         path: args.path,
         replacedLines: res.replacedCount,
