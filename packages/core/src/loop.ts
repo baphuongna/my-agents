@@ -8,11 +8,16 @@
 import type {
   BudgetConfig,
   Cost,
+  DegradedResult,
   LifecycleError,
   ProviderProfile,
   RuntimeEvent,
   Session,
   StreamEvent,
+  ToolCall,
+  ToolExecutor,
+  ToolResult,
+  TurnContext,
   TurnEvent,
 } from "./types.js";
 import { computeCostStub as computeCost } from "./cost.js";
@@ -36,6 +41,10 @@ export interface RunTurnOptions {
   budget: BudgetConfig;
   /** Which profile to use (Tier 0: caller picks; Tier 1: streamWithFallback picks). */
   profile?: ProviderProfile;
+  /** §7 tool executor. If absent, tool calls are emitted but not executed (Tier 0). */
+  tools?: ToolExecutor;
+  /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
+  maxToolRounds?: number;
   signal?: AbortSignal;
 }
 
@@ -97,14 +106,16 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
       return;
     }
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const maxRounds = opts.maxToolRounds ?? 25; // §4 safety: bounded, not unbounded recursion
+    // §4 runTurn: while-loop until a turn produces no tool calls (R27-1/D4).
+    for (let round = 0; round <= maxRounds; round++) {
       if (cancelled) return;
-      // §4: budget gate — abort BEFORE spending (remaining evaluates against root).
+      // §4: budget gate — abort BEFORE spending.
       if (opts.budget.exhausted()) {
         const err: LifecycleError = {
           phase: "resource",
           recoverable: false,
-          retries: attempt - 1,
+          retries: round,
           context: { reason: "budget exhausted before stream" },
         };
         emitTurn({ state: "Failed", error: err });
@@ -118,16 +129,9 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           context: "",
           volatile: opts.session.userMd,
         };
-        const { events } = await profile.stream(
-          prompt,
-          opts.session.history,
-        );
+        const { events } = await profile.stream(prompt, opts.session.history);
         const result = consumeStream(events, emitTurn);
         if (result.kind === "error") {
-          if (result.error.recoverable && attempt < MAX_ATTEMPTS) {
-            emitTurn({ state: "Recoverable", error: result.error });
-            continue;
-          }
           emitTurn({ state: "Failed", error: result.error });
           emit({ kind: "turn", stage: "end" });
           resolveDone({ state: "Failed", error: result.error });
@@ -136,11 +140,10 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         const cost = computeCost(result.usage);
         const spent = opts.budget.spend(cost);
         if (!spent && !opts.budget.unlimited) {
-          // CC13: spend rejected — budget breached abortThreshold
           const err: LifecycleError = {
             phase: "resource",
             recoverable: false,
-            retries: attempt - 1,
+            retries: round,
             context: { reason: "budget exhausted (abortThreshold breached)" },
           };
           emitTurn({ state: "Failed", error: err });
@@ -154,32 +157,52 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           remainingUsd: opts.budget.remaining(),
           exhausted: opts.budget.exhausted(),
         });
+
+        // If the stream produced tool calls AND we have an executor, run them
+        // and loop back for the model to continue (§4 while-loop).
+        if (result.toolCalls.length > 0 && opts.tools) {
+          const ctx: TurnContext = {
+            session: opts.session,
+            history: opts.session.history,
+            budget: opts.budget,
+            approval: makeStubApproval(),
+            emit: emitTurn,
+          };
+          const toolResult = await opts.tools.execute(result.toolCalls, ctx);
+          emitTurn({ state: "ToolExec", result: toolResult });
+          // Append tool results to history so the next stream round sees them.
+          opts.session.history.append({ role: "tool", results: toolResult });
+          continue; // loop back: model continues with tool results
+        }
+
+        // No tool calls (or no executor) → terminal.
         emitTurn({ state: "Completed", usage: result.usage, cost });
         emit({ kind: "turn", stage: "end" });
-        resolveDone({
-          state: "Completed",
-          usage: result.usage,
-          cost,
-        });
+        resolveDone({ state: "Completed", usage: result.usage, cost });
         return;
       } catch (e) {
         const err: LifecycleError = {
           phase: "stream",
           recoverable: true,
-          retries: attempt - 1,
+          retries: round,
           context: { reason: e instanceof Error ? e.message : String(e) },
         };
-        if (attempt < MAX_ATTEMPTS) {
-          emitTurn({ state: "Recoverable", error: err });
-          continue;
-        }
-        err.recoverable = false;
         emitTurn({ state: "Failed", error: err });
         emit({ kind: "turn", stage: "end" });
         resolveDone({ state: "Failed", error: err });
         return;
       }
     }
+    // Exhausted tool rounds → fail (safety against runaway loops).
+    const err: LifecycleError = {
+      phase: "tool",
+      recoverable: false,
+      retries: maxRounds,
+      context: { reason: `exceeded maxToolRounds (${maxRounds})` },
+    };
+    emitTurn({ state: "Failed", error: err });
+    emit({ kind: "turn", stage: "end" });
+    resolveDone({ state: "Failed", error: err });
   }
 
   return {
@@ -193,7 +216,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
 }
 
 type StreamConsume =
-  | { kind: "ok"; usage: import("./types.js").TokenUsage }
+  | { kind: "ok"; usage: import("./types.js").TokenUsage; toolCalls: ToolCall[] }
   | { kind: "error"; error: LifecycleError };
 
 function consumeStream(
@@ -201,6 +224,7 @@ function consumeStream(
   emitTurn: (te: TurnEvent) => void,
 ): StreamConsume {
   let usage: import("./types.js").TokenUsage | undefined;
+  const toolCalls: ToolCall[] = [];
   for (const ev of events) {
     switch (ev.kind) {
       case "text":
@@ -208,7 +232,7 @@ function consumeStream(
         break;
       case "tool_calls":
         emitTurn({ state: "ToolCalls", calls: ev.calls });
-        // Tier 0: tool execution is a §7-package concern; no-op here.
+        toolCalls.push(...ev.calls);
         break;
       case "done":
         usage = ev.usage;
@@ -228,5 +252,12 @@ function consumeStream(
       },
     };
   }
-  return { kind: "ok", usage };
+  return { kind: "ok", usage, toolCalls };
+}
+
+// Tier-1 stub approval channel: auto-allows (real approval lands with §7 full pipeline).
+function makeStubApproval(): import("./types.js").ApprovalChannel {
+  return {
+    request: async (_r) => ({ decision: "Allow" as const }),
+  };
 }

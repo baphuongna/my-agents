@@ -11,6 +11,8 @@
  */
 import { createSession, freeBudget, runTurn } from "@my-agent/core";
 import { textMock } from "@my-agent/ai";
+import { assemblePrompt } from "@my-agent/prompts";
+import { ToolRegistry, builtinTools, runToolBatch } from "@my-agent/tools";
 import { makeSink } from "./index.js";
 
 async function main(): Promise<void> {
@@ -27,8 +29,18 @@ async function main(): Promise<void> {
     profiles: [textMock(`[Tier-0 mock echo] ${prompt}`)],
     stableTier: "You are my-agent (Tier 0 scaffold).",
   });
+  // Assemble the cache-stable 3-tier prompt before the turn (§5).
+  assemblePrompt(session);
 
-  const handle = runTurn({ session, budget: freeBudget() });
+  // §7 tool registry: register builtins + a batch executor for the loop.
+  const registry = new ToolRegistry();
+  for (const t of builtinTools) registry.register(t);
+
+  const handle = runTurn({
+    session,
+    budget: freeBudget(),
+    tools: { execute: (calls, ctx) => runToolBatch(calls, ctx, registry) },
+  });
   handle.on(sink.write);
 
   const terminal = await handle.done;

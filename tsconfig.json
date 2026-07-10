@@ -3,6 +3,8 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/ai" },
+    { "path": "packages/prompts" },
+    { "path": "packages/tools" },
     { "path": "packages/print" },
     { "path": "packages/sdk" }
   ]

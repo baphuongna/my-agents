@@ -301,6 +301,14 @@ export interface ExtensionAPI {
   on(e: string, h: (...a: unknown[]) => void): void;
 }
 
+/** §7 tool-execution boundary (core stays free of the tools package). */
+export interface ToolExecutor {
+  execute(
+    calls: ToolCall[],
+    ctx: TurnContext,
+  ): Promise<ToolResult[] | DegradedResult>;
+}
+
 /** Canonical denylist every subagent inherits (§10). */
 export const DELEGATE_BLOCKED_TOOLS = new Set([
   "task",
