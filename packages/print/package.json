@@ -14,8 +14,6 @@
   },
   "dependencies": {
     "@my-agent/core": "*",
-    "@my-agent/ai": "*",
-    "@my-agent/prompts": "*",
-    "@my-agent/tools": "*"
+    "@my-agent/agent": "*"
   }
 }

@@ -8,6 +8,7 @@
     { "path": "packages/memory" },
     { "path": "packages/subagents" },
     { "path": "packages/eval" },
+    { "path": "packages/agent" },
     { "path": "packages/print" },
     { "path": "packages/sdk" }
   ]

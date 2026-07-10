@@ -1,52 +1,42 @@
 #!/usr/bin/env node
 /**
- * my-agent — print transport CLI entry.
+ * my-agent — print transport CLI entry (full e2e wiring).
  *
  * Usage:
- *   my-agent [--json] "your prompt"
+ *   my-agent [--json] [--model <m>] "your prompt"
  *   echo "prompt" | my-agent --json
  *
- * Tier-0: uses a MockProvider (no network). Real providers land in Tier 1
- * via the §6 registry. This exercises the full loop → RuntimeEvent → sink.
+ * Auto-config (zero-config when possible):
+ *   - OPENAI_API_KEY set → real OpenAI adapter (model: --model or gpt-4o-mini)
+ *   - no key             → mock echo fallback (agent still runs)
+ * Memory: durable under ~/.my-agent/memory/ (archivist + goals roles).
  */
-import { createSession, freeBudget, runTurn } from "@my-agent/core";
-import { textMock } from "@my-agent/ai";
-import { assemblePrompt } from "@my-agent/prompts";
-import { ToolRegistry, builtinTools, runToolBatch } from "@my-agent/tools";
+import { createAgent } from "@my-agent/agent";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { makeSink } from "./index.js";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const json = args.includes("--json");
-  const positional = args.filter((a) => !a.startsWith("--"));
-  let prompt =
+  const modelIdx = args.indexOf("--model");
+  const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
+  const positional = args.filter((a) => !a.startsWith("--") && a !== model);
+  const prompt =
     positional.join(" ").trim() ||
     (await readStdin()) ||
-    "Hello. (Tier 0 scaffold — no provider wired yet.)";
+    "Hello. (No prompt given — running with mock fallback.)";
+
+  const agent = createAgent({
+    model,
+    memoryDir: join(homedir(), ".my-agent", "memory"),
+  });
 
   const sink = makeSink({ json });
-  const session = createSession({
-    profiles: [textMock(`[Tier-0 mock echo] ${prompt}`)],
-    stableTier: "You are my-agent (Tier 0 scaffold).",
-  });
-  // Assemble the cache-stable 3-tier prompt before the turn (§5).
-  assemblePrompt(session);
+  await agent.run(prompt, sink.write);
 
-  // §7 tool registry: register builtins + a batch executor for the loop.
-  const registry = new ToolRegistry();
-  for (const t of builtinTools) registry.register(t);
-
-  const handle = runTurn({
-    session,
-    budget: freeBudget(),
-    tools: { execute: (calls, ctx) => runToolBatch(calls, ctx, registry) },
-  });
-  handle.on(sink.write);
-
-  const terminal = await handle.done;
-  if (!json && terminal.state === "Failed") {
-    process.exitCode = 1;
-  }
+  const profile = process.env["OPENAI_API_KEY"] ? "openai" : "mock-fallback";
+  if (!json) process.stderr.write(`[provider: ${profile}]\n`);
 }
 
 function readStdin(): Promise<string> {

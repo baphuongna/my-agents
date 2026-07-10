@@ -63,6 +63,11 @@ const MAX_ATTEMPTS = 3;
  */
 export function runTurn(opts: RunTurnOptions): TurnHandle {
   const subs = new Set<(e: RuntimeEvent) => void>();
+  // Replay buffer: events emitted before the first subscriber attaches are
+  // buffered + flushed on first .on(). This makes runTurn robust to callers
+  // that subscribe after an await (e.g. agent.startTurn awaits refresh before
+  // returning the handle). (R40 fix.)
+  const replay: RuntimeEvent[] = [];
   let cancelled = false;
   let resolveDone!: (t: TurnTerminal) => void;
   const done = new Promise<TurnTerminal>((res) => {
@@ -73,6 +78,10 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
   const signal = opts.signal ?? internal.signal;
 
   const emit = (e: RuntimeEvent) => {
+    if (subs.size === 0) {
+      replay.push(e);
+      return;
+    }
     for (const fn of subs) fn(e);
   };
   const emitTurn = (te: TurnEvent) =>
@@ -228,6 +237,9 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
   return {
     on: (fn) => {
       subs.add(fn);
+      // Flush any buffered events to the new subscriber.
+      for (const e of replay) fn(e);
+      replay.length = 0;
       return () => subs.delete(fn);
     },
     cancel: (reason = "user") => cancel(reason),
