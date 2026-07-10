@@ -87,8 +87,9 @@ export class LoopbackServer {
           res.end("<html><body>Auth complete. You may close this tab.</body></html>");
           this.resolveCb?.({ code, state });
         } else {
-          res.writeHead(400, { "content-type": "text/html" });
-          res.end(`<html><body>Auth failed: ${err ?? "no code"}</body></html>`);
+          res.writeHead(400, { "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff" });
+          // M6 fix: HTML-escape the error param (was reflected XSS).
+          res.end(`<html><body>Auth failed: ${escapeHtml(err ?? "no code")}</body></html>`);
         }
       });
       this.server.on("error", rejectStart);
@@ -181,8 +182,28 @@ function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Verify a PKCE challenge against a verifier (constant-time-ish via hash compare). */
+/** HTML-escape a string (M6: the OAuth error page reflected the raw query param). */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/** M5 fix: verify the OAuth callback state matches the expected CSRF token
+ * (constant-time). Throws on mismatch — callers MUST call this on the callback
+ * result; never trust an unverified state. */
+export function verifyCallbackState(expected: string, result: CallbackResult): void {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(result.state);
+  if (a.length !== b.length || !cryptoTimingSafeEqual(a, b)) {
+    throw new Error("oauth: state mismatch (possible login-CSRF)");
+  }
+}
+
+import { timingSafeEqual as cryptoTimingSafeEqual } from "node:crypto";
+
+/** Verify a PKCE challenge against a verifier (M6: constant-time compare). */
 export function verifyPkce(verifier: string, challenge: string): boolean {
   const computed = base64url(createHash("sha256").update(verifier).digest());
-  return computed === challenge;
+  const a = Buffer.from(computed);
+  const b = Buffer.from(challenge);
+  return a.length === b.length && cryptoTimingSafeEqual(a, b);
 }

@@ -220,6 +220,15 @@ export class DapClient extends EventEmitter {
       const m = /Content-Length:\s*(\d+)/i.exec(header);
       if (!m) { this.buf = this.buf.slice(headerEnd + 4); continue; }
       const len = parseInt(m[1]!, 10);
+      // M4 fix: cap Content-Length (DoS — a malicious adapter could declare
+      // Content-Length: 9GB + slow-drip → OOM). 16 MiB per §25.6 SSE_BUFFER_BYTES.
+      const MAX_FRAME = 16 * 1024 * 1024;
+      if (len > MAX_FRAME || this.buf.length > MAX_FRAME) {
+        this.buf = "";
+        this.initialized = false;
+        this.emit("exited", -1);
+        break;
+      }
       const bodyStart = headerEnd + 4;
       if (this.buf.length < bodyStart + len) break;
       const body = this.buf.slice(bodyStart, bodyStart + len);

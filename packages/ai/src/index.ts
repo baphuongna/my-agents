@@ -14,5 +14,5 @@ export type { FallbackResult } from "./fallback.js";
 export { OpenAIAdapter } from "./openai.js";
 export type { OpenAIAdapterOptions } from "./openai.js";
 export type { ProviderProfile, StreamEvent } from "@my-agent/core";
-export { generatePkce, buildAuthUrl, exchangeCode, refreshAccessToken, verifyPkce, LoopbackServer } from "./oauth.js";
+export { generatePkce, buildAuthUrl, exchangeCode, refreshAccessToken, verifyPkce, verifyCallbackState, LoopbackServer } from "./oauth.js";
 export type { PkcePair, AuthRequest, CallbackResult, TokenResponse } from "./oauth.js";

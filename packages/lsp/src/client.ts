@@ -173,6 +173,9 @@ export class LspClient extends EventEmitter {
       const m = /Content-Length:\s*(\d+)/i.exec(header);
       if (!m) { this.buf = this.buf.slice(headerEnd + 4); continue; }
       const len = parseInt(m[1]!, 10);
+      // M4 fix: 16 MiB Content-Length cap (DoS guard).
+      const MAX_FRAME = 16 * 1024 * 1024;
+      if (len > MAX_FRAME || this.buf.length > MAX_FRAME) { this.buf = ""; break; }
       const bodyStart = headerEnd + 4;
       if (this.buf.length < bodyStart + len) break; // need more
       const body = this.buf.slice(bodyStart, bodyStart + len);

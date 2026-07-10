@@ -72,6 +72,13 @@ export class RpcServer {
     this.input.setEncoding("utf8");
     this.input.on("data", (chunk: string) => {
       this.buffer += chunk;
+      // M4 fix: cap the stdin buffer (DoS — a no-newline stream would grow it
+      // unbounded). 1 MiB is ample for any JSON-RPC request.
+      if (this.buffer.length > 1_048_576) {
+        this.write(errorResponse(null, PARSE_ERROR, "request line exceeds 1 MiB"));
+        this.buffer = "";
+        return;
+      }
       let nl: number;
       while ((nl = this.buffer.indexOf("\n")) >= 0) {
         const line = this.buffer.slice(0, nl).trim();

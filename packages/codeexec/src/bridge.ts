@@ -18,6 +18,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { ToolExecutor, ToolResult } from "@my-agent/core";
+import { DELEGATE_BLOCKED_TOOLS } from "@my-agent/core";
 import { err, isRecord, ok, type ToolImpl } from "@my-agent/tools";
 
 const MAX_TOOL_CALLS = 50;
@@ -119,6 +120,16 @@ async function runBridge(
         if (callCount > MAX_TOOL_CALLS) {
           child.stdin.write(
             JSON.stringify({ id: req.id, ok: false, error: `max tool calls (${MAX_TOOL_CALLS}) exceeded` }) + "\n",
+          );
+          continue;
+        }
+        // HIGH-3b (security review): the code-exec bridge kernel is filtered by
+        // the SAME DELEGATE_BLOCKED_TOOLS denylist as a child's direct toolSurface
+        // (spec R27-8/O3) — blocked names (bash/spawn/exec/...) are rejected here
+        // before dispatch, independent of the executor's own gate (defense-in-depth).
+        if (DELEGATE_BLOCKED_TOOLS.has(req.name)) {
+          child.stdin.write(
+            JSON.stringify({ id: req.id, ok: false, error: `blocked by DELEGATE_BLOCKED_TOOLS: ${req.name}` }) + "\n",
           );
           continue;
         }

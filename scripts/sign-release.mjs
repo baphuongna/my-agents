@@ -1,44 +1,36 @@
 #!/usr/bin/env node
 // scripts/sign-release.mjs — sigstore-sign every public package tarball at release.
-// Outputs a JSON array of SigstoreBundle to stdout (the workflow attaches it to the release).
-// Run AFTER `npm publish` (the tarballs are `npm pack`-ed here for signing).
-// Source: §16 supply chain, §23 #6 (sigstore resolved).
-import { writeFile } from "node:fs/promises";
-import { signTarball } from "../packages/signing/dist/index.js";
+// Outputs a JSON array of SigstoreBundle to sigstore-bundles.json (attached to the release).
+// Run AFTER `npm publish` (the release.yml workflow). Source: §16 supply chain, §23 #6.
+import { writeFile, readdirSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 
-const PUBLIC_PKGS = []; // populated from packages/*/package.json (private:false)
-for (const [name, pkgPath] of Object.entries(pkgs())) {
-  const { stdout } = await run("npm", ["pack", "--json"], pkgPath);
+// Gather public (non-private) packages.
+const PUBLIC_PKGS = [];
+for (const d of readdirSync("packages")) {
+  try {
+    const m = JSON.parse(readFileSync(`packages/${d}/package.json`, "utf8"));
+    if (!m.private) PUBLIC_PKGS.push({ name: m.name, cwd: `packages/${d}` });
+  } catch { /* skip non-package dirs */ }
+}
+
+const bundles = [];
+for (const { name, cwd } of PUBLIC_PKGS) {
+  const { stdout } = await run("npm", ["pack", "--json"], cwd);
   const packInfo = JSON.parse(stdout)[0];
+  const { signTarball } = await import("../packages/signing/dist/index.js");
   const bundle = await signTarball({
     packageName: name,
     version: packInfo.version,
     tarballPath: packInfo.filename,
     signer: { issuer: "https://token.actions.githubusercontent.com", subject: process.env.GITHUB_REF_NAME },
   });
-  PUBLIC_PKGS.push(bundle);
+  bundles.push(bundle);
 }
-await writeFile("sigstore-bundles.json", JSON.stringify(PUBLIC_PKGS, null, 2));
-console.log(`signed ${PUBLIC_PKGS.length} packages → sigstore-bundles.json`);
+await writeFile("sigstore-bundles.json", JSON.stringify(bundles, null, 2));
+console.log(`signed ${bundles.length} packages → sigstore-bundles.json`);
 
-function pkgs() {
-  // minimal glob of packages/* with private !== true
-  const { readdirSync, readFileSync } = await importReadOnly();
-  const out = {};
-  for (const d of readdirSync("packages")) {
-    try {
-      const m = JSON.parse(readFileSync(`packages/${d}/package.json`, "utf8"));
-      if (!m.private) out[m.name] = `packages/${d}`;
-    } catch { /* skip */ }
-  }
-  return out;
-}
-async function importReadOnly() {
-  const fs = await import("node:fs");
-  return { readdirSync: fs.readdirSync, readFileSync: fs.readFileSync };
-}
-async function run(cmd, args, cwd) {
-  const { spawn } = await import("node:child_process");
+function run(cmd, args, cwd) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "inherit"] });
     let stdout = "";

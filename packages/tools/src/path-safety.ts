@@ -14,8 +14,8 @@
  *
  * Source: §7 Tools completeness; MyAgents workspace_files/path_safety.rs.
  */
-import { resolve, normalize, sep, isAbsolute } from "node:path";
-import { realpathSync } from "node:fs";
+import { resolve, normalize, sep, isAbsolute, dirname } from "node:path";
+import { realpathSync, existsSync } from "node:fs";
 
 export type ResolveMode = "write" | "read";
 
@@ -43,6 +43,21 @@ export function resolveInsideWorkspace(path: string, workspace: string): Resolve
   // final belt: the resolved abs must be within ws
   if (abs !== ws && !abs.startsWith(ws + sep) && !abs.startsWith(ws + "/")) {
     return { ok: false, reason: "outside-workspace", detail: `resolved outside workspace: ${abs}` };
+  }
+  // F5 (security review): a pre-existing symlinked DIRECTORY inside the
+  // workspace (e.g. ws/evil -> /etc) would let a write escape via the lexical
+  // check above. Canonicalize the parent dir (which must exist) + re-bound.
+  try {
+    const parent = dirname(abs);
+    if (existsSync(parent)) {
+      const realParent = realpathSync(parent);
+      const wsReal = existsSync(ws) ? realpathSync(ws) : ws;
+      if (realParent !== wsReal && !realParent.startsWith(wsReal + sep) && !realParent.startsWith(wsReal + "/")) {
+        return { ok: false, reason: "symlink-escape", detail: `parent dir symlink escapes workspace: ${path} → ${realParent}` };
+      }
+    }
+  } catch {
+    // parent doesn't exist yet (new file in a new dir) — the lexical check stands.
   }
   return { ok: true, abs };
 }
