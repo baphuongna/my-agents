@@ -54,6 +54,7 @@ type NativeModule = {
   compressLog: (input: string, options?: object) => CompressLogResult;
   approxTokens: (input: string) => number;
   reflinkOrCopy: (src: string, dst: string) => ReflinkResult;
+  parseTsSymbols: (src: string) => AstSymbol[];
   nowMonotonicNanos: () => number;
   nowWallclockNanos: () => number;
   nativesVersion: () => string;
@@ -125,6 +126,13 @@ export interface CompressLogResult {
 export interface ReflinkResult {
   method: "reflink" | "copy";
   bytes: number;
+}
+
+export interface AstSymbol {
+  kind: "function" | "method" | "class" | "arrow";
+  name: string;
+  startLine: number;
+  endLine: number;
 }
 
 export interface GlobOptions {
@@ -231,6 +239,19 @@ export function nativeReflinkOrCopy(src: string, dst: string): ReflinkResult {
     }
   }
   return jsReflinkOrCopy(src, dst);
+}
+
+/** tree-sitter symbol extraction (§2/§11). Native = Rust parse (TS grammar);
+ * fallback = a regex-based symbol scan with the same shape. Deterministic. */
+export function nativeParseTsSymbols(src: string): AstSymbol[] {
+  if (NATIVE) {
+    try {
+      return NATIVE.parseTsSymbols(src);
+    } catch {
+      // fall through to JS
+    }
+  }
+  return jsParseTsSymbols(src);
 }
 
 // ─── third-party native verification (§14b / §17 / invariant #6-resolution) ────
@@ -413,4 +434,24 @@ function jsReflinkOrCopy(src: string, dst: string): ReflinkResult {
   copyFileSync(src, dst);
   const bytes = statSync(src).size;
   return { method: "copy", bytes };
+}
+
+/** JS fallback for parse_ts_symbols — a regex-based symbol scan (function /
+ * method / class / arrow). Same shape as the tree-sitter output; less precise
+ * (no nested ranges, no method bodies in interfaces) but deterministic + no deps. */
+function jsParseTsSymbols(src: string): AstSymbol[] {
+  const out: AstSymbol[] = [];
+  const lines = src.split("\n");
+  const re =
+    /^\s*(?:export\s+|default\s+|static\s+|async\s+|public\s+|private\s+|readonly\s+)*(function|class)\s+([A-Za-z_$][\w$]*)|^(?:export\s+|default\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(?[^=]*=>|^(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/;
+  for (let i = 0; i < lines.length; i++) {
+    const m = re.exec(lines[i]!);
+    if (!m) continue;
+    const line = i + 1;
+    if (m[1] === "function") out.push({ kind: "function", name: m[2] ?? "", startLine: line, endLine: line });
+    else if (m[1] === "class") out.push({ kind: "class", name: m[2] ?? "", startLine: line, endLine: line });
+    else if (m[3]) out.push({ kind: "arrow", name: m[3], startLine: line, endLine: line });
+    else if (m[4]) out.push({ kind: "method", name: m[4], startLine: line, endLine: line });
+  }
+  return out;
 }

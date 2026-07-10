@@ -343,6 +343,82 @@ pub fn approx_tokens(input: String) -> Result<u32> {
   })
 }
 
+// ─── AST symbol extraction (§2/§11 tree-sitter — hot loop + determinism) ────
+
+#[napi(object)]
+pub struct AstSymbol {
+  /// Symbol kind: function / method / class / arrow.
+  pub kind: String,
+  /// Declared name (empty for anonymous arrows).
+  pub name: String,
+  /// 1-based start line.
+  pub start_line: u32,
+  /// 1-based end line.
+  pub end_line: u32,
+}
+
+/// Extract declaration symbols (functions/methods/classes) from TypeScript
+/// source via tree-sitter. Deterministic (byte-faithful parse). The §11
+/// codegraph symbol→file map is built from this.
+#[napi]
+pub fn parse_ts_symbols(src: String) -> Result<Vec<AstSymbol>> {
+  guarded("parse_ts_symbols", || {
+    use tree_sitter::{Language, Parser, Query, QueryCursor};
+    let language: Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+    let mut parser = Parser::new();
+    parser
+      .set_language(&language)
+      .map_err(|e| Error::new(Status::GenericFailure, format!("ts set_language: {e}")))?;
+    let tree = parser
+      .parse(&src, None)
+      .ok_or_else(|| Error::new(Status::GenericFailure, "ts parse returned None"))?;
+    // One query covering the common declaration kinds. Names come from the
+    // `name` capture; kinds from the matched node type.
+    // Match the declaration nodes only; names are pulled via field-by-name in
+    // Rust (more robust than capture patterns across grammar quirks).
+    let q_src = r#"
+      (function_declaration) @function
+      (method_definition) @method
+      (class_declaration) @class
+      (arrow_function) @arrow
+    "#;
+    let query = Query::new(&language, q_src)
+      .map_err(|e| Error::new(Status::GenericFailure, format!("ts query: {e}")))?;
+    let mut cursor = QueryCursor::new();
+    let root = tree.root_node();
+    let mut out: Vec<AstSymbol> = Vec::new();
+    for m in cursor.matches(&query, root, src.as_bytes()) {
+      for cap in m.captures.iter() {
+        let kind = query.capture_names()[cap.index as usize];
+        if !matches!(kind, "function" | "method" | "class" | "arrow") {
+          continue;
+        }
+        let node = cap.node;
+        // name: `name` field on func/class/method; for arrow, walk to the
+        // enclosing variable_declarator's `name` field.
+        let name_node = if kind == "arrow" {
+          node.parent()
+            .and_then(|p| p.child_by_field_name("name"))
+        } else {
+          node.child_by_field_name("name")
+        };
+        let name = name_node
+          .and_then(|n| n.utf8_text(src.as_bytes()).ok())
+          .unwrap_or("")
+          .to_string();
+        out.push(AstSymbol {
+          kind: kind.to_string(),
+          name,
+          start_line: node.start_position().row as u32 + 1,
+          end_line: node.end_position().row as u32 + 1,
+        });
+      }
+    }
+    out.sort_by_key(|s| (s.start_line, s.end_line));
+    Ok(out)
+  })
+}
+
 // ─── CoW overlay isolation (§10.1 IsoBackend) ───────────────────────────────
 // Best-effort reflink (Linux FICLONE ioctl on btrfs/xfs-with-reflink, macOS
 // clonefile via libc) with a byte-faithful copy fallback. This is a perf /
