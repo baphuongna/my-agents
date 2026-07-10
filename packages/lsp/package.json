@@ -1,5 +1,5 @@
 {
-  "name": "@my-agent/subagents",
+  "name": "@my-agent/lsp",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,5 @@
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "scripts": { "build": "tsc -b", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@my-agent/core": "*" },
-  "devDependencies": { "@types/node": "^22" }
+  "dependencies": { "@my-agent/core": "*" }
 }

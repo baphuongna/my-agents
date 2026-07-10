@@ -237,7 +237,8 @@ export type RuntimeEvent =
   | { kind: "approval"; stage: "requested" | "decided"; call: ToolCall }
   | { kind: "health"; component: ComponentId; status: ComponentHealth; detail?: string }
   | { kind: "lane"; taskId: LaneId; freshness: LaneFreshness; heartbeat: LaneHeartbeat }
-  | { kind: "budget"; spentUsd: number; remainingUsd: number; exhausted: boolean };
+  | { kind: "budget"; spentUsd: number; remainingUsd: number; exhausted: boolean }
+  | { kind: "log"; level: "info" | "warn" | "error"; message: string };
 
 // ─── LaneBoard (§13) ────────────────────────────────────────────────────────
 export type LaneId = string;
