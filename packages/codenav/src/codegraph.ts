@@ -19,10 +19,10 @@ import type { ToolResult } from "@my-agent/core";
 
 /** Per-language import-statement matchers (capture the target specifier). */
 const IMPORT_MATCHERS: Record<string, RegExp[]> = {
-  ".ts": [/^\s*import\s+[\s\S]*?from\s+['"]([^'"]+)['"]/gm, /^\s*import\s+['"]([^'"]+)['"]/gm, /^\s*}\s*from\s+['"]([^'"]+)['"]/gm],
-  ".tsx": [/^\s*import\s+[\s\S]*?from\s+['"]([^'"]+)['"]/gm],
-  ".js": [/^\s*import\s+[\s\S]*?from\s+['"]([^'"]+)['"]/gm, /^\s*require\(\s*['"]([^'"]+)['"]\s*\)/gm],
-  ".mjs": [/^\s*import\s+[\s\S]*?from\s+['"]([^'"]+)['"]/gm],
+  ".ts": [/^\s*import\s[^;]*?\bfrom\s+['"]([^'"]+)['"]/gm, /^\s*import\s+['"]([^'"]+)['"]/gm, /^\s*}\s*from\s+['"]([^'"]+)['"]/gm],
+  ".tsx": [/^\s*import\s[^;]*?\bfrom\s+['"]([^'"]+)['"]/gm],
+  ".js": [/^\s*import\s[^;]*?\bfrom\s+['"]([^'"]+)['"]/gm, /^\s*require\(\s*['"]([^'"]+)['"]\s*\)/gm],
+  ".mjs": [/^\s*import\s[^;]*?\bfrom\s+['"]([^'"]+)['"]/gm],
   ".py": [/^\s*from\s+([.\w]+)\s+import/gm, /^\s*import\s+([\w.]+)/gm],
   ".rs": [/^\s*use\s+([\w:]+)/gm, /^\s*(?:pub\s+)?mod\s+(\w+)/gm],
 };
@@ -68,6 +68,10 @@ export async function buildCodegraph(root: string): Promise<Codegraph> {
     const full = join(root, rel);
     let content: string;
     try {
+      // M6 fix: skip oversized files (DoS — a huge / special file would be read
+      // whole). 1 MB cap; stat first to avoid reading multi-GB blobs.
+      const stat = await import("node:fs/promises").then((m) => m.stat(full)).catch(() => null);
+      if (stat && (stat.size > 1_048_576 || !stat.isFile())) continue;
       content = await readFile(full, "utf8");
     } catch {
       continue;
@@ -165,6 +169,12 @@ export function makeCodegraphTool(): ToolImpl & { graphFor(root: string): Promis
       if (!p) {
         p = buildCodegraph(root);
         cache.set(root, p);
+        // M6 fix: cap the cache (an attacker-controlled `cwd` per call would grow
+        // it unbounded). Evict oldest entries beyond 64 roots.
+        if (cache.size > 64) {
+          const oldest = cache.keys().next().value;
+          if (oldest !== undefined) cache.delete(oldest);
+        }
       }
       return p;
     },

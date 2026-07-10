@@ -40,9 +40,13 @@ export class HookRegistry {
   /** Fire a hook; listeners run in priority order. A listener error is caught + logged. */
   async fire(name: HookName, payload: HookPayload): Promise<void> {
     const list = this.byName.get(name) ?? [];
+    // F6(hooks) fix: freeze the payload so one hook can't tamper with downstream
+    // handlers' data (a pre_tool hook re-writing payload.calls[0].args would
+    // otherwise reach the executor). deepFreeze (the payload is JSON-ish).
+    const frozen = deepFreeze(structuredClone(payload));
     for (const r of list) {
       try {
-        await r.handler(payload);
+        await r.handler(frozen);
       } catch (e) {
         // Isolation: a failing hook MUST NOT break the agent (claw-code invariant).
         // eslint-disable-next-line no-console
@@ -58,4 +62,15 @@ export class HookRegistry {
     for (const list of this.byName.values()) all.push(...list);
     return all;
   }
+}
+/** Deep-freeze a JSON-ish value (the hook payload) so handlers can't mutate it. */
+function deepFreeze<T>(v: T): T {
+  if (v && typeof v === "object") {
+    if (Array.isArray(v)) Object.freeze(v);
+    else Object.freeze(v);
+    for (const k of Object.keys(v as Record<string, unknown>)) {
+      deepFreeze((v as Record<string, unknown>)[k]);
+    }
+  }
+  return v;
 }

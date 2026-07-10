@@ -130,10 +130,15 @@ export async function fanOutFanIn(
   approval: SubagentSpawn["approval"],
   budget: BudgetConfig,
 ): Promise<SubagentResult[]> {
+  // M7 fix: cap concurrency (§14 MAX_CONCURRENT_SUBAGENTS, default 8). Without a
+  // cap, n=10000 would spawn 10000 nested turns (DoS — budget bounds cost, not
+  // concurrency). Shard across the bounded cap; each shard fans within budget.
+  const MAX_CONCURRENT = 8;
+  const capped = Math.max(1, Math.min(Math.floor(n), MAX_CONCURRENT));
   const spawns: Promise<SubagentResult>[] = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < capped; i++) {
     spawns.push(
-      runner.spawn({ prompt: `${prompt} [shard ${i + 1}/${n}]`, toolSurface: surface, approval, budget, topology: "fanout_fanin" }),
+      runner.spawn({ prompt: `${prompt} [shard ${i + 1}/${capped}]`, toolSurface: surface, approval, budget, topology: "fanout_fanin" }),
     );
   }
   return Promise.all(spawns);

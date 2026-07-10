@@ -15,6 +15,7 @@
  * CC13 (spend rejects on breach — local cap for child, abortThreshold for root).
  */
 import type { BudgetConfig, Cost } from "./types.js";
+import { nowMonotonic } from "./time.js";
 
 interface RootState {
   total: number;
@@ -66,7 +67,8 @@ function makeBudget(node: BudgetNode): BudgetConfig {
     deriveChild: (alloc: number): BudgetConfig => {
       const reserve = Math.max(0, Math.min(alloc, node.root.total - node.root.reserved));
       node.root.reserved += reserve; // pre-charge (CC10: locks the pool)
-      const childId = `child-${node.root.children.size + 1}-${Date.now().toString(36)}`;
+      // LOW-8 fix: use the single time helper (invariant #10) not bare Date.now().
+      const childId = `child-${node.root.children.size + 1}-${nowMonotonic().toString(36)}`;
       node.root.children.set(childId, { alloc: reserve, ownSpent: 0 });
       return makeBudget({
         alloc: reserve,

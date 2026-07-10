@@ -40,8 +40,29 @@ export interface McpServer {
 
 const QUARANTINE_AFTER = 5; // N consecutive failures → Quarantine
 
+/** F5(mcp) fix: legal phase transitions (adjacency matrix). Prevents a caller
+ * from jumping e.g. Quarantine → Healthy (manual review required) or Failed →
+ * Healthy (must go through Restarting/Initializing). Throws on an illegal
+ * transition so the FSM stays the sole authority. */
+const ALLOWED_TRANSITIONS: Record<McpPhase, readonly McpPhase[]> = {
+  Unconfigured: ["Discovered", "Validated", "Stopped"],
+  Discovered: ["Validated", "Stopped"],
+  Validated: ["Initializing", "Stopped"],
+  Initializing: ["Healthy", "Degraded", "Failed", "Stopped"],
+  Healthy: ["Degraded", "Failed", "Restarting", "Draining", "Stopped"],
+  Degraded: ["Healthy", "Failed", "Restarting", "Draining", "Stopped"],
+  Failed: ["Restarting", "Stopped"],
+  Restarting: ["Initializing", "Failed", "Stopped"],
+  Draining: ["Stopped"],
+  Quarantine: ["Stopped"], // manual review required to leave quarantine
+  Stopped: ["Unconfigured", "Discovered"],
+};
+
 /** Transition a server to the next phase; returns the updated server. */
-export function transition(s: McpServer, to: McpPhase, opts: { error?: string } = {}): McpServer {
+export function transition(s: McpServer, to: McpPhase, opts: { error?: string; allowUnsafe?: boolean } = {}): McpServer {
+  if (!opts.allowUnsafe && !ALLOWED_TRANSITIONS[s.phase]?.includes(to)) {
+    throw new Error(`MCP illegal transition: ${s.phase} → ${to} (use allowUnsafe for forced ops)`);
+  }
   const next: McpServer = { ...s, phase: to };
   if (opts.error !== undefined) {
     next.lastError = opts.error;
