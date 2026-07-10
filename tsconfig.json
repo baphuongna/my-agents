@@ -21,6 +21,7 @@
     { "path": "packages/x402" },
     { "path": "packages/audit" },
     { "path": "packages/secrets" },
+    { "path": "packages/session" },
     { "path": "packages/agent" },
     { "path": "packages/print" },
     { "path": "packages/sdk" }
