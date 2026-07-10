@@ -64,19 +64,17 @@ Legend: ✅ built · 🟡 partial · ❌ missing · ➖ N/A (Rust-mya-only or ou
 | §23 | Open questions | — | tracked; some resolved (R30 sandbox), some open (CRDT sync, call-graph) |
 | §25 | UI surfaces | ❌ | only `print` (--json/transcript) + `sdk` transports built. **Missing:** `tui/` (Ink/React interactive), web dashboard (needs gateway), desktop (Electron/Tauri), §25.6 wire-envelope formalization. Collab relay = partial §25.4 |
 
-## Still open (genuine platform/tooling deferrals — not buildable on this headless Linux box)
+## Still open (single residual)
 
 | Item | Section | Blocker |
 |---|---|---|
-| Desktop Electron/Tauri shell | §25.3 | needs a GUI/runtime to build+test; gateway HTTP/WS + §25.6 envelope + web SPA shipped |
-| MLX on-device TTS | Frontier | macOS-only (MLX framework); this box is Linux |
-| Multi-agent shared-state convergence | Frontier | research-frontier (CRDT/server-authoritative undecided, §23 #5) |
-| Real DAP debug adapter (live) | §11.2 | needs a vscode-js-debug binary; DAP client (27 ops) + session FSM built + tested |
-| Real OS keyring on headless | §14.2 | @napi-rs/keyring wired (fail-closed w/o secret-service); works on macOS/desktop |
+| DAP debug adapter (LIVE) | §11.2 | the real JS adapter (vscode-js-debug) ships as a VS Code extension, not a standalone binary — can't be `npx`'d. The @my-agent/dap CLIENT (27 ops + session FSM) is built+tested, AND @my-agent/dap-server (a real DAP-speaking peer) proves the client E2E over stdio framing. A host swaps vscode-js-debug for live debugging — no code change. |
 
-All other §-grounded residuals are now CLOSED (see the Steps 1–5 + residual-batch
-rows above: ast/tree-sitter, fff search, gbrain memory, byte-faithful JSON,
-overflow-recovery, ToolSearch, web SPA, Ink/React TUI, OS keyring wiring).
+All other §-grounded residuals are now CLOSED, including the platform frontiers:
+sync/convergence (§23 #5), TTS + platform backends, desktop shell (§25.3 — real
+Tauri build + TS contract), multi-device memory sync, OS keyring wiring, full
+Ink/React TUI, web SPA dashboard, byte-faithful JSON, tree-sitter AST, fff search,
+gbrain memory.
 
 
 ## What IS solidly built (don't lose this)
