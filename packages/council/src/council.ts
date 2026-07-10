@@ -34,6 +34,18 @@ export interface CouncilMember {
   profile: ProviderProfile;
   /** Human-readable role label (e.g. "Skeptic", "Pragmatist", "Critic"). */
   role: string;
+  /** Per-member timeout in ms (default 30s; R41 fix). */
+  timeoutMs?: number;
+}
+
+/** A member's contribution (text + observed usage + ok flag). */
+interface MemberResponse {
+  role: string;
+  text: string;
+  ok: boolean;
+  timedOut?: boolean;
+  /** Observed input/output tokens from the member's stream. */
+  usage: TokenUsage;
 }
 
 export interface CouncilProviderOptions {
@@ -75,36 +87,58 @@ export class CouncilProvider implements ProviderProfile {
     prompt: SystemPrompt,
     history: History,
   ): Promise<{ events: StreamEvent[] }> {
-    // Fan-out: every member answers the same prompt in parallel.
-    const responses = await Promise.all(
-      this.members.map(async (m) => {
-        try {
-          const { events } = await m.profile.stream(prompt, history);
-          return { role: m.role, text: extractText(events), ok: true as const };
-        } catch {
-          return { role: m.role, text: "", ok: false as const };
-        }
-      }),
+    // Fan-out: every HEALTHY member answers in parallel (R41: skip Failed members).
+    // Each member is wrapped in a per-member timeout so a hung provider cannot
+    // block the whole council (Promise.all would otherwise wait forever).
+    const DEFAULT_MEMBER_TIMEOUT_MS = 30_000;
+    const responses: MemberResponse[] = await Promise.all(
+      this.members
+        .filter((m) => m.profile.health() !== "Failed")
+        .map(async (m): Promise<MemberResponse> => {
+          const timeoutMs = m.timeoutMs ?? DEFAULT_MEMBER_TIMEOUT_MS;
+          try {
+            const result = await Promise.race([
+              m.profile.stream(prompt, history),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("council member timed out")), timeoutMs),
+              ),
+            ]);
+            const usage = collectUsage(result.events);
+            return { role: m.role, text: extractText(result.events), ok: true, usage };
+          } catch (e) {
+            const timedOut = e instanceof Error && /timed out/.test(e.message);
+            return {
+              role: m.role,
+              text: "",
+              ok: false,
+              timedOut,
+              usage: { input: 0, output: 0 },
+            };
+          }
+        }),
     );
 
     const events: StreamEvent[] = [];
     let input = 0;
     let output = 0;
+    // Aggregate member usage (R41 fix: was discarding member done events).
+    for (const r of responses) {
+      input += r.usage.input;
+      output += r.usage.output;
+    }
+    // Exclude timed-out members' partial text from aggregation.
+    const okResponses = responses.filter((r) => r.ok);
 
     if (this.strategy === "attributed") {
-      for (const r of responses) {
-        if (!r.ok || !r.text) continue;
+      for (const r of okResponses) {
         events.push({ kind: "text", text: `## ${r.role}\n${r.text}\n\n` });
-        output += estimateTokens(r.text);
       }
     } else if (this.strategy === "majority") {
-      const winner = vote(responses.filter((r) => r.ok).map((r) => r.text));
+      const winner = vote(okResponses.map((r) => r.text));
       events.push({ kind: "text", text: winner });
-      output += estimateTokens(winner);
     } else {
       // judge
-      const answers = responses
-        .filter((r) => r.ok)
+      const answers = okResponses
         .map((r) => `### ${r.role}\n${r.text}`)
         .join("\n\n");
       const judgePrompt: SystemPrompt = {
@@ -113,11 +147,12 @@ export class CouncilProvider implements ProviderProfile {
         volatile: prompt.volatile,
       };
       try {
-        const { events: jEvents } = await this.judge!.stream(judgePrompt, history);
-        for (const e of jEvents) {
-          if (e.kind === "text") events.push(e);
-          if (e.kind === "done") input += e.usage.input;
-        }
+        const judgeResult = await this.judge!.stream(judgePrompt, history);
+        const judgeUsage = collectUsage(judgeResult.events);
+        for (const e of judgeResult.events) if (e.kind === "text") events.push(e);
+        // judge cost ADDED to member cost (real council cost = members + judge).
+        input += judgeUsage.input;
+        output = judgeUsage.output; // emitted text is the judge's synthesis
       } catch {
         // judge failed → degrade to attributed
         for (const r of responses) {
@@ -140,6 +175,19 @@ function extractText(events: StreamEvent[]): string {
     .join("");
 }
 
+/** Sum input/output tokens from a stream's done events. */
+function collectUsage(events: StreamEvent[]): TokenUsage {
+  let input = 0;
+  let output = 0;
+  for (const e of events) {
+    if (e.kind === "done") {
+      input += e.usage.input ?? 0;
+      output += e.usage.output ?? 0;
+    }
+  }
+  return { input, output };
+}
+
 /** Majority vote: return the most-common exact answer (ties → first). */
 function vote(answers: string[]): string {
   if (answers.length === 0) return "";
@@ -154,11 +202,6 @@ function vote(answers: string[]): string {
     }
   }
   return best;
-}
-
-/** Rough token estimate (~4 chars/token) for usage accounting. */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 export type { LlmTrace };
