@@ -17,6 +17,7 @@
     { "path": "packages/dap" },
     { "path": "packages/eval" },
     { "path": "packages/collab" },
+    { "path": "packages/x402" },
     { "path": "packages/agent" },
     { "path": "packages/print" },
     { "path": "packages/sdk" }
