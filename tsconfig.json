@@ -5,6 +5,9 @@
     { "path": "packages/ai" },
     { "path": "packages/prompts" },
     { "path": "packages/tools" },
+    { "path": "packages/memory" },
+    { "path": "packages/subagents" },
+    { "path": "packages/eval" },
     { "path": "packages/print" },
     { "path": "packages/sdk" }
   ]

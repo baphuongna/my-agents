@@ -15,3 +15,4 @@ export {
 export { scan, scanInject } from "./inject.js";
 export { DriftGrader, identityCompressor } from "./drift.js";
 export type { DriftGrade } from "./drift.js";
+export { windowCompressor, summarizeCompressor } from "./compressors.js";
