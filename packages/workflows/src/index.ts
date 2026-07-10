@@ -5,5 +5,5 @@
  * Runs in a Node `vm` sandbox with a frozen, restricted context (no fs/net/
  * child_process). Used for cron jobs, SOP scripts, skill-driven workflows.
  */
-export { runWorkflow } from "./runner.js";
+export { runWorkflow, runWorkflowIsolated } from "./runner.js";
 export type { WorkflowContext } from "./runner.js";

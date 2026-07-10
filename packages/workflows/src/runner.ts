@@ -166,3 +166,59 @@ export async function runWorkflow(
   }
   return [...sink.events];
 }
+
+/**
+ * HIGH-4 fix: run a workflow in a worker_thread so a timeout can actually KILL
+ * the async body (worker.terminate()). The vm runner above only rejects on
+ * timeout — an infinite `while(true){ await Promise.resolve() }` survives. This
+ * variant proxies ctx.tools over parentPort + terminates the worker on timeout.
+ * Use this for any workflow that isn't fully trusted (user-authored cron/SOP).
+ */
+export async function runWorkflowIsolated(
+  filePath: string,
+  context: WorkflowContext,
+  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<RuntimeEvent[]> {
+  const timeoutMs = opts.timeoutMs ?? 30_000;
+  const events: RuntimeEvent[] = [];
+  const log = (level: "info" | "warn" | "error", message: string) =>
+    events.push({ kind: "log", level, message });
+
+  const Worker = (await import("node:worker_threads")).Worker;
+  const worker = new Worker(new URL("./worker.js", import.meta.url), {
+    workerData: { filePath, input: context.input, session: { ...context.session }, timeoutMs },
+  });
+  const pendingTools = new Map<number, (r: unknown) => void>();
+  worker.on("message", async (msg: { type: string; id?: number; calls?: unknown; result?: unknown; error?: string; message?: string }) => {
+    if (msg.type === "tool" && typeof msg.id === "number") {
+      // execute in the parent (the trusted ToolExecutor) + reply
+      try {
+        const result = await context.tools.execute(msg.calls as import("@my-agent/core").ToolCall[], {
+          session: context.session as never,
+          history: { append() {} } as never,
+          budget: { spend() { return true; }, remaining() { return 1; }, exhausted() { return false; } } as never,
+          approval: { async request() { return { decision: "Deny" as const, reason: "workflow" }; } } as never,
+          emit() {},
+        });
+        worker.postMessage({ type: "tool-result", id: msg.id, result });
+      } catch (e) {
+        worker.postMessage({ type: "provider-error", id: msg.id, error: e instanceof Error ? e.message : String(e) });
+      }
+    } else if (msg.type === "done") {
+      log("info", "workflow completed");
+    } else if (msg.type === "error") {
+      log("error", `workflow failed: ${msg.error ?? "unknown"}`);
+    }
+  });
+
+  const done = new Promise<void>((resolve) => worker.on("exit", () => resolve()));
+  const timeout = new Promise<void>((resolve) => setTimeout(() => {
+    log("warn", `workflow timed out after ${timeoutMs}ms — terminating worker`);
+    worker.terminate();
+    resolve();
+  }, timeoutMs));
+  if (opts.signal) opts.signal.addEventListener("abort", () => worker.terminate(), { once: true });
+  await Promise.race([done, timeout]);
+  try { worker.terminate(); } catch { /* already exited */ }
+  return events;
+}

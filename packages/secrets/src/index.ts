@@ -201,25 +201,34 @@ export class SecretStore {
   }
 }
 
-/** A redactor (for §14.1 audit-before-hash) that scrubs any registered secret
- * values from a payload, replacing them with `<secret:fingerprint>`. */
+/** Field names that always redact (H2: structural redaction by name, not just
+ * by value — catches split-secret / non-string / uncached-env cases a value-only
+ * scan misses). */
+const SECRET_FIELD_RE = /(?:^|[_-])(secret|token|api[_-]?key|apikey|password|passwd|credential|private[_-]?key|access[_-]?key)(?:[_-]|$)/i;
+
+/** A redactor (for §14.1 audit-before-hash) that scrubs secrets from a payload.
+ * H2 fix: TWO passes — (1) by value (known secret values → fingerprint),
+ * (2) by field-name (any field whose key looks secret → redacted regardless of
+ * value/type, catching split-secret + non-string + unregistered-env). */
 export function makeSecretRedactor(store: SecretStore): (payload: Record<string, unknown>) => Record<string, unknown> {
-  // Collect all known secret values to scrub. Walks the payload; for each string
-  // value that equals a known secret, replaces with the fingerprint placeholder.
-  const scrub = (v: unknown): unknown => {
+  const known = () => [...store.snapshot().values()].map((e) => e.value).filter((v): v is string => typeof v === "string" && v.length > 0);
+  const scrubByName = (key: string, val: unknown): unknown => {
+    if (SECRET_FIELD_RE.test(key)) return `<redacted:${key}>`;
+    return scrubValue(val);
+  };
+  const scrubValue = (v: unknown): unknown => {
     if (typeof v === "string") {
-      for (const [, entry] of store.snapshot()) {
-        if (entry.value && v.includes(entry.value)) {
-          return v.split(entry.value).join(`<secret:${fingerprint(entry.value)}>`);
-        }
+      let out = v;
+      for (const secret of known()) {
+        if (out.includes(secret)) out = out.split(secret).join(`<secret:${fingerprint(secret)}>`);
       }
-      return v;
+      return out;
     }
-    if (Array.isArray(v)) return v.map(scrub);
+    if (Array.isArray(v)) return v.map(scrubValue);
     if (v && typeof v === "object") {
-      return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, scrub(val)]));
+      return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, scrubByName(k, val)]));
     }
     return v;
   };
-  return (payload) => scrub(payload) as Record<string, unknown>;
+  return (payload) => scrubValue(payload) as Record<string, unknown>;
 }
