@@ -24,27 +24,28 @@
 | HIGH-2 | HIGH | gateway WS replay leaked CROSS-SESSION events (global seq + buffer) | per-session retained buffers + `session` query param; live + replay filtered |
 | HIGH-3 | HIGH | dashboard no security headers (clickjacking) | X-Frame-Options DENY + nosniff + CSP frame-ancestors 'none' |
 | M8 | MEDIUM | gateway accepted 0.0.0.0 bind with no guardrail | refuses non-loopback bind unless allowExternalBind:true (+ warning) |
+| F5 | HIGH | write resolver didn't canonicalize parent dir → symlinked-directory escape | canonicalize parent dir; in-workspace symlinks pass, escapes rejected |
+| HIGH-3b | HIGH | codeexec bridge missing the DELEGATE_BLOCKED_TOOLS filter (spec R27-8) | filtered before dispatch (defense-in-depth) |
+| M4 | MEDIUM | Content-Length / stdin framing readers unbounded → OOM | rpc 1 MiB cap; DAP/LSP/dap-server 16 MiB cap (§25.6) |
+| M5/M6 | MEDIUM | OAuth state-CSRF not verified; error-page reflected XSS; verifyPkce timing-unsafe | verifyCallbackState (constant-time) + HTML-escape + timingSafeEqual + nosniff |
+| – | release | `sign-release.mjs` syntax error (`await` in non-async fn) | rewritten top-level-async |
 | M2 | MEDIUM | x402 `signDeterministic` had a forgeable FNV-1a 32-bit fallback | removed; fail-closed |
 
 Verified: secfix 13/13, f1 7/7, gw-sec 10/10 + full regression green (clippy clean).
 
-## Remaining (follow-ups — lower priority)
+## Remaining (lowest priority — small isolated hardening)
 
-| ID | Domain | Finding | Effort |
-|---|---|---|---|
-| F3-perm | permission | audit/Merkle log not wired into tool dispatch (repudiation) | small |
-| F5-perm | permission | write resolver doesn't canonicalize parent dir → symlink-redirect on writes | small |
-| H1 | pkg | PackageHost skips sigstore when manifest omits it (non-native loads unsigned) | small — require sigstore OR `--allow-unsigned` |
-| HIGH-3b | codeexec | codeexec bridge missing the DELEGATE_BLOCKED_TOOLS filter (spec R27-8) | small |
-| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async code (DoS) | medium — worker_threads |
-| H2 | secrets | redactor bypass (split-secret / non-string / uncached-env) | medium |
-| H3 | secrets | "sealed" file backend stores plaintext (0600 only) | small |
-| M4 | all | Content-Length framing readers unbounded → OOM (DAP/LSP/rpc/gateway) | small — cap at 16 MiB |
-| M5/6/7 | codeexec/codegraph | unbounded buffers/caches/concurrency | small |
-| M6(oauth) | oauth | state CSRF not verified in-module; error-page XSS; verifyPkce timing-unsafe | small |
-| – | channels | MCP FSM no transition validation (Quarantine bypass); hook payload shared-mutable | small |
-| – | invariant | Date.now() in bash + budget (invariant #10) | small |
-| – | release | `sign-release.mjs` syntax error (`await` in non-async fn) | small |
+| ID | Domain | Finding |
+|---|---|---|
+| F3-perm | permission | audit/Merkle log not wired into tool dispatch (repudiation) |
+| F8 | tools | bash passes full process.env to child (secrets leak) |
+| H1 | pkg | PackageHost skips sigstore when manifest omits it (non-native loads unsigned) |
+| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async (DoS); needs worker_threads |
+| H2 | secrets | redactor bypass (split-secret / non-string / uncached-env) |
+| H3 | secrets | "sealed" file backend stores plaintext (0600 only) |
+| M5/6/7 | codeexec/codegraph | unbounded buffers/caches/concurrency (bridge output, codegraph cache, fanOut) |
+| – | channels | MCP FSM no transition validation (Quarantine bypass); hook payload shared-mutable |
+| – | invariant | Date.now() in bash + budget (invariant #10) |
 
 
 ## MEDIUM / LOW (logged, lower priority)
