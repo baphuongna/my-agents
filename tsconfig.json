@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "packages/core" },
+    { "path": "packages/natives" },
     { "path": "packages/ai" },
     { "path": "packages/prompts" },
     { "path": "packages/tools" },

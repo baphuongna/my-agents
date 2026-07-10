@@ -19,6 +19,7 @@
     "test": "echo 'no tests yet (Tier 0 scaffold)' && exit 0"
   },
   "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
     "@types/node": "^22.20.1",
     "typescript": "^7.0.2"
   }

@@ -13,6 +13,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
+import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
 
@@ -180,6 +181,13 @@ export const globTool: ToolImpl = {
     if (!isRecord(args) || typeof args.pattern !== "string")
       return err("glob", "pattern required");
     const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
+    // Tier 4: prefer the Rust native glob (hot loop); fall back to JS walk.
+    try {
+      const matches = nativeGlob(args.pattern, cwd, { maxResults: 1000 });
+      return ok("glob", { matches });
+    } catch {
+      // fall through to JS walk
+    }
     const re = globToRegex(args.pattern);
     const matches: string[] = [];
     const limit = 1000;
@@ -220,6 +228,13 @@ export const grepTool: ToolImpl = {
     if (!isRecord(args) || typeof args.pattern !== "string")
       return err("grep", "pattern required");
     const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
+    // Tier 4: prefer the Rust native grep (hot loop); fall back to JS walk.
+    try {
+      const hits = nativeGrep(args.pattern, cwd, { maxResults: 200, caseInsensitive: true });
+      return ok("grep", { hits: hits.map(h => ({ path: h.path, line: h.line, text: h.text.trim() })) });
+    } catch {
+      // fall through to JS walk
+    }
     const re = new RegExp(args.pattern, "i");
     const hits: { path: string; line: number; text: string }[] = [];
     const limit = 200;

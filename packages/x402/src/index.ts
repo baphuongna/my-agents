@@ -20,6 +20,7 @@
 import type { ComponentHealth, ToolExecutor } from "@my-agent/core";
 import { err, isRecord, ok, type ToolImpl } from "@my-agent/tools";
 import type { ToolResult } from "@my-agent/core";
+import { nativeMac } from "@my-agent/natives";
 
 /** A payment challenge from a 402 response. */
 export interface X402Challenge {
@@ -98,19 +99,27 @@ export class Wallet {
   }
 }
 
-/** Deterministic signature for the in-memory wallet (Tier 3 stub). */
+/** Deterministic signature for the wallet.
+ * Tier 4: keyed BLAKE3 via the Rust native (trust boundary) when available,
+ * else FNV-1a 32-bit (kept as the in-process fallback so the wallet still
+ * produces stable, auditable signatures without the binary). The signature
+ * version tag (`x402v1:blake3` vs `x402v1:fnv`) records which produced it —
+ * do NOT compare a blake3 sig to an fnv sig (they won't match). */
 function signDeterministic(address: string, c: X402Challenge): string {
-  // A real wallet signs a tx (ECDSA / ed25519). For Tier 3 we emit a
-  // deterministic, auditable token. Distinct fields + colon-separated →
-  // greppable in logs.
   const payload = `${address}|${c.payee}|${c.currency}|${c.amount}|${c.nonce}`;
-  // Cheap hash (FNV-1a) for a stable, URL-safe signature.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < payload.length; i++) {
-    h ^= payload.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
+  try {
+    // Keyed BLAKE3 (native) or HMAC-SHA256 (fallback) — both 64 hex.
+    const mac = nativeMac(address, payload);
+    return `x402v1:blake3:${mac}`;
+  } catch {
+    // Last-resort FNV-1a (32-bit) if the native + node:crypto both fail.
+    let h = 0x811c9dc5;
+    for (let i = 0; i < payload.length; i++) {
+      h ^= payload.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return `x402v1:fnv:${(h >>> 0).toString(16).padStart(8, "0")}`;
   }
-  return `x402v1:${(h >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 // ─── X402Client (fetch with 402-payment handling) ────────────────────────────
