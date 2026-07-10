@@ -34,6 +34,7 @@
     { "path": "packages/tts" },
     { "path": "packages/dap-server" },
     { "path": "packages/desktop" },
+    { "path": "packages/signing" },
     { "path": "packages/audit" },
     { "path": "packages/secrets" },
     { "path": "packages/session" },

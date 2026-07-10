@@ -17,6 +17,7 @@
  * Source: §17 Extension Model; pi-coding-agent philosophy, hermes lazy_deps.
  */
 import { verifyNativeDeclaration, type NativeDeclaration } from "@my-agent/natives";
+import { verifyTarball, hasNpmProvenance, type SigstoreBundle } from "@my-agent/signing";
 
 /** The four extension kinds (§17). */
 export type PackageKind = "extensions" | "skills" | "prompt-templates" | "themes";
@@ -33,6 +34,10 @@ export interface PackageManifest {
   permissions?: { tools?: string[]; egress?: string[] };
   /** Prebuilt napi binary declaration (§14b RELEASE-BLOCKER if present). */
   native?: NativeDeclaration & { abiStamp: string; napiVersion: number };
+  /** Sigstore bundle for the package tarball (§23 #6 — release-blocker for native). */
+  sigstore?: SigstoreBundle;
+  /** Path to the installed tarball (for sigstore digest verify). */
+  tarballPath?: string;
   /** Install-time scripts; run AFTER verify. No OS sandbox (R30). */
   scripts?: string[];
 }
@@ -65,11 +70,19 @@ function apiVersionIntersects(declared: string, supported: string[]): boolean {
 export class PackageHost {
   private readonly registry = new Map<string, RegisteredPackage>();
   /** Supported apiVersion ranges (the core advertises these). */
-  constructor(private readonly supportedApiVersions: string[] = ["1.x"]) {}
+  /** When true, npm SLSA provenance is a hard gate (§16); default false
+   * (best-effort). The native sigstore gate (§14b) is always hard. */
+  private readonly requireProvenance: boolean;
+  private readonly supportedApiVersions: string[];
+  constructor(opts: PackageHostOpts = {}) {
+    this.supportedApiVersions = opts.supportedApiVersions ?? ["1.x"];
+    this.requireProvenance = opts.requireProvenance ?? false;
+  }
 
-  /** Verify a manifest before load (§17 lifecycle). apiVersion intersect + the
-   * native sigstore/content-hash gate (§14b). */
-  verify(manifest: PackageManifest): VerifyResult {
+  /** Verify a manifest before load (§17 lifecycle). apiVersion intersect +
+   * native sigstore/content-hash (§14b) + tarball sigstore (§23 #6) + optional
+   * npm provenance check (§16). */
+  async verify(manifest: PackageManifest): Promise<VerifyResult> {
     if (!apiVersionIntersects(manifest.apiVersion, this.supportedApiVersions)) {
       return {
         ok: false,
@@ -83,12 +96,25 @@ export class PackageHost {
         return { ok: false, reason: "native-signature", detail: v.detail };
       }
     }
+    // tarball sigstore (§23 #6)
+    if (manifest.sigstore && manifest.tarballPath) {
+      const sv = await verifyTarball(manifest.sigstore, manifest.tarballPath);
+      if (!sv.ok) return { ok: false, reason: "native-signature", detail: `sigstore: ${sv.reason}` };
+    }
+    // npm provenance (§16) — best-effort (network); a missing attestation is a
+    // warning, not a hard block (the hard block is native sigstore above).
+    if (this.requireProvenance) {
+      const has = await hasNpmProvenance(manifest.name, manifest.version).catch(() => false);
+      if (!has) {
+        return { ok: false, reason: "api-version", detail: `missing npm provenance for ${manifest.name}@${manifest.version}` };
+      }
+    }
     return { ok: true };
   }
 
   /** Verify + register a package (load the module in-process, trusted). */
   async register(manifest: PackageManifest, loader: () => Promise<unknown>): Promise<RegisteredPackage> {
-    const v = this.verify(manifest);
+    const v = await this.verify(manifest);
     if (!v.ok) throw new Error(`package ${manifest.name} refused-load: ${v.reason} (${v.detail})`);
     let module: unknown;
     try {
@@ -131,4 +157,11 @@ export class PackageHost {
     if (reg?.activated) throw new Error(`package ${name} still activated — deactivate first`);
     this.registry.delete(name);
   }
+}
+
+/** Options for the host: requireProvenance makes npm SLSA provenance a hard
+ * gate (default off — provenance is best-effort unless the operator opts in). */
+export interface PackageHostOpts {
+  supportedApiVersions?: string[];
+  requireProvenance?: boolean;
 }

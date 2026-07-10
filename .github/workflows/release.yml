@@ -1,0 +1,58 @@
+# Release + npm provenance signing (§16 supply chain, §23 #6 sigstore).
+#
+# On a version tag (v*.*.*), this workflow:
+#   1. builds all packages (tsc -b) + the Rust natives (the prebuilt .node matrix)
+#   2. publishes each public package with `npm publish --provenance` (SLSA attestation,
+#      produced via the GHA OIDC token — tamper-evident build provenance)
+#   3. sigstore-signs the released tarballs; uploads signatures as release assets
+#
+# `--provenance` requires: npm >= 9.5, a public package, GHA OIDC (automatic here),
+# and `id-token: write` + `environment: release`. The provenance attestation is
+# queryable via `npm view <pkg>@<ver> --json` → distattestations, and verified
+# consumer-side by @my-agent/signing.fetchNpmProvenance.
+#
+# Source: §16 Supply Chain (npm provenance + sigstore resolved §23 #6).
+
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write       # upload the sigstore signatures as release assets
+  id-token: write       # REQUIRED for npm provenance (OIDC) + sigstore keyless
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run build
+      - run: cd crates/natives && npx napi build --platform --release
+      # Publish every public package with SLSA provenance (the GHA OIDC token
+      # produces the attestation; npm stamps it on the registry).
+      - run: |
+          for pkg in packages/*; do
+            if [ -f "$pkg/package.json" ] && ! grep -q '"private": true' "$pkg/package.json"; then
+              npm publish --provenance --access public --workspace "$(basename $pkg)"
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Sigstore-sign the released tarballs + upload as release assets (consumer
+      # verifies via @my-agent/signing.verifyTarball).
+      - run: |
+          node scripts/sign-release.mjs >> sigstore-bundles.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sigstore-bundles.json
+            crates/natives/*.node
