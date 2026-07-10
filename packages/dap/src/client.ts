@@ -8,6 +8,7 @@
  * Source: §11.2 DAP debugger, microsoft/debug-adapter-protocol.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { connect as netConnect, type Socket } from "node:net";
 import { EventEmitter } from "node:events";
 
 /** DAP source (caller's or debugger's). */
@@ -41,8 +42,12 @@ interface JsonRpcResponse { jsonrpc: "2.0"; id: number; result?: unknown; error?
 interface JsonRpcEvent { jsonrpc: "2.0"; method: string; params?: unknown; seq?: number }
 
 export interface DapClientOptions {
-  command: string;
+  /** Stdio mode: spawn this command. Mutually exclusive with `transport`. */
+  command?: string;
   args?: string[];
+  /** TCP mode: connect to a running adapter (e.g. vscode-js-debug dapDebugServer.js).
+   * When set, `command` is ignored. */
+  transport?: { host: string; port: number };
 }
 
 /** Per-request timeout (R43; matches LspClient). */
@@ -57,6 +62,8 @@ export class DapClient extends EventEmitter {
   private proc: ChildProcess | null = null;
   private buf = "";
   private nextId = 1;
+  /** Wire writer (stdio stdin OR tcp socket) — set in initialize(). */
+  private writer: (data: string) => void = () => { throw new Error("DapClient: not initialized"); };
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private initialized = false;
   /** Thread ID the debugger is currently focused on (set by 'stopped' events). */
@@ -66,20 +73,33 @@ export class DapClient extends EventEmitter {
     super();
   }
 
-  /** Spawn the adapter + send initialize. */
+  /** Spawn the adapter (stdio) OR connect to a running TCP adapter, then send
+   * initialize. */
   async initialize(clientId = "my-agent", clientName = "my-agent-dap"): Promise<{ capabilities: unknown }> {
-    this.proc = spawn(this.opts.command, this.opts.args ?? [], { stdio: ["pipe", "pipe", "pipe"] });
-    this.proc.stdout?.setEncoding("utf8");
-    this.proc.stdout?.on("data", (chunk: string) => this.onStdout(chunk));
-    this.proc.stderr?.setEncoding("utf8");
-    this.proc.stderr?.on("data", () => { /* swallow */ });
-    this.proc.on("exit", (code) => { this.initialized = false; this.emit("exited", code); });
+    if (this.opts.transport) {
+      // TCP transport — connect to a running adapter (vscode-js-debug dapDebugServer.js).
+      const sock = await connectSocket(this.opts.transport.host, this.opts.transport.port);
+      sock.setEncoding("utf8");
+      sock.on("data", (chunk: string) => this.onStdout(chunk));
+      sock.on("close", () => { this.initialized = false; this.emit("exited", 0); });
+      // redirect writes to the socket (this.write() is set up below to use the live writer).
+      this.writer = (data: string) => sock.write(data);
+    } else {
+      this.proc = spawn(this.opts.command!, this.opts.args ?? [], { stdio: ["pipe", "pipe", "pipe"] });
+      this.proc.stdout?.setEncoding("utf8");
+      this.proc.stdout?.on("data", (chunk: string) => this.onStdout(chunk));
+      this.proc.stderr?.setEncoding("utf8");
+      this.proc.stderr?.on("data", () => { /* swallow */ });
+      this.proc.on("exit", (code) => { this.initialized = false; this.emit("exited", code); });
+      this.writer = (data: string) => this.proc!.stdin!.write(data);
+    }
     const r = await this.request<{ capabilities: unknown }>("initialize", {
       clientID: clientId, clientName, adapterID: "my-agent-dap",
       locale: "en-US", linesStartAt1: true, columnsStartAt1: true,
       pathFormat: "path", supportsVariableType: true, supportsVariablePaging: false,
     });
-    this.notify("initialized", {});
+    // NOTE: in DAP the SERVER sends the `initialized` event; the client must NOT
+    // (it was a JSON-RPC-ism that confused js-debug into ignoring the launch).
     this.initialized = true;
     return r;
   }
@@ -88,7 +108,13 @@ export class DapClient extends EventEmitter {
   async start(source: DapSource, config: Record<string, unknown>): Promise<void> {
     if (!this.initialized) throw new Error("DapClient: not initialized");
     await this.request(source, config);
-    // After launch, the adapter sends 'configurationDone' (or we send it after breakpoints).
+    // NOTE: do NOT auto-send configurationDone here — the caller sets breakpoints
+    // FIRST, then calls configurationDone() (otherwise breakpoints set after
+    // launch don't take effect). pwa-node waits for configurationDone to run.
+  }
+
+  /** Tell the adapter configuration is done (breakpoints set) → it runs. */
+  async configurationDone(): Promise<void> {
     await this.request("configurationDone", {});
   }
 
@@ -159,28 +185,31 @@ export class DapClient extends EventEmitter {
     this.proc = null;
   }
 
-  // ── JSON-RPC plumbing (Content-Length framed, same shape as LspClient) ───
-  private request<T>(method: string, params?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
+  // ── DAP plumbing (Content-Length framed). DAP is NOT JSON-RPC 2.0: requests
+  //    are {seq,type:"request",command,arguments}; responses are
+  //    {seq,type:"response",request_seq,success,body,message}; events are
+  //    {seq,type:"event",event,body}. Fixed to true DAP shape (was JSON-RPC).
+  private request<T>(command: string, args?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       const timeoutMs = opts.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
       const timer = setTimeout(() => {
-        if (this.pending.delete(id)) reject(new Error(`DAP "${method}" timed out after ${timeoutMs}ms`));
+        if (this.pending.delete(id)) reject(new Error(`DAP "${command}" timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       this.pending.set(id, {
         resolve: (v) => { clearTimeout(timer); resolve(v as T); },
         reject: (e) => { clearTimeout(timer); reject(e); },
       });
-      this.send({ jsonrpc: "2.0", id, method, params });
+      this.send({ seq: id, type: "request", command, arguments: args ?? {} });
     });
   }
-  private notify(method: string, params?: unknown): void {
-    this.send({ jsonrpc: "2.0", method, params });
+  notify(event: string, body?: unknown): void {
+    this.send({ seq: this.nextId++, type: "event", event, body: body ?? {} });
   }
-  private send(msg: JsonRpcRequest | JsonRpcEvent): void {
+  private send(msg: unknown): void {
     const body = JSON.stringify(msg);
     const frame = `Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`;
-    this.proc?.stdin?.write(frame);
+    this.writer(frame);
   }
   private onStdout(chunk: string): void {
     this.buf += chunk;
@@ -199,33 +228,47 @@ export class DapClient extends EventEmitter {
     }
   }
   private handleMessage(body: string): void {
-    let msg: JsonRpcResponse | JsonRpcEvent;
-    try { msg = JSON.parse(body) as typeof msg; } catch { return; }
-    if ("id" in msg && (msg as { result?: unknown }).result !== undefined || (msg as { error?: unknown }).error !== undefined) {
-      const r = msg as JsonRpcResponse;
-      const p = this.pending.get(r.id);
+    let msg: Record<string, unknown>;
+    try { msg = JSON.parse(body) as Record<string, unknown>; } catch { return; }
+    // DAP responses: {type:"response", request_seq, success, body, message}
+    if (msg.type === "response") {
+      const id = msg.request_seq as number;
+      const p = this.pending.get(id);
       if (p) {
-        this.pending.delete(r.id);
-        if (r.error) p.reject(new Error(`DAP ${r.error.code}: ${r.error.message}`));
-        else p.resolve(r.result);
+        this.pending.delete(id);
+        if (msg.success === false) p.reject(new Error(`DAP ${msg.command}: ${msg.message ?? "failed"}`));
+        else p.resolve(msg.body);
       }
-    } else if ("method" in msg) {
-      const e = msg as JsonRpcEvent;
-      switch (e.method) {
+      return;
+    }
+    // DAP events: {type:"event", event, body}
+    if (msg.type === "event") {
+      const name = msg.event as string;
+      const b = msg.body as Record<string, unknown>;
+      switch (name) {
         case "stopped": {
-          const p = e.params as DapStoppedEvent;
+          const p = b as unknown as DapStoppedEvent;
           if (typeof p.threadId === "number") this.currentThreadId = p.threadId;
           this.emit("stopped", p);
           break;
         }
-        case "continued": this.emit("continued", e.params); break;
-        case "output": this.emit("output", e.params); break;
-        case "thread": this.emit("thread", e.params); break;
-        case "breakpoint": this.emit("breakpoint", e.params); break;
-        case "terminated": this.emit("terminated", e.params); break;
-        case "exited": this.emit("exited", e.params); break;
-        case "initialized": this.emit("initialized", e.params); break;
+        case "continued": this.emit("continued", b); break;
+        case "output": this.emit("output", b); break;
+        case "thread": this.emit("thread", b); break;
+        case "breakpoint": this.emit("breakpoint", b); break;
+        case "terminated": this.emit("terminated", b); break;
+        case "exited": this.emit("exited", b); break;
+        case "initialized": this.emit("initialized", b); break;
       }
     }
   }
+}
+
+/** Connect a TCP socket to a running DAP adapter (Promise<Socket>). */
+function connectSocket(host: string, port: number): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const sock = netConnect({ host, port });
+    sock.once("connect", () => resolve(sock));
+    sock.once("error", reject);
+  });
 }
