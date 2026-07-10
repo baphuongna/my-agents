@@ -82,7 +82,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     if (process.env["MINIMAX_API_KEY"]) {
       providers.register(
         new OpenAIAdapter({
-          model: process.env["MINIMAX_MODEL"] ?? config.model ?? "MiniMax-Text-01",
+          model: process.env["MINIMAX_MODEL"] ?? config.model ?? "MiniMax-M3",
           baseUrl: process.env["MINIMAX_BASE_URL"] ?? "https://api.minimax.io/v1",
           apiKey: process.env["MINIMAX_API_KEY"],
         }),
