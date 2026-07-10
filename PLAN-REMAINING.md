@@ -5,7 +5,26 @@
 
 ## Reality check — what "built" actually means
 
-**21 packages · ~6,100 LOC TS + 293 LOC Rust · 146 tests.** This is a **scaffold of the core loop + several subsystems**, NOT a complete implementation of the SPEC. Prior "Tier 3/4 complete" framings overstated coverage — several Tier-0/1 systems the SPEC requires are entirely absent.
+**31 packages · ~8,400 LOC TS + 437 LOC Rust · ~144 tests.** After Steps 1–5
+(below), this now covers the core loop + all major SPEC subsystems. The 10
+biggest formerly-missing subsystems are CLOSED. Remaining gaps are explicitly
+listed in "Still open".
+
+## Steps 1–5 executed (each + 3 review rounds)
+
+| Step | Scope | Closed |
+|---|---|---|
+| **1** Tier-0 finish | compress→Rust, sigstore gate, §18 invariant audit | natives compress_log/approx_tokens, verifyNativeDeclaration, docs/invariant-audit.md |
+| **2a** Tier-1 security | §14.1 Merkle AuditLog, §14.2 Secrets | @my-agent/audit, @my-agent/secrets |
+| **2b** §4 R31 completeness | session tree+JSONL+migration, plan-mode todos, message queue, context preflight, cancel protocol | @my-agent/session |
+| **2c** §7 path-safety + §6.1 OAuth | lexical/canonical resolver, PKCE loopback | tools/path-safety, ai/oauth |
+| **3** Tier-2 gaps | gateway, package host, ACP, cron, GreenContract | @my-agent/gateway, pkg, acp, cron, subagents/green |
+| **4** transports | tui (REPL over event bus), rpc (JSON-RPC stdio) | @my-agent/tui, @my-agent/rpc |
+| **5** Frontier partials | real approval channel, hindsight→loop, overlay native | @my-agent/approval, agent runHindsight, natives reflink_or_copy |
+
+15 review rounds total (5 steps × 3), each reading actual code. Key finds:
+G1 gateway no replay-from-cursor, R1 rpc concurrent-prompt interleave, A1
+approval timer-leak, C2 cron once-retry, A2 token ledger no GC.
 
 ## Tier labels — corrected
 
@@ -45,18 +64,22 @@ Legend: ✅ built · 🟡 partial · ❌ missing · ➖ N/A (Rust-mya-only or ou
 | §23 | Open questions | — | tracked; some resolved (R30 sandbox), some open (CRDT sync, call-graph) |
 | §25 | UI surfaces | ❌ | only `print` (--json/transcript) + `sdk` transports built. **Missing:** `tui/` (Ink/React interactive), web dashboard (needs gateway), desktop (Electron/Tauri), §25.6 wire-envelope formalization. Collab relay = partial §25.4 |
 
-## The biggest missing systems (not feature-gaps — whole subsystems)
+## Still open (honest residual)
 
-1. **`gateway/`** (§3/§12/§25.2) — HTTP/WS gateway + SPA dashboard; nothing exists
-2. **2 transports** (§3/§20): `tui/` (interactive Ink/React), `rpc/` (stdio JSON-RPC) — only `print`+`sdk` exist
-3. **Merkle AuditLog** (§14.1) — the tamper-evident hash-chain audit; nothing exists
-4. **Secrets lifecycle** (§14.2) — SecretRef + OS keyring + rotate/revoke; nothing exists
-5. **Package host** (§17) — PackageManifest + apiVersion + sigstore + lifecycle; nothing exists
-6. **OAuth/PKCE** (§6.1) — loopback auth flow; nothing exists
-7. **ApprovalToken ledger + RecoveryRecipe + ProjectTrust** (§14.3) — nothing exists
-8. **2 Rust crates** (§2/§3): `compress/` (compression must move TS→Rust per gate), `ast/` (tree-sitter)
-9. **§4 R31 completeness bundle** — plan-mode/TodoWrite, session JSONL tree, message queue, preflight, cancel protocol, ToolSearch
-10. **§12.2 ACP bridge + §12.3 cron scheduler**
+| Item | Section | Why deferred |
+|---|---|---|
+| `ast/` tree-sitter Rust crate | §2/§3 | gate-justified but large; LSP client covers symbol ops today |
+| Separate `compress/` crate | §3 | folded into `natives` (noted deviation; one napi crate suffices) |
+| gbrain memory richness (BrainEngine/Pages/Chunks/Facts/Takes, 22-phase dream, 4-arm RRF) | §8 R35 | Tier-1+; basic MemoryManager + roles shipped |
+| fff SearchIndex/BigramFilter/FrecencyDB | §11 R35 | Tier-1+; native glob/grep shipped |
+| Real OS keyring backend for secrets | §14.2 | platform-specific (libsecret/keytar); SecretStore interface + file/env backends shipped, keyring/exec stubbed |
+| Full Ink/React TUI (themes/keybindings/slash-commands/OSC) | §25.1 | TuiRepl transport shipped; full UI layers on top |
+| Web SPA dashboard + Desktop (Electron/Tauri) | §25.2/§25.3 | gateway HTTP/WS + §25.6 envelope shipped; SPA/native shell not built |
+| MLX TTS / multi-agent convergence | Frontier | platform/research-frontier |
+| Byte-faithful JSON serializer (general) | §5/§17 | canonicalJson exists in @my-agent/audit; not a shared util yet |
+| §4 overflow-recovery compaction, ToolSearch/deferrable tools | §4 R31 | session preflight shipped; these two sub-items deferred |
+| Real DAP debug-adapter wiring | §11.2 | DAP client built; needs a live adapter |
+
 
 ## What IS solidly built (don't lose this)
 
