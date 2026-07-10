@@ -17,6 +17,31 @@ import type { Compressor, ProviderProfile } from "@my-agent/core";
 import { nativeCompressLog } from "@my-agent/natives";
 
 /**
+ * Overflow-recovery compaction (§4 R31): on a `context_length_exceeded` stop,
+ * drop the failed message, compact the history, and signal retry. Returns the
+ * compacted history + whether a retry should run. Never loses the most recent
+ * user turn (the live-zone tail is always kept). */
+export function overflowRecovery(opts: {
+  history: unknown[];
+  keepTail: number;
+  maxTokens: number;
+  estimateTokens: (entry: unknown) => number;
+}): { history: unknown[]; retry: boolean; dropped: number } {
+  const { history, keepTail, estimateTokens } = opts;
+  const total = history.reduce<number>((s, h) => s + estimateTokens(h), 0);
+  if (total <= opts.maxTokens) return { history, retry: false, dropped: 0 };
+  // keep the tail (live zone) + compact the head into one summary marker
+  const tail = history.slice(Math.max(0, history.length - keepTail));
+  const head = history.slice(0, Math.max(0, history.length - keepTail));
+  const dropped = head.length;
+  const compacted = [
+    { role: "system", content: `[overflow-recovery: compacted ${dropped} earlier entries to fit context window]` },
+    ...tail,
+  ];
+  return { history: compacted, retry: dropped > 0, dropped };
+}
+
+/**
  * Native-backed content compressor (§5/§2 Rust gate) — compacts tool/log output
  * via the Rust `compress_log` (truncate long lines + collapse repeated runs).
  * Deterministic, zero model cost. Stringifies each history entry, compacts the

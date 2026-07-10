@@ -99,6 +99,9 @@ export interface GatewayOptions {
   host?: string;
   port?: number;
   readiness?: ReadinessRegistry;
+  /** HTML served at `/` (the dashboard SPA). The host wires @my-agent/web's
+   * dashboardHtml() here — gateway stays UI-independent (layering). */
+  rootHtml?: string;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -119,7 +122,10 @@ export class Gateway {
     this.host = opts.host ?? "127.0.0.1";
     this.port = opts.port ?? 0;
     this.readiness = opts.readiness ?? new ReadinessRegistry();
+    this.rootHtml = opts.rootHtml;
   }
+
+  private rootHtml?: string;
 
   /** Start listening. Resolves with the bound port (0 = ephemeral). */
   start(): Promise<{ port: number; wsPath: string }> {
@@ -161,6 +167,15 @@ export class Gateway {
       case "/functional": {
         const p = this.readiness.functional(this.healthyTurns);
         return send(p.ok ? 200 : 503, p);
+      }
+      case "/":
+      case "/index.html": {
+        if (this.rootHtml) {
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          res.end(this.rootHtml);
+          return;
+        }
+        return send(404, { error: "no dashboard configured" });
       }
       default:
         return send(404, { error: "not found" });
