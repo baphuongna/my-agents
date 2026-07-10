@@ -88,14 +88,15 @@ export async function verifyTarball(
     return { ok: false, reason: `tarball digest mismatch (expected ${bundle.tarballSha256}, got ${actual})` };
   }
   try {
-    // If there's no actual signature bundle, this is digest-only verification
-    // (ok with the digest match above; sigstore was declared but no bundle shipped).
-    if (!bundle.signatureBundle) return { ok: true };
+    // C2 (security review): FAIL CLOSED. A missing signature bundle or a
+    // missing sigstore module must NOT verify. The digest match above is
+    // necessary but never sufficient.
+    if (!bundle.signatureBundle) {
+      return { ok: false, reason: "no signature bundle (sigstore required)" };
+    }
     const mod = (await importSigstore()) as { verify?: (payload: Buffer, bundle: unknown) => Promise<boolean> };
     if (!mod.verify) {
-      // sigstore not installed → digest-only verification (fail-OPEN with a note;
-      // the hard gate for native is §14b's content-hash + abiStamp).
-      return { ok: true };
+      return { ok: false, reason: "sigstore module not installed (cannot verify)" };
     }
     const ok = await mod.verify(readFileSync(tarballPath), bundle.signatureBundle);
     return ok ? { ok: true } : { ok: false, reason: "sigstore signature did not verify" };

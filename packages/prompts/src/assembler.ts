@@ -23,7 +23,7 @@ import type {
   SystemPrompt,
 } from "@my-agent/core";
 import { today } from "@my-agent/core";
-import { scanInject } from "./inject.js";
+import { scanInject, scan } from "./inject.js";
 
 /** A simple PromptMutex — serializes tier rebuilds (invariant #15). */
 export function createPromptMutex(): PromptMutex {
@@ -56,8 +56,15 @@ export function buildVolatileTier(
   lines.push(`# Environment (day ${day})`);
   if (snap.entries.length > 0) {
     lines.push("## Memory (recalled)");
+    // F3 (security review): memory entries are durable + may be poisoned (a
+    // crafted conversation, a direct write to the memory dir, or a malicious
+    // tool). Injection-scan EACH entry before interpolating — matches the
+    // context-tier treatment. Blocked entries become a [BLOCKED] placeholder.
     for (const h of snap.entries.slice(0, 20)) {
-      lines.push(`- [${h.role}] ${h.content}`);
+      const verdict = scan(h.content, "context");
+      lines.push(
+        verdict.allowed ? `- [${h.role}] ${h.content}` : `- [${h.role}] [BLOCKED: ${verdict.reason}]`,
+      );
     }
   }
   if (userMd.trim()) {

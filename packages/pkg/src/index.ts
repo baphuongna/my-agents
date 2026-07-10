@@ -91,7 +91,7 @@ export class PackageHost {
       };
     }
     if (manifest.native) {
-      const v = verifyNativeDeclaration(manifest.native);
+      const v = await verifyNativeDeclaration(manifest.native);
       if (!v.ok) {
         return { ok: false, reason: "native-signature", detail: v.detail };
       }

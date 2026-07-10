@@ -100,26 +100,16 @@ export class Wallet {
 }
 
 /** Deterministic signature for the wallet.
- * Tier 4: keyed BLAKE3 via the Rust native (trust boundary) when available,
- * else FNV-1a 32-bit (kept as the in-process fallback so the wallet still
- * produces stable, auditable signatures without the binary). The signature
- * version tag (`x402v1:blake3` vs `x402v1:fnv`) records which produced it —
- * do NOT compare a blake3 sig to an fnv sig (they won't match). */
+ * M2 (security review): FAIL CLOSED. Uses keyed BLAKE3 (native) or HMAC-SHA256
+ * (fallback). If BOTH fail, the payment is REJECTED (throw) — never signed with
+ * the forgeable FNV-1a fallback (32-bit, unkeyed, trivially forgeable). */
 function signDeterministic(address: string, c: X402Challenge): string {
+  if (!address) throw new Error("x402: wallet address required (empty key would be forgeable)");
   const payload = `${address}|${c.payee}|${c.currency}|${c.amount}|${c.nonce}`;
-  try {
-    // Keyed BLAKE3 (native) or HMAC-SHA256 (fallback) — both 64 hex.
-    const mac = nativeMac(address, payload);
-    return `x402v1:blake3:${mac}`;
-  } catch {
-    // Last-resort FNV-1a (32-bit) if the native + node:crypto both fail.
-    let h = 0x811c9dc5;
-    for (let i = 0; i < payload.length; i++) {
-      h ^= payload.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-    }
-    return `x402v1:fnv:${(h >>> 0).toString(16).padStart(8, "0")}`;
-  }
+  // Keyed BLAKE3 (native) or HMAC-SHA256 (fallback) — both 64 hex. Throws if
+  // both native + node:crypto fail (fail-closed; the caller surfaces a pay error).
+  const mac = nativeMac(address, payload);
+  return `x402v1:blake3:${mac}`;
 }
 
 // ─── X402Client (fetch with 402-payment handling) ────────────────────────────

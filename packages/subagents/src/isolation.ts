@@ -12,7 +12,7 @@
  * Source: §10 CoW-overlay-isolated subagents, oh-my-pi task.
  */
 import { mkdtempSync, copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 export type IsoBackend = "file_copy" | "overlayfs" | "reflink_apfs" | "btrfs" | "zfs" | "git_worktree";
@@ -57,9 +57,20 @@ export function createIsolatedWorkspace(
     copyTree(base, sandboxRoot);
   }
 
-  const writes = new Map<string, string>(); // relPath → content
+const writes = new Map<string, string>(); // relPath → content
 
-  return {
+    // CRITICAL-2 (security review): contain all relPaths to sandboxRoot/base.
+    // path.join normalizes '..', so an unvalidated relPath escapes the sandbox.
+    const assertContained = (root: string, rel: string): string => {
+      const resolved = resolve(root, rel);
+      const rootResolved = resolve(root);
+      if (resolved !== rootResolved && !resolved.startsWith(rootResolved + sep) && !resolved.startsWith(rootResolved + "/")) {
+        throw new Error(`path escapes sandbox root: ${rel} (→ ${resolved})`);
+      }
+      return resolved;
+    };
+
+    return {
     root: sandboxRoot,
     base,
     backend,
@@ -67,6 +78,9 @@ export function createIsolatedWorkspace(
     diff(): string[] {
       const out: string[] = [];
       for (const rel of writes.keys()) {
+        // CRITICAL-2: validate before join (writes keys were already validated
+        // at write() time, but defend in depth).
+        assertContained(sandboxRoot, rel); assertContained(base, rel);
         const sandboxFile = join(sandboxRoot, rel);
         const baseFile = join(base, rel);
         if (!existsSync(baseFile)) { out.push(rel); continue; }
@@ -77,15 +91,16 @@ export function createIsolatedWorkspace(
       return out;
     },
     write(relPath: string, content: string): void {
+      assertContained(sandboxRoot, relPath);
       writes.set(relPath, content);
       const full = join(sandboxRoot, relPath);
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, content, "utf8");
     },
     read(relPath: string): string | null {
-      const sandboxFile = join(sandboxRoot, relPath);
+      const sandboxFile = assertContained(sandboxRoot, relPath);
       if (existsSync(sandboxFile)) return readFileSync(sandboxFile, "utf8");
-      const baseFile = join(base, relPath);
+      const baseFile = assertContained(base, relPath);
       if (existsSync(baseFile)) return readFileSync(baseFile, "utf8");
       return null;
     },

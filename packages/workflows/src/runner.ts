@@ -1,15 +1,23 @@
 /**
- * Sandboxed workflow runner (§25).
+ * Workflow runner (§25).
  *
  * A workflow is a JS file exporting a default async function:
  *   `export default async function(ctx) { ... ctx.tools, ctx.session, ctx.input ... }`
  *
- * Runs via Node's `vm.runInNewContext` in a RESTRICTED sandbox (only the
- * exposed API + safe globals). NO access to Node fs/child_process/process
- * unless explicitly granted (the §17 ExtensionAPI pattern: no fs/net/child_process).
+ * ⚠ SECURITY MODEL (CRITICAL-1 security-audit fix): Node's `vm` module is NOT a
+ * security boundary (nodejs.org/api/vm.html). The `vm.runInNewContext` sandbox
+ * is escapeable via the prototype chain of any leaked outer-realm constructor
+ * (e.g. `Promise.constructor.constructor('return this')()` yields the outer
+ * global → process/require/child_process). Per the agent's pi-model (AGENTS.md:
+ * NO OS sandbox, the agent runs in the user's environment with their privileges),
+ * workflows run with FULL PROCESS PRIVILEGE — exactly like any agent tool/code.
+ * The vm provides state isolation for the workflow's own variables + a timeout/
+ * event-surface contract, NOT containment. Do NOT run untrusted workflows under
+ * the illusion of containment; for semi-trusted workflows use isolated-vm (a
+ * separate V8 isolate, no shared object graph) or a worker_threads/subprocess.
  *
- * Use cases: cron jobs (§12.3), SOP scripts (skill-driven), reusable
- * workflows declared by packages.
+ * Use cases: cron jobs (§12.3), SOP scripts (skill-driven), reusable workflows
+ * declared by packages — all TRUSTED author code (same trust as a tool).
  *
  * Source: §25 Embedded scripting (language TBD per §23 #2 — Tier 2 uses JS via
  * Node's `vm`; a Rhai WASM alternative is a future swap).

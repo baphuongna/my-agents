@@ -263,36 +263,37 @@ export interface NativeDeclaration {
   path: string;
   /** Expected SHA-256 (hex) of the file bytes — pinned in the release lockfile. */
   contentHash: string;
-  /** sigstore bundle present? (the signature itself is verified by sigstore
-   * tooling at release time; here we assert its presence + that content matches.) */
-  sigstore: boolean;
+  /** The sigstore signature bundle (opaque). C3 (security review): a boolean
+   * flag is self-attested + forgeable — the actual bundle is verified here. */
+  sigstoreBundle: unknown;
   /** Optional napi ABI stamp (compatibility guard, NOT security per §14b). */
   abiStamp?: string;
 }
 
 export type NativeVerifyResult =
   | { ok: true; contentHash: string }
-  | { ok: false; reason: "file-missing" | "hash-mismatch" | "sigstore-required"; detail: string };
+  | { ok: false; reason: "file-missing" | "hash-mismatch" | "sigstore-required" | "sigstore-rejected" | "path-traversal"; detail: string };
 
 /** Verify a third-party `.node` BEFORE dlopen (§14b RELEASE-BLOCKER for
- * third-party native). Real checks: file exists + SHA-256 content-hash matches.
- * sigstore: asserted REQUIRED (the cryptographic signature verification itself
- * is performed by release-time sigstore tooling; this gate refuses any native
- * that does not declare sigstore:true). First-party natives (our own) are
- * exempt — they ship from the trusted release pipeline. */
-export function verifyNativeDeclaration(decl: NativeDeclaration): NativeVerifyResult {
+ * third-party native). C3 (security review): FAIL CLOSED. Requires an actual
+ * sigstore bundle (not a boolean flag) AND verifies the content hash. The
+ * cryptographic sigstore.verify() runs when the `sigstore` module is present
+ * (dynamic import); if absent, the gate REJECTS (fail-closed, not fail-open).
+ * First-party natives (our own) bypass this — they ship from the trusted
+ * release pipeline. */
+export async function verifyNativeDeclaration(decl: NativeDeclaration): Promise<NativeVerifyResult> {
+  // F4 (pkg review): constrain path to a .node file (defense-in-depth).
+  if (!decl.path.endsWith(".node")) {
+    return { ok: false, reason: "path-traversal", detail: `native path must end in .node: ${decl.path}` };
+  }
+  if (!decl.sigstoreBundle) {
+    return { ok: false, reason: "sigstore-required", detail: "third-party native must ship a sigstore bundle (§14b)" };
+  }
   let bytes: Buffer;
   try {
     bytes = readFileSync(decl.path);
   } catch {
     return { ok: false, reason: "file-missing", detail: `cannot read ${decl.path}` };
-  }
-  if (!decl.sigstore) {
-    return {
-      ok: false,
-      reason: "sigstore-required",
-      detail: "third-party native must declare sigstore:true (§14b release-blocker)",
-    };
   }
   const actual = createHash("sha256").update(bytes).digest("hex");
   if (actual !== decl.contentHash.toLowerCase()) {
@@ -301,6 +302,32 @@ export function verifyNativeDeclaration(decl: NativeDeclaration): NativeVerifyRe
       reason: "hash-mismatch",
       detail: `expected ${decl.contentHash}, got ${actual}`,
     };
+  }
+  // C3: cryptographically verify the sigstore bundle if the module is present;
+  // fail-closed (reject) if it's absent (a declared-but-unverifiable native is
+  // NOT loaded). The content hash match above is necessary, not sufficient.
+  try {
+    // sigstore v5 verify has multiple overloads; cast loosely + call.
+    const mod = (await import("sigstore")) as { verify?: (...args: unknown[]) => Promise<unknown> };
+    if (typeof mod.verify !== "function") {
+      return { ok: false, reason: "sigstore-rejected", detail: "sigstore module present but verify() unavailable" };
+    }
+    // try (bundle, data) then (data, bundle) — cover both overload orderings
+    let verified = false;
+    try {
+      const r = await mod.verify(decl.sigstoreBundle, bytes);
+      verified = !!(r as { verified?: boolean })?.verified || r !== false;
+    } catch {
+      try {
+        const r = await mod.verify(bytes, decl.sigstoreBundle);
+        verified = !!(r as { verified?: boolean })?.verified || r !== false;
+      } catch (e2) {
+        return { ok: false, reason: "sigstore-rejected", detail: `sigstore verify threw: ${(e2 as Error).message}` };
+      }
+    }
+    if (!verified) return { ok: false, reason: "sigstore-rejected", detail: "sigstore signature did not verify" };
+  } catch (e) {
+    return { ok: false, reason: "sigstore-rejected", detail: `sigstore verify failed: ${(e as Error).message}` };
   }
   return { ok: true, contentHash: actual };
 }

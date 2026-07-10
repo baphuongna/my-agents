@@ -59,6 +59,9 @@ export class AuditLog {
   readonly checkpoints: Checkpoint[] = [];
   private checkpointPrevRoot: string | null = null;
   private checkpointBucket: string[] = []; // record-hashes since last checkpoint
+  /** C1 (security review): store the redacted records so verify() can recompute
+   * the chain from source (not just trust stored hashes). */
+  private readonly records: AuditRecord[] = [];
 
   constructor(
     private readonly redactor: Redactor = (_k, p) => p,
@@ -74,6 +77,7 @@ export class AuditLog {
     const hash = sha256Hex(this.prevHash + canonicalJson(full));
     this.prevHash = hash;
     this.hashes.push(hash);
+    this.records.push(full); // C1: retain for verification
     // accumulate into the merkle checkpoint bucket
     this.checkpointBucket.push(hash);
     if (this.checkpointBucket.length >= this.checkpointEvery) {
@@ -97,31 +101,33 @@ export class AuditLog {
     this.commitCheckpoint();
   }
 
-  /** Verify the chain from a starting seq (1-based). Recomputes hashes; the
-   * first divergence yields `forksAt`. Returns ok + count checked. */
+  /** Verify the chain from a starting seq (1-based). C1 (security review):
+   * RECOMPUTE each hash_n = sha256(prevHash || canonical(record_n)) from the
+   * stored records (not the stored hashes) and compare against the stored
+   * hashes — the first divergence yields `forksAt`. Also re-verify every
+   * checkpoint root. Returns ok + count checked. */
   verify(since = 1): VerifyResult {
     const start = Math.max(1, since);
     let prev = start === 1 ? ZERO_HASH : this.hashes[start - 2] ?? ZERO_HASH;
-    for (let i = start - 1; i < this.hashes.length; i++) {
+    for (let i = start - 1; i < this.records.length; i++) {
+      const rec = this.records[i]!;
       const expected = this.hashes[i]!;
-      // NOTE: we can only recompute if we stored the record; this in-memory impl
-      // stores hashes only. For a full verify-with-records, pair with a durable
-      // store. Here we verify the CHAIN LINKAGE: each hash's prev must equal the
-      // prior hash — detectable via recomputation when records are retained.
-      void expected;
-      prev = expected; // chain advances
-    }
-    // The meaningful tamper check: recompute the last checkpoint root from the
-    // stored record-hashes and confirm it matches the committed root.
-    const lastCp = this.checkpoints[this.checkpoints.length - 1];
-    if (lastCp) {
-      const fromSeq = (this.checkpoints[this.checkpoints.length - 2]?.atSeq ?? 0) + 1;
-      const bucket = this.hashes.slice(fromSeq - 1, lastCp.atSeq);
-      if (merkleRoot(bucket) !== lastCp.root) {
-        return { ok: false, forksAt: fromSeq, reason: "checkpoint root mismatch" };
+      const recomputed = sha256Hex(prev + canonicalJson(rec));
+      if (recomputed !== expected) {
+        return { ok: false, forksAt: rec.seq, reason: `hash mismatch at seq ${rec.seq} (record tampered or chain forked)` };
       }
+      prev = expected; // chain advances via the stored (committed) hash
     }
-    return { ok: true, checked: this.hashes.length - start + 1 };
+    // Re-verify EVERY checkpoint root from the recomputed record-hashes.
+    let cpStart = 0;
+    for (const cp of this.checkpoints) {
+      const bucket = this.hashes.slice(cpStart, cp.atSeq);
+      if (merkleRoot(bucket) !== cp.root) {
+        return { ok: false, forksAt: cpStart + 1, reason: "checkpoint root mismatch" };
+      }
+      cpStart = cp.atSeq;
+    }
+    return { ok: true, checked: this.records.length - start + 1 };
   }
 
   /** Number of records appended. */

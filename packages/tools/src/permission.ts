@@ -56,6 +56,13 @@ export function requiresApproval(
   // Step 3: mode-rank gate — does the active mode satisfy the required mode?
   const active = ctx.budget ? guessActiveMode(ctx) : "Prompt";
   const required = impl.meta.requiredMode;
+  // F2 (security review): DangerFullAccess ALWAYS escalates to a human prompt,
+  // even in Allow / DangerFullAccess mode. modeSatisfies("Allow", ...) returns
+  // true unconditionally (registry.ts) which would silently grant bash; force the
+  // escalation here before the satisfy shortcut. Allow = "up to WorkspaceWrite".
+  if (required === "DangerFullAccess") {
+    return { outcome: "Deny", reason: "DangerFullAccess requires explicit human approval", needsHumanPrompt: true };
+  }
   if (modeSatisfies(active, required)) {
     // Satisfied without escalation. Prompt mode still asks for visibility.
     if (active === "Prompt") {
