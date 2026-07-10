@@ -29,6 +29,7 @@ export class MockProvider implements ProviderProfile {
   async stream(
     _prompt: SystemPrompt,
     _history: History,
+    _opts?: { tools?: readonly import("@my-agent/core").OpenAITool[] },
   ): Promise<{ events: StreamEvent[] }> {
     return { events: [...this.trace.events] };
   }

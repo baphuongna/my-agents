@@ -59,6 +59,7 @@ export class OpenAIAdapter implements ProviderProfile {
   async stream(
     prompt: SystemPrompt,
     history: History,
+    opts?: { tools?: readonly import("@my-agent/core").OpenAITool[] },
   ): Promise<{ events: StreamEvent[] }> {
     if (!this.apiKey) {
       return {
@@ -78,6 +79,8 @@ export class OpenAIAdapter implements ProviderProfile {
 
     const messages = toMessages(prompt, history);
     let resp: Response;
+    const body: Record<string, unknown> = { model: this.model, messages, stream: true, stream_options: { include_usage: true } };
+    if (opts?.tools && opts.tools.length > 0) body["tools"] = opts.tools;
     try {
       resp = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
@@ -85,7 +88,7 @@ export class OpenAIAdapter implements ProviderProfile {
           "content-type": "application/json",
           authorization: `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify({ model: this.model, messages, stream: true, stream_options: { include_usage: true } }),
+        body: JSON.stringify(body),
       });
     } catch (e) {
       return { events: [netError(e)] };

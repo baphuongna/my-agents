@@ -29,7 +29,7 @@ import {
   streamWithFallback,
   textMock,
 } from "@my-agent/ai";
-import { assemblePrompt } from "@my-agent/prompts";
+import { assemblePrompt, defaultStableTier } from "@my-agent/prompts";
 import {
   ToolRegistry,
   builtinTools,
@@ -112,13 +112,16 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // ── tools ──
   const toolRegistry = new ToolRegistry();
   for (const t of config.tools ?? builtinTools) toolRegistry.register(t);
+  // Build OpenAI-compatible function schemas (for native tool calling).
+  const openAITools = buildOpenAITools(toolRegistry);
 
   // ── session + budget ──
   const budget = config.budget ?? freeBudget();
-  const session = createSession({
-    profiles: [...providers.all()],
-    stableTier: config.stableTier,
-  });
+  // Compose the stable tier: identity + tools block. Tools are fixed for this
+  // agent's lifetime (createAgent returns a fixed toolRegistry) → setting once
+  // here keeps the prompt cache-stable.
+  const stableTier = composeStableTier(config.stableTier ?? defaultStableTier(), toolRegistry);
+  const session = createSession({ profiles: [...providers.all()], stableTier });
   // Replace the stub memory with the real manager.
   (session as { memory: unknown }).memory = memory;
 
@@ -136,10 +139,11 @@ export function createAgent(config: AgentConfig = {}): Agent {
       budget,
       tools: toolExecutor,
       // §6 fallback chain injection (keeps core layering-clean).
-      stream: (prompt, history) =>
-        streamWithFallback(providers, prompt, history).then((r) =>
+      stream: (prompt, history, streamOpts) =>
+        streamWithFallback(providers, prompt, history, streamOpts).then((r) =>
           "error" in r ? { error: r.error } : { events: r.events },
         ),
+      toolSchemas: openAITools, // OpenAI-compatible function schemas (for native tool calling)
       signal,
     });
   }
@@ -172,3 +176,44 @@ export function createAgent(config: AgentConfig = {}): Agent {
 }
 
 export type { ToolImpl };
+
+/** One-line description per tool name (the catalog the model sees in the prompt). */
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  read: "read a file's contents (ReadOnly)",
+  write: "write content to a file (overwrite; WorkspaceWrite)",
+  edit: "replace exact text in a file (ambiguity-guarded; WorkspaceWrite)",
+  replace: "hash-anchored line-range replace with stale-anchor detection (WorkspaceWrite)",
+  bash: "run a shell command via /bin/bash (DangerFullAccess — requires approval)",
+  glob: "find files matching a glob pattern under a cwd (ReadOnly)",
+  grep: "search file contents for a regex under a cwd (ReadOnly)",
+  code: "run a JS or Python script that can round-trip-call tools via stdin/stdout JSON-RPC (DangerFullAccess)",
+  codegraph: "list files related to a given path (import-graph file relevance; ReadOnly)",
+};
+
+/** Render the tools block: name + 1-line description per registered tool. */
+function renderToolsBlock(registry: ToolRegistry): string {
+  const lines = ["## Tools (invoke by name when needed)"];
+  for (const meta of registry.list()) {
+    const desc = TOOL_DESCRIPTIONS[meta.name] ?? meta.name;
+    lines.push(`- **${meta.name}** — ${desc}`);
+  }
+  return lines.join("\n");
+}
+
+/** Build OpenAI-compatible function schemas from the tool registry (for native tool calling). */
+function buildOpenAITools(registry: ToolRegistry): import("@my-agent/core").OpenAITool[] {
+  const descs = TOOL_DESCRIPTIONS;
+  return registry.list().map((meta) => ({
+    type: "function" as const,
+    function: {
+      name: meta.name,
+      description: descs[meta.name] ?? meta.name,
+      parameters: meta.args,
+    },
+  }));
+}
+
+/** Compose identity + tools block into the stable tier. */
+function composeStableTier(identity: string, registry: ToolRegistry): string {
+  return `${identity}\n\n${renderToolsBlock(registry)}`;
+}

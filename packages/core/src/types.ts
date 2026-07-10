@@ -83,8 +83,19 @@ export interface ProviderProfile {
   stream(
     prompt: SystemPrompt,
     history: History,
+    opts?: { tools?: readonly OpenAITool[] },
   ): Promise<{ events: StreamEvent[] }>;
   health(): ComponentHealth;
+}
+
+/** OpenAI-compatible tool/function schema (passed to providers that support it). */
+export interface OpenAITool {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters?: JSONSchema;
+  };
 }
 
 // ─── Permission (§7) ────────────────────────────────────────────────────────

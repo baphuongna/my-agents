@@ -86,6 +86,7 @@ export class CouncilProvider implements ProviderProfile {
   async stream(
     prompt: SystemPrompt,
     history: History,
+    opts?: { tools?: readonly import("@my-agent/core").OpenAITool[] },
   ): Promise<{ events: StreamEvent[] }> {
     // Fan-out: every HEALTHY member answers in parallel (R41: skip Failed members).
     // Each member is wrapped in a per-member timeout so a hung provider cannot
@@ -98,7 +99,7 @@ export class CouncilProvider implements ProviderProfile {
           const timeoutMs = m.timeoutMs ?? DEFAULT_MEMBER_TIMEOUT_MS;
           try {
             const result = await Promise.race([
-              m.profile.stream(prompt, history),
+              m.profile.stream(prompt, history, { tools: opts?.tools }),
               new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error("council member timed out")), timeoutMs),
               ),
@@ -147,7 +148,7 @@ export class CouncilProvider implements ProviderProfile {
         volatile: prompt.volatile,
       };
       try {
-        const judgeResult = await this.judge!.stream(judgePrompt, history);
+        const judgeResult = await this.judge!.stream(judgePrompt, history, { tools: opts?.tools });
         const judgeUsage = collectUsage(judgeResult.events);
         for (const e of judgeResult.events) if (e.kind === "text") events.push(e);
         // judge cost ADDED to member cost (real council cost = members + judge).

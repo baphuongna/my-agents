@@ -46,7 +46,10 @@ export interface RunTurnOptions {
   stream?: (
     prompt: import("./types.js").SystemPrompt,
     history: import("./types.js").History,
+    opts?: { tools?: readonly import("./types.js").OpenAITool[] },
   ) => Promise<{ events: import("./types.js").StreamEvent[] } | { error: LifecycleError }>;
+  /** §6 OpenAI-compatible tool schemas (for providers that support function calling). */
+  toolSchemas?: readonly import("./types.js").OpenAITool[];
   /** §7 tool executor. If absent, tool calls are emitted but not executed (Tier 0). */
   tools?: ToolExecutor;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
@@ -147,7 +150,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         // §6: prefer the injected stream function (fallback chain); else the single profile.
         let events: import("./types.js").StreamEvent[];
         if (opts.stream) {
-          const r = await opts.stream(prompt, opts.session.history);
+          const r = await opts.stream(prompt, opts.session.history, { tools: opts.toolSchemas });
           if ("error" in r) {
             emitTurn({ state: "Failed", error: r.error });
             emit({ kind: "turn", stage: "end" });
@@ -156,7 +159,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           }
           events = r.events;
         } else {
-          const { events: ev } = await profile.stream(prompt, opts.session.history);
+          const { events: ev } = await profile.stream(prompt, opts.session.history, { tools: opts.toolSchemas });
           events = ev;
         }
         const result = consumeStream(events, emitTurn);

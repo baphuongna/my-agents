@@ -52,6 +52,7 @@ export async function streamWithFallback(
   source: ProviderProfile[] | ProviderRegistry,
   prompt: SystemPrompt,
   history: History,
+  opts?: { tools?: readonly import("@my-agent/core").OpenAITool[] },
 ): Promise<FallbackResult> {
   let profiles: ProviderProfile[];
   let registry: ProviderRegistry | null = null;
@@ -77,7 +78,7 @@ export async function streamWithFallback(
   let lastError: LifecycleError | null = null;
   for (const profile of profiles) {
     try {
-      const { events } = await profile.stream(prompt, history);
+      const { events } = await profile.stream(prompt, history, { tools: opts?.tools });
       // Inspect events for an inline error (provider returned a stream error).
       const inlineError = events.find((e: StreamEvent) => e.kind === "error");
       if (inlineError && inlineError.kind === "error") {
