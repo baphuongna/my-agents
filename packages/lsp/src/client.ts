@@ -139,10 +139,19 @@ export class LspClient extends EventEmitter {
   }
 
   // ── JSON-RPC plumbing ────────────────────────────────────────────────────
-  private request<T>(method: string, params?: unknown): Promise<T> {
+  private request<T>(method: string, params?: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      // R42: per-request timeout (default 30s) — a crashed/missing server must
+      // not hang the request forever (combined with the L4 stdin-write fallback).
+      const timeoutMs = opts.timeoutMs ?? 30_000;
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error(`LSP request "${method}" timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (v: unknown) => { clearTimeout(timer); resolve(v as T); },
+        reject: (e: Error) => { clearTimeout(timer); reject(e); },
+      });
       this.send({ jsonrpc: "2.0", id, method, params });
     });
   }

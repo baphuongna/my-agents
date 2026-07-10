@@ -11,7 +11,7 @@
  *
  * Source: §10 CoW-overlay-isolated subagents, oh-my-pi task.
  */
-import { mkdtempSync, copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -90,8 +90,8 @@ export function createIsolatedWorkspace(
       return null;
     },
     cleanup(): void {
-      // Best-effort: the temp dir is OS-cleaned; explicit rm recursive could
-      // land Tier 3 for paranoia.
+      // R42: actually remove the temp dir (was a no-op → temp dirs accumulated).
+      try { rmSync(sandboxRoot, { recursive: true, force: true }); } catch { /* best-effort */ }
     },
   };
 }
