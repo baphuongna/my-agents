@@ -51,6 +51,8 @@ type NativeModule = {
   blake3Mac: (key: Buffer, message: Buffer) => string;
   glob: (pattern: string, root: string, options?: object) => string[];
   grep: (pattern: string, root: string, options?: object) => GrepHit[];
+  compressLog: (input: string, options?: object) => CompressLogResult;
+  approxTokens: (input: string) => number;
   nowMonotonicNanos: () => number;
   nowWallclockNanos: () => number;
   nativesVersion: () => string;
@@ -107,6 +109,16 @@ export interface GrepHit {
   path: string;
   line: number;
   text: string;
+}
+
+export interface CompressLogOptions {
+  maxLineLen?: number;
+  collapseRun?: number;
+}
+export interface CompressLogResult {
+  text: string;
+  originalLines: number;
+  compressedLines: number;
 }
 
 export interface GlobOptions {
@@ -170,12 +182,86 @@ export function nativeGrep(
     try {
       return NATIVE.grep(pattern, root, options);
     } catch {
-      // Native throws on invalid regex (guarded → napi Error). Normalize to []
-      // so the contract matches the JS fallback. Callers grep defensively.
       return [];
     }
   }
   return jsGrep(pattern, root, options);
+}
+
+/** Content-aware log/tool-output compactor (§5/§2 Rust gate). Native = Rust
+ * (deterministic); fallback = a JS impl with identical semantics. */
+export function nativeCompressLog(input: string, options: CompressLogOptions = {}): CompressLogResult {
+  if (NATIVE) {
+    try {
+      return NATIVE.compressLog(input, options);
+    } catch {
+      // fall through to JS
+    }
+  }
+  return jsCompressLog(input, options);
+}
+
+/** Approximate token count (chars/4). Native = Rust; fallback = JS. */
+export function nativeApproxTokens(input: string): number {
+  if (NATIVE) {
+    try {
+      return NATIVE.approxTokens(input);
+    } catch {
+      // fall through
+    }
+  }
+  return Math.floor([...input].length / 4);
+}
+
+// ─── third-party native verification (§14b / §17 / invariant #6-resolution) ────
+
+/** A declared third-party napi binary's expected identity (from the package
+ * manifest `native` field, §17). */
+export interface NativeDeclaration {
+  /** Path to the `.node` file. */
+  path: string;
+  /** Expected SHA-256 (hex) of the file bytes — pinned in the release lockfile. */
+  contentHash: string;
+  /** sigstore bundle present? (the signature itself is verified by sigstore
+   * tooling at release time; here we assert its presence + that content matches.) */
+  sigstore: boolean;
+  /** Optional napi ABI stamp (compatibility guard, NOT security per §14b). */
+  abiStamp?: string;
+}
+
+export type NativeVerifyResult =
+  | { ok: true; contentHash: string }
+  | { ok: false; reason: "file-missing" | "hash-mismatch" | "sigstore-required"; detail: string };
+
+/** Verify a third-party `.node` BEFORE dlopen (§14b RELEASE-BLOCKER for
+ * third-party native). Real checks: file exists + SHA-256 content-hash matches.
+ * sigstore: asserted REQUIRED (the cryptographic signature verification itself
+ * is performed by release-time sigstore tooling; this gate refuses any native
+ * that does not declare sigstore:true). First-party natives (our own) are
+ * exempt — they ship from the trusted release pipeline. */
+export function verifyNativeDeclaration(decl: NativeDeclaration): NativeVerifyResult {
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(decl.path);
+  } catch {
+    return { ok: false, reason: "file-missing", detail: `cannot read ${decl.path}` };
+  }
+  if (!decl.sigstore) {
+    return {
+      ok: false,
+      reason: "sigstore-required",
+      detail: "third-party native must declare sigstore:true (§14b release-blocker)",
+    };
+  }
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  if (actual !== decl.contentHash.toLowerCase()) {
+    return {
+      ok: false,
+      reason: "hash-mismatch",
+      detail: `expected ${decl.contentHash}, got ${actual}`,
+    };
+  }
+  return { ok: true, contentHash: actual };
 }
 
 // ─── JS fallbacks (used only when the .node is missing) ─────────────────────
@@ -274,4 +360,29 @@ function jsGrep(pattern: string, root: string, options: GrepOptions): GrepHit[] 
     }
   }
   return out;
+}
+
+/** JS fallback for compress_log — mirrors the Rust semantics (truncate long lines
+ * + collapse runs of identical consecutive lines). Deterministic. */
+function jsCompressLog(input: string, options: CompressLogOptions): CompressLogResult {
+  const maxLineLen = options.maxLineLen ?? 200;
+  const collapseRun = options.collapseRun ?? 3;
+  const lines = input.split("\n");
+  const originalLines = lines.length;
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const cur = lines[i]!;
+    let run = 1;
+    while (i + run < lines.length && lines[i + run] === cur) run++;
+    const truncated = cur.length > maxLineLen ? cur.slice(0, maxLineLen) + "…" : cur;
+    if (run >= collapseRun) {
+      out.push(truncated);
+      out.push(`… (${run} repeated)`);
+    } else {
+      for (let k = 0; k < run; k++) out.push(truncated);
+    }
+    i += run;
+  }
+  return { text: out.join("\n"), originalLines, compressedLines: out.length };
 }

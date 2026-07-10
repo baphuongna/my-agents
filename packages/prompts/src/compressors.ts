@@ -14,6 +14,28 @@
  * Source: §5 Prompt System, headroom #4 compression, R26-F.
  */
 import type { Compressor, ProviderProfile } from "@my-agent/core";
+import { nativeCompressLog } from "@my-agent/natives";
+
+/**
+ * Native-backed content compressor (§5/§2 Rust gate) — compacts tool/log output
+ * via the Rust `compress_log` (truncate long lines + collapse repeated runs).
+ * Deterministic, zero model cost. Stringifies each history entry, compacts the
+ * concatenated text, returns a single `[compacted]` entry. Use behind the
+ * DriftGrader like any other compressor.
+ */
+export function nativeContentCompressor(opts?: {
+  maxLineLen?: number;
+  collapseRun?: number;
+}): Compressor {
+  return {
+    compress: (history: unknown[]) => {
+      const text = history.map((h) => (typeof h === "string" ? h : JSON.stringify(h))).join("\n");
+      const res = nativeCompressLog(text, opts ?? {});
+      return [{ role: "system", content: `[compacted ${res.originalLines}→${res.compressedLines} lines]\n${res.text}` }];
+    },
+    ratio: () => 1,
+  };
+}
 
 /**
  * Rolling-window compressor — keeps the last `maxEntries` history items,

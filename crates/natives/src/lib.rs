@@ -263,6 +263,86 @@ pub fn grep(
   })
 }
 
+// ─── compression (hot loop + determinism gate, §2/§5) ───────────────────────
+// Spec §2 lists compression as a Rust-gate concern (perf + byte-determinism).
+// Pragmatic choice: folded into `natives` rather than a separate `crates/compress`
+// (AGENTS.md "no speculative abstraction" — one napi crate suffices; noted as a
+// §3 deviation). A full headroom-style per-type compressor is Tier-1+; this ships
+// the gate-justified primitives the TS compressors call into.
+
+#[napi(object)]
+pub struct CompressLogOptions {
+  /// Truncate any line longer than this (default 200 chars).
+  pub max_line_len: Option<u32>,
+  /// Collapse runs of ≥ this many identical consecutive lines into a "... (N repeated)" marker (default 3).
+  pub collapse_run: Option<u32>,
+}
+
+#[napi(object)]
+pub struct CompressLogResult {
+  /// The compressed text.
+  pub text: String,
+  /// Original line count.
+  pub original_lines: u32,
+  /// Compressed line count.
+  pub compressed_lines: u32,
+}
+
+/// Content-aware log/tool-output compactor (headroom "Log" style).
+/// - truncates long lines (keeps a head + ellipsis)
+/// - collapses runs of identical consecutive lines into one + a count marker
+/// Deterministic: identical input → identical output (byte-faithful, no RNG, no time).
+#[napi]
+pub fn compress_log(input: String, options: Option<CompressLogOptions>) -> Result<CompressLogResult> {
+  guarded("compress_log", || {
+    let max_line_len = options.as_ref().and_then(|o| o.max_line_len).unwrap_or(200) as usize;
+    let collapse_run = options.as_ref().and_then(|o| o.collapse_run).unwrap_or(3) as usize;
+    let lines: Vec<&str> = input.split('\n').collect();
+    let original_lines = lines.len() as u32;
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut i = 0;
+    while i < lines.len() {
+      let cur = lines[i];
+      // measure run length of identical consecutive lines
+      let mut run = 1;
+      while i + run < lines.len() && lines[i + run] == cur {
+        run += 1;
+      }
+      // truncate the line itself
+      let truncated = if cur.len() > max_line_len {
+        format!("{}…", &cur[..cur.floor_char_boundary(max_line_len)])
+      } else {
+        cur.to_string()
+      };
+      if run >= collapse_run {
+        out.push(truncated);
+        out.push(format!("… ({run} repeated)"));
+      } else {
+        for _ in 0..run {
+          out.push(truncated.clone());
+        }
+      }
+      i += run;
+    }
+    let text = out.join("\n");
+    Ok(CompressLogResult {
+      text,
+      original_lines,
+      compressed_lines: out.len() as u32,
+    })
+  })
+}
+
+/// Approximate token count (chars/4 heuristic — the standard rough estimate).
+/// Deterministic. Used by the budget/prompt layers to estimate cost without a tokenizer dep.
+#[napi]
+pub fn approx_tokens(input: String) -> Result<u32> {
+  guarded("approx_tokens", || {
+    // char_indices counts Unicode scalar values; /4 is the common heuristic.
+    Ok((input.chars().count() / 4) as u32)
+  })
+}
+
 // ─── time (determinism — sole monotonic source, invariant #10) ──────────────
 
 static ANCHOR: OnceLock<Instant> = OnceLock::new();
