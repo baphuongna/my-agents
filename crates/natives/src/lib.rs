@@ -56,19 +56,24 @@ pub fn grep(_pattern: String, _root: String) -> Result<Vec<GrepHit>> {
 /// Monotonic has no epoch; returns nanos since a process-local anchor.
 /// TS core.time mirrors this; never call Instant elsewhere in Rust.
 #[napi]
-pub fn now_monotonic_nanos() -> Result<u128> {
+pub fn now_monotonic_nanos() -> Result<u64> {
   use std::sync::OnceLock;
   use std::time::Instant;
   static ANCHOR: OnceLock<Instant> = OnceLock::new();
   let anchor = ANCHOR.get_or_init(Instant::now);
-  Ok(anchor.elapsed().as_nanos())
+  Ok(anchor.elapsed().as_nanos() as u64)
 }
 
 /// Wallclock nanos since UNIX_EPOCH — the ONLY wall source (invariant #10).
 #[napi]
-pub fn now_wallclock_nanos() -> Result<u128> {
+pub fn now_wallclock_nanos() -> Result<u64> {
   use std::time::{SystemTime, UNIX_EPOCH};
-  Ok(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos())
+  Ok(
+    SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .unwrap_or_default()
+      .as_nanos() as u64,
+  )
 }
 
 /// ABI stamp — refuses mismatched-release binaries (R25-23).

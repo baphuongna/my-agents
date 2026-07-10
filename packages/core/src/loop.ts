@@ -75,7 +75,13 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
   }
   signal.addEventListener("abort", () => cancel("abort signal"));
 
-  void (async () => {
+  // Defer the loop to a microtask so the caller can subscribe (handle.on)
+  // BEFORE any event is emitted. Otherwise turn/start fires to an empty
+  // subscriber set and is lost. (R37-2 fix.)
+  queueMicrotask(() => void runLoop());
+
+  async function runLoop(): Promise<void> {
+    if (cancelled) return; // pre-abort guard: don't emit start after end
     emit({ kind: "turn", stage: "start" });
     const profile = opts.profile ?? opts.session.profiles[0];
     if (!profile) {
@@ -93,6 +99,19 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       if (cancelled) return;
+      // §4: budget gate — abort BEFORE spending (remaining evaluates against root).
+      if (opts.budget.exhausted()) {
+        const err: LifecycleError = {
+          phase: "resource",
+          recoverable: false,
+          retries: attempt - 1,
+          context: { reason: "budget exhausted before stream" },
+        };
+        emitTurn({ state: "Failed", error: err });
+        emit({ kind: "turn", stage: "end" });
+        resolveDone({ state: "Failed", error: err });
+        return;
+      }
       try {
         const prompt = opts.session.prompt ?? {
           stable: opts.session.stableTier,
@@ -115,7 +134,20 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           return;
         }
         const cost = computeCost(result.usage);
-        opts.budget.spend(cost);
+        const spent = opts.budget.spend(cost);
+        if (!spent && !opts.budget.unlimited) {
+          // CC13: spend rejected — budget breached abortThreshold
+          const err: LifecycleError = {
+            phase: "resource",
+            recoverable: false,
+            retries: attempt - 1,
+            context: { reason: "budget exhausted (abortThreshold breached)" },
+          };
+          emitTurn({ state: "Failed", error: err });
+          emit({ kind: "turn", stage: "end" });
+          resolveDone({ state: "Failed", error: err });
+          return;
+        }
         emit({
           kind: "budget",
           spentUsd: cost.usd,
@@ -148,7 +180,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         return;
       }
     }
-  })();
+  }
 
   return {
     on: (fn) => {

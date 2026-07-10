@@ -37,7 +37,7 @@ function makeBudget(node: BudgetNode): BudgetConfig {
       return true;
     },
     deriveChild: (alloc: number): BudgetConfig => {
-      const reserve = Math.min(alloc, node.total - node.root.spent);
+      const reserve = Math.max(0, Math.min(alloc, node.total - node.root.spent));
       node.root.spent += reserve; // pre-charge (CC10: locks PARENT node only)
       return makeBudget({
         total: node.total, // child shares the SAME root total
@@ -55,7 +55,7 @@ function makeBudget(node: BudgetNode): BudgetConfig {
       // (Full child.spent accounting lands when SubagentRunner is implemented.)
       return 0;
     },
-    exhausted: () => node.total - node.root.spent <= 0,
+    exhausted: () => !node.unlimited && node.root.spent >= node.abortThreshold,
     resource: node.resource,
   };
 }

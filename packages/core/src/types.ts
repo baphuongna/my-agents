@@ -122,6 +122,20 @@ export type ApprovalChannel = {
   request(r: ApprovalRequest): Promise<ApprovalDecision>;
 };
 
+/** §4 turn-loop context passed to helpers (requiresApproval, runTool, etc.). */
+export interface TurnContext {
+  session: Session;
+  history: History;
+  budget: BudgetConfig;
+  approval: ApprovalChannel;
+  emit: (te: TurnEvent) => void;
+  lane?: {
+    taskId: LaneId;
+    setBlockedOn(b: "approval" | undefined): void;
+  };
+  cancel?: AbortSignal;
+}
+
 // ─── Session / prompt (§5) ──────────────────────────────────────────────────
 export interface SystemPrompt {
   stable: string;
@@ -280,6 +294,12 @@ export interface Tool {
 }
 
 export type ToolSet = { allowed: string[]; blocked: string[] };
+
+/** §17 extension host API — deliberately limited (no fs/net/child_process). */
+export interface ExtensionAPI {
+  registerTool(t: Tool): void;
+  on(e: string, h: (...a: unknown[]) => void): void;
+}
 
 /** Canonical denylist every subagent inherits (§10). */
 export const DELEGATE_BLOCKED_TOOLS = new Set([
