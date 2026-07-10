@@ -37,6 +37,7 @@ import {
   type ToolImpl,
 } from "@my-agent/tools";
 import { FileBackend, MemoryManagerImpl } from "@my-agent/memory";
+import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
 
 export interface AgentConfig {
   /** Explicit provider list. If absent: OpenAI (if key) + mock fallback. */
@@ -53,6 +54,9 @@ export interface AgentConfig {
   budget?: BudgetConfig;
   /** Stable-tier identity text override. */
   stableTier?: string;
+  /** §10 advisor lane: a second-model critic that reviews each completed turn
+   * and emits issues (auto-invoked after turn completion). */
+  hindsight?: { reviewer: HindsightReviewer };
 }
 
 export interface Agent {
@@ -148,11 +152,33 @@ export function createAgent(config: AgentConfig = {}): Agent {
     });
   }
 
+  /** §10 advisor lane: after a turn completes, run the hindsight reviewer on
+   * the turn's answer + emit issues as RuntimeEvent{kind:"log"}. Never throws —
+   * a critic failure degrades to a logged warning (never blocks the turn). */
+  async function runHindsight(text: string, events: RuntimeEvent[], emit: (e: RuntimeEvent) => void): Promise<void> {
+    if (!config.hindsight) return;
+    // reconstruct the assistant's answer text from streaming chunks. The agent
+    // emits {kind:"turn", stage:"event", turnEvent:{state, chunk}} envelopes.
+    const answer = events
+      .map((e) => (e as { turnEvent?: { state?: string; chunk?: { kind?: string; text?: string } } }).turnEvent)
+      .filter((te) => te?.state === "Streaming" && te.chunk?.kind === "text")
+      .map((te) => te!.chunk!.text ?? "")
+      .join("");
+    if (!answer.trim()) return;
+    try {
+      const result: HindsightResult = await config.hindsight.reviewer.review(text, answer);
+      emit({ kind: "log", level: result.approved ? "info" : "warn", message: `hindsight: ${result.summary}`, data: { issues: result.issues, approved: result.approved } } as RuntimeEvent);
+    } catch (e) {
+      emit({ kind: "log", level: "warn", message: `hindsight critic failed: ${(e as Error).message}` } as RuntimeEvent);
+    }
+  }
+
   async function runOnce(text: string, signal?: AbortSignal): Promise<RuntimeEvent[]> {
     const collected: RuntimeEvent[] = [];
     const handle = await startTurn(text, signal);
     handle.on((e) => collected.push(e));
     await handle.done;
+    await runHindsight(text, collected, (e) => collected.push(e));
     return collected;
   }
 
@@ -162,8 +188,10 @@ export function createAgent(config: AgentConfig = {}): Agent {
     signal?: AbortSignal,
   ): Promise<void> {
     const handle = await startTurn(text, signal);
-    handle.on(sink);
+    const events: RuntimeEvent[] = [];
+    handle.on((e) => { sink(e); events.push(e); });
     await handle.done;
+    await runHindsight(text, events, sink);
   }
 
   return {

@@ -5,13 +5,22 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "scripts": { "build": "tsc -b", "typecheck": "tsc --noEmit" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@my-agent/core": "*",
     "@my-agent/ai": "*",
     "@my-agent/prompts": "*",
     "@my-agent/tools": "*",
-    "@my-agent/memory": "*"
+    "@my-agent/memory": "*",
+    "@my-agent/council": "*"
   }
 }

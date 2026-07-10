@@ -13,7 +13,7 @@
  */
 
 import { createHash, createHmac } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, copyFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -53,6 +53,7 @@ type NativeModule = {
   grep: (pattern: string, root: string, options?: object) => GrepHit[];
   compressLog: (input: string, options?: object) => CompressLogResult;
   approxTokens: (input: string) => number;
+  reflinkOrCopy: (src: string, dst: string) => ReflinkResult;
   nowMonotonicNanos: () => number;
   nowWallclockNanos: () => number;
   nativesVersion: () => string;
@@ -119,6 +120,11 @@ export interface CompressLogResult {
   text: string;
   originalLines: number;
   compressedLines: number;
+}
+
+export interface ReflinkResult {
+  method: "reflink" | "copy";
+  bytes: number;
 }
 
 export interface GlobOptions {
@@ -211,6 +217,20 @@ export function nativeApproxTokens(input: string): number {
     }
   }
   return Math.floor([...input].length / 4);
+}
+
+/** CoW clone (§10.1): try a kernel reflink (Linux FICLONE / btrfs/xfs), fall
+ * back to a byte-faithful copy. Native = Rust ioctl attempt; fallback = JS
+ * copyFileSync. Returns the method used + bytes. */
+export function nativeReflinkOrCopy(src: string, dst: string): ReflinkResult {
+  if (NATIVE) {
+    try {
+      return NATIVE.reflinkOrCopy(src, dst);
+    } catch {
+      // fall through to JS copy
+    }
+  }
+  return jsReflinkOrCopy(src, dst);
 }
 
 // ─── third-party native verification (§14b / §17 / invariant #6-resolution) ────
@@ -385,4 +405,12 @@ function jsCompressLog(input: string, options: CompressLogOptions): CompressLogR
     i += run;
   }
   return { text: out.join("\n"), originalLines, compressedLines: out.length };
+}
+
+/** JS fallback for reflink_or_copy — a byte-faithful copy (no kernel reflink).
+ * Mirrors the Rust copy-fallback path. */
+function jsReflinkOrCopy(src: string, dst: string): ReflinkResult {
+  copyFileSync(src, dst);
+  const bytes = statSync(src).size;
+  return { method: "copy", bytes };
 }

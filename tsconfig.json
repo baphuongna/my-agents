@@ -25,6 +25,7 @@
     { "path": "packages/gateway" },
     { "path": "packages/rpc" },
     { "path": "packages/tui" },
+    { "path": "packages/approval" },
     { "path": "packages/audit" },
     { "path": "packages/secrets" },
     { "path": "packages/session" },
