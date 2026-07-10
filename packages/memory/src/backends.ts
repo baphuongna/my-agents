@@ -35,7 +35,9 @@ export class InMemoryBackend implements MemoryBackend {
   constructor(readonly role: MemoryRoleId) {}
 
   async write(entry: MemoryEntry): Promise<WriteResult> {
-    this.entries.push(entry);
+    // Assign a STABLE id at write time (R39: was generated at read-time → non-deterministic).
+    const withId: MemoryEntry & { id: string } = { ...entry, id: `mem-${this.role}-${this.nextId++}` };
+    this.entries.push(withId);
     return { Ok: true };
   }
 
@@ -47,7 +49,7 @@ export class InMemoryBackend implements MemoryBackend {
       .filter((e) => !q || e.content.toLowerCase().includes(q))
       .slice(0, topK)
       .map((e) => ({
-        id: `mem-${this.role}-${this.nextId++}`,
+        id: (e as MemoryEntry & { id?: string }).id ?? `mem-${this.role}-?`,
         role: e.role,
         content: e.content,
         score: 1, // BM25/vector scoring lands Tier 2

@@ -1,62 +1,93 @@
 /**
- * BudgetConfig — tree-accounting budget (§21).
+ * BudgetConfig — tree-accounting budget (§21). CORRECTED model (R39).
  *
- * Every node shares ONE atomic root `spent`. `spend` uses atomic CAS that rejects
- * a breach of `abortThreshold`. `deriveChild` atomically reserves + pre-charges;
- * `releasePrecharge` refunds on ANY terminal state (incl. crash) — CC2/CC13.
+ * Model:
+ *   - The ROOT owns a single atomic `reserved` counter = sum of (deriveChild
+ *     pre-charges) + (the root node's own direct spends).
+ *   - A CHILD's spend() deducts from the child's LOCAL ownSpent (capped at its
+ *     alloc) — it does NOT touch root.reserved again (the pre-charge already
+ *     reserved it). This avoids the double-count bug.
+ *   - remaining() = root.total - root.reserved (global available pool).
+ *   - releasePrecharge(childId) refunds alloc - child.ownSpent to root.reserved
+ *     on ANY terminal state (CC2) — the unused reservation returns to the pool.
+ *
+ * Invariants (§21): CC2 (refund on any terminal), CC10 (pre-charge locks parent),
+ * CC13 (spend rejects on breach — local cap for child, abortThreshold for root).
  */
 import type { BudgetConfig, Cost } from "./types.js";
 
-interface BudgetNode {
+interface RootState {
   total: number;
   warningThreshold: number;
+  reserved: number; // atomic: pre-charges + root direct spends
+  children: Map<string, ChildRecord>;
+}
+
+interface ChildRecord {
+  alloc: number;
+  ownSpent: number;
+}
+
+interface BudgetNode {
+  alloc: number; // root: == total; child: the reserved slice
   abortThreshold: number;
   unlimited: boolean;
+  isRoot: boolean;
+  id: string; // root: "root"; child: generated
+  root: RootState;
   parent?: BudgetConfig;
-  // shared root state
-  root: { spent: number };
-  // this node's pre-charge (for child refund accounting)
-  precharged: number;
-  resource?: import("./types.js").ResourceBudget;
 }
 
 function makeBudget(node: BudgetNode): BudgetConfig {
   return {
-    total: node.total,
-    warningThreshold: node.warningThreshold,
+    total: node.root.total,
+    id: node.id,
+    warningThreshold: node.root.warningThreshold,
     abortThreshold: node.abortThreshold,
     unlimited: node.unlimited,
     parent: node.parent,
-    remaining: () => Math.max(0, node.total - node.root.spent),
-    spend: (c: Cost) => {
+    remaining: () => Math.max(0, node.root.total - node.root.reserved),
+    spend: (c: Cost): boolean => {
       if (node.unlimited) return true;
-      const next = node.root.spent + c.usd;
-      // CC13: atomic CAS — reject a spend breaching abortThreshold
-      if (next > node.abortThreshold) return false;
-      node.root.spent = next;
+      if (node.isRoot) {
+        // Root spend: deducts from the shared reserved pool, abortThreshold-gated.
+        const next = node.root.reserved + c.usd;
+        if (next > node.abortThreshold) return false;
+        node.root.reserved = next;
+        return true;
+      }
+      // Child spend: deducts from LOCAL ownSpent, capped at alloc.
+      const rec = node.root.children.get(node.id);
+      if (!rec) return false;
+      if (rec.ownSpent + c.usd > node.alloc) return false;
+      rec.ownSpent += c.usd;
       return true;
     },
     deriveChild: (alloc: number): BudgetConfig => {
-      const reserve = Math.max(0, Math.min(alloc, node.total - node.root.spent));
-      node.root.spent += reserve; // pre-charge (CC10: locks PARENT node only)
+      const reserve = Math.max(0, Math.min(alloc, node.root.total - node.root.reserved));
+      node.root.reserved += reserve; // pre-charge (CC10: locks the pool)
+      const childId = `child-${node.root.children.size + 1}-${Date.now().toString(36)}`;
+      node.root.children.set(childId, { alloc: reserve, ownSpent: 0 });
       return makeBudget({
-        total: node.total, // child shares the SAME root total
-        warningThreshold: node.warningThreshold,
+        alloc: reserve,
         abortThreshold: node.abortThreshold,
         unlimited: node.unlimited,
+        isRoot: false,
+        id: childId,
+        root: node.root,
         parent: makeBudget(node),
-        root: node.root, // shared atomic root
-        precharged: reserve,
       });
     },
-    releasePrecharge: (_childId: string): number => {
-      // CC2: refund = precharge - what child actually spent beyond its slice
-      // For Tier 0 scaffold: refund the unused portion of this node's precharge.
-      // (Full child.spent accounting lands when SubagentRunner is implemented.)
-      return 0;
+    releasePrecharge: (childId: string): number => {
+      // CC2: refund alloc - child.ownSpent to the pool on ANY terminal state.
+      const rec = node.root.children.get(childId);
+      if (!rec) return 0;
+      const refund = Math.max(0, rec.alloc - rec.ownSpent);
+      node.root.reserved -= refund;
+      node.root.children.delete(childId);
+      return refund;
     },
-    exhausted: () => !node.unlimited && node.root.spent >= node.abortThreshold,
-    resource: node.resource,
+    exhausted: () => !node.unlimited && node.root.reserved >= node.abortThreshold,
   };
 }
 
@@ -68,13 +99,19 @@ export function createBudget(opts: {
   unlimited?: boolean;
 }): BudgetConfig {
   const abort = opts.abortThreshold ?? opts.total;
-  return makeBudget({
+  const root: RootState = {
     total: opts.total,
     warningThreshold: opts.warningThreshold ?? opts.total * 0.8,
+    reserved: 0,
+    children: new Map(),
+  };
+  return makeBudget({
+    alloc: opts.total,
     abortThreshold: abort,
     unlimited: opts.unlimited ?? false,
-    root: { spent: 0 },
-    precharged: 0,
+    isRoot: true,
+    id: "root",
+    root,
   });
 }
 

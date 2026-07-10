@@ -53,6 +53,7 @@ export class InProcessRunner {
 
   async spawn(s: SubagentSpawn): Promise<SubagentResult> {
     const childBudget = this.opts.parentBudget.deriveChild(this.opts.childAlloc);
+    const childId = childBudget.id ?? "unknown";
     const tools = this.opts.makeToolExecutor(s.toolSurface);
     const stableTier = `You are a subagent. Topology: ${s.topology ?? "pipeline"}. Yield a JSON object.`;
     const session = createSession({ profiles: [this.opts.profile], stableTier });
@@ -74,13 +75,16 @@ export class InProcessRunner {
     const terminal = await handle.done;
 
     // CC2: refund unused pre-charge on ANY terminal state (incl. fail/cancel).
-    this.opts.parentBudget.releasePrecharge(s.prompt.slice(0, 8));
+    this.opts.parentBudget.releasePrecharge(childId);
 
     if (terminal.state === "Completed") {
       const text = collected.join("");
       const data = tryParseJson(text);
       if (data === PARSE_FAILED) {
         return { ok: false, error: `subagent yield not valid JSON: ${text.slice(0, 80)}` };
+      }
+      if (data === EMPTY) {
+        return { ok: false, error: "subagent yielded empty output" };
       }
       // Tier 1: no file diff (CoW lands Tier 2); changedPaths deferred.
       return { ok: true, data, changedPaths: [] };
@@ -95,9 +99,10 @@ export class InProcessRunner {
 }
 
 const PARSE_FAILED = Symbol("parse-failed");
+const EMPTY = Symbol("empty");
 function tryParseJson(text: string): unknown {
   const trimmed = text.trim();
-  if (!trimmed) return {};
+  if (!trimmed) return EMPTY;
   try {
     return JSON.parse(trimmed);
   } catch {

@@ -383,6 +383,8 @@ export interface BudgetConfig {
   warningThreshold: number;
   abortThreshold: number;
   unlimited: boolean;
+  /** Node id (root="root"; child=generated). Used for CC2 refund. */
+  id?: string;
   parent?: BudgetConfig;
   remaining(): number;
   /** Atomic CAS — REQUIRED; rejects a spend breaching abortThreshold (returns false). */
