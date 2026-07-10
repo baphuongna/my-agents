@@ -20,6 +20,20 @@
 import { readFileSync, writeFileSync, chmodSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+
+/** Sync-require the optional @napi-rs/keyring dep (graceful if absent). */
+function requireKeyring(): {
+  Entry: new (service: string, account: string) => {
+    getPassword(): string | undefined;
+    setPassword(p: string): void;
+    deletePassword(): void;
+  };
+} {
+  return require("@napi-rs/keyring");
+}
 
 /** Where a secret lives (§14.2). */
 export type SecretRef =
@@ -79,7 +93,23 @@ export function resolveSecret(ref: SecretRef): string {
       throw new SecretError(ref, "exec backend not registered (register via SecretStore.registerExec)");
     }
     case "keyring": {
-      throw new SecretError(ref, "keyring backend not registered (platform-specific; lands with desktop)");
+      // Real OS keyring via @napi-rs/keyring (optionalDep). The ref is
+      // "service/account". On a headless box without a secret-service daemon this
+      // fails → SecretError (fail-closed, §14.2), never an empty fallback.
+      const slash = ref.ref.indexOf("/");
+      if (slash < 0) throw new SecretError(ref, "keyring ref must be service/account");
+      const service = ref.ref.slice(0, slash);
+      const account = ref.ref.slice(slash + 1);
+      try {
+        const mod = requireKeyring();
+        const entry = new mod.Entry(service, account);
+        const v = entry.getPassword();
+        if (!v) throw new SecretError(ref, "keyring entry empty/not found");
+        return v;
+      } catch (e) {
+        if (e instanceof SecretError) throw e;
+        throw new SecretError(ref, `keyring backend unavailable: ${(e as Error).message}`);
+      }
     }
   }
 }
@@ -108,15 +138,16 @@ export class SecretStore {
     const k = this.key(ref);
     const cached = this.entries.get(k);
     if (cached) return cached.value;
+    // K1: exec/keyring use a registered backend if present; otherwise fall
+    // through to resolveSecret (which has the real @napi-rs/keyring path for
+    // keyring + the registered-exec path for exec). env/file resolve directly.
     let value: string;
     if (ref.from === "exec") {
       const fn = this.execBackends.get(k);
-      if (!fn) throw new SecretError(ref, "exec backend not registered");
-      value = fn();
+      value = fn ? fn() : resolveSecret(ref);
     } else if (ref.from === "keyring") {
       const fn = this.keyringBackends.get(k);
-      if (!fn) throw new SecretError(ref, "keyring backend not registered");
-      value = fn();
+      value = fn ? fn() : resolveSecret(ref);
     } else {
       value = resolveSecret(ref);
     }

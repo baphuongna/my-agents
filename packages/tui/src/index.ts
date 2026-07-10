@@ -104,3 +104,4 @@ export class TuiRepl {
     this.rl = null;
   }
 }
+export * from "./ink.js";

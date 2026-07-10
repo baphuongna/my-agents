@@ -18,6 +18,7 @@
  * Source: §14 Security, claw-code mcp_audit + oh-my-pi hash-chain.
  */
 import { createHash } from "node:crypto";
+import { canonicalJson as canonicalJsonUtil } from "@my-agent/json";
 
 /** Mirrors the RuntimeEvent.kind subset (§13/§14.1). */
 export type AuditKind = "tool" | "approval" | "repair" | "channel";
@@ -43,24 +44,8 @@ export type Redactor = (kind: AuditKind, payload: Record<string, unknown>) => Re
 
 const ZERO_HASH = "0".repeat(64);
 
-/** Deterministic JSON canonicalization (keys sorted recursively, no whitespace,
- * UTF-8 NFC). This is the byte-faithful form the chain hashes (§14.1). */
-export function canonicalJson(value: unknown): string {
-  const sort = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(sort);
-    if (v && typeof v === "object") {
-      return Object.keys(v as Record<string, unknown>)
-        .sort()
-        .reduce<Record<string, unknown>>((acc, k) => {
-          acc[k] = sort((v as Record<string, unknown>)[k]);
-          return acc;
-        }, {});
-    }
-    return v;
-  };
-  // NFC normalization for stable bytes across platforms.
-  return JSON.stringify(sort(value)).normalize("NFC");
-}
+/** Re-export the canonical serializer from the shared util (§5/§14.1). */
+export const canonicalJson = canonicalJsonUtil;
 
 function sha256Hex(data: string): string {
   return createHash("sha256").update(data, "utf8").digest("hex");

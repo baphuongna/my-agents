@@ -29,6 +29,7 @@
     { "path": "packages/search" },
     { "path": "packages/toolssearch" },
     { "path": "packages/web" },
+    { "path": "packages/json" },
     { "path": "packages/audit" },
     { "path": "packages/secrets" },
     { "path": "packages/session" },
