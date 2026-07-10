@@ -70,9 +70,14 @@ export class Wallet {
 
   /**
    * Sign a challenge (pay). Deducts the amount, appends a receipt, returns it.
-   * Throws if the balance is insufficient.
+   * Throws if the balance is insufficient or the amount is non-positive/non-finite.
    */
   pay(challenge: X402Challenge): X402Receipt {
+    // R44: reject non-positive / non-finite amounts (a negative amount would
+    // increase the balance; NaN makes it NaN permanently).
+    if (!(challenge.amount > 0) || !Number.isFinite(challenge.amount)) {
+      throw new Error(`x402: invalid payment amount ${challenge.amount} ${challenge.currency} (must be positive + finite)`);
+    }
     const cur = this.balance(challenge.currency);
     if (cur < challenge.amount) {
       throw new Error(`x402: insufficient balance — have ${cur} ${challenge.currency}, need ${challenge.amount}`);
@@ -153,9 +158,13 @@ export class X402Client {
   constructor(private wallet: Wallet) {}
 
   async fetch(url: string, opts: X402FetchOptions = {}): Promise<X402FetchResult> {
-    const maxAttempts = opts.maxPaymentAttempts ?? 2;
+    // R44: a fetch needs ≥2 attempts to complete a pay→retry cycle; clamp up.
+    const maxAttempts = Math.max(2, opts.maxPaymentAttempts ?? 2);
+    // R44: per-fetch timeout (default 30s) so a hung server can't stall the agent.
+    const timeoutMs = 30_000;
     const receipts: X402Receipt[] = [];
     let pending: X402Challenge | undefined;
+    let paid = false; // R44: pay AT MOST ONCE per fetch (a second 402 = proof rejected)
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const headers: Record<string, string> = { ...(opts.headers ?? {}) };
@@ -165,30 +174,51 @@ export class X402Client {
         headers["x402-proof"] = JSON.stringify(last);
       }
       let resp: Response;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         resp = await fetch(url, {
           method: opts.method ?? "GET",
           headers,
           body: opts.body,
+          signal: controller.signal,
         });
       } catch (e) {
+        clearTimeout(timer);
+        const aborted = (e as Error).name === "AbortError";
         return {
           ok: false,
           status: 0,
           receipts,
           pendingChallenge: pending,
-          body: `x402: network error: ${(e as Error).message}`,
+          body: aborted
+            ? `x402: fetch timed out after ${timeoutMs}ms`
+            : `x402: network error: ${(e as Error).message}`,
         };
       }
+      clearTimeout(timer);
       if (resp.status === 402) {
         const body = await resp.text();
         const challenge = parse402(body, resp.status);
         if (!challenge) {
           return { ok: false, status: 402, body, receipts, pendingChallenge: undefined };
         }
+        // R44: if we've ALREADY paid and the server returns 402 again, the proof
+        // was rejected (or it's a new challenge). Don't pay a second time — that
+        // would drain the wallet for a resource we never get. Return unresolved.
+        if (paid) {
+          return {
+            ok: false,
+            status: 402,
+            body: "x402: proof rejected (server returned 402 after payment)",
+            receipts,
+            pendingChallenge: challenge,
+          };
+        }
         try {
           const receipt = this.wallet.pay(challenge);
           receipts.push(receipt);
+          paid = true;
         } catch (e) {
           // Insufficient balance — stop.
           return {
