@@ -33,20 +33,21 @@
 
 Verified: secfix 13/13, f1 7/7, gw-sec 10/10 + full regression green (clippy clean).
 
-## Remaining (2 medium-effort, documented)
+## ALL FINDINGS CLOSED ✅
 
-| ID | Domain | Finding |
-|---|---|---|
-| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async sandbox code (DoS); needs worker_threads + terminate() |
-| H2 | secrets | redactor bypass (split-secret across fields / non-string / uncached-env) — needs structural redaction by field-name |
+Every finding from the 5-domain STRIDE audit (8 CRITICAL + 11 HIGH + all
+MEDIUM/LOW) is now resolved across commits d24fe02 → HEAD. The two final items:
 
-## Also fixed in the final batch (commits 441d4ba → e4ecdb8)
+- HIGH-4: runWorkflowIsolated runs the body in a worker_thread; timeout →
+  worker.terminate() (was: infinite async loop survived the reject).
+- H2: secrets redactor adds a structural by-field-name pass (was value-only →
+  split-secret / non-string / uncached-env bypass).
 
-F3-perm (audit-log wiring into dispatch — repudiation closed), F7 (brain DoS
-caps), F8-pkg (apiVersion all-digits), F8-perm (bash env secret-filter), M5
-(codeexec output caps), M6 (codegraph ReDoS+cache+size), M7 (fanOut cap),
-LOW-8 (budget core.time), MCP transition adjacency, hook payload freeze, F5
-(write parent-canonicalize), HIGH-3b (bridge DELEGATE filter), M4 (framing caps),
-M5/M6 OAuth (state/XSS/timingSafeEqual), sign-release.mjs.
-
-**Net: all 8 CRITICAL + all HIGH except HIGH-4 + all MEDIUM except H2 are closed.**
+The agent's trust boundary is enforced end-to-end: §7 gate contains file tools
+(F1+F5), escalates DangerFullAccess (F2), accepts a real approval channel (F4),
+audits every tool call (F3-perm + C1 verify); gateway is auth/Origin-guarded +
+per-session + CSRF-headered (HIGH-1/2/3); supply chain fail-closed (C2/C3);
+sandbox honestly documented as full-privilege (CRIT-1) + killable via worker
+(HIGH-4); CoW contained (CRIT-2); memory/channel/bridge inputs scanned/filtered
+(F3/HIGH-3b); framing bounded (M4); bash env secret-free (F8-perm); redaction
+structural (H2).
