@@ -41,6 +41,12 @@ export interface RunTurnOptions {
   budget: BudgetConfig;
   /** Which profile to use (Tier 0: caller picks; Tier 1: streamWithFallback picks). */
   profile?: ProviderProfile;
+  /** §6 stream function (fallback chain). If provided, used instead of opts.profile.
+   *  Keeps core layering-clean: ai provides streamWithFallback; orchestration injects it. */
+  stream?: (
+    prompt: import("./types.js").SystemPrompt,
+    history: import("./types.js").History,
+  ) => Promise<{ events: import("./types.js").StreamEvent[] } | { error: LifecycleError }>;
   /** §7 tool executor. If absent, tool calls are emitted but not executed (Tier 0). */
   tools?: ToolExecutor;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
@@ -129,7 +135,21 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           context: "",
           volatile: opts.session.userMd,
         };
-        const { events } = await profile.stream(prompt, opts.session.history);
+        // §6: prefer the injected stream function (fallback chain); else the single profile.
+        let events: import("./types.js").StreamEvent[];
+        if (opts.stream) {
+          const r = await opts.stream(prompt, opts.session.history);
+          if ("error" in r) {
+            emitTurn({ state: "Failed", error: r.error });
+            emit({ kind: "turn", stage: "end" });
+            resolveDone({ state: "Failed", error: r.error });
+            return;
+          }
+          events = r.events;
+        } else {
+          const { events: ev } = await profile.stream(prompt, opts.session.history);
+          events = ev;
+        }
         const result = consumeStream(events, emitTurn);
         if (result.kind === "error") {
           emitTurn({ state: "Failed", error: result.error });
