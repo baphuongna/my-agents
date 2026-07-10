@@ -23,6 +23,8 @@
     { "path": "packages/cron" },
     { "path": "packages/acp" },
     { "path": "packages/gateway" },
+    { "path": "packages/rpc" },
+    { "path": "packages/tui" },
     { "path": "packages/audit" },
     { "path": "packages/secrets" },
     { "path": "packages/session" },
