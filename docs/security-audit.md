@@ -39,37 +39,15 @@ Verified: secfix 13/13, f1 7/7, gw-sec 10/10 + full regression green (clippy cle
 |---|---|---|
 | F3-perm | permission | audit/Merkle log not wired into tool dispatch (repudiation) |
 | F8 | tools | bash passes full process.env to child (secrets leak) |
-| H1 | pkg | PackageHost skips sigstore when manifest omits it (non-native loads unsigned) |
-| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async (DoS); needs worker_threads |
+| H1 | pkg | PackageHost skips sigstore when manifest omits it |
+| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async; needs worker_threads |
 | H2 | secrets | redactor bypass (split-secret / non-string / uncached-env) |
 | H3 | secrets | "sealed" file backend stores plaintext (0600 only) |
-| M5/6/7 | codeexec/codegraph | unbounded buffers/caches/concurrency (bridge output, codegraph cache, fanOut) |
-| – | channels | MCP FSM no transition validation (Quarantine bypass); hook payload shared-mutable |
-| – | invariant | Date.now() in bash + budget (invariant #10) |
+| M5 | codeexec | bridge output buffers unbounded (stdout/stderr/line) |
 
+## Also fixed this round (commits 441d4ba + 213344d)
 
-## MEDIUM / LOW (logged, lower priority)
-
-- M4 framing DoS: Content-Length readers (DAP/LSP/rpc/gateway) unbounded → OOM. Cap at `SSE_BUFFER_BYTES` (16 MiB).
-- M5/M6/M7 codeexec/codegraph/fanOut: unbounded buffers/caches/concurrency.
-- M6 OAuth: state CSRF not verified in-module; error-page reflected XSS; verifyPkce timing-unsafe (`===`).
-- M8 gateway: `0.0.0.0` bind allowed with no warning.
-- MCP FSM no transition validation (Quarantine bypass); hook payload shared-mutable; brain consolidate O(n²) uncapped.
-- Date.now() in bash + budget (invariant #10 violations).
-- `sign-release.mjs` has a syntax error (`await` in non-async fn) — the release workflow won't run as-is.
-
-## Non-findings (ruled out — to prevent re-review)
-
-- Budget tree-accounting (R39 CC2/CC13) — **correct**: root reserved vs child ownSpent, refund on any terminal state. No double-count.
-- R42 workflow bridge fix — **correct** for ITS vector (body runs inside vm); the escape was a *different* vector (CRITICAL-1, now documented).
-- x402 single-fetch double-spend guard — **correct**: `paid` flag + negative/NaN amount rejection.
-- PKCE: S256 + 32-byte CSPRNG verifier + loopback 127.0.0.1 bind — **correct**.
-- RPC concurrent-prompt guard (R1) — **correct** (inFlight flag, single-threaded).
-- DELEGATE_BLOCKED_TOOLS subagent denylist — **correct** (step 1, before mode).
-- Hashline stale-anchor detection — **correct** (recompute on current content).
-- resolveSecret fail-closed (all 4 backends) — **correct**.
-- BLAKE3 / SHA-256 — no collision/preimage concerns.
-
-## Top recommendation
-
-**The CRITICALs + the highest-impact HIGHs (F1 path-safety wiring, F4 approval injection, gateway WS auth/per-session/headers) are all closed.** The remaining items are lower-severity hardening (framing DoS caps, audit-log wiring into dispatch, workflow worker_threads timeout, OAuth state/XSS) — each is a small isolated fix tracked in the table above.
+M6 (codegraph ReDoS + cache cap + file-size skip), M7 (fanOut concurrency cap),
+LOW-8 (budget core.time), MCP transition adjacency matrix, hook payload freeze,
+F5 (write parent-canonicalize), HIGH-3b (bridge DELEGATE filter), M4 (framing
+caps), M5/M6 OAuth (state/XSS/timingSafeEqual), sign-release.mjs.
