@@ -1,0 +1,13 @@
+/**
+ * @my-agent/core — public API.
+ *
+ * The minimal frozen core: types (SSOT), the turn loop, budget, laneboard,
+ * session, and the single time helper. Everything else is a package.
+ */
+export * from "./types.js";
+export * from "./time.js";
+export * from "./budget.js";
+export * from "./laneboard.js";
+export * from "./session.js";
+export * from "./loop.js";
+export * from "./cost.js";

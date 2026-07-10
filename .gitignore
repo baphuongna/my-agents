@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Rust
+target/
+
+# napi prebuilds (regenerated per-release; never commit binaries)
+*.node
+crates/natives/*.dll
+crates/natives/*.so
+crates/natives/*.dylib
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.log
+
+# pi-crew / agent artifacts (session-local)
+.crew/
+
+# reference source clones — external repos, NOT part of the agent
+# (kept locally for spec authoring; spec prose stands alone without them)
+source/*
+!source/.learned/

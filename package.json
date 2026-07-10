@@ -1,0 +1,25 @@
+{
+  "name": "my-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Unified coding/autonomous agent — TS core + Rust napi engine (Tier 0 scaffold)",
+  "license": "(MIT OR Apache-2.0)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "tsc -b --clean && rm -rf packages/*/dist",
+    "natives:build": "cargo build -p my-agent-natives",
+    "test": "echo 'no tests yet (Tier 0 scaffold)' && exit 0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2"
+  }
+}
