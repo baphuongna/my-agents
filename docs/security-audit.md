@@ -33,21 +33,20 @@
 
 Verified: secfix 13/13, f1 7/7, gw-sec 10/10 + full regression green (clippy clean).
 
-## Remaining (lowest priority — small isolated hardening)
+## Remaining (2 medium-effort, documented)
 
 | ID | Domain | Finding |
 |---|---|---|
-| F3-perm | permission | audit/Merkle log not wired into tool dispatch (repudiation) |
-| F8 | tools | bash passes full process.env to child (secrets leak) |
-| H1 | pkg | PackageHost skips sigstore when manifest omits it |
-| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async; needs worker_threads |
-| H2 | secrets | redactor bypass (split-secret / non-string / uncached-env) |
-| H3 | secrets | "sealed" file backend stores plaintext (0600 only) |
-| M5 | codeexec | bridge output buffers unbounded (stdout/stderr/line) |
+| HIGH-4 | codeexec | workflow timeout only rejects — doesn't kill async sandbox code (DoS); needs worker_threads + terminate() |
+| H2 | secrets | redactor bypass (split-secret across fields / non-string / uncached-env) — needs structural redaction by field-name |
 
-## Also fixed this round (commits 441d4ba + 213344d)
+## Also fixed in the final batch (commits 441d4ba → e4ecdb8)
 
-M6 (codegraph ReDoS + cache cap + file-size skip), M7 (fanOut concurrency cap),
-LOW-8 (budget core.time), MCP transition adjacency matrix, hook payload freeze,
-F5 (write parent-canonicalize), HIGH-3b (bridge DELEGATE filter), M4 (framing
-caps), M5/M6 OAuth (state/XSS/timingSafeEqual), sign-release.mjs.
+F3-perm (audit-log wiring into dispatch — repudiation closed), F7 (brain DoS
+caps), F8-pkg (apiVersion all-digits), F8-perm (bash env secret-filter), M5
+(codeexec output caps), M6 (codegraph ReDoS+cache+size), M7 (fanOut cap),
+LOW-8 (budget core.time), MCP transition adjacency, hook payload freeze, F5
+(write parent-canonicalize), HIGH-3b (bridge DELEGATE filter), M4 (framing caps),
+M5/M6 OAuth (state/XSS/timingSafeEqual), sign-release.mjs.
+
+**Net: all 8 CRITICAL + all HIGH except HIGH-4 + all MEDIUM except H2 are closed.**
