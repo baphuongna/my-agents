@@ -29,7 +29,12 @@ export const readTool: ToolImpl = {
   async run(args): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.path !== "string") return err("read", "path required");
     try {
-      const content = await readFile(args.path, "utf8");
+      let content = await readFile(args.path, "utf8");
+      // Size cap (the read-tool contract: 2000 lines / 50KB — see AGENTS.md).
+      const MAX_READ_BYTES = 50 * 1024;
+      if (Buffer.byteLength(content) > MAX_READ_BYTES) {
+        content = content.slice(0, MAX_READ_BYTES) + "\n…[truncated: >50KB]";
+      }
       return ok("read", { path: args.path, content });
     } catch (e) {
       return err("read", e instanceof Error ? e.message : String(e));

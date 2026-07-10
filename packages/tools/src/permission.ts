@@ -76,29 +76,26 @@ export async function awaitHumanPrompt(
   call: ToolCall,
   ctx: TurnContext,
   decision: PermissionResult,
+  registry: ToolRegistry,
 ): Promise<ApprovalDecision> {
   if (!decision.needsHumanPrompt) {
     return decision.outcome === "Allow"
       ? { decision: "Allow" }
       : { decision: "Deny", reason: decision.reason };
   }
+  const impl = registry.get(call.name);
+  const requiredMode = impl?.meta.requiredMode ?? "WorkspaceWrite";
   return ctx.approval.request({
     call,
     reason: decision.outcome === "Deny" ? decision.reason : "approval required",
     currentMode: guessActiveMode(ctx),
-    requiredMode: registry_requiredMode(call, ctx),
+    requiredMode,
   });
 }
 
 // --- helpers ---
-function guessActiveMode(ctx: TurnContext): import("@my-agent/core").Mode {
+function guessActiveMode(_ctx: TurnContext): import("@my-agent/core").Mode {
   // Tier 1: default to Prompt (ask) unless the session signals otherwise.
   // A real mode source (CLI flag / config) wires in with §7 full pipeline.
   return "Prompt";
-}
-function registry_requiredMode(
-  _call: ToolCall,
-  _ctx: TurnContext,
-): import("@my-agent/core").Mode {
-  return "WorkspaceWrite";
 }

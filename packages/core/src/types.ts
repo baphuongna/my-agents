@@ -146,6 +146,9 @@ export interface SystemPrompt {
 export interface Session {
   profiles: ProviderProfile[];
   stableTier: string;
+  /** Context files: PRE-READ CONTENT (each entry = one file's text), not paths.
+   * The caller (transport/config layer) reads + discovers files; the assembler
+   * injection-scans their content. (§5 — scanInject sees content, not path names.) */
   ctxFiles: string[];
   memory: MemoryManager;
   userMd: string;

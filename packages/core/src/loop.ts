@@ -255,9 +255,14 @@ function consumeStream(
   return { kind: "ok", usage, toolCalls };
 }
 
-// Tier-1 stub approval channel: auto-allows (real approval lands with §7 full pipeline).
+// Tier-1 stub approval channel: allows ReadOnly/WorkspaceWrite, DENIES
+// DangerFullAccess (bash) unless the caller injects a real approval channel.
+// This keeps the §7 gate honest for the dangerous-tool path (R37-38).
 function makeStubApproval(): import("./types.js").ApprovalChannel {
   return {
-    request: async (_r) => ({ decision: "Allow" as const }),
+    request: async (r) =>
+      r.requiredMode === "DangerFullAccess"
+        ? { decision: "Deny" as const, reason: "DangerFullAccess requires a real approval channel (stub denies)" }
+        : { decision: "Allow" as const },
   };
 }

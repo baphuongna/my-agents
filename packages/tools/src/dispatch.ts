@@ -26,7 +26,7 @@ export async function runTool(
   registry: ToolRegistry,
 ): Promise<ToolResult> {
   const decision = requiresApproval(call, ctx, registry);
-  const resolved = await awaitHumanPrompt(call, ctx, decision);
+  const resolved = await awaitHumanPrompt(call, ctx, decision, registry);
   if (resolved.decision === "Deny") {
     return { callId: call.id, ok: false, output: null, error: `denied: ${resolved.reason}` };
   }
