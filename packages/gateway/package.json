@@ -1,0 +1,6 @@
+{ "name": "@my-agent/gateway", "version": "0.0.0", "private": true, "type": "module",
+  "main": "./dist/index.js", "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc -b", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@my-agent/core": "*", "ws": "^8.18.0" },
+  "devDependencies": { "@types/ws": "^8.5.0" } }

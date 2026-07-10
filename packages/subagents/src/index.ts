@@ -10,3 +10,5 @@ export { InProcessRunner, fanOutFanIn, TOPOLOGIES } from "./runner.js";
 export type { InProcessRunnerOptions, RestrictedToolExecutorFactory } from "./runner.js";
 export { createIsolatedWorkspace } from "./isolation.js";
 export type { IsolatedWorkspace, IsoBackend } from "./isolation.js";
+export { verifyGreen, scopeSatisfies } from "./green.js";
+export type { GreenLevel, GreenContract, GreenEvidence, GreenVerifyResult, TestScope } from "./green.js";
