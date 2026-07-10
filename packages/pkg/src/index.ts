@@ -59,10 +59,14 @@ export type VerifyResult =
  * intersect check. Deliberately simple (npm semver-range intersect is heavy). */
 function apiVersionIntersects(declared: string, supported: string[]): boolean {
   // supported = e.g. ["1.x", "2.0.x"]; declared = "1.2.0"
-  const dmajor = parseInt(declared.split(".")[0] ?? "0", 10);
+  // F8 fix: the major segment must be all-digits (parseInt("1abc")→1 would
+  // otherwise let malformed versions through). Reject non-numeric majors.
+  const dmajorStr = declared.split(".")[0] ?? "";
+  if (!/^\d+$/.test(dmajorStr)) return false;
+  const dmajor = Number.parseInt(dmajorStr, 10);
   return supported.some((s) => {
-    const smajor = parseInt(s.split(".")[0] ?? "0", 10);
-    return smajor === dmajor;
+    const smajorStr = s.split(".")[0] ?? "";
+    return /^\d+$/.test(smajorStr) && Number.parseInt(smajorStr, 10) === dmajor;
   });
 }
 

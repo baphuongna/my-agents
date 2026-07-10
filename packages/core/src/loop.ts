@@ -57,6 +57,8 @@ export interface RunTurnOptions {
   /** §7 human-in-the-loop approval channel (F4 fix). If absent, runTurn uses a
    * fail-closed stub (denies DangerFullAccess). Transports inject a real one. */
   approval?: import("./types.js").ApprovalChannel;
+  /** F3-perm fix: tamper-evident audit sink for tool/approval events. */
+  audit?: import("./types.js").Auditor;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
   maxToolRounds?: number;
   signal?: AbortSignal;
@@ -207,6 +209,8 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
             approval: opts.approval ?? makeStubApproval(),
             // F1 fix: thread the workspace root for path-containment.
             workspace: opts.workspace ?? process.cwd(),
+            // F3-perm fix: thread the audit sink.
+            audit: opts.audit,
             emit: emitTurn,
           };
           const toolResult = await opts.tools.execute(result.toolCalls, ctx);

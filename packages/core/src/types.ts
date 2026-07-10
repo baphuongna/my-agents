@@ -143,6 +143,9 @@ export interface TurnContext {
   /** Workspace root for path-containment (§7 F1 fix): all file tools resolve
    * paths inside this root. Defaults to process.cwd() when unset. */
   workspace?: string;
+  /** F3-perm fix: tamper-evident audit sink for tool/approval events
+   * (repudiation defense). Optional — when absent, tool calls aren't audited. */
+  audit?: Auditor;
   lane?: {
     taskId: LaneId;
     setBlockedOn(b: "approval" | undefined): void;
@@ -325,6 +328,14 @@ export interface ToolExecutor {
     calls: ToolCall[],
     ctx: TurnContext,
   ): Promise<ToolResult[] | DegradedResult>;
+}
+
+/** F3-perm fix: a tamper-evident audit sink (the @my-agent/audit AuditLog
+ * satisfies this). Defined in core so dispatch can log tool/approval events
+ * without core depending on the audit package (layering). */
+export type AuditKind = "tool" | "approval" | "repair" | "channel";
+export interface Auditor {
+  append(rec: { ts: number; kind: AuditKind; actor: string; payload: Record<string, unknown> }): unknown;
 }
 
 /** Canonical denylist every subagent inherits (§10). */

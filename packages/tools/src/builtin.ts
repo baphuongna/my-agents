@@ -29,6 +29,17 @@ function contain(ctx: { workspace?: string }, path: string, mode: "write" | "rea
   return r.ok ? { ok: true, abs: r.abs } : { ok: false, err: err("path", r.reason + ": " + r.detail) };
 }
 
+/** F8 fix: strip secret-looking env vars before passing to a child process. */
+function filterSecretEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (SECRET_ENV_RE.test(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+const SECRET_ENV_RE = /(?:^|_)(SECRET|TOKEN|API_KEY|APIKEY|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY)(?:_|$)/i;
+
 const READONLY: Mode = "ReadOnly";
 const WORKSPACE: Mode = "WorkspaceWrite";
 const SHELL: Mode = "DangerFullAccess";
@@ -151,16 +162,19 @@ export const bashTool: ToolImpl = {
     },
     requiredMode: SHELL,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.command !== "string")
       return err("bash", "command required");
-    const cwd = isRecord(args) && typeof args.cwd === "string" ? args.cwd : process.cwd();
+    const cwd = isRecord(args) && typeof args.cwd === "string" ? args.cwd : (ctx?.workspace ?? process.cwd());
     const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : 120_000;
+    // F8 fix: filter secret-looking env vars before passing to the child (a
+    // command shouldn't inherit OPENAI_API_KEY / *_SECRET / *_TOKEN etc.).
+    const env = filterSecretEnv(process.env);
     return new Promise((resolve) => {
       const start = Date.now();
       const child = spawn("/bin/bash", ["-c", args.command as string], {
         cwd,
-        env: process.env,
+        env,
       });
       const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
       let stdout = "";

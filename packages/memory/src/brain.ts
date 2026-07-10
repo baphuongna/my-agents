@@ -53,12 +53,24 @@ export class Brain {
   private readonly takes = new Map<string, Take>();
   private readonly pages = new Map<string, BrainPage>();
   /** min facts per (source,entity) bucket before consolidation considers it. */
+  /** F7 fix: caps to bound the O(n²) consolidate cost + memory. */
+  private readonly maxFactContentChars = 4096;
+  private readonly maxFactsTotal = 10_000;
+  private readonly maxBucketConsidered = 200;
+
   constructor(private minFactsPerBucket = 3, private cosineThreshold = 0.85) {}
 
-  /** Record a conversation-extracted hot fact. */
+  /** Record a conversation-extracted hot fact. F7: content capped + total
+   * fact count bounded (DoS guard against the dream-cycle O(n²)). */
   recordFact(f: Omit<Fact, "id" | "createdAt"> & { id?: string }): Fact {
+    const content = f.content.length > this.maxFactContentChars
+      ? f.content.slice(0, this.maxFactContentChars) + "…[truncated]"
+      : f.content;
+    if (this.facts.size >= this.maxFactsTotal) {
+      throw new Error(`brain: fact cap reached (${this.maxFactsTotal})`);
+    }
     const id = f.id ?? randomUUID();
-    const full: Fact = { ...f, id, createdAt: Date.now() };
+    const full: Fact = { ...f, content, id, createdAt: Date.now() };
     this.facts.set(id, full);
     return full;
   }
@@ -80,8 +92,10 @@ export class Brain {
     }
     for (const [, bucket] of buckets) {
       if (bucket.length < this.minFactsPerBucket) continue;
+      // F7: bound the O(n²) pairwise cost — only consider the most recent N.
+      const consider = bucket.length > this.maxBucketConsidered ? bucket.slice(-this.maxBucketConsidered) : bucket;
       // find a cluster of ≥2 cosine-similar facts
-      const cluster = this.largestCluster(bucket);
+      const cluster = this.largestCluster(consider);
       if (cluster.length < 2) continue;
       const takeId = randomUUID();
       const take: Take = {

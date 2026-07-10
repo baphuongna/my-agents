@@ -28,6 +28,8 @@ export async function runTool(
   const decision = requiresApproval(call, ctx, registry);
   const resolved = await awaitHumanPrompt(call, ctx, decision, registry);
   if (resolved.decision === "Deny") {
+    // F3-perm: audit the denial too (repudiation defense).
+    ctx.audit?.append({ ts: Date.now(), kind: "approval", actor: "permission-gate", payload: { call: call.name, decision: "Deny", reason: resolved.reason } });
     return { callId: call.id, ok: false, output: null, error: `denied: ${resolved.reason}` };
   }
 
@@ -36,8 +38,13 @@ export async function runTool(
     return { callId: call.id, ok: false, output: null, error: `unknown tool: ${call.name}` };
   }
   try {
-    return await impl.run(call.args, ctx);
+    const result = await impl.run(call.args, ctx);
+    // F3-perm: audit the tool call (args are the post-redaction view; the
+    // AuditLog's own redactor strips secrets before hashing).
+    ctx.audit?.append({ ts: Date.now(), kind: "tool", actor: "agent", payload: { name: call.name, args: call.args, ok: result.ok } });
+    return result;
   } catch (e) {
+    ctx.audit?.append({ ts: Date.now(), kind: "tool", actor: "agent", payload: { name: call.name, args: call.args, ok: false, error: String(e) } });
     return {
       callId: call.id,
       ok: false,

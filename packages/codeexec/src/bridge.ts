@@ -101,10 +101,27 @@ async function runBridge(
     }, timeoutMs);
 
     // Bridge: read child-stdout lines as tool-call requests.
+    const MAX_STDOUT = 10 * 1024 * 1024; // M5: 10 MiB total stdout cap
+    const MAX_LINE = 1024 * 1024;        // M5: 1 MiB max single line
+    let stdoutBytes = 0;
+    let killedForOversize = false;
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", async (chunk: string) => {
+      if (killedForOversize) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_STDOUT) {
+        killedForOversize = true;
+        child.kill("SIGKILL");
+        return;
+      }
       stdoutBuf.push(chunk);
       lineBuf += chunk;
+      // M5: cap a single line (a multi-GB no-newline line would grow lineBuf).
+      if (lineBuf.length > MAX_LINE) {
+        killedForOversize = true;
+        child.kill("SIGKILL");
+        return;
+      }
       const lines = lineBuf.split("\n");
       lineBuf = lines.pop() ?? "";
       for (const line of lines) {
