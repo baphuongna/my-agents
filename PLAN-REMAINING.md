@@ -64,21 +64,19 @@ Legend: ✅ built · 🟡 partial · ❌ missing · ➖ N/A (Rust-mya-only or ou
 | §23 | Open questions | — | tracked; some resolved (R30 sandbox), some open (CRDT sync, call-graph) |
 | §25 | UI surfaces | ❌ | only `print` (--json/transcript) + `sdk` transports built. **Missing:** `tui/` (Ink/React interactive), web dashboard (needs gateway), desktop (Electron/Tauri), §25.6 wire-envelope formalization. Collab relay = partial §25.4 |
 
-## Still open (honest residual)
+## Still open (genuine platform/tooling deferrals — not buildable on this headless Linux box)
 
-| Item | Section | Why deferred |
+| Item | Section | Blocker |
 |---|---|---|
-| `ast/` tree-sitter Rust crate | §2/§3 | gate-justified but large; LSP client covers symbol ops today |
-| Separate `compress/` crate | §3 | folded into `natives` (noted deviation; one napi crate suffices) |
-| gbrain memory richness (BrainEngine/Pages/Chunks/Facts/Takes, 22-phase dream, 4-arm RRF) | §8 R35 | Tier-1+; basic MemoryManager + roles shipped |
-| fff SearchIndex/BigramFilter/FrecencyDB | §11 R35 | Tier-1+; native glob/grep shipped |
-| Real OS keyring backend for secrets | §14.2 | platform-specific (libsecret/keytar); SecretStore interface + file/env backends shipped, keyring/exec stubbed |
-| Full Ink/React TUI (themes/keybindings/slash-commands/OSC) | §25.1 | TuiRepl transport shipped; full UI layers on top |
-| Web SPA dashboard + Desktop (Electron/Tauri) | §25.2/§25.3 | gateway HTTP/WS + §25.6 envelope shipped; SPA/native shell not built |
-| MLX TTS / multi-agent convergence | Frontier | platform/research-frontier |
-| Byte-faithful JSON serializer (general) | §5/§17 | canonicalJson exists in @my-agent/audit; not a shared util yet |
-| §4 overflow-recovery compaction, ToolSearch/deferrable tools | §4 R31 | session preflight shipped; these two sub-items deferred |
-| Real DAP debug-adapter wiring | §11.2 | DAP client built; needs a live adapter |
+| Desktop Electron/Tauri shell | §25.3 | needs a GUI/runtime to build+test; gateway HTTP/WS + §25.6 envelope + web SPA shipped |
+| MLX on-device TTS | Frontier | macOS-only (MLX framework); this box is Linux |
+| Multi-agent shared-state convergence | Frontier | research-frontier (CRDT/server-authoritative undecided, §23 #5) |
+| Real DAP debug adapter (live) | §11.2 | needs a vscode-js-debug binary; DAP client (27 ops) + session FSM built + tested |
+| Real OS keyring on headless | §14.2 | @napi-rs/keyring wired (fail-closed w/o secret-service); works on macOS/desktop |
+
+All other §-grounded residuals are now CLOSED (see the Steps 1–5 + residual-batch
+rows above: ast/tree-sitter, fff search, gbrain memory, byte-faithful JSON,
+overflow-recovery, ToolSearch, web SPA, Ink/React TUI, OS keyring wiring).
 
 
 ## What IS solidly built (don't lose this)
