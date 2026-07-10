@@ -6,8 +6,8 @@
  * the transport modes (print/sdk) depend on THIS, not on the individual packages.
  *
  * Auto-config heuristics (zero-config when possible):
- *   - providers: explicit list, OR OpenAIAdapter if OPENAI_API_KEY set, OR a
- *     MockProvider echo fallback (so the agent always runs, even with no key).
+ *   - providers: explicit list, OR MiniMax (MINIMAX_API_KEY), then OpenAI
+ *     (OPENAI_API_KEY), then a mock fallback (agent always runs).
  *   - memory: FileBackend(dir) if memoryDir given, else in-memory.
  *   - tools: explicit list, OR the 6 builtins (read/write/edit/bash/glob/grep).
  *
@@ -77,7 +77,17 @@ export function createAgent(config: AgentConfig = {}): Agent {
   if (config.providers) {
     for (const p of config.providers) providers.register(p);
   } else {
-    // Auto-config: OpenAI if key present, else a mock echo (agent always runs).
+    // Auto-config: MiniMax (if MINIMAX_API_KEY), then OpenAI (if OPENAI_API_KEY),
+    // else a mock echo fallback (agent always runs).
+    if (process.env["MINIMAX_API_KEY"]) {
+      providers.register(
+        new OpenAIAdapter({
+          model: process.env["MINIMAX_MODEL"] ?? config.model ?? "MiniMax-Text-01",
+          baseUrl: process.env["MINIMAX_BASE_URL"] ?? "https://api.minimaxi.com/v1",
+          apiKey: process.env["MINIMAX_API_KEY"],
+        }),
+      );
+    }
     if (process.env["OPENAI_API_KEY"]) {
       providers.register(
         new OpenAIAdapter({

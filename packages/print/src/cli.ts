@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   const sink = makeSink({ json });
   await agent.run(prompt, sink.write);
 
-  const profile = process.env["OPENAI_API_KEY"] ? "openai" : "mock-fallback";
+  const profile = process.env["MINIMAX_API_KEY"] ? "minimax" : process.env["OPENAI_API_KEY"] ? "openai" : "mock-fallback";
   if (!json) process.stderr.write(`[provider: ${profile}]\n`);
 }
 
