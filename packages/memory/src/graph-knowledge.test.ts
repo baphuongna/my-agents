@@ -26,8 +26,8 @@ describe("§8 Phase 9 — TypedGraph (R35 knowledge graph)", () => {
   it("ingestBacklinks seeds edges + knowledgeGraphSpec returns the R36 shape", () => {
     const g = new TypedGraph();
     g.ingestBacklinks([
-      { fromFactId: "f1", to: "Alice", kind: "link" },
-      { fromFactId: "f2", to: "Alice", kind: "wikilink" },
+      { from: "Note", fromFactId: "f1", to: "Alice", kind: "link" },
+      { from: "Doc", fromFactId: "f2", to: "Alice", kind: "wikilink" },
     ]);
     const spec = g.knowledgeGraphSpec();
     expect(spec.relations.length).toBe(2);

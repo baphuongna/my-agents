@@ -158,58 +158,71 @@ export function vectorArm(docs: { id: string; content: string; role?: MemoryRole
  * absent from the hits.
  */
 export function graphArm(
-  edges: { fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }[],
+  edges: { from: string; fromFactId?: string; to: string; kind: "link" | "wikilink" | "bare" }[],
   docs: { id: string; content: string; role?: MemoryRoleId }[],
   query: MemoryQuery,
   candidateK = 50,
   maxDepth = 2,
 ): MemoryHit[] {
-  // Build a per-call adjacency: seed entities are the FIRST WORD of doc ids
-  // and the doc's own "bare"-extracted tokens (lightweight seed extraction).
-  // Phase 9 keeps this per-call — a hot-loop caller should build the graph once.
-  const adj = new Map<string, { from: string; to: string; kind: string }[]>();
+  // CRITICAL-1 (review): build ENTITY→ENTITY adjacency (key by e.from = the
+  // fact's entity, not the fact id). The old code keyed by fromFactId (a UUID)
+  // while traversal targets were entity names → disjoint namespaces → the walk
+  // dead-ended at 1 hop. Now from/to are both entity slugs.
+  const adj = new Map<string, string[]>();
   for (const e of edges) {
-    const seed = e.fromFactId; // doc id that originated the edge
-    const list = adj.get(seed);
-    if (list) list.push({ from: seed, to: e.to, kind: e.kind });
-    else adj.set(seed, [{ from: seed, to: e.to, kind: e.kind }]);
+    // typed walk: only "wikilink" + "link" edges form the graph; "bare" edges
+    // are ambiguous (would inflate the walk with substring coincidences).
+    if (e.kind === "bare") continue;
+    const list = adj.get(e.from);
+    if (list) list.push(e.to);
+    else adj.set(e.from, [e.to]);
   }
-  // Seed entry: docs whose content mentions a query token directly.
   const q = (query.text ?? "").trim().toLowerCase();
   if (!q) return [];
   const terms = q.split(/\s+/).filter(Boolean);
+  // Seeds = entities (capitalized tokens) mentioned in docs whose content
+  // matches the query. We extract capitalized words (the entity form) from
+  // query-matching docs, then walk the entity graph from them.
+  const queryDocs = docs.filter((d) => terms.some((t) => d.content.toLowerCase().includes(t)));
   const seeds = new Set<string>();
-  for (const d of docs) {
-    const lc = d.content.toLowerCase();
-    if (terms.some((t) => lc.includes(t))) seeds.add(d.id);
+  for (const d of queryDocs) {
+    for (const m of d.content.matchAll(/\b[A-Z][a-zA-Z]{2,}\b/g)) seeds.add(m[0]);
   }
+  // also seed from any entity that IS a query term (e.g. query "Alice" seeds "Alice")
+  for (const e of edges) for (const t of terms) if (e.from.toLowerCase() === t || e.to.toLowerCase() === t) { seeds.add(e.from); seeds.add(e.to); }
   if (seeds.size === 0) return [];
-  // BFS hop-distance.
-  const rank: Array<{ id: string; score: number; doc: { id: string; content: string; role?: MemoryRoleId } }> = [];
-  const seen = new Set<string>();
+  // BFS hop-distance over the entity graph.
+  const reached = new Map<string, number>(); // entity → min hop-distance
   let frontier: { id: string; dist: number }[] = [...seeds].map((id) => ({ id, dist: 0 }));
-  while (frontier.length > 0 && rank.length < candidateK) {
+  while (frontier.length > 0) {
     const next: typeof frontier = [];
     for (const node of frontier) {
-      if (seen.has(node.id)) continue;
-      seen.add(node.id);
-      const doc = docs.find((d) => d.id === node.id);
-      if (doc) rank.push({ id: node.id, score: 1 / (1 + node.dist), doc });
+      if (reached.has(node.id)) continue;
+      reached.set(node.id, node.dist);
       if (node.dist >= maxDepth) continue;
-      for (const e of adj.get(node.id) ?? []) {
-        // graph-edge typed walk: only "wikilink" + "link" edges (typed) form
-        // the graph; "bare" edges are ambiguous and would inflate the walk.
-        if (e.kind === "bare") continue;
-        if (!seen.has(e.to)) next.push({ id: e.to, dist: node.dist + 1 });
+      for (const nbr of adj.get(node.id) ?? []) {
+        if (!reached.has(nbr)) next.push({ id: nbr, dist: node.dist + 1 });
       }
     }
     frontier = next;
+  }
+  // Map reached entities back to docs: a doc ranks by the MIN hop-distance of
+  // any entity it mentions. (A doc mentioning a dist-0 seed entity scores 1;
+  // a doc mentioning only a dist-2 neighbor scores 1/3.)
+  const rank: Array<{ doc: { id: string; content: string; role?: MemoryRoleId }; score: number }> = [];
+  for (const d of docs) {
+    let minDist = Infinity;
+    for (const m of d.content.matchAll(/\b[A-Z][a-zA-Z]{2,}\b/g)) {
+      const dist = reached.get(m[0]);
+      if (dist !== undefined && dist < minDist) minDist = dist;
+    }
+    if (minDist < Infinity) rank.push({ doc: d, score: 1 / (1 + minDist) });
   }
   return rank
     .sort((a, b) => b.score - a.score)
     .slice(0, candidateK)
     .map((r) => ({
-      id: r.id,
+      id: r.doc.id,
       content: r.doc.content,
       role: (r.doc.role ?? "working") as MemoryRoleId,
       score: r.score,
@@ -224,13 +237,11 @@ export function graphArm(
 export function rrfRetrieve(
   docs: { id: string; content: string; role?: MemoryRoleId }[],
   query: MemoryQuery,
-  edges?: { fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }[],
+  edges?: { from: string; fromFactId?: string; to: string; kind: "link" | "wikilink" | "bare" }[],
   topK?: number,
   candidateK = 100,
 ): MemoryHit[] {
   const outerTopK = topK ?? query.topK ?? 10;
-  // DBG
-  console.error("[DBG rrfRetrieve]", { topK, queryTopK: query.topK, outerTopK, docCount: docs.length });
   return reciprocalRankFuse([
     { name: "bm25", hits: bm25Arm(docs, query, candidateK) },
     { name: "substring", hits: substringArm(docs, query, candidateK) },

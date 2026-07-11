@@ -92,7 +92,7 @@ export class RagfsRouter {
     throw new Error(`ragfs.${label}: no scanner configured (R25-18 — fail-closed)`);
   }
 
-  private scanHit(content: string, scanner: RagfsScanner, uriForError: string): string {
+  private scanHit(content: string, scanner: RagfsScanner): string {
     const v = scanner.scan(content, "context");
     return v.allowed ? content : RAGFS_BLOCKED;
   }
@@ -104,22 +104,23 @@ export class RagfsRouter {
     if (!src) throw new Error(`ragfs.read: no source for scheme ${parsed.scheme}`);
     const scanner = this.requireScanner("read");
     const raw = await src.read(uri);
-    return this.scanHit(raw, scanner, uri);
+    return this.scanHit(raw, scanner);
   }
 
   async list(query: MemoryQuery): Promise<MemoryHit[]> {
-    // HIGH F2 (review): role must go to memory; otherwise throw rather than silently
-    // route to an unrelated source (data-laundering via silent fallback).
-    let src: ContextSource | undefined;
+    // HIGH F2 (review): role must go to memory; otherwise fan out to ALL
+    // sources (was: only the first registered source — inconsistent with grep).
+    let sources: ContextSource[];
     if (query.role) {
-      src = this.sources.get("memory");
-      if (!src) throw new Error(`ragfs.list: role=${query.role} requires a memory source`);
+      const mem = this.sources.get("memory");
+      if (!mem) throw new Error(`ragfs.list: role=${query.role} requires a memory source`);
+      sources = [mem];
     } else {
-      src = [...this.sources.values()][0];
+      sources = [...this.sources.values()];
     }
-    if (!src) return [];
-    const hits = await src.list(query);
-    return await this.scanHits(hits, "list");
+    const all: MemoryHit[] = [];
+    for (const src of sources) all.push(...(await src.list(query)));
+    return await this.scanHits(all, "list");
   }
 
   async grep(pattern: string): Promise<MemoryHit[]> {
@@ -127,11 +128,11 @@ export class RagfsRouter {
     try { re = new RegExp(pattern, "i"); } catch { return []; } // REVIEW F6: invalid regex → []
     const all: MemoryHit[] = [];
     for (const src of this.sources.values()) {
-      for (const h of await src.grep(pattern)) {
-        if (re.test(h.content)) all.push(h);
-      }
+      // HIGH-1 (review): trust the source's own grep() matcher — do NOT re-filter
+      // on h.content (KnowledgeSource.grep matches id/aliases, not content, so a
+      // content re-filter would silently drop valid hits).
+      for (const h of await src.grep(pattern)) all.push(h);
     }
-    // RRF-ish re-merge by per-arm rank: each source is its own arm.
     return await this.scanHits(all, "grep");
   }
 
@@ -224,7 +225,7 @@ export class KnowledgeSource implements ContextSource {
     const hits: MemoryHit[] = [];
     for (const e of this.graph.allEntities()) {
       if (!q || e.id.toLowerCase().includes(q) || e.aliases.some((a) => a.toLowerCase().includes(q))) {
-        hits.push({ id: e.id, role: SCHEME_ROLE.knowledge, content: this.cards.get(e.id) ?? `(entity ${e.id})`, score: q ? 1 : 1 });
+        hits.push({ id: e.id, role: SCHEME_ROLE.knowledge, content: this.cards.get(e.id) ?? `(entity ${e.id})`, score: 1 });
       }
     }
     return hits.slice(0, query.topK ?? hits.length);
@@ -235,7 +236,7 @@ export class KnowledgeSource implements ContextSource {
     if (!parsed) throw new Error(`ragfs.knowledge: invalid uri ${uri}`);
     const e = this.graph.allEntities().find((x) => x.id === parsed.rest);
     if (!e) throw new Error(`ragfs.knowledge: not found ${uri}`);
-    return this.cards.get(e.id) ?? JSON.stringify(e);
+    return this.cards.get(e.id) ?? `(entity ${e.id})`;
   }
 
   async grep(pattern: string): Promise<MemoryHit[]> {

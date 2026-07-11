@@ -44,10 +44,12 @@ export class TypedGraph {
     else this.edges.set(r.from, [r]);
   }
 
-  /** Seed the graph from `brain.backlinks()` output (typed-graph ingestion). */
-  ingestBacklinks(edges: { fromFactId: string; to: string; kind: KGRelation["kind"] }[]): void {
+  /** Seed the graph from `brain.backlinks()` output (typed-graph ingestion).
+   * CRITICAL-1 (review): `from` is the fact's ENTITY (not the fact id) so the
+   * graph is entity→entity, not UUID-stub→entity. */
+  ingestBacklinks(edges: { from: string; fromFactId?: string; to: string; kind: KGRelation["kind"] }[]): void {
     for (const e of edges) {
-      this.addRelation({ from: e.fromFactId.split("-")[0] ?? e.fromFactId, to: e.to, kind: e.kind, source: e.fromFactId });
+      this.addRelation({ from: e.from, to: e.to, kind: e.kind, source: e.fromFactId ?? e.from });
     }
   }
 
@@ -62,8 +64,11 @@ export class TypedGraph {
    * distance 0 if present. Empty if the seed is unknown.
    */
   query(seed: string, maxDepth = 2): Array<{ id: string; dist: number; rel: KGRelation[] }> {
+    // H1 (review): an unknown seed returns [] (per the JSDoc; the old code
+    // returned a spurious dist-0 node for any id).
+    if (!this.entities.has(seed)) return [];
     const results: Array<{ id: string; dist: number; rel: KGRelation[] }> = [];
-    const seen = new Set<string>([seed.toLowerCase()]);
+    const seen = new Set<string>([seed]);
     let frontier: { id: string; path: KGRelation[] }[] = [{ id: seed, path: [] }];
     for (let d = 0; d <= maxDepth && frontier.length > 0; d++) {
       const nextFrontier: typeof frontier = [];
@@ -71,8 +76,9 @@ export class TypedGraph {
         results.push({ id: node.id, dist: d, rel: node.path });
         if (d === maxDepth) continue;
         for (const e of this.out(node.id)) {
-          if (seen.has(e.to.toLowerCase())) continue;
-          seen.add(e.to.toLowerCase());
+          // H2 (review): case-sensitive to match storage (entities/edges Maps).
+          if (seen.has(e.to)) continue;
+          seen.add(e.to);
           nextFrontier.push({ id: e.to, path: [...node.path, e] });
         }
       }

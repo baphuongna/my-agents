@@ -8,9 +8,9 @@
  *   const scanner: RagfsScanner = makeRagfsScanner((content, scope) => scanInvokeFile(content, scope));
  *   ragfs.setScanner(scanner);
  *
- * This file lives in core (not in @my-agent/memory) so the memory package
- * doesn't gain a core→prompts reverse-import. The host wires the prompts
- * implementation at construction.
+ * This file lives in @my-agent/memory (not core) so the memory package can
+ * produce RagfsScanner wrappers without importing prompts directly. The host
+ * wires the prompts implementation at construction.
  */
 import type { RagfsScanner } from "./ragfs.js";
 import type { ScanVerdict } from "@my-agent/core";

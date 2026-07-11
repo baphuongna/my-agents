@@ -128,21 +128,23 @@ describe("§8 Phase 8 — vector arm (char-n-gram TF-IDF cosine surrogate)", () 
 
 describe("§8 Phase 9 — typed-graph arm (4th RRF arm, §8 R35 spec)", () => {
   it("graphArm ranks connected docs by hop-distance from query-mentioning seeds", () => {
-    // "Alice" mentions doc a (seed, dist 0). wikilink edges a→b (dist 1), b→c (dist 2).
+    // Entity graph: Alice → Bob (wikilink), Bob → Carol (link).
+    // Doc a mentions Alice (seed, dist 0); doc b mentions Bob (dist 1);
+    // doc c mentions Carol (dist 2); doc z mentions nothing reachable.
     const edges = [
-      { fromFactId: "a", to: "b", kind: "wikilink" as const },
-      { fromFactId: "b", to: "c", kind: "link" as const },
+      { from: "Alice", to: "Bob", kind: "wikilink" as const },
+      { from: "Bob", to: "Carol", kind: "link" as const },
     ];
     const docs = [
-      { id: "a", content: "Alice built it", role: "archivist" as const },
-      { id: "b", content: "the next step",                  role: "archivist" as const },
-      { id: "c", content: "the final thing",               role: "archivist" as const },
+      { id: "a", content: "Alice built it",            role: "archivist" as const },
+      { id: "b", content: "Bob continued",             role: "archivist" as const },
+      { id: "c", content: "Carol finished",            role: "archivist" as const },
       { id: "z", content: "completely unrelated, no edges", role: "archivist" as const },
     ];
     const hits = graphArm(edges, docs, { text: "Alice" });
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.map((h) => h.id)).not.toContain("z"); // unreachable
-    // a (the seed) is the highest score
+    // a (mentions the seed entity Alice, dist 0) is the highest score
     expect(hits[0]!.id).toBe("a");
   });
   it("graphArm returns [] on empty / whitespace query", () => {
@@ -150,10 +152,10 @@ describe("§8 Phase 9 — typed-graph arm (4th RRF arm, §8 R35 spec)", () => {
     expect(hits).toEqual([]);
   });
   it("rrfRetrieve with edges fuses the 4th arm (graph)", () => {
-    const edges = [{ fromFactId: "a", to: "b", kind: "link" as const }];
+    const edges = [{ from: "Alice", to: "Bob", kind: "link" as const }];
     const docs = [
       { id: "a", content: "Alice lives here", role: "archivist" as const },
-      { id: "b", content: "followup text",         role: "archivist" as const },
+      { id: "b", content: "Bob followup text", role: "archivist" as const },
     ];
     const hits = rrfRetrieve(docs, { text: "Alice" }, edges, 10);
     expect(hits.length).toBeGreaterThan(0);

@@ -167,8 +167,8 @@ export class Brain {
    *     entity's words (no over-firing on suffix substrings like "LLM" in "ProjectLLM").
    *   - LOW-1: dedup by (fromFactId|to|kind).
    */
-  backlinks(): Array<{ fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> {
-    const edges: Array<{ fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> = [];
+  backlinks(): Array<{ from: string; fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> {
+    const edges: Array<{ from: string; fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> = [];
     const WIKI = /\[\[([^|\]#\n]+?)(?:\|[^\]]+?)?\]\]/g;
     const LINK = /\[[^\]]*\]\((?:[^()\n]|\([^()\n]*\))*\)/g;
     // strip fenced/inline code + mask link LABELS (so a wikilink inside a link text
@@ -186,13 +186,13 @@ export class Brain {
       entityWords.add(f.entity);
       let m: RegExpExecArray | null;
       WIKI.lastIndex = 0;
-      while ((m = WIKI.exec(text)) !== null) edges.push({ fromFactId: f.id, to: m[1]!, kind: "wikilink" });
+      while ((m = WIKI.exec(text)) !== null) edges.push({ from: f.entity, fromFactId: f.id, to: m[1]!, kind: "wikilink" });
       LINK.lastIndex = 0;
       while ((m = LINK.exec(text)) !== null) {
         // extract the URL portion: the last (...) in the match (skips nested display text)
         const urlM = m[0].match(/\(([^()\n]*)\)\s*$/);
         const url = urlM?.[1] ?? "";
-        if (url) edges.push({ fromFactId: f.id, to: url.split("|")[0]!, kind: "link" });
+        if (url) edges.push({ from: f.entity, fromFactId: f.id, to: url.split("|")[0]!, kind: "link" });
       }
       // bare names: only when the bare (capitalized word) MATCHES a word in the entity.
       // mask markdown link labels inside `text` so a bare name inside `[Alice](x)`
@@ -200,7 +200,7 @@ export class Brain {
       const maskedForBare = text.replace(LINK, (m) => " ".repeat(m.length));
       const bareMatches = maskedForBare.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
       const bare = new Set(bareMatches);
-      for (const b of bare) if (entityWords.has(b)) edges.push({ fromFactId: f.id, to: b, kind: "bare" });
+      for (const b of bare) if (entityWords.has(b)) edges.push({ from: f.entity, fromFactId: f.id, to: b, kind: "bare" });
     }
     // LOW-1: dedupe by (fromFactId|to|kind).
     const seen = new Set<string>();
