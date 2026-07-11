@@ -101,7 +101,9 @@ export const writeTool: ToolImpl = {
     if (!c.ok) return c.err;
     try {
       await writeFile(c.abs, args.content, "utf8");
-      return ok("write", { path: args.path, bytes: args.content.length });
+      // §11 LSP-on-write: append diagnostics (never a gate — write already succeeded).
+      const diags = ctx.lsp?.onWrite(c.abs);
+      return ok("write", { path: args.path, bytes: args.content.length, ...(diags && diags.length ? { diagnostics: diags } : {}) });
     } catch (e) {
       return err("write", e instanceof Error ? e.message : String(e));
     }
@@ -141,7 +143,9 @@ export const editTool: ToolImpl = {
       if (second !== -1) return err("edit", "oldText is ambiguous (appears >1 time)");
       const updated = original.replace(args.oldText, args.newText);
       await writeFile(c.abs, updated, "utf8");
-      return ok("edit", { path: args.path, replaced: 1 });
+      // §11 LSP-on-write: append diagnostics (never a gate).
+      const diags = ctx.lsp?.onWrite(c.abs);
+      return ok("edit", { path: args.path, replaced: 1, ...(diags && diags.length ? { diagnostics: diags } : {}) });
     } catch (e) {
       return err("edit", e instanceof Error ? e.message : String(e));
     }

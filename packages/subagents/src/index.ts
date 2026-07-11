@@ -6,7 +6,7 @@
  * diff) lands Tier 2 via createIsolatedWorkspace (file_copy fallback; real
  * overlay/reflink via natives Tier 3+).
  */
-export { InProcessRunner, fanOutFanIn, TOPOLOGIES } from "./runner.js";
+export { InProcessRunner, fanOutFanIn, TOPOLOGIES, validateSchema } from "./runner.js";
 export type { InProcessRunnerOptions, RestrictedToolExecutorFactory } from "./runner.js";
 export { createIsolatedWorkspace } from "./isolation.js";
 export type { IsolatedWorkspace, IsoBackend } from "./isolation.js";

@@ -8,3 +8,4 @@
  */
 export { DapClient } from "./client.js";
 export type { DapClientOptions, DapBreakpoint, DapStackFrame, DapScope, DapVariable, DapStoppedEvent, DapSource } from "./client.js";
+export { makeDebugTool } from "./debug.js";

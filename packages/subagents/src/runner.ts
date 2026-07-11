@@ -25,7 +25,9 @@ import {
   type ToolCall,
   type ToolExecutor,
   type ToolResult,
+  MAX_APPROVAL_CHAIN_DEPTH,
 } from "@my-agent/core";
+import { verifyGreen } from "./green.js";
 
 /** A factory that builds a tool executor restricted to the subagent's ToolSet. */
 export type RestrictedToolExecutorFactory = (
@@ -52,6 +54,10 @@ export class InProcessRunner {
   constructor(private opts: InProcessRunnerOptions) {}
 
   async spawn(s: SubagentSpawn): Promise<SubagentResult> {
+    // §10 R27-9/O4: enforce the hierarchical approval-chain depth cap (DoS guard).
+    if ((s.chainDepth ?? 0) >= MAX_APPROVAL_CHAIN_DEPTH) {
+      return { ok: false, error: `max approval chain depth exceeded (${MAX_APPROVAL_CHAIN_DEPTH})` };
+    }
     const childBudget = this.opts.parentBudget.deriveChild(this.opts.childAlloc);
     const childId = childBudget.id ?? "unknown";
     const tools = this.opts.makeToolExecutor(s.toolSurface);
@@ -85,6 +91,17 @@ export class InProcessRunner {
       }
       if (data === EMPTY) {
         return { ok: false, error: "subagent yielded empty output" };
+      }
+      // §10 GAP-10.1: validate the yield against the declared JSON schema (fail-closed).
+      if (s.resultSchema) {
+        const sv = validateSchema(data, s.resultSchema);
+        if (!sv.ok) return { ok: false, error: `subagent yield schema mismatch: ${sv.error}` };
+      }
+      // §10.2 GreenContract: every child MUST reach its declared level + produce
+      // passing evidence before the parent accepts the yield (fail-closed).
+      if (s.greenContract) {
+        const gv = verifyGreen(s.greenContract as never);
+        if (!gv.ok) return { ok: false, error: `green-violation: ${gv.reason} — ${gv.detail}` };
       }
       // Tier 1: no file diff (CoW lands Tier 2); changedPaths deferred.
       return { ok: true, data, changedPaths: [] };
@@ -145,3 +162,54 @@ export async function fanOutFanIn(
 }
 
 export type { SubagentResult, SubagentSpawn, ToolCall, ToolResult, DegradedResult, SystemPrompt };
+
+/**
+ * Minimal JSON-Schema validator (§10 resultSchema). Handles the common subset
+ * (type, required, properties, items, enum) without an ajv dependency. Returns
+ * {ok:true} or {ok:false, error}. Fail-closed: an unknown schema keyword is
+ * ignored, but a present field of the wrong type is rejected.
+ */
+export function validateSchema(value: unknown, schema: Record<string, unknown>): { ok: true } | { ok: false; error: string } {
+  const check = (v: unknown, s: Record<string, unknown>, path: string): string | null => {
+    if (typeof s.type === "string") {
+      const t = s.type as string;
+      const okType =
+        (t === "object" && typeof v === "object" && v !== null && !Array.isArray(v)) ||
+        (t === "array" && Array.isArray(v)) ||
+        (t === "string" && typeof v === "string") ||
+        (t === "number" && typeof v === "number") ||
+        (t === "boolean" && typeof v === "boolean") ||
+        (t === "null" && v === null) ||
+        (t === "integer" && typeof v === "number" && Number.isInteger(v));
+      if (!okType) return `${path}: expected ${t}, got ${Array.isArray(v) ? "array" : v === null ? "null" : typeof v}`;
+    }
+    if (Array.isArray(s.enum) && !(s.enum as unknown[]).includes(v)) {
+      return `${path}: value not in enum`;
+    }
+    if (s.type === "object" && typeof v === "object" && v !== null) {
+      const obj = v as Record<string, unknown>;
+      for (const req of (s.required as string[] | undefined) ?? []) {
+        if (!(req in obj)) return `${path}.${req}: missing required field`;
+      }
+      const props = (s.properties as Record<string, Record<string, unknown>> | undefined);
+      if (props) {
+        for (const [k, sub] of Object.entries(props)) {
+          if (k in obj) {
+            const e = check(obj[k], sub, `${path}.${k}`);
+            if (e) return e;
+          }
+        }
+      }
+    }
+    if (s.type === "array" && Array.isArray(v)) {
+      const items = s.items as Record<string, unknown> | undefined;
+      if (items) for (let i = 0; i < v.length; i++) {
+        const e = check((v as unknown[])[i], items, `${path}[${i}]`);
+        if (e) return e;
+      }
+    }
+    return null;
+  };
+  const err = check(value, schema, "$");
+  return err ? { ok: false, error: err } : { ok: true };
+}

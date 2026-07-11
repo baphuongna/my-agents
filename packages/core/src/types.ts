@@ -146,6 +146,11 @@ export interface TurnContext {
   /** F3-perm fix: tamper-evident audit sink for tool/approval events
    * (repudiation defense). Optional — when absent, tool calls aren't audited. */
   audit?: Auditor;
+  /** §11 LSP-on-write hook (opt-in post-write diagnostics). The write/edit tools
+   * call onWrite() after a successful write; diagnostics are APPENDED to the
+   * result (never a gate — write always succeeds). The LspClient adapter
+   * satisfies this (it reads the file, didChange, returns diagnostics). */
+  lsp?: LspWriteHook;
   lane?: {
     taskId: LaneId;
     setBlockedOn(b: "approval" | undefined): void;
@@ -338,6 +343,18 @@ export interface Auditor {
   append(rec: { ts: number; kind: AuditKind; actor: string; payload: Record<string, unknown> }): unknown;
 }
 
+/** §11 LSP-on-write diagnostics view (severity normalized; appended, not gated). */
+export interface LspDiagnosticView {
+  line: number;
+  severity: "error" | "warning" | "info" | "hint";
+  message: string;
+  source?: string;
+}
+/** The LspClient adapter satisfies this; write/edit tools invoke it post-write. */
+export interface LspWriteHook {
+  onWrite(absPath: string): LspDiagnosticView[];
+}
+
 /** Canonical denylist every subagent inherits (§10). */
 export const DELEGATE_BLOCKED_TOOLS = new Set([
   "task",
@@ -354,6 +371,15 @@ export interface SubagentSpawn {
   approval: ApprovalChannel;
   budget: BudgetConfig;
   topology?: TeamTopology;
+  /** §10 GAP-10.1: JSON-Schema the child's yield is validated against before the
+   * parent accepts it (fail-closed on mismatch). */
+  resultSchema?: Record<string, unknown>;
+  /** §10.2: the GreenContract the child MUST satisfy before yield. If set,
+   * spawn() runs verifyGreen() and fail-closes on a violation. */
+  greenContract?: { required: string; evidence: { ran: string; passed: boolean; summary?: string } };
+  /** §10 R27-9/O4: hierarchical approval depth. The root spawn is 0; each child
+   * increments. At MAX_APPROVAL_CHAIN_DEPTH spawn fail-closes (DoS guard). */
+  chainDepth?: number;
 }
 export type SubagentResult =
   | { ok: true; data: unknown; changedPaths?: string[] }
