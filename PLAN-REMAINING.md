@@ -93,13 +93,16 @@ MLX, web session-cookie+CSRF) remain as noted above.
 
 1. **Phase 1 (honesty) — DONE:** 43 committed vitest tests (trust boundary);
    real `deny.toml`; PLAN/invariant-audit de-staled + false claims removed.
-2. **Phase 2 (invariant #10) — next:** inject `nowWallclock`, replace 39
-   `Date.now()` sites; add ESLint `no-restricted-syntax` ban.
-3. **Phase 3 (runTurn FSM):** repair → permission-pipeline → idempotency →
-   compress-on-length → bounded retry → Recoverable; real `computeCost`;
-   `StreamEvent` shape.
-4. **Phase 4 (Tier-1+ features):** §7 7-step, §10 subagent gates, §8 memory
-   roles, DAP `debug` tool, LSP-on-write, gateway control-plane.
+2. **Phase 2 (invariant #10) — DONE:** injected `nowWallclock`, replaced 39
+   `Date.now()` sites; guard test enforces it.
+3. **Phase 3 (runTurn FSM) — DONE:** bounded retry + length→compress +
+   Recoverable + skillSetDirty + doneIds idempotency; real `computeCost`;
+   `StreamEvent.finish`; repair wired into dispatch.
+4. **Phase 4 (gates) — DONE:** §10 subagent gates (verifyGreen + resultSchema +
+   chain depth), §11.2 DAP `debug` tool, §11 LSP-on-write.
+5. **Phase 5 (large subsystems) — open:** §8 MemoryRole lifecycle, §7 full
+   permission rule grammar + HookRegistry dispatch wiring, §12 gateway
+   control-plane, §10 CoW mergeBack.
 
 
 ## What IS solidly built (don't lose this)
