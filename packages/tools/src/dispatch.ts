@@ -15,6 +15,7 @@ import type {
 } from "@my-agent/core";
 import type { ToolRegistry } from "./registry.js";
 import { awaitHumanPrompt, requiresApproval } from "./permission.js";
+import { repair } from "./repair.js";
 import { nowWallclock } from "@my-agent/core";
 
 /**
@@ -66,11 +67,18 @@ export async function runToolBatch(
   ctx: TurnContext,
   registry: ToolRegistry,
 ): Promise<ToolResult[] | DegradedResult> {
+  // §6 GAP-9: repair each call first (models emit malformed JSON args). An
+  // unrepairable call becomes a synthetic error result fed back to the model.
+  const repaired: ToolResult[] = [];
+  const executable: ToolCall[] = [];
+  for (const c of calls) {
+    const r = repair(c);
+    if ("ok" in r) executable.push(r.ok);
+    else repaired.push({ callId: c.id, ok: false, output: null, error: `malformed tool_call: ${r.reason}` });
+  }
   // Independent calls run in parallel (§4 tool-dispatch; pi model).
-  const results = await Promise.all(
-    calls.map((c) => runTool(c, ctx, registry)),
-  );
-  return aggregate(results);
+  const results = await Promise.all(executable.map((c) => runTool(c, ctx, registry)));
+  return aggregate([...repaired, ...results]);
 }
 
 /** aggregate — all ok ⇒ ToolResult[]; else DegradedResult{results, failedCallIds}. */

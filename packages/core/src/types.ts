@@ -74,7 +74,7 @@ export type Cost = { usd: number };
 export type StreamEvent =
   | { kind: "text"; text: string }
   | { kind: "tool_calls"; calls: ToolCall[] }
-  | { kind: "done"; usage: TokenUsage }
+  | { kind: "done"; usage: TokenUsage; finish?: "stop" | "length" | "tool" | "error" }
   | { kind: "error"; error: LifecycleError };
 
 export interface ProviderProfile {

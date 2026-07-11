@@ -20,7 +20,7 @@ import type {
   TurnContext,
   TurnEvent,
 } from "./types.js";
-import { computeCostStub as computeCost } from "./cost.js";
+import { computeCost } from "./cost.js";
 
 export interface TurnHandle {
   /** Subscribe to RuntimeEvents. */
@@ -59,6 +59,15 @@ export interface RunTurnOptions {
   approval?: import("./types.js").ApprovalChannel;
   /** F3-perm fix: tamper-evident audit sink for tool/approval events. */
   audit?: import("./types.js").Auditor;
+  /** §4 skillSetDirty rebuild (injected by the prompts package; core can't import
+   * it — layering). Called inside the round loop when the session flag is set,
+   * BEFORE prompt assembly (CC9 TOCTOU fix). */
+  onSkillSetDirty?: (s: Session) => void;
+  /** §5 compression pass invoked on `finish:"length"` (CC1/CC12). Injected by
+   * the prompts package. May throw ResourceExhausted → Recoverable{phase:"resource"}. */
+  compressHistory?: (history: import("./types.js").History) => void;
+  /** §6 model id for per-model cost pricing (computeCost). */
+  model?: string;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
   maxToolRounds?: number;
   signal?: AbortSignal;
@@ -118,7 +127,9 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
     if (cancelled) return; // pre-abort guard: don't emit start after end
     emit({ kind: "turn", stage: "start" });
     const profile = opts.profile ?? opts.session.profiles[0];
-    if (!profile) {
+    // Only require a profile when streaming directly from it; an injected
+    // opts.stream (fallback chain) needs no profile.
+    if (!opts.stream && !profile) {
       const err: LifecycleError = {
         phase: "provider",
         recoverable: false,
@@ -132,6 +143,9 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
     }
 
     const maxRounds = opts.maxToolRounds ?? 25; // §4 safety: bounded, not unbounded recursion
+    // §4 GAP-10: idempotency guard — ToolCall.ids already executed this runTurn
+    // are skipped on retry (dedupe re-emitted calls; side-effecting tools aren't re-run).
+    const doneIds = new Set<string>();
     // §4 runTurn: while-loop until a turn produces no tool calls (R27-1/D4).
     for (let round = 0; round <= maxRounds; round++) {
       if (cancelled) return;
@@ -148,26 +162,80 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         resolveDone({ state: "Failed", error: err });
         return;
       }
+      // CC9: skillSetDirty check INSIDE the loop (before prompt memoization) so a
+      // mid-turn skill write is seen on the next iteration, never skipped.
+      if (opts.session.skillSetDirty) {
+        opts.onSkillSetDirty?.(opts.session);
+        opts.session.skillSetDirty = false;
+      }
       try {
         const prompt = opts.session.prompt ?? {
           stable: opts.session.stableTier,
           context: "",
           volatile: opts.session.userMd,
         };
-        // §6: prefer the injected stream function (fallback chain); else the single profile.
-        let events: import("./types.js").StreamEvent[];
-        if (opts.stream) {
-          const r = await opts.stream(prompt, opts.session.history, { tools: opts.toolSchemas });
-          if ("error" in r) {
-            emitTurn({ state: "Failed", error: r.error });
+        // §4 D3/CC1: bounded inner retry around the stream section. continue on
+        // recoverable errors; escalate to Failed at the cap. finish:"length" runs
+        // a compression pass (§5) BEFORE retrying.
+        let events: import("./types.js").StreamEvent[] = [];
+        let lengthHit = false;
+        let streamOk = false;
+        for (let retries = 0; retries < MAX_ATTEMPTS; retries++) {
+          lengthHit = false;
+          // §6: prefer the injected stream function (fallback chain); else the single profile.
+          let raw: import("./types.js").StreamEvent[];
+          if (opts.stream) {
+            const r = await opts.stream(prompt, opts.session.history, { tools: opts.toolSchemas });
+            if ("error" in r) {
+              // R27-1/D3: non-recoverable → Failed; recoverable → retry; cap → Failed.
+              if (!r.error.recoverable || retries === MAX_ATTEMPTS - 1) {
+                emitTurn({ state: "Failed", error: { ...r.error, retries } });
+                emit({ kind: "turn", stage: "end" });
+                resolveDone({ state: "Failed", error: { ...r.error, retries } });
+                return;
+              }
+              continue; // recoverable: bounded retry
+            }
+            raw = r.events;
+          } else {
+            if (!profile) throw new Error("no provider profile");
+            const { events: ev } = await profile.stream(prompt, opts.session.history, { tools: opts.toolSchemas });
+            raw = ev;
+          }
+          // consume + detect finish:"length"
+          const scanned = scanStream(raw);
+          if (scanned.finish === "error") {
+            const err: LifecycleError = { phase: "provider", recoverable: false, retries, context: { reason: "stream finish:error" } };
+            emitTurn({ state: "Failed", error: err });
             emit({ kind: "turn", stage: "end" });
-            resolveDone({ state: "Failed", error: r.error });
+            resolveDone({ state: "Failed", error: err });
             return;
           }
-          events = r.events;
-        } else {
-          const { events: ev } = await profile.stream(prompt, opts.session.history, { tools: opts.toolSchemas });
-          events = ev;
+          if (scanned.finish === "length") {
+            // §5: compress BEFORE retrying (CC1). CC12: ResourceExhausted → Recoverable.
+            try {
+              opts.compressHistory?.(opts.session.history);
+            } catch (e) {
+              const err: LifecycleError = { phase: "resource", recoverable: true, retries, context: { cause: e instanceof Error ? e.message : String(e) } };
+              emitTurn({ state: "Recoverable", error: err });
+              emit({ kind: "turn", stage: "end" });
+              resolveDone({ state: "Failed", error: err });
+              return;
+            }
+            lengthHit = true;
+            continue; // CC1: re-enter the retry loop with compressed history
+          }
+          events = raw;
+          streamOk = true;
+          break; // successful (non-length) stream section
+        }
+        if (!streamOk) {
+          // length-stop kept re-occurring past the retry cap → treat as resource-failure.
+          const err: LifecycleError = { phase: "resource", recoverable: false, retries: MAX_ATTEMPTS, context: { reason: "context window exhausted after compression retries" } };
+          emitTurn({ state: "Failed", error: err });
+          emit({ kind: "turn", stage: "end" });
+          resolveDone({ state: "Failed", error: err });
+          return;
         }
         const result = consumeStream(events, emitTurn);
         if (result.kind === "error") {
@@ -176,7 +244,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           resolveDone({ state: "Failed", error: result.error });
           return;
         }
-        const cost = computeCost(result.usage);
+        const cost = computeCost(result.usage, opts.model ?? opts.profile?.model);
         const spent = opts.budget.spend(cost);
         if (!spent && !opts.budget.unlimited) {
           const err: LifecycleError = {
@@ -197,26 +265,25 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           exhausted: opts.budget.exhausted(),
         });
 
+        // §4 GAP-10: idempotency — skip ToolCall.ids already executed this runTurn.
+        const fresh = result.toolCalls.filter((c) => !doneIds.has(c.id));
+
         // If the stream produced tool calls AND we have an executor, run them
         // and loop back for the model to continue (§4 while-loop).
-        if (result.toolCalls.length > 0 && opts.tools) {
+        if (fresh.length > 0 && opts.tools) {
           const ctx: TurnContext = {
             session: opts.session,
             history: opts.session.history,
             budget: opts.budget,
-            // F4 fix: accept a caller-injected approval channel; fall back to the
-            // fail-closed stub only when none is provided.
             approval: opts.approval ?? makeStubApproval(),
-            // F1 fix: thread the workspace root for path-containment.
             workspace: opts.workspace ?? process.cwd(),
-            // F3-perm fix: thread the audit sink.
             audit: opts.audit,
             emit: emitTurn,
           };
-          const toolResult = await opts.tools.execute(result.toolCalls, ctx);
+          const toolResult = await opts.tools.execute(fresh, ctx);
           emitTurn({ state: "ToolExec", result: toolResult });
-          // Append tool results to history so the next stream round sees them.
           opts.session.history.append({ role: "tool", results: toolResult });
+          for (const c of fresh) doneIds.add(c.id); // record for idempotency
           continue; // loop back: model continues with tool results
         }
 
@@ -261,6 +328,17 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
     cancel: (reason = "user") => cancel(reason),
     done,
   };
+}
+
+/** Scan a stream's done-event for its finish reason (§4 CC1: length→compress).
+ * Returns the LAST done's finish (a stream has exactly one terminal done). */
+function scanStream(events: StreamEvent[]): { finish: "stop" | "length" | "tool" | "error" | undefined } {
+  let finish: "stop" | "length" | "tool" | "error" | undefined;
+  for (const ev of events) {
+    if (ev.kind === "done") finish = ev.finish ?? "stop";
+    if (ev.kind === "error") return { finish: "error" };
+  }
+  return { finish };
 }
 
 type StreamConsume =

@@ -134,6 +134,7 @@ async function parseSSE(body: ReadableStream<Uint8Array>): Promise<StreamEvent[]
   const decoder = new TextDecoder();
   let buffer = "";
   let usage: TokenUsage = { input: 0, output: 0 };
+  let lastFinish: string | undefined;
   const pendingTools: Map<string, { id: string; name: string; args: string }> = new Map();
 
   try {
@@ -161,6 +162,8 @@ async function parseSSE(body: ReadableStream<Uint8Array>): Promise<StreamEvent[]
           };
         }
         const delta = chunk.choices?.[0]?.delta;
+        const finishReason = chunk.choices?.[0]?.finish_reason;
+        if (finishReason) lastFinish = finishReason;
         if (delta?.content) {
           events.push({ kind: "text", text: delta.content });
         }
@@ -200,7 +203,7 @@ async function parseSSE(body: ReadableStream<Uint8Array>): Promise<StreamEvent[]
       })),
     });
   }
-  events.push({ kind: "done", usage });
+  events.push({ kind: "done", usage, finish: normalizeFinish(lastFinish) });
   return events;
 }
 
@@ -240,4 +243,14 @@ function netError(e: unknown): StreamEvent {
       context: { reason: e instanceof Error ? e.message : String(e) },
     },
   };
+}
+
+/** Map OpenAI finish_reason → the §4 done.finish vocabulary. */
+function normalizeFinish(reason: string | undefined): "stop" | "length" | "tool" | "error" {
+  switch (reason) {
+    case "length": return "length";
+    case "tool_calls": return "tool";
+    case "content_filter": return "error";
+    default: return "stop"; // "stop" | null | undefined
+  }
 }
