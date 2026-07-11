@@ -111,7 +111,7 @@ async function runInkTui(model?: string): Promise<void> {
 
   // We import ink dynamically so non-TTY callers don't pay the bundle cost
   // (the bundle inlines it, but the cost of the require() is identical here).
-  const ink = await import("@my-agent/tui/ink");
+  const ink: typeof import("@my-agent/tui/ink") = await import("@my-agent/tui/ink");
   const handle = ink.startInkSession({
     onSubmit: async (text) => {
       await agent.run(text, (event) => {
@@ -158,7 +158,7 @@ async function runInkTui(model?: string): Promise<void> {
       });
     },
     onAbort: () => controller.abort(),
-    onApproval: (callId, decision) => {
+    onApproval: (callId: string, decision: "Allow" | "Deny") => {
       const r = registeredApprovals.get(callId);
       if (r) {
         r(decision);
@@ -211,10 +211,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     port,
     rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
     wsToken,
-    onWsMessage: (session, data) => {
+    onWsMessage: (session: string, data: unknown) => {
       const msg = data as { text?: string };
       if (msg.text) {
-        void agent.run(msg.text, (e) => gw.broadcast(session, e));
+        void agent.run(msg.text, (e: unknown) => gw.broadcast(session, e));
       }
     },
   });

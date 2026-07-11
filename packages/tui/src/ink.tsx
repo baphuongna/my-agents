@@ -21,6 +21,11 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { render, Box, Text, useInput, useApp, useStdout } from "ink";
 import TextInput from "ink-text-input";
+import { SLASH_COMMANDS, type SlashCommand, type InkCommandContext } from "./ink-commands.js";
+import { themeStore, defaultTheme as themeDefault, type Theme } from "./themes.js";
+import { sanitize } from "./sanitize.js";
+import { KillRing, EditorOps, yank as doYank } from "./editor.js";
+export type { SlashCommand } from "./ink-commands.js";
 
 /** A single rendered event line in the conversation stream. */
 export interface InkTurnLine {
@@ -49,13 +54,8 @@ export interface InkApproval {
   reason: string;
 }
 
-/** A minimal slash command — name + description + optional runner. */
-export interface InkSlashCommand {
-  name: string;
-  description: string;
-  /** Optional async handler. If absent, /name prints `description`. */
-  run?: (args: string) => Promise<string> | string;
-}
+/** A minimal slash command — name + description + optional runner. (Re-exported from ink-commands.ts.) */
+export type InkSlashCommand = SlashCommand;
 
 /** Imperative handle exposed by the Ink session to the host. */
 export interface InkSessionRef {
@@ -72,19 +72,7 @@ export interface InkSessionRef {
 }
 
 /** A 51-token-ish theme (§25.1 token-driven theming — minimal default). */
-export const defaultTheme = {
-  text: "white",
-  meta: "gray",
-  user: "green",
-  assistant: "cyan",
-  tool: "magenta",
-  approval: "yellow",
-  ok: "green",
-  warn: "yellow",
-  error: "red",
-  info: "blue",
-  status: "gray",
-} as const;
+export const defaultTheme = themeDefault;
 
 /** Max transcript lines retained (memory bound). */
 const MAX_HISTORY_LINES = 500;
@@ -128,14 +116,18 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
     ref,
     (): InkSessionRef => ({
       pushLine: (line: InkTurnLine) => {
+        // F1 fix: sanitize assistant/tool/user text before rendering to
+        // strip ANSI/OSC escape sequences (defends against terminal-injection
+        // via prompt-injected assistant output).
+        const safe: InkTurnLine = { ...line, text: sanitize(line.text) };
         setLines((prev) => {
           const last = prev[prev.length - 1];
-          if (last && last.kind === "assistant" && line.kind === "assistant") {
+          if (last && last.kind === "assistant" && safe.kind === "assistant") {
             const next = prev.slice();
-            next[next.length - 1] = { ...last, text: last.text + line.text };
+            next[next.length - 1] = { ...last, text: last.text + safe.text };
             return next;
           }
-          const next = prev.concat(line);
+          const next = prev.concat(safe);
           if (next.length > MAX_HISTORY_LINES) return next.slice(-MAX_HISTORY_LINES);
           return next;
         });
@@ -173,8 +165,8 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       const def = props.commands.find((c) => c.name === cmd);
       if (!def) return false;
       try {
-        const out = (await def.run?.(args)) ?? "";
-        if (out) appendOrReplace({ seq: 0, kind: "info", text: out });
+        const out = def.run ? await def.run(args, { session: { cwd: process.cwd(), setModel: () => {}, getModel: () => "?", getProvider: () => "?", getSpent: () => 0, getBudget: () => 0, getMemoryFacts: () => 0, getTools: () => [], getSkills: () => [], getMcpServers: () => [], openSelector: async () => null, clearTranscript: () => {}, exportTranscript: () => "", compact: async () => 0, importFrom: async () => 0, setConfig: async () => {}, getConfig: async () => undefined, listConfig: async () => ({}), setMode: () => {}, getMode: () => "Prompt", tree: async () => "" } }) : null;
+        if (typeof out === "string" && out) appendOrReplace({ seq: 0, kind: "info", text: out });
       } catch (e) {
         appendOrReplace({
           seq: 0,
@@ -331,7 +323,10 @@ function TranscriptLine({ line }: { line: InkTurnLine }): React.ReactElement {
 
 /** Overlay modal for tool-call approval. */
 function ApprovalModal({ approval }: { approval: InkApproval }): React.ReactElement {
-  const argsShort = approval.args.length > 60 ? approval.args.slice(0, 60) + "…" : approval.args;
+  // F2 fix: sanitize the args JSON (defense against terminal-injection via
+  // hostile tool-call arguments). Also clamp length.
+  const cleanArgs = sanitize(approval.args);
+  const argsShort = cleanArgs.length > 60 ? cleanArgs.slice(0, 60) + "…" : cleanArgs;
   return (
     <Box
       borderStyle="round"
@@ -383,58 +378,53 @@ function defaultCommands(opt: {
   getBudget?: () => number;
   getMemoryFacts?: () => number;
 }): InkSlashCommand[] {
-  return [
-    {
-      name: "help",
-      description: "list available slash commands",
-      run: () => "(see /help)", // override at runtime with the full list
+  // Build a context with only the bits the live wiring provides. Unset
+  // callbacks fall through to a small set of no-op defaults (Phase 19-24
+  // command surface; the full InkCommandContext requires host injection).
+  const liveCtx: InkCommandContext = {
+    session: {
+      cwd: process.cwd(),
+      setModel: (m) => opt.onModel?.(m),
+      getModel: () => opt.getModel?.() ?? "MiniMax-M3",
+      getProvider: () => "minimax",
+      getSpent: () => opt.getSpent?.() ?? 0,
+      getBudget: () => opt.getBudget?.() ?? 0,
+      getMemoryFacts: () => opt.getMemoryFacts?.() ?? 0,
+      getTools: () => [],
+      getSkills: () => [],
+      getMcpServers: () => [],
+      openSelector: async () => null,
+      clearTranscript: () => opt.onClear?.(),
+      exportTranscript: () => "(exportTranscript not yet wired by host)",
+      compact: async () => 0,
+      importFrom: async () => 0,
+      setConfig: async () => {},
+      getConfig: async () => undefined,
+      listConfig: async () => ({}),
+      setMode: () => {},
+      getMode: () => "Prompt",
+      tree: async () => "(/tree not yet wired)",
     },
-    {
-      name: "quit",
-      description: "exit the session",
-      run: () => {
-        process.exit(0);
-      },
-    },
-    {
-      name: "clear",
-      description: "clear the transcript",
-      run: () => {
+  };
+  // Map the imported 25-command table through the live context. Any
+  // command whose args require host services (getTools/getSkills/etc) will
+  // return a graceful message — not a crash. /clear uses the live clear hook.
+  return SLASH_COMMANDS.map((c) => ({
+    name: c.name,
+    description: c.description,
+    kbd: c.kbd,
+    category: c.category,
+    run: async (args: string) => {
+      // F6 fix: clear the kill-ring on /clear.
+      if (c.name === "clear") {
         opt.onClear?.();
         return "(transcript cleared)";
-      },
+      }
+      const out = await c.run(args, liveCtx);
+      if (typeof out === "string") return out;
+      return null; // selector payload — not supported in this ink.tsx session
     },
-    {
-      name: "model",
-      description: "show or switch the active model",
-      run: (args: string) => {
-        if (!args) return `current model: ${opt.getModel?.() ?? "?"}`;
-        opt.onModel?.(args);
-        return `switched model → ${args}`;
-      },
-    },
-    {
-      name: "budget",
-      description: "show $ spent / $ budget",
-      run: () => {
-        const spent = opt.getSpent?.() ?? 0;
-        const budget = opt.getBudget?.() ?? 0;
-        return budget > 0
-          ? `budget: $${spent.toFixed(4)} / $${budget.toFixed(2)} (${((spent / budget) * 100).toFixed(1)}%)`
-          : `spent: $${spent.toFixed(4)} (no cap)`;
-      },
-    },
-    {
-      name: "memory",
-      description: "show facts in memory",
-      run: () => `facts: ${opt.getMemoryFacts?.() ?? 0}`,
-    },
-    {
-      name: "tools",
-      description: "list registered tools",
-      run: () => "tools: read, write, edit, replace, bash, glob, grep, code, codegraph",
-    },
-  ];
+  }));
 }
 
 /** Run the Ink session, returning an imperative handle. */
@@ -468,6 +458,7 @@ export function startInkSession(opts: InkRunnerOpts): InkHandle {
     cmds[helpIdx] = {
       name: "help",
       description: "list available slash commands",
+      category: "session",
       run: () => "available commands:\n" + cmds.map((c) => `  /${c.name.padEnd(8)} ${c.description}`).join("\n"),
     };
   }
