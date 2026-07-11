@@ -29,8 +29,15 @@ export async function runTool(
   override?: import("@my-agent/core").HookOverride,
   effectiveArgs: unknown = call.args,
 ): Promise<ToolResult> {
-  const decision = requiresApproval(call, ctx, registry, override);
+  const decision = requiresApproval(call, ctx, registry, override, effectiveArgs);
+  // M4 (review): signal AwaitingApproval to the LaneBoard/event bus BEFORE the
+  // human round-trip (CC5 atomicity; §7 R26-D). Cleared after the prompt resolves.
+  if (decision.needsHumanPrompt) {
+    ctx.lane?.setBlockedOn("approval");
+    ctx.emit?.({ state: "AwaitingApproval", call, prompt: { call, reason: (decision as { reason?: string }).reason ?? "approval required", currentMode: (ctx as { mode?: import("@my-agent/core").Mode }).mode ?? "Prompt", requiredMode: registry.get(call.name)?.meta.requiredMode ?? "WorkspaceWrite" } });
+  }
   const resolved = await awaitHumanPrompt(call, ctx, decision, registry);
+  if (decision.needsHumanPrompt) ctx.lane?.setBlockedOn(undefined);
   if (resolved.decision === "Deny") {
     // F3-perm: audit the denial too (repudiation defense).
     ctx.audit?.append({ ts: nowWallclock(), kind: "approval", actor: "permission-gate", payload: { call: call.name, decision: "Deny", reason: resolved.reason } });
@@ -44,6 +51,9 @@ export async function runTool(
   let result: ToolResult;
   try {
     result = await impl.run(effectiveArgs, ctx);
+    // C2 (review): stamp the real call.id onto the result (builtins pass their
+    // tool NAME as callId — batch correlation was broken).
+    result = { ...result, callId: call.id };
     ctx.audit?.append({ ts: nowWallclock(), kind: "tool", actor: "agent", payload: { name: call.name, args: effectiveArgs, ok: result.ok } });
   } catch (e) {
     ctx.audit?.append({ ts: nowWallclock(), kind: "tool", actor: "agent", payload: { name: call.name, args: effectiveArgs, ok: false, error: String(e) } });
@@ -55,8 +65,8 @@ export async function runTool(
       degraded: true,
     };
   }
-  // §7 post-hook (input-mutation + observability triad). Errors are isolated.
-  try { ctx.hooks?.postTool?.(call, result); } catch { /* a post-hook never fails the tool */ }
+  // §7 post-hook (M1: pass the EFFECTIVE/mutated args, not the original).
+  try { ctx.hooks?.postTool?.({ ...call, args: effectiveArgs }, result); } catch { /* a post-hook never fails the tool */ }
   return result;
 }
 
@@ -70,50 +80,49 @@ export async function runToolBatch(
   ctx: TurnContext,
   registry: ToolRegistry,
 ): Promise<ToolResult[] | DegradedResult> {
-  // §6 GAP-9: repair each call first (models emit malformed JSON args). An
-  // unrepairable call becomes a synthetic error result fed back to the model.
-  const repaired: ToolResult[] = [];
-  const executable: ToolCall[] = [];
-  for (const c of calls) {
+  // M3 (review): preserve ORIGINAL call order. Index every result (repaired-error
+  // or executed) by its position in `calls`.
+  const origOut: (ToolResult | undefined)[] = new Array(calls.length);
+  const executable: { call: ToolCall; origIdx: number }[] = [];
+  calls.forEach((c, origIdx) => {
     const r = repair(c);
-    if ("ok" in r) executable.push(r.ok);
-    else repaired.push({ callId: c.id, ok: false, output: null, error: `malformed tool_call: ${r.reason}` });
-  }
+    if ("ok" in r) executable.push({ call: r.ok, origIdx });
+    else origOut[origIdx] = { callId: c.id, ok: false, output: null, error: `malformed tool_call: ${r.reason}` };
+  });
 
   // §7 CC7/R28: pre-hooks are AWAITED before the ask-rule match (step 4) reads
-  // them. Collect each call's {override, args} (input-mutation + override triad).
-  const pre = await Promise.all(executable.map(async (c) => {
-    if (!ctx.hooks?.preTool) return { override: undefined, args: c.args };
+  // them. Collect each executable call's {override, args}.
+  const pre = await Promise.all(executable.map(async (e) => {
+    if (!ctx.hooks?.preTool) return { override: undefined, args: e.call.args };
     try {
-      const h = await ctx.hooks.preTool(c);
-      return { override: h?.override, args: h?.args ?? c.args };
+      const h = await ctx.hooks.preTool(e.call);
+      return { override: h?.override, args: h?.args ?? e.call.args };
     } catch {
-      return { override: undefined, args: c.args };
+      return { override: undefined, args: e.call.args };
     }
   }));
 
   // §7 R26-D: concurrent-approval serialization. Tools needing a human prompt
-  // (ask-rule / hook-Ask / DangerFullAccess) run SEQUENTIALLY (one prompt at a
-  // time); the rest run in parallel. A Deny never cancels siblings.
-  const promptCalls: { call: ToolCall; idx: number }[] = [];
-  const parallelCalls: { call: ToolCall; idx: number }[] = [];
-  executable.forEach((c, i) => {
-    const decision = requiresApproval(c, ctx, registry, pre[i]!.override);
-    (decision.needsHumanPrompt ? promptCalls : parallelCalls).push({ call: c, idx: i });
+  // run SEQUENTIALLY; the rest in parallel. A Deny never cancels siblings.
+  const promptCalls: number[] = [];   // executable indices needing a prompt
+  const parallelCalls: number[] = [];
+  executable.forEach((e, i) => {
+    const decision = requiresApproval(e.call, ctx, registry, pre[i]!.override, pre[i]!.args);
+    (decision.needsHumanPrompt ? promptCalls : parallelCalls).push(i);
   });
 
-  // Order preservation: results indexed by original position.
-  const out: ToolResult[] = new Array(executable.length);
   // parallel batch (no approval)
-  await Promise.all(parallelCalls.map(async ({ call, idx }) => {
-    out[idx] = await runTool(call, ctx, registry, pre[idx]!.override, pre[idx]!.args);
+  await Promise.all(parallelCalls.map(async (i) => {
+    const { call, origIdx } = executable[i]!;
+    origOut[origIdx] = await runTool(call, ctx, registry, pre[i]!.override, pre[i]!.args);
   }));
   // sequential batch (approval — one prompt at a time)
-  for (const { call, idx } of promptCalls) {
-    out[idx] = await runTool(call, ctx, registry, pre[idx]!.override, pre[idx]!.args);
+  for (const i of promptCalls) {
+    const { call, origIdx } = executable[i]!;
+    origOut[origIdx] = await runTool(call, ctx, registry, pre[i]!.override, pre[i]!.args);
   }
 
-  return aggregate([...repaired, ...out.filter((r) => r !== undefined)]);
+  return aggregate(origOut.filter((r): r is ToolResult => r !== undefined));
 }
 
 /** aggregate — all ok ⇒ ToolResult[]; else DegradedResult{results, failedCallIds}. */

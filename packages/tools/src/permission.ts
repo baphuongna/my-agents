@@ -45,24 +45,31 @@ export interface PermissionRule {
   prefix?: boolean;   // subject ends with :* / *
 }
 
-/** Parse a rule string: `tool`, `tool(subject)`, `tool(subject:*)`. Lowercased. */
+/** Parse a rule string: `tool`, `tool(subject)`, `tool(subject:*)`. Lowercased.
+ * H1 (review): allow digits/hyphens/dots in tool names (was [a-z_*] → deny rules
+ * for hyphenated/digit tools silently failed open). */
 export function parseRule(s: string): PermissionRule | null {
   const raw = s.trim().toLowerCase();
-  const m = raw.match(/^([a-z_*]+)(?:\((.*)\))?$/);
+  const m = raw.match(/^([a-z0-9_*.-]+)(?:\((.*)\))?$/);
   if (!m) return null;
   const tool = m[1]!;
-  const subj = m[2];
+  let subj = m[2];
   if (subj === undefined || subj === "") return { tool };
-  // prefix if ends with :* or is just *
-  const prefix = subj.endsWith(":*") || subj === "*";
+  // H2 (review): `tool(*)` / `tool` = any subject (was matching nothing).
+  if (subj === "*") return { tool };
+  // prefix if ends with :*
+  const prefix = subj.endsWith(":*");
   const subject = prefix ? subj.replace(/:\*$/, "") : subj;
   return { tool, subject: subject || undefined, prefix: prefix || undefined };
 }
 
-/** Extract the arg-subject (the first present SUBJECT_KEYS value) from a call. */
-export function extractSubject(call: ToolCall): string | undefined {
-  if (call.args && typeof call.args === "object") {
-    const a = call.args as Record<string, unknown>;
+/** Extract the arg-subject (the first present SUBJECT_KEYS value) from a call.
+ * H3 (review): uses `effectiveArgs` when provided (pre-hook mutations visible to
+ * rule matching — CC7), else `call.args`. */
+export function extractSubject(call: ToolCall, effectiveArgs?: unknown): string | undefined {
+  const src = effectiveArgs ?? call.args;
+  if (src && typeof src === "object") {
+    const a = src as Record<string, unknown>;
     for (const k of SUBJECT_KEYS) {
       const v = a[k];
       if (typeof v === "string") return v.toLowerCase();
@@ -72,20 +79,20 @@ export function extractSubject(call: ToolCall): string | undefined {
 }
 
 /** Does a rule match a call? (tool name + subject, case-normalized). */
-export function ruleMatches(rule: PermissionRule, call: ToolCall): boolean {
+export function ruleMatches(rule: PermissionRule, call: ToolCall, effectiveArgs?: unknown): boolean {
   if (rule.tool !== "*" && rule.tool !== call.name.toLowerCase()) return false;
   if (rule.subject === undefined) return true; // any subject
-  const subj = extractSubject(call);
+  const subj = extractSubject(call, effectiveArgs);
   if (subj === undefined) return false;
   if (rule.prefix) return subj.startsWith(rule.subject);
   return subj === rule.subject;
 }
 
-function matchAny(rules: string[] | undefined, call: ToolCall): PermissionRule | null {
+function matchAny(rules: string[] | undefined, call: ToolCall, effectiveArgs?: unknown): PermissionRule | null {
   if (!rules) return null;
   for (const r of rules) {
     const parsed = parseRule(r);
-    if (parsed && ruleMatches(parsed, call)) return parsed;
+    if (parsed && ruleMatches(parsed, call, effectiveArgs)) return parsed;
   }
   return null;
 }
@@ -100,12 +107,14 @@ export function requiresApproval(
   ctx: TurnContext,
   registry: ToolRegistry,
   override?: HookOverride,
+  effectiveArgs?: unknown,
 ): PermissionResult {
   const cfg: PermissionConfig = ctx.permission ?? {};
   const name = call.name.toLowerCase();
 
   // Step 1: denied_tools (config) + DELEGATE_BLOCKED_TOOLS (subagent denylist).
-  if (DELEGATE_BLOCKED_TOOLS.has(call.name) || (cfg.deniedTools ?? []).some((d) => d.toLowerCase() === name)) {
+  // C1 (review): compare lowercased — names are normalized lowercase (§7).
+  if (DELEGATE_BLOCKED_TOOLS.has(name) || (cfg.deniedTools ?? []).some((d) => d.toLowerCase() === name)) {
     return { outcome: "Deny", reason: `denied: ${call.name}`, needsHumanPrompt: false };
   }
 
@@ -114,8 +123,8 @@ export function requiresApproval(
     return { outcome: "Deny", reason: `unknown tool: ${call.name}`, needsHumanPrompt: false };
   }
 
-  // Step 2: deny rules.
-  if (matchAny(cfg.deny, call)) {
+  // Step 2: deny rules (H3: match against effectiveArgs — pre-hook mutations).
+  if (matchAny(cfg.deny, call, effectiveArgs)) {
     return { outcome: "Deny", reason: `deny-rule: ${call.name}`, needsHumanPrompt: false };
   }
 
@@ -124,7 +133,7 @@ export function requiresApproval(
   if (override === "Ask") return { outcome: "Deny", reason: "hook-ask", needsHumanPrompt: true };
 
   // Step 4: ask rules (inviolable — always prompt).
-  if (matchAny(cfg.ask, call)) {
+  if (matchAny(cfg.ask, call, effectiveArgs)) {
     return { outcome: "Deny", reason: `ask-rule: ${call.name}`, needsHumanPrompt: true };
   }
 
@@ -137,7 +146,7 @@ export function requiresApproval(
 
   // Step 5: allow/mode.
   const active = activeMode(ctx);
-  if (matchAny(cfg.allow, call)) return ALLOW;
+  if (matchAny(cfg.allow, call, effectiveArgs)) return ALLOW;
   if (active === "Allow") return ALLOW; // Allow = up to WorkspaceWrite (Danger already handled above)
   // R27-2/D9: Prompt mode auto-allows ReadOnly, prompts for writes.
   if (active === "Prompt") {

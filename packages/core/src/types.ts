@@ -393,7 +393,7 @@ export interface LspWriteHook {
 export const DELEGATE_BLOCKED_TOOLS = new Set([
   "task",
   "delegate",
-  "codeExecBridge",
+  "codeexecbridge", // §7: all names normalized lowercase (review C1 — was camelCase "codeExecBridge", a case-bypass)
   "spawn",
   "exec",
   "bash",
