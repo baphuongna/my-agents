@@ -1,181 +1,161 @@
-# PLAN-REMAINING — Final Roadmap to a Runnable `mya` Command
+# PLAN-REMAINING — Phase 18+ (Complete Pi-Quality TUI)
 
-> Post-Phase 13 state: 40 packages, 212 tests, 27 commits, engine complete.
-> This plan covers ALL remaining gaps (SPEC + UI + publish) in 3 phases.
+> Goal: full TUI feature parity with pi, claw-code, oh-my-pi, hermes-agent reference.
+> Phase 18 shipped the Ink skeleton (slash commands, history, status bar). This plan
+> finishes the rest in 6 sub-phases.
 
-## Current State
+## Confirmed scope (user, 2026-07-11)
+- **Slash commands**: core ~25 + 3 selectors (model/skill/tool tree-picker)
+- **Editor**: fuzzy autocomplete on `/` + Tab (pi-style suggest overlay)
+- **Theme**: 3 built-in (dark/light/dim) + `/theme` command
 
-**Engine**: ✅ complete — turn FSM, 7-step permission, 10/22 dream-cycle phases,
-4-arm RRF, ragfs scan-on-read, CoW subagents, gateway control-plane, telemetry,
-212 tests, CI green.
+## Phase 19: Slash commands (25)
+**Files**: `packages/tui/src/ink-commands.ts` (new) + `ink.tsx` (import + mount)
 
-**CLI**: ✅ `my-agent` bin works (MiniMax verified: "What is 2+2?" → "Four.").
-But `bin` is named `my-agent`, not `mya`. TUI/RPC are libraries (no entry).
-Web/desktop are built but need startup scripts.
+| Category | Commands |
+|---|---|
+| **Session** | `/help /quit /clear /clear --confirm /status /cost /resume /fork` |
+| **Model** | `/model <name>` (show/switch), `/model-selector` (tree picker) |
+| **Tools** | `/tools` (list), `/skill-selector` (fuzzy), `/tool-selector` (multi-select) |
+| **Permissions** | `/permissions <read-only\|workspace-write\|danger-full-access\|prompt>` |
+| **Memory** | `/memory` (count), `/memory-search <query>`, `/memory-clear` |
+| **Config** | `/config <key> <value>`, `/config env`, `/config show` |
+| **Compaction** | `/compact` (truncate old), `/compact <last-N>` |
+| **Export/Import** | `/export <file>` (transcript → markdown), `/import <file>` (replay) |
+| **MCP** | `/mcp list`, `/mcp show <name>`, `/mcp reload` |
+| **Skills** | `/skills list`, `/skills show <name>`, `/skills reload` |
+| **Tree/Pickers** | `/tree <dir>` (interactive file tree) |
 
-## Phase 14: Remaining SPEC Gaps (tractable)
+**Test**: `packages/tui/src/ink-commands.test.tsx` — 8 tests via ink-testing-library.
 
-### 14a. §9 Skills — SkillCurator + SkillProvenance fix
-- **SkillProvenance**: change from interface `{sourcePath, loadedAt}` to the
-  spec's 4-value enum `"Bundled" | "HubInstalled" | "UserCreated" | "AgentCreated"`.
-  Gate which skills the curator may touch.
-- **SkillCurator**: implement `curate(store, opts)`: inactivity-triggered prune
-  (archive-not-delete), `prune_builtins` flag, pinned-skills bypass. Runs on
-  auxiliary provider chain (Phase 14 wires to MockProvider for testing).
-- **Tests**: curator prune/archive/pin; provenance enum gating.
+## Phase 20: Fuzzy autocomplete overlay
+**Files**: `packages/tui/src/autocomplete.ts` (new) + `ink-text-input` upgrade to use `useInput` raw mode
 
-### 14b. §15 Eval — tier fix + no-egress guard
-- Change `ParityScenario.tier` from `"mock" | "live"` to spec's
-  `"unit" | "integration" | "credentialed"`.
-- **no-egress guard**: monkey-patch `globalThis.fetch` during non-credentialed
-  test runs; fail the test if any network call fires outside the credentialed tier.
-- **golden-set age gate**: check `recordedAt + maxGoldenAgeDays` on golden
-  fixtures; warn if stale.
-- **Tests**: egress fence blocks fetch in unit tier; allows in credentialed.
+- **Trigger**: type `/` → overlay appears with fuzzy-matched commands
+- **Navigation**: `↑/↓` walks, `Tab`/`Enter` accepts, `Esc` dismisses
+- **Filter**: case-insensitive substring + minimal fuzzy (e.g. `/mdl` matches `/model`)
+- **Visual**: 2-line popup above the input; shows `[name]` `[description]` `[kbd-hint]`
+- **Skills integration**: when typing `/skill <name>`, also show matching skills
+- **Files integration**: when typing `@<path>`, also show matching files (lazy — only on `@`)
 
-### 14c. §8 — GoalsRole prompt rendering + performance
-- **GoalsRole → prompt**: wire `GoalsRole.systemPromptBlock(store)` into the
-  volatile tier composition (`buildVolatileTier` or `assemblePrompt`). The goals
-  text now appears in the agent's system prompt.
-- **conversationFactsBackfill incremental**: track `lastBackfillIdx`; only scan
-  new history entries (not the entire conversation every turn).
-- **brain.backlinks() cache**: cache the result; invalidate on `recordFact`.
-- **Tests**: goals appear in assembled prompt; backfill is incremental (N facts
-  scanned once, not N×N).
+**Test**: `autocomplete.test.ts` — fuzzy match + navigation + accept/dismiss.
 
-### 14d. §6 — resolveToolName mapping
-- Replace the stub `return rawName` with a config-declared alias map
-  (`{ "search_web": "web_search", "fs_read": "read" }`). Pure deterministic.
-- **Test**: resolveToolName maps a known alias; passes through unknown names.
+## Phase 21: 3 themes + `/theme` command
+**Files**: `packages/tui/src/themes.ts` (new) + `ink.tsx` (read active theme from state)
 
-## Phase 15: Complete UI (all transports runnable)
+| Theme | Foreground | Background | Border | Muted | Accent |
+|---|---|---|---|---|---|
+| **dark** (default) | white | black | gray | gray | cyan |
+| **light** | black | white | gray | gray | blue |
+| **dim** | gray | black | darkgray | dimgray | gray |
 
-### 15a. TUI entry point — interactive REPL
-- Create `packages/tui/src/cli.ts`:
-  ```ts
-  #!/usr/bin/env node
-  // mya-tui — interactive REPL over the agent core
-  import { createAgent } from "@my-agent/agent";
-  import { TuiRepl } from "./index.js";
-  // ... auto-config (auth.json + env) + boot the REPL
-  ```
-- Features: readline prompt cycle, Ctrl-C abort, streaming event rendering,
-  approval modal (y/n), slash commands (`/help`, `/budget`, `/memory`).
-- Wire to `createAgent` → `agent.run(text, sink)`.
-- **Test**: boot TuiRepl with mock provider, send a prompt, verify output.
+- **`/theme [name]`** — show current / switch
+- **`/theme-list`** — show all
+- **Persistence**: `~/.my-agent/theme.toml` (single line: `theme = "light"`) — survives sessions
+- **Hot reload**: theme change re-renders the entire session
 
-### 15b. RPC entry point — JSON-RPC stdio server
-- Create `packages/rpc/src/cli.ts`:
-  ```ts
-  #!/usr/bin/env node
-  // mya-rpc — JSON-RPC 2.0 server over stdio (for editor integrations)
-  import { createAgent } from "@my-agent/agent";
-  import { RpcServer } from "./index.js";
-  // ... boot the RPC server bound to createAgent
-  ```
-- Methods: `prompt`, `cancel`, `status`, `heartbeat`.
-- **Test**: send a JSON-RPC `prompt` request via stdin, verify response.
+**Test**: `themes.test.ts` — 4 tests (color map per theme + persistence + hot reload).
 
-### 15c. Web dashboard startup — `mya serve`
-- Create `packages/gateway/src/cli.ts`:
-  ```ts
-  #!/usr/bin/env node
-  // mya serve — HTTP + WS gateway with the web dashboard at /
-  import { createAgent } from "@my-agent/agent";
-  import { Gateway } from "./index.js";
-  import { dashboardHtml } from "@my-agent/web";
-  // ... boot the gateway on port 3000 (or --port)
-  ```
-- Serves the SPA dashboard + WS event stream + control-plane REST.
-- **Test**: `curl localhost:3000/health/live` → 200.
+## Phase 22: Selectors (interactive tree-pickers)
+**Files**: `packages/tui/src/selectors.ts` (new)
 
-### 15d. Desktop launch verification
-- Verify the Tauri shell (`crates/desktop-shell`) launches the web dashboard
-  in a webview. If Tauri builds in this env, produce a binary; else document
-  the `cargo tauri dev` command for local development.
+Three modal components (R26-R28-style nested UI):
+- **`<ModelSelector>`** — list of models from `provider.list()`, grouped by provider, `↑/↓` + Enter
+- **`<SkillSelector>`** — fuzzy filter, shows all skills from `SkillStore.index()`, Enter to invoke
+- **`<ToolSelector>`** — multi-select checkbox list of registered tools, Enter to confirm + run selected ones
 
-## Phase 16: The `mya` Command — npm-installable + runnable
+Each replaces the right-pane temporarily (modal overlay); on selection, returns value to parent.
 
-### 16a. Multi-mode `mya` CLI
-- Rename `bin` from `my-agent` to **`mya`** in root package.json.
-- Single entry point (`packages/print/src/cli.ts` rewritten):
-  ```bash
-  mya "hello"              # default: interactive TUI REPL
-  mya --print "hello"      # print mode (transcript or --json)
-  mya --rpc                # JSON-RPC stdio server
-  mya serve                # web dashboard + gateway
-  mya --model gpt-4o "..." # explicit model
-  echo "hi" | mya --json   # stdin pipe → JSON stream
-  ```
-- Auto-config (existing): reads `~/.pi/agent/auth.json` → MiniMax/OpenAI/mock.
-- Auth file: `~/.mya/config.toml` or `~/.pi/agent/auth.json` (backward compat).
+**Test**: `selectors.test.tsx` — 6 tests (each selector renders + selects + cancels).
 
-### 16b. npm-publishable package.json
-```jsonc
-{
-  "name": "@mya/agent",         // or "mya" if unscoped
-  "version": "0.1.0",
-  "description": "Unified coding + autonomous agent (TypeScript 7 + Rust natives)",
-  "bin": { "mya": "./packages/print/dist/cli.js" },
-  "engines": { "node": ">=20" },
-  "os": ["darwin", "linux", "win32"],
-  "optionalDependencies": {
-    "@mya/natives-darwin-arm64": "*",
-    "@mya/natives-linux-x64": "*"
-    // prebuilt napi binaries via optionalDependencies
-  }
-}
+## Phase 23: Advanced editor features
+**Files**: `packages/tui/src/editor.ts` (replace `ink-text-input` wrapper)
+
+| Feature | Keystroke | Behavior |
+|---|---|---|
+| **Multi-line enter** | `Enter` | Newline (preserves indentation) |
+| **Submit** | `Esc` then `Enter` OR `Ctrl+D` empty | Submit current draft |
+| **Kill word back** | `Ctrl+W` | Delete last word |
+| **Kill to BOL** | `Ctrl+U` | Delete to start of line |
+| **Kill to EOL** | `Ctrl+K` | Delete to end of line |
+| **Yank** | `Ctrl+Y` | Paste last killed text |
+| **Cursor left/right** | `←/→` | Move cursor (preserves draft) |
+| **Cursor home/end** | `Home/End` | Jump to start/end |
+
+(Keeps `↑/↓` for history navigation, kept from Phase 18.)
+
+**Test**: `editor.test.tsx` — 8 tests for each editor command.
+
+## Phase 24: Transcript polish + scrollback
+**Files**: `packages/tui/src/transcript.tsx` (extract from `ink.tsx`)
+
+- **Auto-scroll** to bottom on new line unless user scrolled up
+- **Manual scrollback**: `Shift+↑/↓` walks older lines; `g` jumps to top, `G` to bottom
+- **Selection highlight**: `Ctrl+L` selects the word at cursor; Ctrl+C copies
+- **Token-count badge** in the transcript header: `12,847 tokens · $0.1234`
+- **Markdown rendering**: assistant lines pass through a minimal markdown -> ANSI renderer (headers bold, `code` highlighted, lists indented)
+
+**Test**: `transcript.test.tsx` — 5 tests (auto-scroll, scrollback, markdown).
+
+## Phase 25: Wire it all into a second 3-round review + test cycle
+
+After all 6 sub-phases:
+1. Run full suite — target 300+ tests
+2. 3 review rounds with reviewer + security-reviewer + cold-verifier
+3. Fix all CRITICAL/HIGH findings
+4. Bundle + global install verify
+5. Final demo: launch `mya` in real tmux, exercise slash commands end-to-end
+
+## File layout after Phase 19+
+
+```
+packages/tui/src/
+├── index.ts          # existing readline TuiRepl (non-TTY fallback)
+├── ink.tsx           # existing InkSession — orchestrates everything
+├── ink-commands.ts   # Phase 19: 25 slash commands + helpers
+├── autocomplete.ts   # Phase 20: fuzzy /command overlay
+├── themes.ts         # Phase 21: dark/light/dim + persistence
+├── selectors.ts      # Phase 22: ModelSelector / SkillSelector / ToolSelector
+├── editor.ts         # Phase 23: kill/yank/word-nav wrapper around ink-text-input
+├── transcript.tsx    # Phase 24: scrollback + markdown rendering
+├── ink.test.tsx      # existing 8 tests
+├── ink-commands.test.tsx
+├── autocomplete.test.ts
+├── themes.test.ts
+├── selectors.test.tsx
+├── editor.test.tsx
+└── transcript.test.tsx
 ```
 
-### 16c. README + install instructions
-```markdown
-# mya — Unified Agent
+## Total LOC estimate (additive to current ~700 LOC)
+- `ink-commands.ts`: ~400 LOC (25 commands + 3 selector wires)
+- `autocomplete.ts`: ~150 LOC (fuzzy match + overlay)
+- `themes.ts`: ~100 LOC (3 themes + persistence)
+- `selectors.ts`: ~350 LOC (3 components)
+- `editor.ts`: ~200 LOC (kill-ring + yank + 6 keybindings)
+- `transcript.tsx`: ~250 LOC (markdown + scrollback + token badge)
+- Test files: ~400 LOC (~25 tests total)
+- **Total: ~1,850 LOC new** (TS + JSX + tests)
 
-## Install
-npm install -g mya
+## Risk notes
+- **Ink re-render storm**: every event re-renders the whole transcript (managed by React). For long sessions (>500 lines) consider virtualization. Phase 24 will cap at MAX_HISTORY_LINES=500 (already in Phase 18).
+- **Bundles weight**: 796K now → estimate 1.0MB after all 6 phases (~+200K from new components).
+- **Backwards compat**: the readline TuiRepl (non-TTY path) stays untouched — Phase 15 user base unaffected.
+- **No new runtime deps**: only `fzf`-style scoring (in-house, ~30 LOC) + `marked` for markdown (~10K, optional — can omit if size is a concern).
 
-## Quick start
-mya "Hello, what can you do?"
-```
+## Build order (sequenced, dependency-safe)
+1. **Phase 19** first — slash commands are the surface everything else hangs off
+2. **Phase 21** second — themes affect every other phase's visuals
+3. **Phase 20** third — autocomplete uses the slash commands from 19
+4. **Phase 22** fourth — selectors depend on commands + themes
+5. **Phase 23** fifth — editor polish (independent of the others)
+6. **Phase 24** last — transcript polish + markdown (visual final layer)
+7. **Phase 25** wraps — 3 review rounds + global install verification
 
-### 16d. `npm pack` verification
-- `npm pack` produces a tarball.
-- `npm install -g ./mya-0.1.0.tgz` + `mya "hello"` works end-to-end.
-- Integration test: `mya "What is 2+2?"` → real MiniMax response.
-
-### 16e. Final integration test
-```bash
-# Install globally
-npm install -g .
-
-# Run
-mya "What is 2+2? Answer in one word."
-# Expected: "Four." + cost + provider info
-
-# JSON mode
-mya --json "hello" | head -1
-# Expected: {"kind":"turn","stage":"start"}
-
-# Interactive (TUI)
-mya
-# Expected: greeting + prompt → type a message → streaming response
-```
-
-## Summary: what each phase delivers
-
-| Phase | Scope | Tests | Outcome |
-|---|---|---|---|
-| **14** | SPEC gaps (curator, eval, goals-render, resolveToolName, perf) | +10 | All tractable SPEC gaps closed |
-| **15** | TUI/RPC/Web entry points (all transports runnable) | +5 | 4 ways to use the agent: TUI, RPC, Web, CLI |
-| **16** | `mya` command + npm publishable + verified install | +3 | `npm i -g mya && mya "hello"` works |
-
-## After Phase 16: what remains (documented, not blocking)
-
-- DAP live adapter (vscode-js-debug env limitation)
-- 12 LLM-driven dream-cycle phases (need a model in the loop)
-- no-explicit-any ESLint (TS-7 incompatibility)
-- CCR side-cache + Trident compaction (large)
-- Provider compat flags (~20)
-- Durable audit persistence (SQLite backend)
-- Collab E2E + CRDT (medium)
-- Desktop tray/overlay/notification
+## After Phase 25: still open (deferred)
+- §3 OSC 8 hyperlinks (terminal-feature-gated)
+- §3 Kitty graphics / inline image (terminal-feature-gated)
+- §25.3 desktop companion (Tauri)
+- §25.4 collab room (requires CRDT + E2E encryption)
+- §25.5 voice/desktop mode
+- §25.7 i18n (`en`/`ja`/`zh`/`zh-hant`)
