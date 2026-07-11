@@ -108,9 +108,14 @@ MLX, web session-cookie+CSRF) remain as noted above.
    (spawn creates an isolated sandbox + 3-way merges on yield) ✓; invariant
    lint gating (Date.now grep guard + madge circular-check — ESLint is TS-7-
    incompatible) ✓; §14.3 RecoveryRecipe FSM + ProjectTrust ✓.
-7. **Phase 7 (open — large):** maybeSpill/telemetry (§13), §8 RRF retrieval /
-   22-phase dream cycle / ragfs unified-context-FS, DAP live adapter (vscode-js-
-   debug standalone — env limitation), no-explicit-any + madge-transport CI rule.
+7. **Phase 7 (§8 memory stack + §13 spill) — core DONE:** maybeSpill (§13
+   large-value → ~/.my-agent/refs) ✓; §8 RRF retrieval (Reciprocal-Rank-Fusion
+   k=60 over BM25 + substring arms; vector/graph arms drop in) ✓; ragfs
+   unified-context-FS router (memory:// skill:// knowledge:// file:// +
+   ContextSource + StaticContextSource) ✓.
+8. **Phase 8 (open — very large / env-limited):** §8 22-phase dream cycle
+   (only `consolidate` exists), vector (HNSW) + graph arms for RRF, telemetry
+   export, DAP live adapter (vscode-js-debug standalone — env limitation).
 
 
 ## What IS solidly built (don't lose this)
