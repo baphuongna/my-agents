@@ -18,5 +18,6 @@ export { RagfsRouter, StaticContextSource, KnowledgeSource, parseRagfsUri, RAGFS
 export { makeRagfsScanner, allowAllScanner, denyAllScanner } from "./ragfs-bridge.js";
 export type { ContextSource, RagfsUri, RagfsScanner } from "./ragfs.js";
 export { createRagfs } from "./ragfs-factory.js";
+export { MemoryContextSource } from "./memory-source.js";
 export { TypedGraph } from "./graph.js";
 export type { KGEntity, KGRelation } from "./graph.js";

@@ -18,6 +18,7 @@ import {
   createSession,
   freeBudget,
   runTurn,
+  ArrayHistory,
   type BudgetConfig,
   type ProviderProfile,
   type RuntimeEvent,
@@ -36,7 +37,7 @@ import {
   runToolBatch,
   type ToolImpl,
 } from "@my-agent/tools";
-import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, type RagfsRouter } from "@my-agent/memory";
+import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter } from "@my-agent/memory";
 import { scan as scanContent } from "@my-agent/prompts";
 import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
 
@@ -126,7 +127,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
   const knowledgeGraph = new TypedGraph();
   const ragfs = createRagfs({
     scanner: makeRagfsScanner(scanContent),
-    sources: [new KnowledgeSource(knowledgeGraph)],
+    sources: [new KnowledgeSource(knowledgeGraph), new MemoryContextSource(memory)],
   });
 
   // ── tools ──
@@ -189,12 +190,36 @@ export function createAgent(config: AgentConfig = {}): Agent {
     }
   }
 
+  /** §8 dream cycle: after a turn, feed the brain + seed the knowledge graph +
+   * sync memory roles. Never throws — degrades to a logged warning. */
+  async function runDreamCycle(): Promise<void> {
+    try {
+      // 1. Feed the conversation to the brain (conversation_facts_backfill).
+      const history = session.history as ArrayHistory;
+      const conversation = history.entries().map((e) => {
+        const entry = e as { role?: string; content?: string };
+        return { role: entry.role ?? "user", content: entry.content ?? "" };
+      });
+      brain.conversationFactsBackfill(conversation);
+      // 2. Consolidate hot facts into takes.
+      brain.consolidate();
+      // 3. Seed the knowledge graph from the brain's zero-LLM backlinks.
+      knowledgeGraph.ingestBacklinks(brain.backlinks());
+      // 4. Set recentTurn for the archivist role, then sync memory roles.
+      (session as { recentTurn?: unknown[] }).recentTurn = conversation.slice(-20);
+      await memory.syncAll();
+    } catch {
+      // dream-cycle failure is non-fatal — the turn already succeeded.
+    }
+  }
+
   async function runOnce(text: string, signal?: AbortSignal): Promise<RuntimeEvent[]> {
     const collected: RuntimeEvent[] = [];
     const handle = await startTurn(text, signal);
     handle.on((e) => collected.push(e));
     await handle.done;
     await runHindsight(text, collected, (e) => collected.push(e));
+    await runDreamCycle();
     return collected;
   }
 
@@ -208,6 +233,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     handle.on((e) => { sink(e); events.push(e); });
     await handle.done;
     await runHindsight(text, events, sink);
+    await runDreamCycle();
   }
 
   return {
