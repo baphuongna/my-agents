@@ -51,6 +51,7 @@ async function main(): Promise<void> {
   // ── flags ──
   const json = args.includes("--json");
   const print = args.includes("--print") || json;
+  const readline = args.includes("--readline");
   const rpc = args.includes("--rpc");
   const ink = args.includes("--ink");
   const modelIdx = args.indexOf("--model");
@@ -77,7 +78,7 @@ async function main(): Promise<void> {
   }
 
   // ── interactive TUI ──
-  return runTui(model, ink);
+  return runTui(model, readline);
 }
 
 function readStdin(): Promise<string> {
@@ -90,18 +91,13 @@ function readStdin(): Promise<string> {
   });
 }
 
-async function runTui(model?: string, forceInk?: boolean): Promise<void> {
-  // Phase 18: pick TTY-aware renderer. Ink/React when stdin+stdout is a TTY
-  // (the common case: a real terminal). Fall back to the readline TuiRepl
-  // for non-TTY contexts (CI, redirected stdin, IDE consoles without PTY).
-  if (process.stdin.isTTY && process.stdout.isTTY) {
-    return runInkTui(model);
+async function runTui(model?: string, useReadline?: boolean): Promise<void> {
+  // Ink is the DEFAULT UI. Use --readline for non-TTY / pipe / CI.
+  // Auto-fallback to readline when stdin is NOT a TTY (piped input).
+  if (useReadline || (!process.stdin.isTTY && !process.stdout.isTTY)) {
+    return runReadlineTui(model);
   }
-  // --ink flag forces the Ink UI even if TTY detection fails.
-  if (forceInk) {
-    return runInkTui(model);
-  }
-  return runReadlineTui(model);
+  return runInkTui(model);
 }
 
 async function runInkTui(model?: string): Promise<void> {

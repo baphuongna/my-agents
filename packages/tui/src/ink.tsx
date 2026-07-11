@@ -26,8 +26,12 @@ import { themeStore, defaultTheme as themeDefault, type Theme } from "./themes.j
 import { sanitize } from "./sanitize.js";
 import { KillRing, EditorOps, yank } from "./editor.js";
 import { Autocomplete } from "./autocomplete.js";
-import { MdInline } from "./transcript";
 import { renderSelector } from "./selectors";
+import { RichTranscript, Spinner, type RichLine } from "./rich-transcript.js";
+import { getTheme, type PiTheme, PI_DARK } from "./pi-theme.js";
+
+// Module-level theme for standalone functions (ApprovalModal, StatusBar).
+const PI = PI_DARK;
 export type { SlashCommand } from "./ink-commands.js";
 
 /** A single rendered event line in the conversation stream. */
@@ -128,6 +132,10 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [approval, setApproval] = useState<InkApproval | null>(null);
   const [status, setStatus] = useState<InkStatus>(props.initialStatus);
+  // Pi-quality theme — replaces the old 11-color defaultTheme.
+  const theme: PiTheme = getTheme();
+  // Convert InkTurnLine → RichLine for the RichTranscript.
+  const richLines: RichLine[] = lines.map((l) => ({ ...l, kind: l.kind as RichLine["kind"] }));
   // Phase 27: autocomplete overlay state.
   const [acHighlighted, setAcHighlighted] = useState(0);
   // Q4 fix: when true, a slash autocomplete accept was just performed — the
@@ -404,17 +412,15 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
 
   return (
     <Box flexDirection="column" width={termWidth}>
-      {/* Header */}
-      <Box borderStyle="round" borderColor={defaultTheme.meta} paddingX={1}>
-        <Text color={defaultTheme.meta}>mya</Text>
-        <Text> · interactive agent</Text>
+      {/* Header — pi-style with accent border */}
+      <Box borderStyle="round" borderColor={theme.accent} paddingX={1}>
+        <Text color={theme.accent} bold>● mya</Text>
+        <Text color={theme.muted}> · unified agent</Text>
       </Box>
 
-      {/* Transcript */}
+      {/* Rich transcript — markdown + tool cards + spinner */}
       <Box flexDirection="column" paddingX={1} flexGrow={1}>
-        {lines.map((line, i) => (
-          <TranscriptLine key={`${i}-${line.kind}-${line.seq}`} line={line} />
-        ))}
+        <RichTranscript lines={richLines} theme={theme} busy={busy} width={termWidth} />
       </Box>
 
       {/* Approval modal overlay */}
@@ -422,7 +428,7 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
 
       {/* Phase 28: selector modal overlay (model / skill / tool picker) */}
       {selectorView && (
-        <Box marginX={2} flexDirection="column" borderStyle="round" borderColor={defaultTheme.meta} paddingX={1}>
+        <Box marginX={2} flexDirection="column" borderStyle="round" borderColor={theme.muted} paddingX={1}>
           {renderSelector({
             kind: selectorView.kind,
             multi: selectorView.multi,
@@ -456,7 +462,7 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
             },
           })}
           <Box marginTop={1}>
-            <Text color={defaultTheme.meta}>↑↓ navigate · Enter to confirm · Esc to cancel</Text>
+            <Text color={theme.muted}>↑↓ navigate · Enter to confirm · Esc to cancel</Text>
           </Box>
         </Box>
       )}
@@ -489,9 +495,9 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       {/* Multi-line input — suppressed when a selector modal is open so the
           user cannot type + Enter to submit a draft while the modal is up. */}
       <Box paddingX={1}>
-        <Text color={defaultTheme.user} bold>{">"} </Text>
+        <Text color={theme.userText} bold>{">"} </Text>
         {selectorView ? (
-          <Text color={defaultTheme.meta}>(selector open — press Esc to cancel)</Text>
+          <Text color={theme.muted}>(selector open — press Esc to cancel)</Text>
         ) : (
           <TextInput
             value={draft}
@@ -511,12 +517,12 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
 /** Single-line rendered transcript entry. */
 function TranscriptLine({ line }: { line: InkTurnLine }): React.ReactElement {
   const color =
-    line.kind === "user" ? defaultTheme.user :
-    line.kind === "assistant" ? defaultTheme.assistant :
-    line.kind === "tool" ? defaultTheme.tool :
-    line.kind === "approval" ? defaultTheme.approval :
-    line.kind === "error" ? defaultTheme.error :
-    defaultTheme.text;
+    line.kind === "user" ? PI.userText :
+    line.kind === "assistant" ? PI.accent :
+    line.kind === "tool" ? PI.toolTitle :
+    line.kind === "approval" ? PI.warning :
+    line.kind === "error" ? PI.error :
+    PI.text;
   const prefix =
     line.kind === "user" ? "you" :
     line.kind === "assistant" ? "mya" :
@@ -526,10 +532,8 @@ function TranscriptLine({ line }: { line: InkTurnLine }): React.ReactElement {
     "info";
   return (
     <Box>
-      <Text color={defaultTheme.meta}>{prefix.padEnd(4)} </Text>
-      <Text color={color} wrap="wrap">
-        {line.kind === "assistant" ? <MdInline text={line.text} theme={defaultTheme} /> : line.text}
-      </Text>
+      <Text color={PI.muted}>{prefix.padEnd(4)} </Text>
+      <Text color={color} wrap="wrap">{sanitize(line.text)}</Text>
     </Box>
   );
 }
@@ -543,21 +547,21 @@ function ApprovalModal({ approval }: { approval: InkApproval }): React.ReactElem
   return (
     <Box
       borderStyle="round"
-      borderColor={defaultTheme.approval}
+      borderColor={PI.warning}
       flexDirection="column"
       paddingX={1}
       marginX={1}
     >
-      <Text color={defaultTheme.approval} bold>approval required</Text>
+      <Text color={PI.warning} bold>approval required</Text>
       {/* F4 fix: sanitize the approval modal — approval.name and approval.reason
           are fully assistant-controlled (from tool_call events). */}
-      <Text><Text color={defaultTheme.meta}>tool  </Text> <Text color={defaultTheme.tool}>{sanitize(approval.name)}</Text></Text>
-      <Text><Text color={defaultTheme.meta}>args  </Text> {sanitize(argsShort)}</Text>
-      <Text><Text color={defaultTheme.meta}>why   </Text> {sanitize(approval.reason)}</Text>
+      <Text><Text color={PI.muted}>tool  </Text> <Text color={PI.toolTitle}>{sanitize(approval.name)}</Text></Text>
+      <Text><Text color={PI.muted}>args  </Text> {sanitize(argsShort)}</Text>
+      <Text><Text color={PI.muted}>why   </Text> {sanitize(approval.reason)}</Text>
       <Box marginTop={1}>
-        <Text color={defaultTheme.ok} bold>y</Text>
+        <Text color={PI.success} bold>y</Text>
         <Text> allow   </Text>
-        <Text color={defaultTheme.error} bold>n</Text>
+        <Text color={PI.error} bold>n</Text>
         <Text> deny</Text>
       </Box>
     </Box>
@@ -567,15 +571,15 @@ function ApprovalModal({ approval }: { approval: InkApproval }): React.ReactElem
 /** Bottom status bar — provider · model · tokens · $ spent / budget. */
 function StatusBar({ status }: { status: InkStatus }): React.ReactElement {
   const pct = status.budgetUsd > 0 ? (status.spentUsd / status.budgetUsd) * 100 : 0;
-  const color = pct >= 100 ? defaultTheme.error : pct >= 80 ? defaultTheme.warn : defaultTheme.ok;
+  const color = pct >= 100 ? PI.error : pct >= 80 ? PI.warning : PI.success;
   return (
-    <Box borderStyle="round" borderColor={defaultTheme.status} paddingX={1}>
-      <Text color={defaultTheme.status}>{status.provider}</Text>
-      <Text color={defaultTheme.status}> · </Text>
-      <Text color={defaultTheme.meta}>{status.model}</Text>
-      <Text color={defaultTheme.status}> · </Text>
+    <Box borderStyle="round" borderColor={PI.muted} paddingX={1}>
+      <Text color={PI.muted}>{status.provider}</Text>
+      <Text color={PI.muted}> · </Text>
+      <Text color={PI.muted}>{status.model}</Text>
+      <Text color={PI.muted}> · </Text>
       <Text>↑{status.tokensIn} ↓{status.tokensOut}</Text>
-      <Text color={defaultTheme.status}> · </Text>
+      <Text color={PI.muted}> · </Text>
       <Text color={color}>
         ${status.spentUsd.toFixed(4)}
         {status.budgetUsd > 0 ? ` / $${status.budgetUsd.toFixed(2)}` : ""}
