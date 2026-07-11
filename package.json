@@ -34,6 +34,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "ink-text-input": "^6.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

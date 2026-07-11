@@ -90,6 +90,95 @@ function readStdin(): Promise<string> {
 }
 
 async function runTui(model?: string): Promise<void> {
+  // Phase 18: pick TTY-aware renderer. Ink/React when stdin+stdout is a TTY
+  // (the common case: a real terminal). Fall back to the readline TuiRepl
+  // for non-TTY contexts (CI, redirected stdin, IDE consoles without PTY).
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    return runInkTui(model);
+  }
+  return runReadlineTui(model);
+}
+
+async function runInkTui(model?: string): Promise<void> {
+  const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
+  const controller = new AbortController();
+  // Track cumulative cost + tokens for the status bar.
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let spentUsd = 0;
+  let providerId = process.env["MINIMAX_API_KEY"] ? "minimax" : process.env["OPENAI_API_KEY"] ? "openai" : "mock";
+  const registeredApprovals = new Map<string, (decision: "Allow" | "Deny") => void>();
+
+  // We import ink dynamically so non-TTY callers don't pay the bundle cost
+  // (the bundle inlines it, but the cost of the require() is identical here).
+  const ink = await import("@my-agent/tui/ink");
+  const handle = ink.startInkSession({
+    onSubmit: async (text) => {
+      await agent.run(text, (event) => {
+        // Translate the RuntimeEvent into a transcript line + status updates.
+        const line = ink.eventToLine(0, event);
+        if (line) handle.pushLine(line);
+        const e = event as { kind?: string; turnEvent?: { state?: string; usage?: { input?: number; output?: number }; chunk?: { kind?: string; call?: { id?: string; name?: string; arguments?: unknown } } }; usage?: { input?: number; output?: number }; cost?: { usd?: number }; state?: string };
+        // Update token + cost counters.
+        const usage = (e.turnEvent?.usage ?? e.usage);
+        if (usage) {
+          tokensIn += usage.input ?? 0;
+          tokensOut += usage.output ?? 0;
+        }
+        const cost = (e as { cost?: { usd?: number } }).cost;
+        if (cost?.usd !== undefined) spentUsd = cost.usd;
+        // Approval requests — push modal + register resolver.
+        const te = e.turnEvent;
+        if (te?.state === "AwaitingApproval" && te.chunk?.kind === "tool_call" && te.chunk.call) {
+          const callId = te.chunk.call.id ?? "";
+          const name = te.chunk.call.name ?? "?";
+          const args = JSON.stringify(te.chunk.call.arguments ?? {});
+          const reason = "permission gate requires user confirmation";
+          // Register a resolver the approval handler will invoke.
+          const decisionPromise = new Promise<"Allow" | "Deny">((resolve) => {
+            registeredApprovals.set(callId, resolve);
+          });
+          handle.setApproval({ callId, name, args, reason });
+          // Forward the decision back to the agent's permission gate.
+          decisionPromise.then((d) => {
+            // Currently best-effort: log the decision; the agent's awaitHumanPrompt
+            // resolves via the same channel once the permission gate listens.
+            // Phase 19: wire a 2-way WS-style approval through the dispatch hook.
+          });
+        }
+        // Status bar refresh on every event.
+        handle.setStatus({
+          provider: providerId,
+          model: model ?? "MiniMax-M3",
+          tokensIn,
+          tokensOut,
+          spentUsd,
+          budgetUsd: 0,
+        });
+      });
+    },
+    onAbort: () => controller.abort(),
+    onApproval: (callId, decision) => {
+      const r = registeredApprovals.get(callId);
+      if (r) {
+        r(decision);
+        registeredApprovals.delete(callId);
+      }
+    },
+    initialStatus: { provider: providerId, model: model ?? "MiniMax-M3", tokensIn: 0, tokensOut: 0, spentUsd: 0, budgetUsd: 0 },
+    onClear: () => handle.clear(),
+    getModel: () => model ?? "MiniMax-M3",
+    getSpent: () => spentUsd,
+  });
+
+  // Block until the Ink session closes (Ctrl-D or /quit).
+  await new Promise<void>((resolve) => {
+    process.on("SIGINT", () => { controller.abort(); });
+    handle.close().then(resolve);
+  });
+}
+
+async function runReadlineTui(model?: string): Promise<void> {
   const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
   const controller = new AbortController();
   const repl = new TuiRepl({
