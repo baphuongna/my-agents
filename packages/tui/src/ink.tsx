@@ -100,6 +100,12 @@ export interface InkSessionProps {
   getModels?: () => Promise<{ label: string; value: string }[]>;
   /** Phase 29: live tool list (replaces hard-coded defaultToolItems). */
   getTools?: () => Array<{ name: string; description?: string }>;
+  /** Phase 29: live model name (for /status). */
+  getModel?: () => string;
+  /** Phase 29: live memory facts count (for /memory). */
+  getMemoryFacts?: () => number;
+  /** HIGH-1 fix: called when the user picks a model in /model-selector. */
+  onModelChange?: (model: string) => void;
 }
 
 /**
@@ -205,7 +211,9 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       // can't be yanked back into a "fresh" session.
       if (cmd === "clear") killRingRef.current.clear();
       try {
-        const out = def.run ? await def.run(args, { session: { cwd: process.cwd(), setModel: () => {}, getModel: () => "?", getProvider: () => "?", getSpent: () => 0, getBudget: () => 0, getMemoryFacts: () => 0, getTools: () => [], getSkills: () => [], getMcpServers: () => [], openSelector: async () => null, clearTranscript: () => {}, exportTranscript: () => "", compact: async () => 0, importFrom: async () => 0, setConfig: async () => {}, getConfig: async () => undefined, listConfig: async () => ({}), setMode: () => {}, getMode: () => "Prompt", tree: async () => "" } }) : null;
+        // HIGH-2 fix: thread live values into the command context so /tools
+        // and /status report real data instead of stubs.
+        const out = def.run ? await def.run(args, { session: { cwd: process.cwd(), setModel: (m: string) => { props.onModelChange?.(m); setStatus((s) => ({ ...s, model: m })); }, getModel: () => props.getModel?.() ?? "?", getProvider: () => status.provider, getSpent: () => status.spentUsd, getBudget: () => status.budgetUsd, getMemoryFacts: () => props.getMemoryFacts?.() ?? 0, getTools: () => props.getTools?.() ?? [], getSkills: () => [], getMcpServers: () => [], openSelector: async () => null, clearTranscript: () => setLines([]), exportTranscript: () => lines.map((l) => l.text).join("\n"), compact: async () => 0, importFrom: async () => 0, setConfig: async () => {}, getConfig: async () => undefined, listConfig: async () => ({}), setMode: () => {}, getMode: () => "Prompt", tree: async () => "" } }) : null;
         // Phase 28: slash commands may return an InkSelector payload → open a modal.
         if (out && typeof out === "object" && (out as InkSelector).kind) {
           const sel = out as InkSelector;
@@ -648,6 +656,8 @@ export interface InkRunnerOpts {
   getSpent?: () => number;
   getBudget?: () => number;
   getMemoryFacts?: () => number;
+  /** HIGH-1 fix: called when the user picks a model in /model-selector. */
+  onModelChange?: (model: string) => void;
 }
 
 export interface InkHandle {
@@ -687,6 +697,9 @@ export function startInkSession(opts: InkRunnerOpts): InkHandle {
       commands={cmds}
       getModels={opts.getModels}
       getTools={opts.getTools}
+      getModel={opts.getModel}
+      getMemoryFacts={opts.getMemoryFacts}
+      onModelChange={opts.onModelChange}
     />,
   );
 
