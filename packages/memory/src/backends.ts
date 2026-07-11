@@ -84,7 +84,11 @@ export class FileBackend implements MemoryBackend {
   constructor(
     readonly role: MemoryRoleId,
     private dir: string,
-  ) {}
+  ) {
+    // Auto-create the memory dir on construction so `mya` (no args) works
+    // without manual setup. Fire-and-forget; mkdir is idempotent + recursive.
+    mkdir(this.dir, { recursive: true }).catch(() => { /* will retry on write */ });
+  }
 
   private path(): string {
     return `${this.dir}/${this.role}.md`;
