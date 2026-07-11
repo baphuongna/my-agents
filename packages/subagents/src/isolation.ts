@@ -109,7 +109,9 @@ const writes = new Map<string, string>(); // relPath → content
       const merged: string[] = [];
       const added: string[] = [];
       const conflicts: ConflictError[] = [];
-      for (const rel of writes.keys()) {
+      // Scan the WHOLE sandbox root (not just ws.write() callers — the child's
+      // tools write via fs directly to sandboxRoot). Compare each file to base.
+      for (const rel of walkFiles(sandboxRoot)) {
         assertContained(sandboxRoot, rel); assertContained(base, rel); assertContained(parentRoot, rel);
         const sandboxFile = join(sandboxRoot, rel);
         const baseFile = join(base, rel);
@@ -176,4 +178,19 @@ function copyTree(src: string, dst: string): void {
       copyFileSync(s, d);
     }
   }
+}
+
+/** Recursively list all FILES under `root`, as paths relative to `root`. */
+function walkFiles(root: string, dir = ""): string[] {
+  const out: string[] = [];
+  const abs = dir ? join(root, dir) : root;
+  let entries: import("node:fs").Dirent[];
+  try { entries = readdirSync(abs, { withFileTypes: true }); }
+  catch { return out; }
+  for (const ent of entries) {
+    const rel = dir ? `${dir}/${ent.name}` : ent.name;
+    if (ent.isDirectory()) out.push(...walkFiles(root, rel));
+    else if (ent.isFile()) out.push(rel);
+  }
+  return out;
 }

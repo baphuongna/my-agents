@@ -414,6 +414,10 @@ export interface SubagentSpawn {
   /** §10 R27-9/O4: hierarchical approval depth. The root spawn is 0; each child
    * increments. At MAX_APPROVAL_CHAIN_DEPTH spawn fail-closes (DoS guard). */
   chainDepth?: number;
+  /** §10.2 CoW isolation: the PARENT workspace root. If set, spawn creates an
+   * IsolatedWorkspace (file-copy sandbox), runs the child against it, then
+   * 3-way mergeBacks the child's changes (conflicts → SubagentResult{ok:false}). */
+  parentWorkspace?: string;
 }
 export type SubagentResult =
   | { ok: true; data: unknown; changedPaths?: string[] }

@@ -28,6 +28,7 @@ import {
   MAX_APPROVAL_CHAIN_DEPTH,
 } from "@my-agent/core";
 import { verifyGreen } from "./green.js";
+import { createIsolatedWorkspace } from "./isolation.js";
 
 /** A factory that builds a tool executor restricted to the subagent's ToolSet. */
 export type RestrictedToolExecutorFactory = (
@@ -60,7 +61,18 @@ export class InProcessRunner {
     }
     const childBudget = this.opts.parentBudget.deriveChild(this.opts.childAlloc);
     const childId = childBudget.id ?? "unknown";
-    const tools = this.opts.makeToolExecutor(s.toolSurface);
+    // §10.2: CoW-isolate the child's filesystem if a parent workspace is given.
+    const iso = s.parentWorkspace ? createIsolatedWorkspace(s.parentWorkspace) : undefined;
+    let tools = this.opts.makeToolExecutor(s.toolSurface);
+    if (iso) {
+      // the child's file tools resolve paths inside the sandbox root (not parent)
+      const inner = tools;
+      tools = {
+        async execute(calls, ctx) {
+          return inner.execute(calls, { ...ctx, workspace: iso.root });
+        },
+      };
+    }
     const stableTier = `You are a subagent. Topology: ${s.topology ?? "pipeline"}. Yield a JSON object.`;
     const session = createSession({ profiles: [this.opts.profile], stableTier });
     session.history.append({ role: "user", content: s.prompt });
@@ -103,9 +115,23 @@ export class InProcessRunner {
         const gv = verifyGreen(s.greenContract as never);
         if (!gv.ok) return { ok: false, error: `green-violation: ${gv.reason} — ${gv.detail}` };
       }
-      // Tier 1: no file diff (CoW lands Tier 2); changedPaths deferred.
-      return { ok: true, data, changedPaths: [] };
+      // §10.2 CoW merge-back: 3-way merge the child's sandbox changes into the
+      // parent workspace (conflicts → fail-closed; never silently clobbers).
+      let changedPaths: string[] = [];
+      if (iso && s.parentWorkspace) {
+        const merge = iso.mergeBack(s.parentWorkspace);
+        iso.cleanup();
+        if (!merge.ok) {
+          return { ok: false, error: `cow-merge conflict: ${merge.conflicts.map((c) => c.path).join(", ")}` };
+        }
+        changedPaths = [...merge.merged, ...merge.added];
+      } else {
+        iso?.cleanup();
+      }
+      return { ok: true, data, changedPaths };
     }
+    // non-Completed: a failed/cancelled child never merges back; always clean up.
+    iso?.cleanup();
     return {
       ok: false,
       error: terminal.state === "Failed"
