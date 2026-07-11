@@ -119,7 +119,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
   }
   memory.ensureDefault(["working", "archivist", "tree", "diff", "goals", "sync"]);
   memory.addRole(new ArchivistRole());
-  memory.addRole(new GoalsRole());
+  const goalsRole = new GoalsRole();
+  memory.addRole(goalsRole);
 
   // §8 Brain (facts/takes/pages + dream-cycle phases).
   const brain = new Brain();
@@ -178,6 +179,11 @@ export function createAgent(config: AgentConfig = {}): Agent {
     session.history.append({ role: "user", content: text });
     // Refresh memory snapshot, then assemble the cache-stable prompt (§5) BEFORE the turn.
     await memory.refresh();
+    // Phase 14c: populate the goals block from the GoalsRole before assembly.
+    const goalsBackend = memory.backends.find((b) => b.role === "goals");
+    if (goalsBackend) {
+      session.goalsBlock = await goalsRole.systemPromptBlock(goalsBackend);
+    }
     assemblePrompt(session);
     return runTurn({
       session,

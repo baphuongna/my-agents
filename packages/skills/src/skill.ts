@@ -13,9 +13,20 @@ import { nowWallclock } from "@my-agent/core";
  * Source: §9 Skills, hermes #8, pi/oh-my-pi skill model.
  */
 
-/** Where a skill originated. */
+/** §9 R26-C: SkillProvenance enum gating edits. Controls which skills the
+ * curator may touch (Bundled+AgentCreated only by default; HubInstalled is
+ * off-limits unless prune_builtins-style override; UserCreated is pinned-safe). */
+export type SkillProvenanceKind =
+  | "Bundled"
+  | "HubInstalled"
+  | "UserCreated"
+  | "AgentCreated";
+
+/** Provenance metadata: the kind enum (gate) + origin details (audit). */
 export interface SkillProvenance {
-  /** Filesystem path the SKILL.md was loaded from. */
+  /** The 4-value enum that gates curator edits (§9). */
+  kind: SkillProvenanceKind;
+  /** Filesystem path the SKILL.md was loaded from (audit). */
   sourcePath: string;
   /** Frontmatter `agentskills.io` id, if declared (for registry sync). */
   registryId?: string;
@@ -56,6 +67,8 @@ export interface SkillFrontmatter {
 export function parseSkillMarkdown(
   content: string,
   sourcePath: string,
+  /** Default provenance kind when not specified (caller overrides for hub/user/agent). */
+  provenanceKind: SkillProvenanceKind = "Bundled",
 ): Skill {
   const { frontmatter, body } = splitFrontmatter(content);
   if (!frontmatter.name || !frontmatter.description) {
@@ -71,6 +84,7 @@ export function parseSkillMarkdown(
     model: frontmatter.model,
     allowedTools: frontmatter["allowedTools"],
     provenance: {
+      kind: provenanceKind,
       sourcePath,
       registryId: frontmatter["agentskills.io"],
       loadedAt: nowWallclock(),

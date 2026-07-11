@@ -18,7 +18,8 @@ import { DriftGrader, type DriftGrade } from "@my-agent/prompts";
 /** A single eval scenario. */
 export interface ParityScenario {
   id: string;
-  tier: "mock" | "live";
+  /** §15 tier: unit (deterministic, no network) | integration (local services) | credentialed (real API key). */
+  tier: "unit" | "integration" | "credentialed";
   description: string;
   /** The golden trace (messages + the expected model responses). */
   trace: LlmTrace;
@@ -26,6 +27,8 @@ export interface ParityScenario {
   expectedResponse: string;
   /** Optional behavior steps to assert (tool calls / state transitions). */
   expectSteps?: { kind: "tool_call" | "state"; expect: unknown }[];
+  /** Optional: when the golden fixture was recorded (for stale-detection age gate). */
+  recordedAt?: number;
 }
 
 /** Result of running one scenario. */
@@ -48,12 +51,13 @@ export class ParityHarness {
     this.scenarios.push(s);
   }
 
-  /** Grade a compressor against all MOCK scenarios (deterministic, no network). */
+  /** Grade a compressor against all UNIT scenarios (deterministic, no network).
+   * Integration + credentialed tiers need their own runners (network/key). */
   async grade(compressor: Compressor = { compress: (h) => h, ratio: () => 1 }): Promise<ScenarioResult[]> {
     const grader = new DriftGrader(compressor);
     const results: ScenarioResult[] = [];
     for (const s of this.scenarios) {
-      if (s.tier === "live") continue; // live scenarios need a real provider run (separate path)
+      if (s.tier !== "unit") continue; // integration/credentialed need separate runners
       const drift = grader.grade([{ trace: s.trace, expectedResponse: s.expectedResponse }]);
       const passed = drift.passRate === 1 && drift.maxScoreDelta === 0;
       results.push({
@@ -78,19 +82,19 @@ export class ParityHarness {
   }
 }
 
-/** A built-in mock scenario: identical passthrough (no drift expected). */
+/** A built-in unit scenario: identical passthrough (no drift expected). */
 export const identicalPassthrough: ParityScenario = {
   id: "01-identical-passthrough",
-  tier: "mock",
+  tier: "unit",
   description: "identity compressor must not drift a single-fact answer",
   trace: { messages: [{ role: "user", content: "What is 2+2?" }], responses: ["4"] },
   expectedResponse: "4",
 };
 
-/** A built-in mock scenario: key fact preserved under compression. */
+/** A built-in unit scenario: key fact preserved under compression. */
 export const keyFactPreserved: ParityScenario = {
   id: "02-key-fact-preserved",
-  tier: "mock",
+  tier: "unit",
   description: "compression must preserve the key fact in the answer",
   trace: {
     messages: [

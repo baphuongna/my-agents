@@ -51,9 +51,13 @@ export function buildVolatileTier(
   snap: MemorySnapshot,
   userMd: string,
   day: number,
+  goalsBlock?: string,
 ): string {
   const lines: string[] = [];
   lines.push(`# Environment (day ${day})`);
+  if (goalsBlock && goalsBlock.trim()) {
+    lines.push(goalsBlock.trim());
+  }
   if (snap.entries.length > 0) {
     lines.push("## Memory (recalled)");
     // F3 (security review): memory entries are durable + may be poisoned (a
@@ -128,7 +132,7 @@ export function rebuildVolatile(s: Session): void {
     if (!s.prompt) return;
     s.prompt = {
       ...s.prompt,
-      volatile: buildVolatileTier(s.memory.snapshot(), s.userMd, today()),
+      volatile: buildVolatileTier(s.memory.snapshot(), s.userMd, today(), s.goalsBlock),
     };
   });
 }
@@ -140,7 +144,7 @@ export function markCompressed(s: Session, compress?: (h: Session["history"]) =>
     if (!s.prompt) return;
     s.prompt = {
       ...s.prompt,
-      volatile: buildVolatileTier(s.memory.snapshot(), s.userMd, today()),
+      volatile: buildVolatileTier(s.memory.snapshot(), s.userMd, today(), s.goalsBlock),
     };
   });
 }

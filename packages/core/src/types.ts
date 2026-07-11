@@ -182,6 +182,8 @@ export interface Session {
   ctxFiles: string[];
   memory: MemoryManager;
   userMd: string;
+  /** Phase 14c: goals block from GoalsRole.systemPromptBlock (async-populated by the agent before each turn). */
+  goalsBlock?: string;
   prompt?: SystemPrompt;
   history: History;
   skillSetDirty: boolean;

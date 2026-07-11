@@ -17,6 +17,19 @@ export interface ToolImpl {
 
 export class ToolRegistry {
   private byName = new Map<string, ToolImpl>();
+  /** §6 R27-14 resolveToolName: pure deterministic config-declared alias map. */
+  private aliases = new Map<string, string>();
+
+  /** Declare an alias mapping (§6 R27-14: pure, deterministic, config-declared).
+   * Example: declareAlias("search_web", "web_search"). */
+  declareAlias(from: string, to: string): void {
+    this.aliases.set(from, to);
+  }
+
+  /** Declare multiple aliases at once. */
+  declareAliases(map: Record<string, string>): void {
+    for (const [from, to] of Object.entries(map)) this.aliases.set(from, to);
+  }
 
   register(impl: ToolImpl): void {
     if (this.byName.has(impl.meta.name)) {
@@ -33,9 +46,11 @@ export class ToolRegistry {
     return [...this.byName.values()].map((t) => t.meta);
   }
 
-  /** Resolve a raw tool name (handles aliases/config renames — Tier 1 stub). */
+  /** §6 R27-14: resolve a raw tool name via the config-declared alias map.
+   * Pure + deterministic: identical input → identical output. Returns the
+   * alias target if declared, else the raw name unchanged. */
   resolve(rawName: string): string {
-    return rawName; // resolveToolName mapping lands with §6 provider config
+    return this.aliases.get(rawName) ?? rawName;
   }
 }
 

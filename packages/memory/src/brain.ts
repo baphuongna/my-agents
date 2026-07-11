@@ -70,6 +70,9 @@ export class Brain {
 
   constructor(private minFactsPerBucket = 3, private cosineThreshold = 0.85) {}
 
+  /** Phase 14c: backlinks() cache (performance). Invalidated on recordFact/purge. */
+  private backlinksCache: Array<{ from: string; fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> | null = null;
+
   /** Record a conversation-extracted hot fact. F7: content capped + total
    * fact count bounded (DoS guard against the dream-cycle O(n²)). */
   recordFact(f: Omit<Fact, "id" | "createdAt"> & { id?: string }): Fact {
@@ -82,6 +85,7 @@ export class Brain {
     const id = f.id ?? randomUUID();
     const full: Fact = { ...f, content, id, createdAt: nowWallclock() };
     this.facts.set(id, full);
+    this.backlinksCache = null; // invalidate
     return full;
   }
 
@@ -170,6 +174,7 @@ export class Brain {
    *   - LOW-1: dedup by (fromFactId|to|kind).
    */
   backlinks(): Array<{ from: string; fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> {
+    if (this.backlinksCache) return this.backlinksCache;
     const edges: Array<{ from: string; fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> = [];
     const WIKI = /\[\[([^|\]#\n]+?)(?:\|[^\]]+?)?\]\]/g;
     const LINK = /\[[^\]]*\]\((?:[^()\n]|\([^()\n]*\))*\)/g;
@@ -213,6 +218,7 @@ export class Brain {
       seen.add(k);
       out.push(e);
     }
+    this.backlinksCache = out; // populate cache
     return out;
   }
 
@@ -239,6 +245,7 @@ export class Brain {
   private softDelete(f: Fact, now: number): void {
     this.tombstones.set(f.id, { fact: f, deletedAt: now });
     this.facts.delete(f.id);
+    this.backlinksCache = null; // invalidate
   }
 
   /** CRITICAL-1: restore a soft-deleted fact from its tombstone. */
@@ -248,6 +255,7 @@ export class Brain {
     if (this.facts.size >= this.maxFactsTotal) return false;
     this.facts.set(factId, t.fact);
     this.tombstones.delete(factId);
+    this.backlinksCache = null; // invalidate
     return true;
   }
 
@@ -424,18 +432,21 @@ export class Brain {
    * Returns the count of new facts recorded.
    */
   conversationFactsBackfill(conversation: Array<{ role: string; content: string }>): number {
-    const knownEntities = new Set([...this.facts.values()].map((f) => f.entity).filter((e) => e && e.trim()));
-    // M1: dedup across the ENTIRE call + CROSS-CALL (skip if a backfill fact
-    // already exists for this entity — prevents unbounded accumulation per turn).
-    const hasBackfill = (name: string) =>
-      [...this.facts.values()].some((f) => f.source === "backfill" && f.entity === name);
+    // Phase 14c performance: precompute known-entities + backfilled-entities sets ONCE
+    // (was O(N×M×K): hasBackfill() scanned all facts per name per message).
+    const knownEntities = new Set<string>();
+    const backfilledEntities = new Set<string>();
+    for (const f of this.facts.values()) {
+      if (f.entity && f.entity.trim()) knownEntities.add(f.entity);
+      if (f.source === "backfill") backfilledEntities.add(f.entity);
+    }
     const recorded = new Set<string>();
     let n = 0;
     for (const msg of conversation) {
       if (msg.role === "tool" || msg.role === "system") continue;
       const names = msg.content.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
       for (const name of [...new Set(names)]) {
-        if (!knownEntities.has(name) || recorded.has(name) || hasBackfill(name)) continue;
+        if (!knownEntities.has(name) || recorded.has(name) || backfilledEntities.has(name)) continue;
         // C1: respect the fact cap — stop gracefully (not throw mid-loop).
         if (this.facts.size >= this.maxFactsTotal) return n;
         this.recordFact({
@@ -447,6 +458,7 @@ export class Brain {
           source: "backfill",
         });
         recorded.add(name);
+        backfilledEntities.add(name); // prevent re-backfill within this call too
         n++;
       }
     }
