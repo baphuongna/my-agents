@@ -13,6 +13,7 @@
  * turn stream + an approval modal bound to {kind:"approval"}. */
 export function dashboardHtml(opts: { title?: string; wsPath?: string } = {}): string {
   const title = opts.title ?? "agent dashboard";
+  const wsQuery = opts.wsPath ?? "/events";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -50,16 +51,18 @@ export function dashboardHtml(opts: { title?: string; wsPath?: string } = {}): s
   const seqEl = document.getElementById('seq');
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(proto + '://' + location.host + '/events?since=' + cursor);
+    const ws = new WebSocket(proto + '://' + location.host + '${wsQuery}' + (cursor > 0 ? '&since=' + cursor : ''));
     wsObj = ws;
     ws.onopen = () => { statusEl.textContent = 'live'; statusEl.style.background = '#238636'; ws_ready = true; };
     ws.onclose = () => { statusEl.textContent = 'reconnecting'; statusEl.style.background = '#d29922'; ws_ready = false; setTimeout(connect, 1000); };
     ws.onerror = () => ws.close();
     ws.onmessage = (m) => {
-      const env = JSON.parse(m.data);
-      cursor = env.seq;
-      seqEl.textContent = 'seq ' + cursor;
-      renderEvent(env);
+      try {
+        const env = JSON.parse(m.data);
+        cursor = env.seq;
+        seqEl.textContent = 'seq ' + cursor;
+        renderEvent(env);
+      } catch(e) { /* malformed — skip */ }
     };
   }
   function renderEvent(env) {

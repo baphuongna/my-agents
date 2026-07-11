@@ -112,6 +112,8 @@ export interface GatewayOptions {
   allowExternalBind?: boolean;
   /** Optional: handle incoming WS messages (e.g. a dashboard sending a prompt). */
   onWsMessage?: (session: string, data: unknown) => void;
+  /** Phase 15 M2: optional local-only WS auth token (blocks other local processes). */
+  wsToken?: string;
   /** §12 control-plane (sessions/cron/config/tools + handle LRU). Defaults to a
    * fresh ControlPlane. */
   control?: ControlPlane;
@@ -149,12 +151,15 @@ export class Gateway {
     this.readiness = opts.readiness ?? new ReadinessRegistry();
     this.rootHtml = opts.rootHtml;
     this.onWsMessage = opts.onWsMessage;
+    this.wsToken = opts.wsToken;
     this.control = opts.control ?? new ControlPlane();
   }
 
   private rootHtml?: string;
   /** Phase 15: incoming WS message handler (for dashboard prompts). */
   onWsMessage?: (session: string, data: unknown) => void;
+  /** Phase 15 M2: optional local-only WS auth token. */
+  wsToken?: string;
 
   /** Start listening. Resolves with the bound port (0 = ephemeral). */
   start(): Promise<{ port: number; wsPath: string }> {
@@ -164,6 +169,15 @@ export class Gateway {
       this.http.on("upgrade", (req, socket, head) => {
         const url = new URL(req.url ?? "/", `http://${this.host}`);
         if (url.pathname === "/events") {
+          // Phase 15 M2: check the local WS token (if configured) — blocks other local processes.
+          if (this.wsToken) {
+            const token = url.searchParams.get("token");
+            if (token !== this.wsToken) {
+              socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+              socket.destroy();
+              return;
+            }
+          }
           // HIGH-1 fix: enforce the Origin allowlist (defends against cross-site
           // WebSocket hijacking — a visited website could otherwise read all events).
           const origin = req.headers.origin;
@@ -231,7 +245,7 @@ export class Gateway {
             "content-type": "text/html; charset=utf-8",
             "x-frame-options": "DENY",
             "x-content-type-options": "nosniff",
-            "content-security-policy": "frame-ancestors 'none'; default-src 'self' ws: wss:",
+            "content-security-policy": "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
           });
           res.end(this.rootHtml);
           return;

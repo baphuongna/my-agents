@@ -17,6 +17,7 @@ import { createAgent } from "@my-agent/agent";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
 import { TuiRepl } from "@my-agent/tui";
 
@@ -115,9 +116,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
   const agent = createAgent({ memoryDir: join(homedir(), ".my-agent", "memory") });
+  // Phase 15 M2: generate a local-only WS token (blocks other local processes).
+  const wsToken = cryptoRandomToken();
   const gw = new Gateway({
     port,
-    rootHtml: dashboardHtml({ title: "mya" }),
+    rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
+    wsToken,
     onWsMessage: (session, data) => {
       const msg = data as { text?: string };
       if (msg.text) {
@@ -133,3 +137,8 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+/** Generate a 32-char hex token for local WS auth. */
+function cryptoRandomToken(): string {
+  return randomBytes(16).toString("hex");
+}
