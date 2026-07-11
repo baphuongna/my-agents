@@ -1,8 +1,8 @@
 {
-  "name": "my-agent",
-  "version": "0.0.0",
+  "name": "mya",
+  "version": "0.1.0",
   "private": true,
-  "description": "Unified coding/autonomous agent — TS core + Rust napi engine (Tier 0 scaffold)",
+  "description": "Unified coding/autonomous agent (TypeScript 7 + Rust napi engine)",
   "license": "(MIT OR Apache-2.0)",
   "type": "module",
   "engines": {
@@ -12,10 +12,18 @@
     "packages/*"
   ],
   "bin": {
+    "mya": "./dist/mya.js",
     "my-agent": "./packages/print/dist/cli.js"
   },
+  "files": [
+    "dist/mya.js",
+    "packages/*/dist/**/*.js",
+    "packages/*/package.json"
+  ],
   "scripts": {
     "build": "tsc -b",
+    "bundle": "node scripts/bundle.mjs",
+    "dist": "npm run build && npm run bundle",
     "typecheck": "tsc --noEmit",
     "clean": "tsc -b --clean && rm -rf packages/*/dist",
     "natives:build": "cargo build -p my-agent-natives",
@@ -23,6 +31,9 @@
     "lint:deps": "node scripts/lint-deps.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.7.2",

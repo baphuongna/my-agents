@@ -104,4 +104,7 @@ export class TuiRepl {
     this.rl = null;
   }
 }
-export * from "./ink.js";
+
+// NOTE: The Ink/React Dashboard (./ink.tsx) is NOT re-exported here to keep the
+// TuiRepl lightweight + bundle-friendly. Import it directly from "@my-agent/tui/ink"
+// when you need the React-based dashboard (requires ink + react installed).

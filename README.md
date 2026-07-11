@@ -1,26 +1,76 @@
-# my-agent
+# mya
 
-A **unified coding/autonomous agent** — TypeScript core + Rust napi engine. Built from a [25-section SPEC](source/.learned/AGENT-SPEC.md) synthesized from 16 reference projects, reviewed across 18 rounds.
+A **unified coding/autonomous agent** — TypeScript core + Rust napi engine. Built from a [25-section SPEC](source/.learned/AGENT-SPEC.md) synthesized from 16 reference projects, reviewed across 44 rounds. 40 packages, 239 tests.
 
-> **Status:** Tier 0–3 + Frontier complete. Runs end-to-end with real LLM providers (verified with MiniMax-M3 — native tool calling, file creation, file reading). 20 packages, 23 commits, 110 automated tests.
+> **Status:** All major SPEC subsystems built + tested. Runs end-to-end with real LLM providers (MiniMax-M3 / OpenAI — verified). Installable via npm.
+
+## Install
+
+```sh
+npm install -g .
+```
+
+Or from the registry (once published):
+```sh
+npm install -g mya
+```
 
 ## Quick start
 
 ```sh
+# One-shot prompt (auto-config: reads ~/.pi/agent/auth.json for MiniMax/OpenAI keys)
+mya "What is 2+2?"
+
+# JSON event stream (for piping / programmatic use)
+mya --json "write a fibonacci function"
+
+# Interactive TUI REPL (default — no args)
+mya
+
+# JSON-RPC 2.0 server over stdio (for editor integrations)
+mya --rpc
+
+# Web dashboard + WS gateway
+mya serve --port 3000
+```
+
+### Auth (zero-config when possible)
+
+The CLI auto-configures from `~/.pi/agent/auth.json`:
+```json
+{
+  "minimax": { "key": "sk-..." }
+}
+```
+
+Or via env vars:
+```sh
+export MINIMAX_API_KEY="sk-..."   # or OPENAI_API_KEY
+mya "hello"
+```
+
+No key? Mock fallback — the agent still runs.
+
+## Modes
+
+| Mode | Command | Use case |
+|---|---|---|
+| **Interactive TUI** | `mya` | Default. Readline REPL with streaming + Ctrl-C abort |
+| **One-shot print** | `mya "prompt"` | Single prompt → human-readable transcript |
+| **JSON stream** | `mya --json "prompt"` | Newline-delimited RuntimeEvent JSON for piping |
+| **RPC server** | `mya --rpc` | JSON-RPC 2.0 over stdio (editor integration) |
+| **Web dashboard** | `mya serve` | HTTP + WS gateway with live event dashboard SPA |
+
+## Development
+
+```sh
 npm install              # TypeScript 7 + workspace packages
 npm run build            # tsc -b (all packages)
+npm run bundle           # esbuild → dist/mya.js (single-file bundle)
 npm run typecheck        # tsc --noEmit
-
-# Run with MiniMax (key from ~/.pi/agent/auth.json or env)
-export MINIMAX_API_KEY="<your-key>"
-node packages/print/dist/cli.js "explain this codebase in 3 sentences"
-
-# Run with OpenAI
-export OPENAI_API_KEY="<your-key>"
-node packages/print/dist/cli.js --json "write a fibonacci function"
-
-# No key? Mock fallback (agent still runs)
-node packages/print/dist/cli.js "hello"
+npm test                 # vitest (239 tests)
+npm run lint             # invariant #10 guard (no Date.now outside core.time)
+npm run lint:deps        # invariant #19 guard (no cross-transport imports)
 ```
 
 ## Architecture
