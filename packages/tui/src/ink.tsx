@@ -21,12 +21,13 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { render, Box, Text, useInput, useApp, useStdout } from "ink";
 import TextInput from "ink-text-input";
-import { SLASH_COMMANDS, type SlashCommand, type InkCommandContext } from "./ink-commands.js";
+import { SLASH_COMMANDS, type SlashCommand, type InkCommandContext, type InkSelector } from "./ink-commands.js";
 import { themeStore, defaultTheme as themeDefault, type Theme } from "./themes.js";
 import { sanitize } from "./sanitize.js";
 import { KillRing, EditorOps, yank } from "./editor.js";
 import { Autocomplete } from "./autocomplete.js";
 import { MdInline } from "./transcript";
+import { renderSelector } from "./selectors";
 export type { SlashCommand } from "./ink-commands.js";
 
 /** A single rendered event line in the conversation stream. */
@@ -127,6 +128,14 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
   // Q4 fix: derived — is the autocomplete overlay currently visible?
   // (true when draft looks like a slash or @path AND not just dismissed)
   const autocompleteOpen = (draft.startsWith("/") || /@/.test(draft)) && !acDismissed;
+  // Phase 28: selector modal state (model-selector / skill-selector / tool-selector).
+  // When set, renderSelector() is mounted as an overlay above the input.
+  interface SelectorView {
+    kind: "model" | "skill" | "tool";
+    items: { label: string; description?: string; value: unknown }[];
+    multi: boolean;
+  }
+  const [selectorView, setSelectorView] = useState<SelectorView | null>(null);
   // Phase 27: kill-ring (Ctrl+W deletes last word, Ctrl+Y pastes last killed).
   const killRingRef = useRef(new KillRing());
 
@@ -190,6 +199,41 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       if (cmd === "clear") killRingRef.current.clear();
       try {
         const out = def.run ? await def.run(args, { session: { cwd: process.cwd(), setModel: () => {}, getModel: () => "?", getProvider: () => "?", getSpent: () => 0, getBudget: () => 0, getMemoryFacts: () => 0, getTools: () => [], getSkills: () => [], getMcpServers: () => [], openSelector: async () => null, clearTranscript: () => {}, exportTranscript: () => "", compact: async () => 0, importFrom: async () => 0, setConfig: async () => {}, getConfig: async () => undefined, listConfig: async () => ({}), setMode: () => {}, getMode: () => "Prompt", tree: async () => "" } }) : null;
+        // Phase 28: slash commands may return an InkSelector payload → open a modal.
+        if (out && typeof out === "object" && (out as InkSelector).kind) {
+          const sel = out as InkSelector;
+          if (sel.kind === "model") {
+            setSelectorView({
+              kind: "model",
+              multi: false,
+              items: [
+                { label: "minimax / MiniMax-M3", description: "default", value: "MiniMax-M3" },
+                { label: "openai / gpt-4o", description: "fast", value: "gpt-4o" },
+                { label: "openai / gpt-4.1", description: "smart", value: "gpt-4.1" },
+              ],
+            });
+          } else if (sel.kind === "skill") {
+            setSelectorView({
+              kind: "skill",
+              multi: false,
+              items: [],
+            });
+          } else if (sel.kind === "tool") {
+            setSelectorView({
+              kind: "tool",
+              multi: true,
+              items: [
+                { label: "read", value: "read" },
+                { label: "write", value: "write" },
+                { label: "edit", value: "edit" },
+                { label: "bash", value: "bash" },
+                { label: "glob", value: "glob" },
+                { label: "grep", value: "grep" },
+              ],
+            });
+          }
+          return true;
+        }
         // F4 fix: sanitize slash command output before rendering (defense vs.
         // a hostile command that echoes untrusted text into the transcript).
         if (typeof out === "string" && out) appendOrReplace({ seq: 0, kind: "info", text: sanitize(out) });
@@ -240,6 +284,17 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
 
   // Keybindings.
   useInput((input, key) => {
+    // Phase 28: when a selector modal is open, defer ↑/↓/Enter/Esc to the
+    // modal's own useInput (it has its own navigation). The parent only
+    // handles the no-op (does nothing else while the modal is up).
+    if (selectorView) {
+      // Tab also forwards to the modal — but that's fine, both will see it.
+      if (key.escape || input === "\x1b") {
+        setSelectorView(null);
+        appendOrReplace({ seq: 0, kind: "info", text: "(selector cancelled)" });
+      }
+      return;
+    }
     // Approval modal: y/n is consumed before any input processing.
     if (approval) {
       if (input === "y") {
@@ -342,6 +397,34 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
 
       {/* Approval modal overlay */}
       {approval && <ApprovalModal approval={approval} />}
+
+      {/* Phase 28: selector modal overlay (model / skill / tool picker) */}
+      {selectorView && (
+        <Box marginX={2} flexDirection="column" borderStyle="round" borderColor={defaultTheme.meta} paddingX={1}>
+          {renderSelector({
+            kind: selectorView.kind,
+            multi: selectorView.multi,
+            items: selectorView.items,
+            labelOf: (x: unknown) => (x as { label: string }).label,
+            descOf: (x: unknown) => (x as { description?: string }).description,
+            keyOf: (x: unknown) => (x as { label: string }).label,
+            theme: defaultTheme,
+            onResolve: (picked) => {
+              const items = Array.isArray(picked) ? picked : picked ? [picked] : [];
+              if (items.length > 0) {
+                const labels = items.map((it) => (it as { label: string }).label).join(", ");
+                appendOrReplace({ seq: 0, kind: "info", text: sanitize(`selected: ${labels}`) });
+              } else {
+                appendOrReplace({ seq: 0, kind: "info", text: "(no selection)" });
+              }
+              setSelectorView(null);
+            },
+          })}
+          <Box marginTop={1}>
+            <Text color={defaultTheme.meta}>↑↓ navigate · Enter to confirm · Esc to cancel</Text>
+          </Box>
+        </Box>
+      )}
 
       {/* Phase 27: autocomplete overlay above the input (only when draft
           starts with `/` or contains `@path` AND not just dismissed). */}
