@@ -15,6 +15,7 @@
  */
 import { createInterface } from "node:readline";
 import type { ApprovalChannel, ApprovalDecision, ApprovalRequest } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";
 
 /** A human prompt callback: given the request, return Allow/Deny. The transport
  * binds this (CLI readline / rpc event round-trip / TUI modal). */
@@ -90,7 +91,7 @@ export class ApprovalTokenLedger {
   /** Issue a token (5m TTL default). */
   issue(opts: { tool: string; scopes: string[]; repo?: string; branch?: string; ttlMs?: number; parent?: string }): ApprovalToken {
     const id = `apt_${Math.random().toString(36).slice(2, 12)}`;
-    const now = Date.now();
+    const now = nowWallclock();
     const token: ApprovalToken = {
       id,
       tool: opts.tool,
@@ -112,7 +113,7 @@ export class ApprovalTokenLedger {
     const t = this.tokens.get(tokenId);
     if (!t) return { ok: false, reason: "unknown token" };
     if (t.consumed) return { ok: false, reason: "token already consumed (single-use)" };
-    if (Date.now() > t.expiresAt) return { ok: false, reason: "token expired" };
+    if (nowWallclock() > t.expiresAt) return { ok: false, reason: "token expired" };
     if (t.tool !== tool) return { ok: false, reason: `token scoped to ${t.tool}, got ${tool}` };
     if (!this.matchesScope(t.scopes, args)) {
       return { ok: false, reason: `args out of scope ${JSON.stringify(t.scopes)}` };
@@ -141,7 +142,7 @@ export class ApprovalTokenLedger {
 
   /** A2: drop expired + consumed tokens (long-running-agent hygiene). Returns
    * the count removed. Safe to call periodically. */
-  sweepExpired(now = Date.now()): number {
+  sweepExpired(now = nowWallclock()): number {
     let removed = 0;
     for (const [id, t] of this.tokens) {
       if (t.consumed || now > t.expiresAt) {

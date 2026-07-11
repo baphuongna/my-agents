@@ -18,6 +18,7 @@
  */
 import { verifyNativeDeclaration, type NativeDeclaration } from "@my-agent/natives";
 import { verifyTarball, hasNpmProvenance, type SigstoreBundle } from "@my-agent/signing";
+import { nowWallclock } from "@my-agent/core";
 
 /** The four extension kinds (§17). */
 export type PackageKind = "extensions" | "skills" | "prompt-templates" | "themes";
@@ -126,7 +127,7 @@ export class PackageHost {
     } catch (e) {
       throw new Error(`package ${manifest.name} load-failed: ${(e as Error).message}`);
     }
-    const reg: RegisteredPackage = { manifest, module, activated: false, registeredAt: Date.now() };
+    const reg: RegisteredPackage = { manifest, module, activated: false, registeredAt: nowWallclock() };
     this.registry.set(manifest.name, reg);
     return reg;
   }

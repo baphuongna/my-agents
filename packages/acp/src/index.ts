@@ -9,6 +9,7 @@
  * Source: §12.2 ACP bridge; MyAgents ACP, harness catalog.
  */
 import { randomUUID } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 
 export type AcpEventKind = "spawn" | "message" | "tool-request" | "tool-result" | "permission" | "terminated";
 
@@ -37,7 +38,7 @@ export class AcpEventLedger {
   constructor(private readonly bound = 10_000) {}
 
   append(sessionId: string, kind: AcpEventKind, payload: Record<string, unknown>): AcpEvent {
-    const ev: AcpEvent = { seq: ++this.seq, sessionId, kind, ts: Date.now(), payload };
+    const ev: AcpEvent = { seq: ++this.seq, sessionId, kind, ts: nowWallclock(), payload };
     this.events.push(ev);
     if (this.events.length > this.bound) this.events = this.events.slice(-this.bound);
     return ev;
@@ -88,7 +89,7 @@ export class AcpBridge {
       id: randomUUID(),
       parentId,
       externalAgent,
-      spawnedAt: Date.now(),
+      spawnedAt: nowWallclock(),
       status: "running",
     };
     this.nodes.set(node.id, node);
@@ -103,7 +104,7 @@ export class AcpBridge {
     const node = this.nodes.get(nodeId);
     if (!node) return;
     node.status = status;
-    node.terminatedAt = Date.now();
+    node.terminatedAt = nowWallclock();
     this.ledger.append(nodeId, "terminated", { status });
   }
 

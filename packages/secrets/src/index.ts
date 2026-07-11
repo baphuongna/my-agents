@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync, chmodSync, existsSync, unlinkSync, mkdirSy
 import { dirname } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
+import { nowWallclock } from "@my-agent/core";
 
 const require = createRequire(import.meta.url);
 
@@ -152,7 +153,7 @@ export class SecretStore {
       value = resolveSecret(ref);
     }
     if (!value) throw new SecretError(ref, "resolved empty (fail-closed)");
-    this.entries.set(k, { ref, value, rotatedAt: Date.now() });
+    this.entries.set(k, { ref, value, rotatedAt: nowWallclock() });
     return value;
   }
 

@@ -17,6 +17,7 @@ import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
 import { resolveInsideWorkspace, resolveExistingInsideWorkspace } from "./path-safety.js";
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
+import { nowWallclock } from "@my-agent/core";
 
 /** F1 fix: contain a tool's path inside the ctx workspace. Returns the safe
  * absolute path, or an error result on escape. `mode:"write"` is lexical-only;
@@ -171,7 +172,7 @@ export const bashTool: ToolImpl = {
     // command shouldn't inherit OPENAI_API_KEY / *_SECRET / *_TOKEN etc.).
     const env = filterSecretEnv(process.env);
     return new Promise((resolve) => {
-      const start = Date.now();
+      const start = nowWallclock();
       const child = spawn("/bin/bash", ["-c", args.command as string], {
         cwd,
         env,
@@ -191,7 +192,7 @@ export const bashTool: ToolImpl = {
           stdout,
           stderr,
           exitCode: code ?? -1,
-          durationMs: Date.now() - start,
+          durationMs: nowWallclock() - start,
         }));
       });
     });

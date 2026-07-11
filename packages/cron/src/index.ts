@@ -8,6 +8,7 @@
  * Source: §12.3 Cron scheduler; MyAgents scheduler.
  */
 import { randomUUID } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 
 export type TriggerType = "cron" | "on-interval" | "once";
 
@@ -52,7 +53,7 @@ export class CronScheduler {
 
   /** Atomic claim: a job is claimed by exactly one worker. Returns the run
    * record or null if already claimed (within its lease). */
-  claim(jobId: string, workerId: string, now = Date.now()): RunRecord | null {
+  claim(jobId: string, workerId: string, now = nowWallclock()): RunRecord | null {
     const job = this.jobs.get(jobId);
     if (!job || !job.enabled) return null;
     // check for an active, unexpired claim
@@ -78,7 +79,7 @@ export class CronScheduler {
     const rec = this.runs.get(runId);
     if (rec) {
       rec.status = status;
-      rec.endedAt = Date.now();
+      rec.endedAt = nowWallclock();
       if (error) rec.error = error;
     }
   }
@@ -96,7 +97,7 @@ export class CronScheduler {
   }
 
   /** Sweep expired leases (a crashed worker's job becomes claimable again). */
-  sweepExpired(now = Date.now()): string[] {
+  sweepExpired(now = nowWallclock()): string[] {
     const expired: string[] = [];
     for (const [jobId, job] of this.jobs) {
       for (const runId of this.jobRuns.get(jobId) ?? []) {
@@ -116,7 +117,7 @@ export class CronScheduler {
    * minimal — supports on-interval + once exactly, cron as "every-Nm" shorthand).
    * A "once" job re-fires until it has a SUCCEEDED run (a crashed/failed run
    * retries); on-interval fires on its cadence regardless of prior outcome. */
-  due(now = Date.now()): CronJob[] {
+  due(now = nowWallclock()): CronJob[] {
     const out: CronJob[] = [];
     for (const job of this.jobs.values()) {
       if (!job.enabled) continue;

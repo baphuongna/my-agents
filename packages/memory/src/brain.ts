@@ -9,6 +9,7 @@
  * Source: §8 Memory completeness (R35); gbrain cycle/consolidate, takes-vs-facts.
  */
 import { randomUUID } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 
 export type FactKind = "event" | "preference" | "commitment" | "belief" | "fact";
 export type FactVisibility = "private" | "world";
@@ -70,7 +71,7 @@ export class Brain {
       throw new Error(`brain: fact cap reached (${this.maxFactsTotal})`);
     }
     const id = f.id ?? randomUUID();
-    const full: Fact = { ...f, content, id, createdAt: Date.now() };
+    const full: Fact = { ...f, content, id, createdAt: nowWallclock() };
     this.facts.set(id, full);
     return full;
   }
@@ -103,11 +104,11 @@ export class Brain {
         sources: cluster.map((f) => f.id),
         entity: cluster[0]!.entity,
         text: cluster.map((f) => f.content).join(" / "),
-        synthesizedAt: Date.now(),
+        synthesizedAt: nowWallclock(),
       };
       this.takes.set(takeId, take);
       for (const f of cluster) {
-        f.consolidatedAt = Date.now();
+        f.consolidatedAt = nowWallclock();
         f.consolidatedInto = takeId;
         factsConsumed++;
       }
@@ -134,7 +135,7 @@ export class Brain {
   /** Put a brain page (compiled truth). */
   putPage(p: Omit<BrainPage, "id" | "createdAt" | "version"> & { id?: string }): BrainPage {
     const id = p.id ?? randomUUID();
-    const full: BrainPage = { ...p, id, createdAt: Date.now(), version: 1 };
+    const full: BrainPage = { ...p, id, createdAt: nowWallclock(), version: 1 };
     this.pages.set(id, full);
     return full;
   }

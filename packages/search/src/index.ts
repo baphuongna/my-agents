@@ -9,6 +9,7 @@
  */
 import { nativeGlob } from "@my-agent/natives";
 import { basename } from "node:path";
+import { nowWallclock } from "@my-agent/core";
 
 /** A frecency DB: access timestamps → frequency+recency score. */
 export class FrecencyDB {
@@ -16,7 +17,7 @@ export class FrecencyDB {
   /** Halflife in ms for the recency decay (default 7d). */
   constructor(private halflifeMs = 7 * 24 * 3600 * 1000) {}
 
-  bump(path: string, now = Date.now()): void {
+  bump(path: string, now = nowWallclock()): void {
     const e = this.hits.get(path) ?? { count: 0, lastAt: 0 };
     e.count += 1;
     e.lastAt = now;
@@ -24,7 +25,7 @@ export class FrecencyDB {
   }
 
   /** Frecency score: count × decay(lastAt), where decay halves every `halflifeMs`. */
-  score(path: string, now = Date.now()): number {
+  score(path: string, now = nowWallclock()): number {
     const e = this.hits.get(path);
     if (!e) return 0;
     const age = Math.max(0, now - e.lastAt);

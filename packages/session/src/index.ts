@@ -10,6 +10,7 @@
  * session.rs, pi compaction, pi plan-mode, MyAgents cancellation.
  */
 import { randomUUID } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 
 // ─── Session JSONL tree (§4 R31: pi session-manager / claw-code session.rs) ──
 
@@ -49,7 +50,7 @@ export class SessionTree {
       kind: entry.kind,
       role: entry.role,
       content: entry.content,
-      ts: entry.ts ?? Date.now(),
+      ts: entry.ts ?? nowWallclock(),
       v: this.schemaVersion,
     };
     this.entries.set(id, full);
@@ -171,7 +172,7 @@ export class MessageQueue {
   private queue: QueuedMessage[] = [];
 
   enqueue(text: string, mode: DeliveryMode = "nextTurn"): QueuedMessage {
-    const msg: QueuedMessage = { id: randomUUID(), text, mode, ts: Date.now() };
+    const msg: QueuedMessage = { id: randomUUID(), text, mode, ts: nowWallclock() };
     this.queue.push(msg);
     // steer + followUp sort first (time-priority), nextTurn after
     this.queue.sort((a, b) => {

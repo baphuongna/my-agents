@@ -21,6 +21,7 @@ import type { ComponentHealth, ToolExecutor } from "@my-agent/core";
 import { err, isRecord, ok, type ToolImpl } from "@my-agent/tools";
 import type { ToolResult } from "@my-agent/core";
 import { nativeMac } from "@my-agent/natives";
+import { nowWallclock } from "@my-agent/core";
 
 /** A payment challenge from a 402 response. */
 export interface X402Challenge {
@@ -88,7 +89,7 @@ export class Wallet {
       challenge,
       signature: signDeterministic(this.address, challenge),
       payer: this.address,
-      signedAt: Date.now(),
+      signedAt: nowWallclock(),
     };
     this.receipts.push(receipt);
     return receipt;

@@ -9,6 +9,7 @@
  * Source: §6 Provider Abstraction, R25-9 (auth/quota taint), R27-1/D7.
  */
 import type { ComponentHealth, ProviderProfile } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";
 
 /** Why a profile is currently disqualified from the fallback chain. */
 export type TaintReason = "auth" | "quota" | "rate_limited" | "network" | "unhealthy";
@@ -45,7 +46,7 @@ export class ProviderRegistry {
   taint(id: string, reason: TaintReason): void {
     const profile = this.profiles.find((p) => p.id === id);
     if (!profile) return;
-    this.tainted.set(id, { profile, reason, since: Date.now() });
+    this.tainted.set(id, { profile, reason, since: nowWallclock() });
   }
 
   /** Manually clear taint (e.g. after a credential refresh). */
@@ -54,7 +55,7 @@ export class ProviderRegistry {
   }
 
   /** Is a profile currently eligible (not tainted, or cooldown expired)? */
-  eligible(id: string, now: number = Date.now()): boolean {
+  eligible(id: string, now: number = nowWallclock()): boolean {
     const t = this.tainted.get(id);
     if (!t) return true;
     if (now - t.since >= this.cooldownMs) {
@@ -65,7 +66,7 @@ export class ProviderRegistry {
   }
 
   /** The fallback-ordered list, skipping tainted/cooled profiles. */
-  available(now: number = Date.now()): ProviderProfile[] {
+  available(now: number = nowWallclock()): ProviderProfile[] {
     return this.profiles.filter((p) => this.eligible(p.id, now));
   }
 

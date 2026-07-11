@@ -1,3 +1,4 @@
+import { nowWallclock } from "@my-agent/core";
 /**
  * @my-agent/rpc — stdio JSON-RPC 2.0 transport (§20/§3 transport mode).
  *
@@ -149,7 +150,7 @@ export class RpcServer {
         this.write(resultResponse(id, this.handler.status()));
         return;
       case "heartbeat":
-        this.write(resultResponse(id, { alive: true, ts: Date.now() }));
+        this.write(resultResponse(id, { alive: true, ts: nowWallclock() }));
         return;
       default:
         this.write(errorResponse(id, METHOD_NOT_FOUND, `method not found: ${req.method}`));

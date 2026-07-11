@@ -13,6 +13,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { nowWallclock } from "@my-agent/core";
 
 export type TtsBackend = "mlx" | "say" | "espeak" | "festival" | "pico2wave" | "none";
 
@@ -72,7 +73,7 @@ function runSay(text: string, opts: TtsOptions): TtsResult {
   if (opts.rate) args.push("-r", String(Math.round((opts.rate ?? 1) * 180)));
   let outFile: string | undefined;
   if (opts.toFile) {
-    outFile = join(tmpdir(), `tts-${Date.now()}.aiff`);
+    outFile = join(tmpdir(), `tts-${nowWallclock()}.aiff`);
     args.push("-o", outFile);
   }
   args.push(text);
@@ -81,7 +82,7 @@ function runSay(text: string, opts: TtsOptions): TtsResult {
 }
 
 function runPico(text: string, opts: TtsOptions): TtsResult {
-  const outFile = opts.toFile ? join(tmpdir(), `tts-${Date.now()}.wav`) : join(tmpdir(), `tts-${Date.now()}.wav`);
+  const outFile = opts.toFile ? join(tmpdir(), `tts-${nowWallclock()}.wav`) : join(tmpdir(), `tts-${nowWallclock()}.wav`);
   spawn("pico2wave", ["-w", outFile, text], { stdio: "ignore" });
   return { backend: "pico2wave", audioFile: outFile, spokenDirectly: false };
 }

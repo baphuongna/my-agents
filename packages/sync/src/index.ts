@@ -14,6 +14,7 @@
  * Source: §8 Memory frontier (multi-device sync), §23 #5; Lamport HLC.
  */
 import { randomUUID } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 
 /** A hybrid logical clock entry — wall + counter + node id. Orders events
  * deterministically even when wall clocks skew. */
@@ -32,13 +33,13 @@ export function compareHlc(a: Hlc, b: Hlc): number {
 }
 
 /** Tick the local HLC (call before producing an event). Returns a new HLC. */
-export function hlcTick(local: Hlc, now = Date.now()): Hlc {
+export function hlcTick(local: Hlc, now = nowWallclock()): Hlc {
   if (now > local.wall) return { wall: now, counter: 0, node: local.node };
   return { wall: local.wall, counter: local.counter + 1, node: local.node };
 }
 
 /** Receive a remote HLC (updates the local clock to stay ahead). */
-export function hlcReceive(local: Hlc, remote: Hlc, now = Date.now()): Hlc {
+export function hlcReceive(local: Hlc, remote: Hlc, now = nowWallclock()): Hlc {
   if (remote.wall > local.wall && remote.wall > now) {
     return { wall: remote.wall, counter: remote.counter + 1, node: local.node };
   }

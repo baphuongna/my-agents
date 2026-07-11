@@ -1,3 +1,4 @@
+import { nowWallclock } from "@my-agent/core";
 /**
  * Skill model + provenance (§9).
  *
@@ -72,7 +73,7 @@ export function parseSkillMarkdown(
     provenance: {
       sourcePath,
       registryId: frontmatter["agentskills.io"],
-      loadedAt: Date.now(),
+      loadedAt: nowWallclock(),
     },
   };
 }

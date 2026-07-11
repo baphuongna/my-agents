@@ -12,6 +12,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { nowWallclock } from "@my-agent/core";
 
 // ─── deep-link URI scheme (§25.3 myagent://) ──────────────────────────────────
 
@@ -142,8 +143,8 @@ export class SidecarLifecycle {
   async waitForReady(opts: { timeoutMs?: number; pollMs?: number } = {}): Promise<SidecarState> {
     const timeoutMs = opts.timeoutMs ?? 30_000;
     const pollMs = opts.pollMs ?? 500;
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
+    const deadline = nowWallclock() + timeoutMs;
+    while (nowWallclock() < deadline) {
       const r = this.readiness.readiness();
       if (r.ok) {
         this.state = "ready";
