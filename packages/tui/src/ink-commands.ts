@@ -23,9 +23,10 @@
  * Source: pi-coding-agent/dist/modes/interactive/commands + claw-code/rusty-claude-cli.
  */
 import React from "react";
-import { writeFile, readFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { containPath, containExistingPath, defaultReadRoots } from "./pathGuard.js";
+import { readConfig, writeConfig, validateKey, validateValue } from "./configStore.js";
 
 /** The context exposed to every command — gives them access to live state. */
 export interface InkCommandContext {
@@ -254,17 +255,25 @@ export const SLASH_COMMANDS: SlashCommand[] = [
       args = (args ?? "").trim();
       const tokens = args.split(/\s+/);
       if (!args || tokens[0] === "show" || tokens[0] === "list") {
-        const all = await ctx.session.listConfig();
+        const all = await readConfig();
         return Object.entries(all).map(([k, v]) => `  ${k.padEnd(20)}  ${v}`).join("\n") || "(empty)";
       }
       if (tokens.length === 1) {
-        const v = await ctx.session.getConfig(tokens[0]!);
+        const keyErr = validateKey(tokens[0]!);
+        if (keyErr) return keyErr;
+        const all = await readConfig();
+        const v = all[tokens[0]!];
         return v === undefined ? `not set: ${tokens[0]}` : `${tokens[0]} = ${v}`;
       }
       if (tokens.length >= 2) {
         const key = tokens[0]!;
         const value = tokens.slice(1).join(" ");
-        await ctx.session.setConfig(key, value);
+        // F5 fix: validate key (allow-list) + value (no newlines/controls).
+        const keyErr = validateKey(key);
+        if (keyErr) return keyErr;
+        const valErr = validateValue(value);
+        if (valErr) return valErr;
+        await writeConfig(key, value);
         return `${key} = ${value}`;
       }
       return "usage: /config show | <key> | <key> <value>";
@@ -294,7 +303,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     run: async (args, ctx) => {
       args = (args ?? "").trim();
       const target = args || "transcript.md";
-      const fullPath = join(ctx.session.cwd, target);
+      // F3 fix: contain the resolved path inside the session cwd.
+      const fullPath = await containPath(target, ctx.session.cwd);
+      if (!fullPath) return `refused: "${target}" escapes session cwd`;
       const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
       await mkdir(dir, { recursive: true });
       await writeFile(fullPath, ctx.session.exportTranscript(), "utf8");
@@ -308,8 +319,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     kbd: "<file>",
     run: async (args, ctx) => {
       args = (args ?? "").trim();
-      const fullPath = args.startsWith("/") ? args : join(ctx.session.cwd, args);
-      if (!existsSync(fullPath)) return `file not found: ${fullPath}`;
+      if (!args) return "usage: /import <file>";
+      const raw = args.startsWith("/") ? args : join(ctx.session.cwd, args);
+      // F4 fix: contain reads to cwd + ~/.my-agent only.
+      const fullPath = await containExistingPath(raw, defaultReadRoots(ctx.session.cwd));
+      if (!fullPath) return `refused: "${raw}" is outside cwd and ~/.my-agent`;
       const n = await ctx.session.importFrom(fullPath);
       return `imported ${n} entries from ${fullPath}`;
     },
