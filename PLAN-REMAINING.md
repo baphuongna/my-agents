@@ -5,10 +5,18 @@
 
 ## Reality check — what "built" actually means
 
-**31 packages · ~8,400 LOC TS + 437 LOC Rust · ~144 tests.** After Steps 1–5
-(below), this now covers the core loop + all major SPEC subsystems. The 10
-biggest formerly-missing subsystems are CLOSED. Remaining gaps are explicitly
-listed in "Still open".
+**40 packages + 3 crates · ~11k LOC TS + ~700 LOC Rust · 43 committed tests (9 suites, vitest).**
+After Steps 1–5 + residual batches + a 5-domain security audit, this covers the
+core loop skeleton + all major SPEC subsystems as **real (non-stub) code**, plus
+hardened trust boundaries. A subsequent 4-explorer SPEC-vs-impl audit (see
+"Spec-contract gaps" below) found the implementation is a credible Tier-1
+**foundation** but several Tier-1+ **contracts** are still skeleton/absent.
+
+> **Honesty note (corrected):** earlier drafts claimed "~144/~225 tests". Those
+> were ephemeral `/tmp/*.mjs` verification scripts, NOT committed. This doc now
+> reflects **43 real committed tests** (Phase-1 of the remediation added them).
+> `deny.toml` now exists (cargo-deny, AGPL ban); `audit.toml` was a false claim
+> (`cargo audit` needs no config) — corrected.
 
 ## Steps 1–5 executed (each + 3 review rounds)
 
@@ -41,40 +49,57 @@ Legend: ✅ built · 🟡 partial · ❌ missing · ➖ N/A (Rust-mya-only or ou
 | §1 | Vision & tenets | ✅ | minimal-core, TS+Rust, typed FSM, pit-of-success, pi-model — all respected |
 | §2 | Language stack | 🟡 | TS 7 ✓, Rust 1.97 natives ✓. **Gap:** compression should be Rust (`compress/` crate) — it's TS; no `ast/` tree-sitter crate |
 | §3 | Architecture | 🟡 | core/ai/prompts/tools/memory/skills/subagents ✓. **Missing packages/crates:** `gateway/`, `tui/`, `rpc/`, `ast/`, `compress/`. Naming: spec says `extensions/`, I named it `tools/` |
-| §4 | Core loop | 🟡 | `runTurn` while-loop, TurnState FSM, budget tree-accounting, LaneBoard, PromptMutex, glossary types ✓. **Missing (R31 completeness):** TodoWrite/plan-mode, message queue (steer/followUp), session JSONL tree+entry-types+migration, context-window preflight, overflow-recovery compaction, unified cancel protocol, ToolSearch/deferrable tools |
+| §4 | Core loop | 🟡 | `runTurn` while-loop skeleton, TurnState FSM, budget tree-accounting (R39), LaneBoard, PromptMutex, glossary types, session tree+preflight+cancel ✓. **runTurn is a SKELETON (audit):** `repair()`/`requiresApproval`/`awaitHumanPrompt`/`aggregate()`/`compressHistory`-on-`finish:"length"`/`doneIds` idempotency/`skillSetDirty` rebuild/bounded retry/`Recoverable` state ALL absent; `MAX_ATTEMPTS=3` declared but unused; `computeCost`=0 (budget never spent); `StreamEvent` shape diverges (no `finish`, merged `usage`). **Also missing:** overflow-recovery (exists in prompts), ToolSearch/deferrable (exist in toolssearch) |
 | §5 | Prompt | 🟡 | 3-tier assembler, scanInject, DriftGrader (ε=0), §5.1 content blocks, window/summarize compressors ✓. **Missing:** CompressionPolicy per-auth-mode, byte-faithful JSON serializer, CCR side-cache (reversibility), compression-in-Rust |
-| §6 | Providers | 🟡 | OpenAI/MiniMax adapters, ProviderRegistry (taint/cooldown), streamWithFallback, council, repair ✓. **Missing:** OAuth/PKCE (§6.1), ~20 provider compat flags, auth-profile pool+failover, prompt_cache_key, provider-prefix routing, context-window preflight |
+| §6 | Providers | 🟡 | OpenAI/MiniMax adapters (real SSE + native tool-calling), ProviderRegistry (taint/cooldown), streamWithFallback, council, repair module (exists, NOT called by loop), OAuth/PKCE ✓. **Missing:** ~20 provider compat flags, auth-profile pool+failover, `prompt_cache_key`, provider-prefix routing, context-window preflight in the adapter, `resolveToolName` mapping (stub returns raw) |
 | §7 | Tools | 🟡 | self-registering registry, 7-step permission pipeline, 9 builtins, hashline **dual-model** (per-line FNV + whole-file tag), Pre/Post hooks ✓. **Missing:** path-safety resolver (lexical vs canonical), file-mutation queue, settings merge+lockfile, BashOperations delegation, bash CommandIntent classifier |
-| §8 | Memory | 🟡 | MemoryManager + 6 role IDs + InMemory/FileBackend (durable) ✓. **Missing (Tier-1+):** gbrain BrainEngine/Pages/Chunks/Facts/Takes, 22-phase dream cycle, push-context, 4-arm RRF, ragfs unified-FS router (`memory:// skill:// knowledge:// file://`) |
-| §9 | Skills | ✅ | SkillProvenance (4-value), curator, progressive disclosure, agentskills frontmatter |
-| §10 | Subagents | 🟡 | InProcessRunner, CoW (file_copy fallback), 6 topologies, budget deriveChild+CC2 refund, DELEGATE_BLOCKED_TOOLS ✓. **Missing:** GreenContract merge gate (§10.2), real overlayfs/reflink backend, AJV resultSchema + bounded repair |
-| §11 | Code nav/exec | 🟡 | LSP client (hover/def/refs/diag), DAP client (27 ops), codegraph file-relevance, bidirectional code-exec bridge ✓. **Missing:** LSP-on-write gating, DAP real debug-adapter wiring, fff SearchIndex/BigramFilter/FrecencyDB (Tier-1+) |
-| §12 | Channels/gateway | 🟡 | HookRegistry, MCP FSM **partial** (no Quarantine state), scanInject gate ✓. **Missing:** `gateway/` package (HTTP/WS+dashboard), ACP bridge (§12.2), cron scheduler (§12.3), gateway-protocol, per-session LRU+idle-TTL cache |
-| §13 | Observability | 🟡 | RuntimeEvent taxonomy (8 kinds), LaneBoard+freshness, ComponentHealth tri-state, core.time ✓. **Missing:** LaneEvent control-plane taxonomy, maybeSpill large-value, readiness 3-phase probes (`/live` `/ready` `/functional`), telemetry export |
-| §14 | Security | ❌→🟡 | injection scan (defense-in-depth), permission gate, DELEGATE_BLOCKED ✓. **Missing (large):** **Merkle AuditLog** (§14.1), **Secrets** lifecycle (§14.2: SecretRef+keyring+rotate/revoke), **ApprovalToken ledger** (§14.3), RecoveryRecipe FSM, ProjectTrust, secrets-redaction-before-hash |
-| §14b | Crash resilience | 🟡 | napi catch_unwind→NativeResult, no-abort, prompt COW ✓. **Missing:** sigstore+SHA-256 verify for third-party `.node` before dlopen |
-| §15 | Eval | 🟡 | ParityHarness, DriftGrader, MockProvider, TestTier ✓. **Missing:** no-egress guard on non-credentialed tests, golden-set modelVersion age gate |
-| §16 | Supply chain | 🟡 | `deny.toml`+`audit.toml` config exist ✓. **Missing:** enforced min-release-age gate, lazy-bundle lockfile-strict (`npm ci`), exact-pin policy enforcement |
-| §17 | Packages | ❌ | **No package host at all:** PackageManifest, apiVersion intersect-check, sigstore verify, install→verify→register→activate lifecycle — all missing |
-| §18 | Invariants | 🟡 | ~15 of 22 invariants enforced in code (budget tree #CC2, no-abort #14, prompt COW #15, tier-rebuild #1, minimal-core #20) ✓. **Needs:** an explicit invariant→enforcer audit map (some are prose-only) |
-| §19 | License | ✅ | MIT OR Apache-2.0 dual; OpenViking clean-room respected |
+| §8 | Memory | 🟡 | MemoryManager + role IDs + InMemory/FileBackend + Brain (Fact/Take/BrainPage/consolidate, F7 caps) ✓. **Missing (Tier-1+):** `MemoryRole` lifecycle (archivist/goals/sync `prefetch/syncTurn/systemPromptBlock`), 22-phase dream cycle (only `consolidate`), push-context, 4-arm RRF (substring-only), ragfs unified-FS router |
+| §9 | Skills | 🟡 | SkillStore (load/index/suggest + progressive disclosure) ✓. **Missing:** `SkillCurator` (archive-not-delete/prune_builtins/pin) entirely absent; `SkillProvenance` is the wrong type (interface vs 4-value enum) |
+| §10 | Subagents | 🟡 | InProcessRunner, CoW isolation (file_copy fallback + diff), 6 topologies, budget deriveChild+CC2 refund, DELEGATE_BLOCKED ✓. **Missing:** `resultSchema`+AJV validation (JSON.parse only), `mergeBack()` 3-way, `verifyGreen()` exists but NEVER called in spawn, `MAX_APPROVAL_CHAIN_DEPTH` declared not enforced, real overlay backends |
+| §11 | Code nav/exec | 🟡 | LSP client (hover/def/refs/diag), DAP client (14/27 ops, true DAP shape), codegraph (regex import-relevance), bidirectional code-exec bridge (worker kill) ✓. **Missing:** **LSP unwired** (no post-write diagnostics/format hook), **no `debug` tool** exposing DAP to the agent, DAP-server is a canned stub, fff SearchIndex/BigramFilter/FrecencyDB exist in `@my-agent/search` (Tier-1+ done) |
+| §12 | Channels/gateway | 🟡 | HookRegistry (frozen payload, but NEVER invoked in dispatch), MCP FSM **11-phase + Quarantine + adjacency**, scanInject gate, gateway (HTTP+WS+per-session replay+Origin+CSP+loopback), ACP triple-gate, cron atomic-claim+lease ✓. **Missing:** `gateway-protocol` control-plane crate, ChannelRegistry, per-session LRU+idle-TTL cache, cron real cron-expr parser (shorthand only) |
+| §13 | Observability | 🟡 | RuntimeEvent taxonomy (8 kinds), LaneBoard, ComponentHealth tri-state, core.time, 3-phase readiness probes ✓. **Missing:** LaneEvent control-plane taxonomy, maybeSpill large-value, telemetry export |
+| §14 | Security | 🟡 | Merkle AuditLog (real recompute verify C1), Secrets (fail-closed resolve + structural redactor H2), ApprovalToken ledger, RecoveryRecipe/ProjectTrust types. injection scan, permission gate, DELEGATE_BLOCKED ✓. **Missing:** RecoveryRecipe FSM + ProjectTrust **not implemented** (types only), durable audit persistence/external-witness (in-memory only), sealed-file `age` encryption (plaintext 0600) |
+| §14b | Crash resilience | ✅ | napi catch_unwind→NativeResult, no-abort (`#![deny(clippy::exit)]`), prompt COW, third-party `.node` sigstore+SHA-256 gate (fail-closed) ✓. **Gap:** sigstore npm module not installed → verification always rejects (correct fail-closed, but no install can pass yet) |
+| §15 | Eval | 🟡 | ParityHarness, DriftGrader (binary ε=0, NOT spec's replay algorithm), MockProvider ✓. **Missing:** tier-mismatch (`mock/live` vs spec `unit/integration/credentialed`), no-egress guard, golden-set modelVersion age gate |
+| §16 | Supply chain | 🟡 | `deny.toml` (cargo-deny AGPL/copyleft ban) ✓ now real; sigstore signing/verify (fail-closed) + npm provenance fetch ✓. **Missing:** min-release-age gate, lazy-bundle lockfile-strict, exact-pin enforcement, cargo-deny not in CI |
+| §17 | Packages | 🟡 | PackageHost (verify→register→activate), apiVersion all-digits intersect (F8), sigstore+native gate ✓. **Missing:** `requireProvenance` defaults off (best-effort); npm provenance URL may be wrong endpoint |
+| §18 | Invariants | 🟡 | 7 of 20 enforced in code (#3,5,7,9,14,18,19); 9 partial; 4 missing (#4-now-config, #16, #20) + #10 **systemically violated** (Date.now in 19 packages). See `docs/invariant-audit.md`. **Gap:** no ESLint/madge/CI enforcement — invariants are paper-only |
+| §19 | License | ✅ | MIT OR Apache-2.0 dual; OpenViking clean-room respected; `deny.toml` bans copyleft |
 | §20 | Roadmap tiers | — | see "Tier labels" above |
 | §21 | Cross-cutting | 🟡 | BudgetConfig wired into loop+subagents ✓. **Missing:** versioning (session-format apiVersion), ResourceBudget enforcement hooks |
 | §22 | What it's NOT | ✅ | not pure-Rust, not maximalist, not Python-primary, not a mya-v1 rebrand — all respected |
 | §23 | Open questions | — | tracked; some resolved (R30 sandbox), some open (CRDT sync, call-graph) |
-| §25 | UI surfaces | ❌ | only `print` (--json/transcript) + `sdk` transports built. **Missing:** `tui/` (Ink/React interactive), web dashboard (needs gateway), desktop (Electron/Tauri), §25.6 wire-envelope formalization. Collab relay = partial §25.4 |
+| §25 | UI surfaces | 🟡 | all 4 transports built: `print` (--json/transcript), `sdk` (async-iter), `tui` (REPL + Ink/React dashboard), `rpc` (JSON-RPC stdio); `gateway`+`web` (SPA dashboard, per-session WS); `desktop` (Tauri shell + TS contracts) ✓. **Missing:** session-cookie+CSRF auth (headers only), tray/overlay/notification, desktop UI is a stub div, collab E2E+CRDT (§25.4) |
 
-## Still open (single residual)
+## Still open
 
 | Item | Section | Blocker |
 |---|---|---|
-| DAP debug adapter (LIVE) | §11.2 | the real JS adapter (vscode-js-debug) ships as a VS Code extension, not a standalone binary — can't be `npx`'d. The @my-agent/dap CLIENT (27 ops + session FSM) is built+tested, AND @my-agent/dap-server (a real DAP-speaking peer) proves the client E2E over stdio framing. A host swaps vscode-js-debug for live debugging — no code change. |
+| DAP debug adapter (LIVE) | §11.2 | vscode-js-debug ships as a VS Code extension, not a standalone binary. The `@my-agent/dap` CLIENT (14 ops, true DAP shape) + `@my-agent/dap-server` (real DAP-speaking peer) prove the framing E2E. A host swaps a real adapter — no client code change. |
+| **runTurn FSM body** | §4 | repair→permission-pipeline→idempotency→compress-on-length→bounded-retry→Recoverable; `computeCost` real; `StreamEvent` shape (Phase 3) |
+| **§7 permission 7-step** | §7 | deny/ask/allow rule grammar + arg-subject extraction + concurrent-approval serialization; wire HookRegistry into dispatch |
+| **§10 subagent gates** | §10 | `resultSchema`+AJV; wire `verifyGreen()` into spawn; `mergeBack()` 3-way; enforce `MAX_APPROVAL_CHAIN_DEPTH` |
+| **§8 memory roles** | §8 | `MemoryRole` lifecycle (archivist/goals/sync); ragfs router; dream-cycle phases; RRF retrieval |
+| **Invariant #10 (systemic)** | §18 | `Date.now()` in 19 packages → inject `nowWallclock` (Phase 2) |
+| **lint/CI enforcement** | §2/§18 | no ESLint (`no-explicit-any` + ban-`Date.now`), no `madge --circular`, cargo-deny not in CI, no PR template |
+| **misc** | §13/§14 | RecoveryRecipe FSM + ProjectTrust (types only), maybeSpill, telemetry export, durable audit persistence |
 
-All other §-grounded residuals are now CLOSED, including the platform frontiers:
-sync/convergence (§23 #5), TTS + platform backends, desktop shell (§25.3 — real
-Tauri build + TS contract), multi-device memory sync, OS keyring wiring, full
-Ink/React TUI, web SPA dashboard, byte-faithful JSON, tree-sitter AST, fff search,
-gbrain memory.
+The platform frontiers (sync/TTS/desktop/web/Ink-TUI/x402/collab) are built as
+real code; their **spec extras** (collab E2E+CRDT, desktop tray/overlay, TTS
+MLX, web session-cookie+CSRF) remain as noted above.
+
+## Remediation in progress (Phase 1→4)
+
+1. **Phase 1 (honesty) — DONE:** 43 committed vitest tests (trust boundary);
+   real `deny.toml`; PLAN/invariant-audit de-staled + false claims removed.
+2. **Phase 2 (invariant #10) — next:** inject `nowWallclock`, replace 39
+   `Date.now()` sites; add ESLint `no-restricted-syntax` ban.
+3. **Phase 3 (runTurn FSM):** repair → permission-pipeline → idempotency →
+   compress-on-length → bounded retry → Recoverable; real `computeCost`;
+   `StreamEvent` shape.
+4. **Phase 4 (Tier-1+ features):** §7 7-step, §10 subagent gates, §8 memory
+   roles, DAP `debug` tool, LSP-on-write, gateway control-plane.
 
 
 ## What IS solidly built (don't lose this)

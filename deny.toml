@@ -1,0 +1,56 @@
+# cargo-deny configuration — supply-chain gates for the Rust natives.
+# Invariant #4 (never vendor AGPL/copyleft) is enforced by [licenses].deny.
+# Invariant #14b (no known-advisory deps) is enforced by [advisories].
+# Run: `cargo deny check` (cargo-deny must be installed).
+
+[graph]
+all-features = true
+
+[advisories]
+# RustSec advisory db. Fail the build on any known vulnerability.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Allow only permissive licenses (the repo is MIT OR Apache-2.0).
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-DFS-2016",
+  "Unicode-3.0",
+  "Zlib",
+  "CC0-1.0",
+  "0BSD",
+  "Unlicense",
+]
+# Invariant #4: NEVER vendor copyleft/AGPL/network-copyleft.
+deny = [
+  "AGPL-3.0",
+  "AGPL-3.0-only",
+  "GPL-2.0",
+  "GPL-2.0-only",
+  "GPL-3.0",
+  "GPL-3.0-only",
+  "LGPL-2.0",
+  "LGPL-2.1",
+  "LGPL-3.0",
+  "EUPL-1.1",
+  "EUPL-1.2",
+  "SSPL-1.0",
+  "BUSL-1.1",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rustsec/advisory-db"]
