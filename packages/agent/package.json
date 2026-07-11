@@ -19,6 +19,8 @@
     "@my-agent/core": "*",
     "@my-agent/ai": "*",
     "@my-agent/prompts": "*",
+    "@my-agent/memory": "*",
+    "@my-agent/skills": "*",
     "@my-agent/tools": "*",
     "@my-agent/memory": "*",
     "@my-agent/council": "*"

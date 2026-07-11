@@ -100,6 +100,8 @@ export interface InkSessionProps {
   getModels?: () => Promise<{ label: string; value: string }[]>;
   /** Phase 29: live tool list (replaces hard-coded defaultToolItems). */
   getTools?: () => Array<{ name: string; description?: string }>;
+  /** Phase 31: live skill list (for /skill-selector). */
+  getSkills?: () => Array<{ name: string; description?: string }>;
   /** Phase 29: live model name (for /status). */
   getModel?: () => string;
   /** Phase 29: live memory facts count (for /memory). */
@@ -234,10 +236,16 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
             }
             setSelectorView({ kind: "model", multi: false, items: modelItems });
           } else if (sel.kind === "skill") {
+            // Phase 31: source from props.getSkills() (was always empty).
+            const skillItems = (props.getSkills?.() ?? []).map((s) => ({
+              label: s.name,
+              value: s.name,
+              description: s.description,
+            }));
             setSelectorView({
               kind: "skill",
               multi: false,
-              items: [],
+              items: skillItems,
             });
           } else if (sel.kind === "tool") {
             // Phase 29: source from the host's getTools() too. Defaults to
@@ -653,6 +661,8 @@ export interface InkRunnerOpts {
   getModels?: () => Promise<{ label: string; value: string }[]>;
   /** Phase 29: live tool list (threaded into the tool selector). */
   getTools?: () => Array<{ name: string; description?: string }>;
+  /** Phase 31: live skill list (for /skill-selector). */
+  getSkills?: () => Array<{ name: string; description?: string }>;
   getSpent?: () => number;
   getBudget?: () => number;
   getMemoryFacts?: () => number;
@@ -697,6 +707,7 @@ export function startInkSession(opts: InkRunnerOpts): InkHandle {
       commands={cmds}
       getModels={opts.getModels}
       getTools={opts.getTools}
+      getSkills={opts.getSkills}
       getModel={opts.getModel}
       getMemoryFacts={opts.getMemoryFacts}
       onModelChange={opts.onModelChange}

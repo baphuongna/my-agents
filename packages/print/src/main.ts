@@ -101,6 +101,10 @@ async function runTui(model?: string): Promise<void> {
 
 async function runInkTui(model?: string): Promise<void> {
   const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
+  // Phase 31: discover skills from ~/.my-agent/skills/ if present.
+  try {
+    await agent.skillStore.discover(join(homedir(), ".my-agent", "skills"));
+  } catch { /* dir missing — no skills loaded */ }
   const controller = new AbortController();
   // Track cumulative cost + tokens for the status bar.
   let tokensIn = 0;
@@ -170,6 +174,7 @@ async function runInkTui(model?: string): Promise<void> {
     getModel: () => model ?? "MiniMax-M3",
     getModels: async () => agent.providers.all().map((p) => ({ label: `${p.id}`, value: p.model })),
     getTools: () => agent.tools.list().map((t) => ({ name: t.name })),
+    getSkills: () => agent.skillStore.index().map((s: { name: string; description: string }) => ({ name: s.name, description: s.description })),
     getSpent: () => spentUsd,
   });
 

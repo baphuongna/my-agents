@@ -40,6 +40,7 @@ import {
 import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter } from "@my-agent/memory";
 import { scan as scanContent } from "@my-agent/prompts";
 import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
+import { SkillStore } from "@my-agent/skills";
 
 export interface AgentConfig {
   /** Explicit provider list. If absent: OpenAI (if key) + mock fallback. */
@@ -78,6 +79,8 @@ export interface Agent {
   /** §8 ragfs unified-context-FS (scan-on-read wired). */
   ragfs: RagfsRouter;
   tools: ToolRegistry;
+  /** Phase 31: skill store (for /skill-selector + /skills). */
+  skillStore: SkillStore;
 }
 
 /** Build a fully-wired Agent. */
@@ -124,6 +127,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
 
   // §8 Brain (facts/takes/pages + dream-cycle phases).
   const brain = new Brain();
+  // Phase 31: skill store (for /skill-selector + /skills).
+  const skillStore = new SkillStore();
   // §8 ragfs: unified-context-FS with the prompts scanner wired (R25-18 scan-on-read).
   const knowledgeGraph = new TypedGraph();
   const ragfs = createRagfs({
@@ -283,6 +288,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     brain,
     ragfs,
     tools: toolRegistry,
+    skillStore,
   };
 }
 
