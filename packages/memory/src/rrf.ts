@@ -43,8 +43,10 @@ export function reciprocalRankFuse(arms: RetrievalArm[], topK = 10): MemoryHit[]
 
 /** BM25-ish keyword arm: rank by term-frequency saturation over the query terms. */
 export function bm25Arm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, candidateK = 100): MemoryHit[] {
-  // MED-5 (review): trim and drop empty-only queries.
-  const terms = query.text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // Review HIGH-1 / MED-5: defend against undefined/null query.text + trim.
+  const q = (query.text ?? "").trim().toLowerCase();
+  if (!q) return [];
+  const terms = q.split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
   const N = docs.length || 1;
   const avgDl = docs.reduce((s, d) => s + d.content.length, 0) / N || 1;
@@ -84,47 +86,66 @@ export function substringArm(docs: { id: string; content: string; role?: MemoryR
  * This is a SURROGATE for a real embedding model — it gives vector-like behaviour
  * (handles partial/typo overlap, character-level semantic sharing) without any
  * external dependency. A real HNSW arm drops in by passing a different RetrievalArm.
+ *
+ * Review fixes:
+ *   HIGH-2: code-point iteration (Array.from) avoids splitting UTF-16 surrogate
+ *     pairs (emoji + CJK ext-B+ now work).
+ *   MEDIUM-1/2: dropped the leading/trailing-2 padding trigrams that produced a
+ *     spurious near-perfect cosine for very short queries/docs.
+ *   MEDIUM-4: sparse intersection (only iterate the doc's grams present in qVec)
+ *     for the dot product — drops cost from O(N×G) to O(matched).
  */
-export function vectorArm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, topK = 20): MemoryHit[] {
+export function vectorArm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, candidateK = 100): MemoryHit[] {
   // MED-5 (review): trim + empty → []
   const q = (query.text ?? "").trim().toLowerCase();
   if (!q) return [];
   const N = docs.length || 1;
-  const grams = (s: string) => {
-    // 3-gram char shingles over the lowercased content.
-    const pad = `  ${s}  `;
-    const out = new Map<string, number>();
-    for (let i = 0; i < pad.length - 2; i++) {
-      const g = pad.slice(i, i + 3);
-      out.set(g, (out.get(g) ?? 0) + 1);
-    }
+  // Tokenize into code points (review HIGH-2) → shingle as 3-grams.
+  const shingles = (s: string): string[] => {
+    const cps = Array.from(s.toLowerCase());
+    if (cps.length < 3) return [];
+    const out: string[] = [];
+    for (let i = 0; i <= cps.length - 3; i++) out.push(cps.slice(i, i + 3).join(""));
     return out;
   };
-  const docVecs = docs.map((d) => ({ id: d.id, role: d.role, content: d.content, vec: grams(d.content.toLowerCase()) }));
-  const qVec = grams(q);
-  // document frequency per char-n-gram
+  const docVecs = docs.map((d) => ({ id: d.id, role: d.role, content: d.content, terms: shingles(d.content) }))
+    // compute term-frequency map
+    .map((dv) => {
+      const m = new Map<string, number>();
+      for (const g of dv.terms) m.set(g, (m.get(g) ?? 0) + 1);
+      return { id: dv.id, role: dv.role, content: dv.content, vec: m };
+    });
+  const qTokens = shingles(q);
+  if (qTokens.length === 0) return [];
+  // document frequency per char-n-gram (only counting grams the query cares about — sparse)
   const df = new Map<string, number>();
   for (const dv of docVecs) for (const g of dv.vec.keys()) df.set(g, (df.get(g) ?? 0) + 1);
   const idf = (g: string) => Math.log(1 + (N - (df.get(g) ?? 0) + 0.5) / ((df.get(g) ?? 0) + 0.5));
   const qWeight = new Map<string, number>();
-  for (const [g, tf] of qVec) qWeight.set(g, tf * idf(g));
-  let qNorm = 0;
-  for (const w of qWeight.values()) qNorm += w * w;
-  qNorm = Math.sqrt(qNorm) || 1;
-  const scored = docVecs.map((dv) => {
-    let dot = 0, dNorm = 0;
-    const dWeight = new Map<string, number>();
+  for (const t of qTokens) {
+    const tf = (() => { let n = 0; for (const s of qTokens) if (s === t) n++; return n; })();
+    qWeight.set(t, tf * idf(t));
+  }
+  let qSq = 0;
+  for (const w of qWeight.values()) qSq += w * w;
+  const qNorm = Math.sqrt(qSq);
+  // MEDIUM-4 sparse intersection: only iterate grams present in BOTH sides.
+  const scored: MemoryHit[] = [];
+  for (const dv of docVecs) {
+    let dot = 0, dSq = 0;
     for (const [g, tf] of dv.vec) {
-      const w = tf * idf(g);
-      dWeight.set(g, w);
-      dNorm += w * w;
       const qw = qWeight.get(g);
-      if (qw) dot += w * qw;
+      if (qw !== undefined) {
+        const dw = tf * idf(g);
+        dot += dw * qw;
+        dSq += dw * dw;
+      }
     }
-    const cos = dot / (qNorm * (Math.sqrt(dNorm) || 1));
-    return { id: dv.id, content: dv.content, role: (dv.role ?? "working") as MemoryRoleId, score: cos };
-  });
-  return scored.filter((h) => h.score > 0).sort((a, b) => b.score - a.score).slice(0, topK);
+    const dNorm = Math.sqrt(dSq);
+    const cos = (qNorm > 0 && dNorm > 0) ? dot / (qNorm * dNorm) : 0;
+    if (cos > 0) scored.push({ id: dv.id, content: dv.content, role: (dv.role ?? "working") as MemoryRoleId, score: cos });
+  }
+  return scored.sort((a, b) => b.score - a.score).slice(0, candidateK);
 }
 
 /**

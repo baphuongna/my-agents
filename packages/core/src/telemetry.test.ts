@@ -54,4 +54,31 @@ describe("§13 telemetry — projected, bounded, sampled sink (Phase 8)", () => 
     const snap = sink.flush();
     expect(snap.window.length).toBeLessThanOrEqual(10_000);
   });
+
+  it("Review HIGH-1: ring-buffer retains the LATEST maxWindow entries (not just the first)", () => {
+    // small maxWindow so the test exercises overflow
+    const sink = new TelemetrySink(1, 5);
+    // ingest 12 events with monotonic ts; only the last 5 should be retained
+    for (let i = 0; i < 12; i++) sink.ingest({ kind: "x", ts: i });
+    const snap = sink.flush();
+    expect(snap.window.length).toBe(5);
+    // the ring should have wrapped — window[0] should be one of {7,8,9,10,11}
+    // and the LATEST event (ts=11) must be present
+    expect(snap.window.some((p) => p.ts === 11)).toBe(true);
+    // events 0..6 should be OVERWRITTEN (not present)
+    for (const ts of [0, 1, 2, 3, 4, 5, 6]) {
+      expect(snap.window.some((p) => p.ts === ts)).toBe(false);
+    }
+  });
+
+  it("Review MEDIUM-1: tool-result events read `ok` from result.ok, not the missing top-level `ok`", () => {
+    // Canonical RuntimeEvent shape for tool-result events has `result.ok`, no top-level `ok`.
+    const okProjection = project({ kind: "tool", ts: 0, stage: "result", result: { ok: true, output: "x" } });
+    expect(okProjection.ok).toBe(true);
+    const failProjection = project({ kind: "tool", ts: 0, stage: "result", result: { ok: false, output: "x" } });
+    expect(failProjection.ok).toBe(false);
+    // events without result.ok (e.g. budget) still read top-level ok if set
+    const budget = project({ kind: "budget", ts: 0, ok: true });
+    expect(budget.ok).toBe(true);
+  });
 });

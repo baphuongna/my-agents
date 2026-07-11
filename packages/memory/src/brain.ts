@@ -56,6 +56,10 @@ export class Brain {
   private readonly facts = new Map<string, Fact>();
   private readonly takes = new Map<string, Take>();
   private readonly pages = new Map<string, BrainPage>();
+  /** Review CRITICAL-1: soft-delete tombstones (review CRITICAL-1 — spec mandates
+   * soft-delete + 72h TTL recovery; hard-delete breaks "consolidated facts never
+   * deleted" + loses user data). */
+  private readonly tombstones = new Map<string, { fact: Fact; deletedAt: number }>();
   /** min facts per (source,entity) bucket before consolidation considers it. */
   /** F7 fix: caps to bound the O(n²) consolidate cost + memory. */
   private readonly maxFactContentChars = 4096;
@@ -155,36 +159,108 @@ export class Brain {
    * content (`[Name](path)` + `[[wikilink]]` + bare-name). Returns the edges.
    * Phase 8 implements this surface; persistence (TypedKnowledgeGraph) is
    * deferred to the typed-graph arm.
+   *
+   * Review-driven hardening:
+   *   - HIGH-1: WIKI regex strips the pipe + alias (`[[Alice|Alias]]` → slug "Alice").
+   *   - HIGH-2: fenced/inline code is stripped before edge extraction.
+   *   - HIGH-3: bare-name edges use PascalCase-word membership against the
+   *     entity's words (no over-firing on suffix substrings like "LLM" in "ProjectLLM").
+   *   - LOW-1: dedup by (fromFactId|to|kind).
    */
   backlinks(): Array<{ fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> {
     const edges: Array<{ fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> = [];
-    const LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
-    const WIKI = /\[\[([^\]]+)\]\]/g;
+    const WIKI = /\[\[([^|\]#\n]+?)(?:\|[^\]]+?)?\]\]/g;
+    const LINK = /\[[^\]]*\]\((?:[^()\n]|\([^()\n]*\))*\)/g;
+    // strip fenced/inline code + mask link LABELS (so a wikilink inside a link text
+    // label doesn't double-emit). Reference: gbrain stripCodeBlocks.
+    const stripCode = (s: string): string =>
+      s
+        .replace(/```[\s\S]*?```/g, (m) => " ".repeat(m.length))
+        .replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length));
     for (const f of this.facts.values()) {
+      const text = stripCode(f.content);
+      // PascalCase-word split (HIGH-3): "MrsSmith" → {Mrs, Smith}; "ProjectLLM" → {Project, L, M}.
+      const entityWords = new Set<string>();
+      for (const m of f.entity.matchAll(/[A-Z][a-z]+/g)) entityWords.add(m[0]);
+      // also include entity itself (exact-match case)
+      entityWords.add(f.entity);
       let m: RegExpExecArray | null;
-      while ((m = LINK.exec(f.content)) !== null) edges.push({ fromFactId: f.id, to: m[2]!, kind: "link" });
-      while ((m = WIKI.exec(f.content)) !== null) edges.push({ fromFactId: f.id, to: m[1]!, kind: "wikilink" });
-      // bare-name (single capitalized word, e.g. "Alice" → "Alice") — only
-      // emitted when the bare name equals the fact's entity (no spurious edges).
-      const bare = f.content.match(/\b([A-Z][a-zA-Z]{2,})\b/g) ?? [];
-      for (const b of bare) if (b === f.entity || f.entity.endsWith(b)) edges.push({ fromFactId: f.id, to: b, kind: "bare" });
+      WIKI.lastIndex = 0;
+      while ((m = WIKI.exec(text)) !== null) edges.push({ fromFactId: f.id, to: m[1]!, kind: "wikilink" });
+      LINK.lastIndex = 0;
+      while ((m = LINK.exec(text)) !== null) {
+        // extract the URL portion: the last (...) in the match (skips nested display text)
+        const urlM = m[0].match(/\(([^()\n]*)\)\s*$/);
+        const url = urlM?.[1] ?? "";
+        if (url) edges.push({ fromFactId: f.id, to: url.split("|")[0]!, kind: "link" });
+      }
+      // bare names: only when the bare (capitalized word) MATCHES a word in the entity.
+      // mask markdown link labels inside `text` so a bare name inside `[Alice](x)`
+      // doesn't double-emit as both `link: x` AND `bare: Alice`.
+      const maskedForBare = text.replace(LINK, (m) => " ".repeat(m.length));
+      const bareMatches = maskedForBare.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
+      const bare = new Set(bareMatches);
+      for (const b of bare) if (entityWords.has(b)) edges.push({ fromFactId: f.id, to: b, kind: "bare" });
     }
-    return edges;
+    // LOW-1: dedupe by (fromFactId|to|kind).
+    const seen = new Set<string>();
+    const out: typeof edges = [];
+    for (const e of edges) {
+      const k = `${e.fromFactId}|${e.to}|${e.kind}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(e);
+    }
+    return out;
   }
 
   /**
-   * Dream cycle phase: purge — drop facts with validUntil < now (soft-delete;
-   * tombstone preserved). Returns the count purged.
+   * Dream cycle phase: purge — soft-delete expired facts (review CRITICAL-1).
+   * Consolidated facts are NEVER purged (spec line 71). Facts land in `tombstones`
+   * with a `deletedAt` for `restore_page`-style recovery (within the 72h TTL).
+   * Returns the count soft-deleted.
    */
   purge(now = nowWallclock()): number {
     let n = 0;
-    for (const f of this.facts.values()) {
-      if (f.validUntil !== undefined && f.validUntil < now) {
-        this.facts.delete(f.id);
-        n++;
-      }
+    for (const f of [...this.facts.values()]) {
+      // M4: consolidated facts are immortal (spec line 71).
+      if (f.consolidatedAt !== undefined) continue;
+      const notYetValid = f.validFrom !== undefined && f.validFrom > now;
+      const expired = f.validUntil !== undefined && f.validUntil <= now; // HIGH-4: inclusive end
+      if (notYetValid && f.validUntil === undefined) { this.softDelete(f, now); n++; continue; }
+      if (expired) { this.softDelete(f, now); n++; }
     }
     return n;
+  }
+
+  /** CRITICAL-1: soft-delete: move to tombstones (spec "soft-delete" — reversible via restore). */
+  private softDelete(f: Fact, now: number): void {
+    this.tombstones.set(f.id, { fact: f, deletedAt: now });
+    this.facts.delete(f.id);
+  }
+
+  /** CRITICAL-1: restore a soft-deleted fact from its tombstone. */
+  restore(factId: string): boolean {
+    const t = this.tombstones.get(factId);
+    if (!t) return false;
+    if (this.facts.size >= this.maxFactsTotal) return false;
+    this.facts.set(factId, t.fact);
+    this.tombstones.delete(factId);
+    return true;
+  }
+
+  /** CRITICAL-1: purge tombstones older than the cutoff (matches gbrain
+   * `purgeDeletedPages(olderThanHours=72)`). */
+  purgeTombstones(olderThanHours = 72, now = nowWallclock()): number {
+    const cutoff = now - olderThanHours * 3_600_000;
+    let n = 0;
+    for (const [id, t] of this.tombstones) if (t.deletedAt < cutoff) { this.tombstones.delete(id); n++; }
+    return n;
+  }
+
+  get tombstoneCount(): number { return this.tombstones.size; }
+  tombstonesList(): { id: string; fact: Fact; deletedAt: number }[] {
+    return [...this.tombstones.entries()].map(([id, t]) => ({ id, fact: t.fact, deletedAt: t.deletedAt }));
   }
   get takeCount(): number {
     return this.takes.size;

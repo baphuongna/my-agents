@@ -32,13 +32,16 @@ export interface TelemetrySnapshot {
   sampleRate: number;
 }
 
-/** Project a RuntimeEvent into a bounded telemetry view (no payload leakage). */
+/** Project a RuntimeEvent into a bounded telemetry view (no payload leakage).
+ * Review MEDIUM-1: for tool-result events, `ok` is read from `result.ok`
+ * (the canonical RuntimeEvent shape — there is no top-level `ok` on tool events). */
 export function project(e: { kind: string; [k: string]: unknown }): TelemetryProjection {
   const ts = (e as { ts?: number }).ts ?? nowWallclock();
   const stage = (e as { stage?: string }).stage;
   const te = (e as { turnEvent?: { state?: string } }).turnEvent;
   const state = te?.state;
-  const ok = (e as { ok?: boolean }).ok;
+  // tool-result events carry `ok` on result; fall back to top-level for budget/etc.
+  const ok = (e as { result?: { ok?: boolean }; ok?: boolean }).result?.ok ?? (e as { ok?: boolean }).ok;
   return { ts, kind: e.kind, stage, state, ok };
 }
 
@@ -50,6 +53,9 @@ export class TelemetrySink {
   private _windowEndMs = 0;
   private dropped = 0;
   private seen = 0;
+  /** Review HIGH-1: ring-buffer write index — increments modulo maxWindow,
+   * ensuring the LATEST maxWindow events are retained. */
+  private writeIndex = 0;
   constructor(
     private sampleRate = 1,
     private readonly maxWindow = 10_000,
@@ -71,8 +77,14 @@ export class TelemetrySink {
     this.counts[p.kind] = (this.counts[p.kind] ?? 0) + 1;
     if (this.window.length === 0) this.windowStartMs = p.ts;
     this._windowEndMs = p.ts;
-    if (this.window.length < this.maxWindow) this.window.push(p);
-    else this.window[this.window.length % this.maxWindow] = p; // ring buffer overflow
+    if (this.window.length < this.maxWindow) {
+      this.window.push(p);
+    } else {
+      // Review HIGH-1: real ring buffer — writeIndex advances modulo maxWindow,
+      // so the latest maxWindow entries are always retained.
+      this.window[this.writeIndex] = p;
+      this.writeIndex = (this.writeIndex + 1) % this.maxWindow;
+    }
     return true;
   }
 
@@ -93,4 +105,6 @@ export class TelemetrySink {
 
   /** Total dropped events (sample rate excluded them). */
   get droppedCount(): number { return this.dropped; }
+  /** Current ring-buffer write index (test/debug). */
+  get writeIndexCurrent(): number { return this.writeIndex; }
 }
