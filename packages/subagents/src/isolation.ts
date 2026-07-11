@@ -17,6 +17,16 @@ import { tmpdir } from "node:os";
 
 export type IsoBackend = "file_copy" | "overlayfs" | "reflink_apfs" | "btrfs" | "zfs" | "git_worktree";
 
+export interface ConflictError {
+  path: string;
+  baseContent: string | null;
+  childContent: string;
+  parentContent: string | null;
+}
+export type MergeResult =
+  | { ok: true; merged: string[]; added: string[] }
+  | { ok: false; conflicts: ConflictError[]; merged: string[] };
+
 export interface IsolatedWorkspace {
   /** The sandboxed root (changes happen here). */
   readonly root: string;
@@ -28,6 +38,11 @@ export interface IsolatedWorkspace {
   changedPaths(): string[];
   /** Compute changed files (paths whose content differs from base). */
   diff(): string[];
+  /** §10.2: 3-way merge the sandbox changes into `parentRoot`, using `base` as
+   * the common ancestor. Returns {ok, merged} or {ok:false, conflicts}. A path
+   * changed on BOTH sides (and differing) is a ConflictError (never silently
+   * clobbers). New child files are added; deletions are not propagated (Tier-1). */
+  mergeBack(parentRoot: string): MergeResult;
   /** Apply a child edit (writes to sandbox root). */
   write(relPath: string, content: string): void;
   /** Read a file (from sandbox if changed, else base). */
@@ -89,6 +104,41 @@ const writes = new Map<string, string>(); // relPath → content
         if (sandboxContent !== baseContent) out.push(rel);
       }
       return out;
+    },
+    mergeBack(parentRoot: string): MergeResult {
+      const merged: string[] = [];
+      const added: string[] = [];
+      const conflicts: ConflictError[] = [];
+      for (const rel of writes.keys()) {
+        assertContained(sandboxRoot, rel); assertContained(base, rel); assertContained(parentRoot, rel);
+        const sandboxFile = join(sandboxRoot, rel);
+        const baseFile = join(base, rel);
+        const parentFile = join(parentRoot, rel);
+        const childContent = readFileSync(sandboxFile, "utf8");
+        const baseContent = existsSync(baseFile) ? readFileSync(baseFile, "utf8") : null;
+        const parentContent = existsSync(parentFile) ? readFileSync(parentFile, "utf8") : null;
+        // New file in child (not in base/parent) → add to parent.
+        if (baseContent === null && parentContent === null) {
+          mkdirSync(dirname(parentFile), { recursive: true });
+          writeFileSync(parentFile, childContent, "utf8");
+          added.push(rel);
+          continue;
+        }
+        // Child unchanged from base → parent wins (parent moved, child idle).
+        if (childContent === baseContent) continue;
+        // Parent unchanged from base → fast-forward child's version.
+        if (parentContent === baseContent) {
+          mkdirSync(dirname(parentFile), { recursive: true });
+          writeFileSync(parentFile, childContent, "utf8");
+          merged.push(rel);
+          continue;
+        }
+        // BOTH changed + differ → conflict (never silently clobber).
+        if (childContent !== parentContent) {
+          conflicts.push({ path: rel, baseContent, childContent, parentContent });
+        }
+      }
+      return conflicts.length === 0 ? { ok: true, merged, added } : { ok: false, conflicts, merged };
     },
     write(relPath: string, content: string): void {
       assertContained(sandboxRoot, relPath);

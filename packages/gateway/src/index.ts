@@ -12,6 +12,9 @@
  * Source: §12 Channels & Gateway, §13 Observability readiness, §25.6 contract.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+export { ControlPlane, HandleLruCache } from "./control.js";
+export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
+import { ControlPlane } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { nowWallclock } from "@my-agent/core";
 
@@ -107,6 +110,9 @@ export interface GatewayOptions {
    * safe; setting this to true is required (with a logged warning) for any
    * network-facing bind, since the gateway's WS/HTTP surface is unauthenticated. */
   allowExternalBind?: boolean;
+  /** §12 control-plane (sessions/cron/config/tools + handle LRU). Defaults to a
+   * fresh ControlPlane. */
+  control?: ControlPlane;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -123,6 +129,8 @@ export class Gateway {
   readonly readiness: ReadinessRegistry;
   readonly host: string;
   readonly port: number;
+  /** §12 control-plane (sessions/cron/config/tools + per-session handle LRU). */
+  readonly control: ControlPlane;
 
   constructor(opts: GatewayOptions = {}) {
     this.host = opts.host ?? "127.0.0.1";
@@ -138,6 +146,7 @@ export class Gateway {
     }
     this.readiness = opts.readiness ?? new ReadinessRegistry();
     this.rootHtml = opts.rootHtml;
+    this.control = opts.control ?? new ControlPlane();
   }
 
   private rootHtml?: string;
@@ -182,6 +191,12 @@ export class Gateway {
       res.writeHead(code, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
     };
+    // §12 parametric control-plane route: /sessions/:id
+    const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
+    if (sessionMatch) {
+      const s = this.control.getSession(sessionMatch[1]!);
+      return s ? send(200, s) : send(404, { error: "session not found" });
+    }
     switch (url.pathname) {
       case "/health/live": {
         const p = this.readiness.liveness();
@@ -195,6 +210,11 @@ export class Gateway {
         const p = this.readiness.functional(this.healthyTurns);
         return send(p.ok ? 200 : 503, p);
       }
+      // §12 control-plane: read-only management surface (sessions/cron/config/tools).
+      case "/sessions": return send(200, this.control.listSessions());
+      case "/cron/jobs": return send(200, this.control.listCronJobs());
+      case "/config": return send(200, this.control.getConfig());
+      case "/tools": return send(200, this.control.listTools());
       case "/":
       case "/index.html": {
         if (this.rootHtml) {
