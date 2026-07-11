@@ -11,6 +11,9 @@
   "workspaces": [
     "packages/*"
   ],
+  "bin": {
+    "my-agent": "./packages/print/dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit",
