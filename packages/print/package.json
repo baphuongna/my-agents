@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "my-agent": "./dist/cli.js"
+    "my-agent": "./dist/cli.js",
+    "mya": "./dist/main.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,6 +15,10 @@
   },
   "dependencies": {
     "@my-agent/core": "*",
-    "@my-agent/agent": "*"
+    "@my-agent/agent": "*",
+    "@my-agent/tui": "*",
+    "@my-agent/rpc": "*",
+    "@my-agent/gateway": "*",
+    "@my-agent/web": "*"
   }
 }

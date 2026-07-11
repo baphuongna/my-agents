@@ -110,6 +110,8 @@ export interface GatewayOptions {
    * safe; setting this to true is required (with a logged warning) for any
    * network-facing bind, since the gateway's WS/HTTP surface is unauthenticated. */
   allowExternalBind?: boolean;
+  /** Optional: handle incoming WS messages (e.g. a dashboard sending a prompt). */
+  onWsMessage?: (session: string, data: unknown) => void;
   /** §12 control-plane (sessions/cron/config/tools + handle LRU). Defaults to a
    * fresh ControlPlane. */
   control?: ControlPlane;
@@ -146,10 +148,13 @@ export class Gateway {
     }
     this.readiness = opts.readiness ?? new ReadinessRegistry();
     this.rootHtml = opts.rootHtml;
+    this.onWsMessage = opts.onWsMessage;
     this.control = opts.control ?? new ControlPlane();
   }
 
   private rootHtml?: string;
+  /** Phase 15: incoming WS message handler (for dashboard prompts). */
+  onWsMessage?: (session: string, data: unknown) => void;
 
   /** Start listening. Resolves with the bound port (0 = ephemeral). */
   start(): Promise<{ port: number; wsPath: string }> {
@@ -257,8 +262,14 @@ export class Gateway {
       if (env.seq > since) ws.send(JSON.stringify(env));
     }
     ws.on("close", () => this.subscribers.delete(ws));
-    ws.on("message", () => {
-      /* control messages (subscribe/cancel) — Tier-2+ */
+    ws.on("message", (raw: Buffer) => {
+      /* control messages (subscribe/cancel) — Tier-2+. Phase 15: forward to onWsMessage. */
+      if (this.onWsMessage) {
+        try {
+          const session = this.subscribers.get(ws)?.session ?? "default";
+          this.onWsMessage(session, JSON.parse(raw.toString()));
+        } catch { /* malformed — ignore */ }
+      }
     });
   }
 

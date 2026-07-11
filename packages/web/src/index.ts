@@ -51,8 +51,9 @@ export function dashboardHtml(opts: { title?: string; wsPath?: string } = {}): s
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(proto + '://' + location.host + '/events?since=' + cursor);
-    ws.onopen = () => { statusEl.textContent = 'live'; statusEl.style.background = '#238636'; };
-    ws.onclose = () => { statusEl.textContent = 'reconnecting'; statusEl.style.background = '#d29922'; setTimeout(connect, 1000); };
+    wsObj = ws;
+    ws.onopen = () => { statusEl.textContent = 'live'; statusEl.style.background = '#238636'; ws_ready = true; };
+    ws.onclose = () => { statusEl.textContent = 'reconnecting'; statusEl.style.background = '#d29922'; ws_ready = false; setTimeout(connect, 1000); };
     ws.onerror = () => ws.close();
     ws.onmessage = (m) => {
       const env = JSON.parse(m.data);
@@ -90,6 +91,23 @@ export function dashboardHtml(opts: { title?: string; wsPath?: string } = {}): s
     m.innerHTML = '<strong>approval</strong><br>' + escapeHtml(JSON.stringify(e.call||{})) + '<br><br><button onclick="this.parentNode.style.display=\\'none\\'">allow</button> <button class="deny" onclick="this.parentNode.style.display=\\'none\\'">deny</button>';
   }
   function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  // Phase 15: prompt input bar.
+  const inputBar = document.createElement('div');
+  inputBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#161b22;border-top:1px solid #30363d;padding:8px 16px;display:flex;gap:8px';
+  const inp = document.createElement('input');
+  inp.style.cssText = 'flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:8px';
+  inp.placeholder = 'send a message...';
+  const btn = document.createElement('button');
+  btn.textContent = 'send';
+  btn.onclick = () => {
+    if (inp.value.trim() && ws_ready) { wsObj.send(JSON.stringify({ text: inp.value })); inp.value = ''; }
+  };
+  inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') btn.click(); });
+  inputBar.appendChild(inp);
+  inputBar.appendChild(btn);
+  document.body.appendChild(inputBar);
+  let ws_ready = false;
+  let wsObj = null;
   connect();
 </script>
 </body>
