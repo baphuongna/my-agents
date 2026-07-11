@@ -22,7 +22,6 @@
     "@my-agent/memory": "*",
     "@my-agent/skills": "*",
     "@my-agent/tools": "*",
-    "@my-agent/memory": "*",
     "@my-agent/council": "*"
   }
 }
