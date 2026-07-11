@@ -17,5 +17,6 @@ export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm, grap
 export { RagfsRouter, StaticContextSource, KnowledgeSource, parseRagfsUri, RAGFS_BLOCKED } from "./ragfs.js";
 export { makeRagfsScanner, allowAllScanner, denyAllScanner } from "./ragfs-bridge.js";
 export type { ContextSource, RagfsUri, RagfsScanner } from "./ragfs.js";
+export { createRagfs } from "./ragfs-factory.js";
 export { TypedGraph } from "./graph.js";
 export type { KGEntity, KGRelation } from "./graph.js";

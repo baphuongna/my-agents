@@ -28,6 +28,8 @@ export interface Fact {
   validUntil?: number;
   consolidatedAt?: number;
   consolidatedInto?: string; // the take id this fact promoted into
+  /** Phase 10 dream-cycle embed phase marker. */
+  embedded?: boolean;
 }
 
 export interface Take {
@@ -261,6 +263,52 @@ export class Brain {
   get tombstoneCount(): number { return this.tombstones.size; }
   tombstonesList(): { id: string; fact: Fact; deletedAt: number }[] {
     return [...this.tombstones.entries()].map(([id, t]) => ({ id, fact: t.fact, deletedAt: t.deletedAt }));
+  }
+
+  /**
+   * Dream cycle phase: extract_facts — zero-LLM structured extraction from
+   * fact content. Scans for dates, URLs, emails, commit hashes, + version
+   * strings. Returns the extracted atoms (Phase 10 surface; an LLM-driven
+   * extractor would be richer).
+   */
+  extractFacts(): Array<{ factId: string; kind: string; value: string }> {
+    const atoms: Array<{ factId: string; kind: string; value: string }> = [];
+    const patterns: Array<{ kind: string; re: RegExp }> = [
+      { kind: "date", re: /\b(\d{4}-\d{2}-\d{2})\b/g },
+      { kind: "url", re: /\b(https?:\/\/[^\s)]+)/g },
+      { kind: "email", re: /\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/g },
+      { kind: "commit", re: /\b([0-9a-f]{7,40})\b/g },
+      { kind: "version", re: /\bv?(\d+\.\d+\.\d+)\b/g },
+    ];
+    for (const f of this.facts.values()) {
+      for (const { kind, re } of patterns) {
+        re.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(f.content)) !== null) atoms.push({ factId: f.id, kind, value: m[1]! });
+      }
+    }
+    return atoms;
+  }
+
+  /**
+   * Dream cycle phase: embed — marks facts as indexed for the vector arm.
+   * Phase 10 Tier-1: a boolean flag (the vector arm computes on-the-fly; a
+   * persisted embedding would replace this when an embedding model is wired).
+   * Returns the count of facts newly marked.
+   */
+  embed(): number {
+    let n = 0;
+    for (const f of this.facts.values()) {
+      if (!f.embedded) { (f as Fact & { embedded?: boolean }).embedded = true; n++; }
+    }
+    return n;
+  }
+
+  /** Phase 10: count of embedded facts (for the embed dream-cycle phase). */
+  get embeddedCount(): number {
+    let n = 0;
+    for (const f of this.facts.values()) if ((f as Fact & { embedded?: boolean }).embedded) n++;
+    return n;
   }
   get takeCount(): number {
     return this.takes.size;

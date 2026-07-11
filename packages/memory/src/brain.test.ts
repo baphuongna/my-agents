@@ -141,3 +141,26 @@ describe("§8 dream cycle — Phase-8 review hardening", () => {
     expect(brain.purge(5000)).toBe(1);
   });
 });
+
+describe("§8 Phase 10 — dream-cycle extract_facts + embed", () => {
+  it("extractFacts pulls structured atoms (dates, URLs, emails, commits, versions)", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "Project", content: "shipped v1.2.3 on 2024-01-15 — see https://example.com/x (commit abc1234) — contact alice@example.com", visibility: "private", notability: 1, source: "s" });
+    const atoms = brain.extractFacts();
+    const kinds = atoms.map((a) => a.kind).sort();
+    expect(kinds).toContain("date");
+    expect(kinds).toContain("url");
+    expect(kinds).toContain("email");
+    expect(kinds).toContain("version");
+  });
+  it("embed marks all facts + embeddedCount reflects it", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    brain.recordFact({ kind: "fact", entity: "e", content: "y", visibility: "private", notability: 1, source: "s" });
+    expect(brain.embeddedCount).toBe(0);
+    expect(brain.embed()).toBe(2);
+    expect(brain.embeddedCount).toBe(2);
+    // idempotent
+    expect(brain.embed()).toBe(0);
+  });
+});
