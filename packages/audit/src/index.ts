@@ -156,3 +156,9 @@ export function merkleRoot(leaves: string[]): string {
   }
   return layer[0]!;
 }
+
+// §14.3 RecoveryRecipe FSM + ProjectTrust
+export { defaultRecoveryRecipes, runRecovery } from "./recovery.js";
+export type { RecoveryRecipe, RecoveryStep, FailureScenario, EscalationPolicy, RecoveryAttempt } from "./recovery.js";
+export { loadTrust, saveTrust, promoteTrust, safeContextOnly, canAutoApprove, shouldPromptFirstRun } from "./trust.js";
+export type { ProjectTrust, TrustLevel } from "./trust.js";
