@@ -24,7 +24,9 @@ import TextInput from "ink-text-input";
 import { SLASH_COMMANDS, type SlashCommand, type InkCommandContext } from "./ink-commands.js";
 import { themeStore, defaultTheme as themeDefault, type Theme } from "./themes.js";
 import { sanitize } from "./sanitize.js";
-import { KillRing, EditorOps, yank as doYank } from "./editor.js";
+import { KillRing, EditorOps, yank } from "./editor.js";
+import { Autocomplete } from "./autocomplete.js";
+import { MdInline } from "./transcript";
 export type { SlashCommand } from "./ink-commands.js";
 
 /** A single rendered event line in the conversation stream. */
@@ -111,6 +113,10 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [approval, setApproval] = useState<InkApproval | null>(null);
   const [status, setStatus] = useState<InkStatus>(props.initialStatus);
+  // Phase 27: autocomplete overlay state.
+  const [acHighlighted, setAcHighlighted] = useState(0);
+  // Phase 27: kill-ring (Ctrl+W deletes last word, Ctrl+Y pastes last killed).
+  const killRingRef = useRef(new KillRing());
 
   useImperativeHandle(
     ref,
@@ -238,6 +244,29 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       else exit();
       return;
     }
+    // Phase 27: Ctrl+W — kill last word (push to kill-ring).
+    if (key.ctrl && input === "w") {
+      const r = EditorOps.killWord({ value: draft, cursor: draft.length });
+      if (r.killed) killRingRef.current.push(r.killed);
+      setDraft(r.next.value);
+      return;
+    }
+    // Phase 27: Ctrl+Y — yank (paste last killed text).
+    if (key.ctrl && input === "y") {
+      const killed = killRingRef.current.peek();
+      if (killed) {
+        const r = yank({ value: draft, cursor: draft.length }, killed);
+        setDraft(r.value);
+      }
+      return;
+    }
+    // Phase 27: Ctrl+U — kill from cursor to start of line.
+    if (key.ctrl && input === "u") {
+      const r = EditorOps.killToBOL({ value: draft, cursor: draft.length });
+      if (r.killed) killRingRef.current.push(r.killed);
+      setDraft(r.next.value);
+      return;
+    }
     // Up arrow: walk history back.
     if (key.upArrow && history.length > 0) {
       const idx = historyIdx < 0 ? history.length : Math.max(0, historyIdx - 1);
@@ -280,6 +309,24 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       {/* Approval modal overlay */}
       {approval && <ApprovalModal approval={approval} />}
 
+      {/* Phase 27: autocomplete overlay above the input (only when draft
+          starts with `/` or contains `@path`). */}
+      {(draft.startsWith("/") || /@/.test(draft)) && (
+        <Autocomplete
+          draft={draft}
+          commands={props.commands}
+          theme={defaultTheme}
+          highlighted={acHighlighted}
+          onAccept={(sug) => {
+            // Replace draft with the suggestion's insert string.
+            if (sug) setDraft(sug.insert);
+            setAcHighlighted(0);
+          }}
+          onDismiss={() => setAcHighlighted(0)}
+          onHighlightChange={setAcHighlighted}
+        />
+      )}
+
       {/* Multi-line input */}
       <Box paddingX={1}>
         <Text color={defaultTheme.user} bold>{">"} </Text>
@@ -316,7 +363,9 @@ function TranscriptLine({ line }: { line: InkTurnLine }): React.ReactElement {
   return (
     <Box>
       <Text color={defaultTheme.meta}>{prefix.padEnd(4)} </Text>
-      <Text color={color} wrap="wrap">{line.text}</Text>
+      <Text color={color} wrap="wrap">
+        {line.kind === "assistant" ? <MdInline text={line.text} theme={defaultTheme} /> : line.text}
+      </Text>
     </Box>
   );
 }

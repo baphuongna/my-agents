@@ -127,9 +127,9 @@ describe("Phase 26 follow-up: symlink attacks blocked", () => {
       // If write went through, it followed the symlink and wrote to elsewhere/config.toml
       const offending = await readFile(join(elsewhere, "config.toml"), "utf8");
       expect(offending).toContain("evil = 1"); // unchanged — write was refused
-    } catch (e) {
+    } catch (e: unknown) {
       // expected — writeConfig throws on symlink ref
-      expect(String(e.message)).toMatch(/symlink|outside/i);
+      expect(String((e as Error).message)).toMatch(/symlink|outside/i);
     } finally {
       await rm(fakeHome, { recursive: true, force: true });
       await rm(elsewhere, { recursive: true, force: true });
