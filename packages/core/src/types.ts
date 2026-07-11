@@ -185,6 +185,9 @@ export interface Session {
   prompt?: SystemPrompt;
   history: History;
   skillSetDirty: boolean;
+  /** Phase 12: the recent conversation entries (for the archivist's tree-leaf
+   * syncTurn). Populated by the agent's runDreamCycle before syncAll. */
+  recentTurn?: ReadonlyArray<{ role: string; content: string }>;
 }
 
 export interface History {

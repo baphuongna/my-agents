@@ -425,14 +425,17 @@ export class Brain {
    */
   conversationFactsBackfill(conversation: Array<{ role: string; content: string }>): number {
     const knownEntities = new Set([...this.facts.values()].map((f) => f.entity).filter((e) => e && e.trim()));
-    // M1: dedup across the ENTIRE call (not per-message) — one fact per entity.
+    // M1: dedup across the ENTIRE call + CROSS-CALL (skip if a backfill fact
+    // already exists for this entity — prevents unbounded accumulation per turn).
+    const hasBackfill = (name: string) =>
+      [...this.facts.values()].some((f) => f.source === "backfill" && f.entity === name);
     const recorded = new Set<string>();
     let n = 0;
     for (const msg of conversation) {
       if (msg.role === "tool" || msg.role === "system") continue;
       const names = msg.content.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
       for (const name of [...new Set(names)]) {
-        if (!knownEntities.has(name) || recorded.has(name)) continue;
+        if (!knownEntities.has(name) || recorded.has(name) || hasBackfill(name)) continue;
         // C1: respect the fact cap — stop gracefully (not throw mid-loop).
         if (this.facts.size >= this.maxFactsTotal) return n;
         this.recordFact({

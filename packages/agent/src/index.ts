@@ -208,8 +208,9 @@ export function createAgent(config: AgentConfig = {}): Agent {
       // 4. Set recentTurn for the archivist role, then sync memory roles.
       (session as { recentTurn?: unknown[] }).recentTurn = conversation.slice(-20);
       await memory.syncAll();
-    } catch {
-      // dream-cycle failure is non-fatal — the turn already succeeded.
+    } catch (e) {
+      // dream-cycle failure is non-fatal — but log it (review HIGH-2).
+      console.warn(`dream-cycle failed (non-fatal): ${(e as Error).message}`);
     }
   }
 

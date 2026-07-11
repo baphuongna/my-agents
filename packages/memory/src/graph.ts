@@ -35,13 +35,17 @@ export class TypedGraph {
     else for (const a of e.aliases) if (!ex.aliases.includes(a)) ex.aliases.push(a);
   }
 
-  /** Add a directed relation. Both endpoints are auto-declared if absent. */
+  /** Add a directed relation. Both endpoints are auto-declared if absent.
+   * Dedup by (from|to|kind|source) — no duplicate edges (review HIGH-1). */
   addRelation(r: KGRelation): void {
     if (!this.entities.has(r.from)) this.addEntity({ id: r.from, aliases: [] });
     if (!this.entities.has(r.to)) this.addEntity({ id: r.to, aliases: [] });
-    const adj = this.edges.get(r.from);
-    if (adj) adj.push(r);
-    else this.edges.set(r.from, [r]);
+    const adj = this.edges.get(r.from) ?? [];
+    // dedup: skip if an identical relation already exists
+    const key = `${r.to}|${r.kind}|${r.source}`;
+    if (adj.some((e) => `${e.to}|${e.kind}|${e.source}` === key)) return;
+    adj.push(r);
+    this.edges.set(r.from, adj);
   }
 
   /** Seed the graph from `brain.backlinks()` output (typed-graph ingestion).
