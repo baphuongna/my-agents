@@ -1,77 +1,181 @@
-# PLAN-REMAINING — Honest Gap Analysis vs SPEC (updated post-Phase 13)
+# PLAN-REMAINING — Final Roadmap to a Runnable `mya` Command
 
-> Grounded in a full read of all 13 SPEC files (`source/.learned/spec/00→12`) + grep verification.
-> **SPEC is authoritative:** `source/.learned/AGENT-SPEC.md` (index) → `spec/00-12`.
+> Post-Phase 13 state: 40 packages, 212 tests, 27 commits, engine complete.
+> This plan covers ALL remaining gaps (SPEC + UI + publish) in 3 phases.
 
-## Reality check — current state
+## Current State
 
-**40 packages + 3 crates · ~14k LOC TS + ~700 LOC Rust · 212 committed tests (27 suites, vitest) · 27 remediation commits.**
-All major SPEC subsystems are built, tested, and wired into the turn loop.
-Every CRITICAL/HIGH from 12 review rounds (Phases 5-13) is closed.
+**Engine**: ✅ complete — turn FSM, 7-step permission, 10/22 dream-cycle phases,
+4-arm RRF, ragfs scan-on-read, CoW subagents, gateway control-plane, telemetry,
+212 tests, CI green.
 
-## Section-by-section status (post-Phase 13)
+**CLI**: ✅ `my-agent` bin works (MiniMax verified: "What is 2+2?" → "Four.").
+But `bin` is named `my-agent`, not `mya`. TUI/RPC are libraries (no entry).
+Web/desktop are built but need startup scripts.
 
-Legend: ✅ built + tested · 🟡 partial (core works, spec extras missing) · ❌ missing
+## Phase 14: Remaining SPEC Gaps (tractable)
 
-| § | Topic | Status | Current state |
+### 14a. §9 Skills — SkillCurator + SkillProvenance fix
+- **SkillProvenance**: change from interface `{sourcePath, loadedAt}` to the
+  spec's 4-value enum `"Bundled" | "HubInstalled" | "UserCreated" | "AgentCreated"`.
+  Gate which skills the curator may touch.
+- **SkillCurator**: implement `curate(store, opts)`: inactivity-triggered prune
+  (archive-not-delete), `prune_builtins` flag, pinned-skills bypass. Runs on
+  auxiliary provider chain (Phase 14 wires to MockProvider for testing).
+- **Tests**: curator prune/archive/pin; provenance enum gating.
+
+### 14b. §15 Eval — tier fix + no-egress guard
+- Change `ParityScenario.tier` from `"mock" | "live"` to spec's
+  `"unit" | "integration" | "credentialed"`.
+- **no-egress guard**: monkey-patch `globalThis.fetch` during non-credentialed
+  test runs; fail the test if any network call fires outside the credentialed tier.
+- **golden-set age gate**: check `recordedAt + maxGoldenAgeDays` on golden
+  fixtures; warn if stale.
+- **Tests**: egress fence blocks fetch in unit tier; allows in credentialed.
+
+### 14c. §8 — GoalsRole prompt rendering + performance
+- **GoalsRole → prompt**: wire `GoalsRole.systemPromptBlock(store)` into the
+  volatile tier composition (`buildVolatileTier` or `assemblePrompt`). The goals
+  text now appears in the agent's system prompt.
+- **conversationFactsBackfill incremental**: track `lastBackfillIdx`; only scan
+  new history entries (not the entire conversation every turn).
+- **brain.backlinks() cache**: cache the result; invalidate on `recordFact`.
+- **Tests**: goals appear in assembled prompt; backfill is incremental (N facts
+  scanned once, not N×N).
+
+### 14d. §6 — resolveToolName mapping
+- Replace the stub `return rawName` with a config-declared alias map
+  (`{ "search_web": "web_search", "fs_read": "read" }`). Pure deterministic.
+- **Test**: resolveToolName maps a known alias; passes through unknown names.
+
+## Phase 15: Complete UI (all transports runnable)
+
+### 15a. TUI entry point — interactive REPL
+- Create `packages/tui/src/cli.ts`:
+  ```ts
+  #!/usr/bin/env node
+  // mya-tui — interactive REPL over the agent core
+  import { createAgent } from "@my-agent/agent";
+  import { TuiRepl } from "./index.js";
+  // ... auto-config (auth.json + env) + boot the REPL
+  ```
+- Features: readline prompt cycle, Ctrl-C abort, streaming event rendering,
+  approval modal (y/n), slash commands (`/help`, `/budget`, `/memory`).
+- Wire to `createAgent` → `agent.run(text, sink)`.
+- **Test**: boot TuiRepl with mock provider, send a prompt, verify output.
+
+### 15b. RPC entry point — JSON-RPC stdio server
+- Create `packages/rpc/src/cli.ts`:
+  ```ts
+  #!/usr/bin/env node
+  // mya-rpc — JSON-RPC 2.0 server over stdio (for editor integrations)
+  import { createAgent } from "@my-agent/agent";
+  import { RpcServer } from "./index.js";
+  // ... boot the RPC server bound to createAgent
+  ```
+- Methods: `prompt`, `cancel`, `status`, `heartbeat`.
+- **Test**: send a JSON-RPC `prompt` request via stdin, verify response.
+
+### 15c. Web dashboard startup — `mya serve`
+- Create `packages/gateway/src/cli.ts`:
+  ```ts
+  #!/usr/bin/env node
+  // mya serve — HTTP + WS gateway with the web dashboard at /
+  import { createAgent } from "@my-agent/agent";
+  import { Gateway } from "./index.js";
+  import { dashboardHtml } from "@my-agent/web";
+  // ... boot the gateway on port 3000 (or --port)
+  ```
+- Serves the SPA dashboard + WS event stream + control-plane REST.
+- **Test**: `curl localhost:3000/health/live` → 200.
+
+### 15d. Desktop launch verification
+- Verify the Tauri shell (`crates/desktop-shell`) launches the web dashboard
+  in a webview. If Tauri builds in this env, produce a binary; else document
+  the `cargo tauri dev` command for local development.
+
+## Phase 16: The `mya` Command — npm-installable + runnable
+
+### 16a. Multi-mode `mya` CLI
+- Rename `bin` from `my-agent` to **`mya`** in root package.json.
+- Single entry point (`packages/print/src/cli.ts` rewritten):
+  ```bash
+  mya "hello"              # default: interactive TUI REPL
+  mya --print "hello"      # print mode (transcript or --json)
+  mya --rpc                # JSON-RPC stdio server
+  mya serve                # web dashboard + gateway
+  mya --model gpt-4o "..." # explicit model
+  echo "hi" | mya --json   # stdin pipe → JSON stream
+  ```
+- Auto-config (existing): reads `~/.pi/agent/auth.json` → MiniMax/OpenAI/mock.
+- Auth file: `~/.mya/config.toml` or `~/.pi/agent/auth.json` (backward compat).
+
+### 16b. npm-publishable package.json
+```jsonc
+{
+  "name": "@mya/agent",         // or "mya" if unscoped
+  "version": "0.1.0",
+  "description": "Unified coding + autonomous agent (TypeScript 7 + Rust natives)",
+  "bin": { "mya": "./packages/print/dist/cli.js" },
+  "engines": { "node": ">=20" },
+  "os": ["darwin", "linux", "win32"],
+  "optionalDependencies": {
+    "@mya/natives-darwin-arm64": "*",
+    "@mya/natives-linux-x64": "*"
+    // prebuilt napi binaries via optionalDependencies
+  }
+}
+```
+
+### 16c. README + install instructions
+```markdown
+# mya — Unified Agent
+
+## Install
+npm install -g mya
+
+## Quick start
+mya "Hello, what can you do?"
+```
+
+### 16d. `npm pack` verification
+- `npm pack` produces a tarball.
+- `npm install -g ./mya-0.1.0.tgz` + `mya "hello"` works end-to-end.
+- Integration test: `mya "What is 2+2?"` → real MiniMax response.
+
+### 16e. Final integration test
+```bash
+# Install globally
+npm install -g .
+
+# Run
+mya "What is 2+2? Answer in one word."
+# Expected: "Four." + cost + provider info
+
+# JSON mode
+mya --json "hello" | head -1
+# Expected: {"kind":"turn","stage":"start"}
+
+# Interactive (TUI)
+mya
+# Expected: greeting + prompt → type a message → streaming response
+```
+
+## Summary: what each phase delivers
+
+| Phase | Scope | Tests | Outcome |
 |---|---|---|---|
-| §1 | Vision & tenets | ✅ | minimal-core, TS+Rust, typed FSM, pit-of-success, pi-model |
-| §2 | Language stack | 🟡 | TS 7 ✓, Rust 1.97 natives ✓. Compression in Rust (compress_log native). tree-sitter AST in natives ✓ |
-| §3 | Architecture | 🟡 | 40 packages ✓. Spec says `extensions/`; named `tools/` (documented). No separate `ast/`/`compress/` crates (folded into `natives`) |
-| §4 | Core loop | ✅ | runTurn FSM complete: bounded retry (MAX_ATTEMPTS=3) + length→compress + Recoverable + skillSetDirty + doneIds idempotency + real computeCost (20-model pricing) + StreamEvent.finish + repair wired into dispatch. Assistant response appended to history (Phase 13 fix). Async turn lock (Phase 13). |
-| §5 | Prompt | 🟡 | 3-tier assembler, scanInject, DriftGrader, overflowRecovery, window/summarize/native compressors ✓. **Gap:** CCR side-cache (reversibility), CompressionPolicy per-auth-mode, Trident 3-stage compaction |
-| §6 | Providers | 🟡 | OpenAI/MiniMax (real SSE + native tool-calling), ProviderRegistry (taint/cooldown), streamWithFallback, council, repair (wired into dispatch), OAuth/PKCE ✓. **Gap:** ~20 compat flags, auth-profile pool+failover, prompt_cache_key, provider-prefix routing, resolveToolName mapping |
-| §7 | Tools | ✅ | **Full 7-step permission pipeline** (Phase 5a): denied_tools → deny rules → hook override → ask rules → allow/mode → DangerFullAccess escalation → deny. Rule grammar `tool(subject:*)`. Pre/post hooks (CC7 awaited). R26-D concurrent-approval serialization. HookRegistry wired into dispatch. 10 builtins + paid_fetch. Path-safety (lexical write / canonical read). Bash env secret-filter. LSP-on-write diagnostics. |
-| §8 | Memory | ✅ | MemoryManagerImpl + roles (ArchivistRole + GoalsRole) + manager drain (syncAll with ctx plumbing) + one-external-provider rule ✓. **Brain: 10/22 dream-cycle phases** (lint, backlinks, purge, extract_facts, embed, orphans, schemaSuggest, resolveSymbolEdges, conversationFactsBackfill, consolidate) ✓. **4-arm RRF** (BM25 + substring + vector + graph) ✓. **ragfs** (memory:// + knowledge:// with scan-on-read wired end-to-end) ✓. TypedGraph (entity graph + BFS) ✓. MemoryContextSource (exact-id lookup) ✓. **Agent drives all of this** via runDreamCycle (fire-and-forget after each turn). |
-| §9 | Skills | 🟡 | SkillStore (load/index/suggest + progressive disclosure) ✓. **Gap:** SkillCurator (archive-not-delete/prune_builtins/pin), SkillProvenance wrong type |
-| §10 | Subagents | ✅ | InProcessRunner + resultSchema validation (JSON-Schema) + verifyGreen wired + MAX_APPROVAL_CHAIN_DEPTH enforced + CoW mergeBack (3-way, atomic, binary-safe) + spawn↔workspace wiring (isolated sandbox + merge on yield) ✓. 6 topologies. Budget deriveChild+releasePrecharge. |
-| §11 | Code nav/exec | ✅ | LSP client + LSP-on-write (post-write diagnostics, not a gate) ✓. DAP client (14 ops, true DAP shape) + DAP `debug` tool (14 commands) + DAP-server (canned stub) ✓. codegraph (regex import-relevance). code-exec bridge (worker_threads kill). fff SearchIndex/BigramFilter/FrecencyDB in @my-agent/search ✓. **Gap:** DAP live adapter (vscode-js-debug standalone — env limitation) |
-| §12 | Channels/gateway | ✅ | HookRegistry (frozen payload, wired into dispatch via pre/post hooks) ✓. MCP FSM 11-phase + Quarantine + adjacency ✓. Gateway (HTTP+WS+per-session replay+Origin+CSP+loopback) ✓. Gateway control-plane (ControlPlane + HandleLruCache + REST routes) ✓. ACP triple-gate ✓. Cron atomic-claim+lease ✓. |
-| §13 | Observability | ✅ | RuntimeEvent taxonomy ✓. maybeSpill (large-value → ~/.my-agent/refs, content-addressed, integrity-checked, TTL sweep) ✓. TelemetrySink (deterministic counter-sampling, bounded ring-buffer, no payload leakage) ✓. 3-phase readiness probes ✓. **Gap:** LaneEvent control-plane taxonomy |
-| §14 | Security | ✅ | Merkle AuditLog (real recompute verify C1, redact-before-hash) ✓. Secrets (fail-closed resolve + structural redactor H2) ✓. ApprovalToken ledger ✓. RecoveryRecipe FSM (6 scenarios, bounded, Unknown + aborted) ✓. ProjectTrust (user-owned store, self-elevation-proof, fail-safe) ✓. Permission gate + DELEGATE_BLOCKED (case-insensitive) ✓. Audit wired into dispatch ✓. **Gap:** durable audit persistence, sealed-file age encryption |
-| §14b | Crash resilience | ✅ | napi catch_unwind→NativeResult, no-abort, prompt COW, third-party .node sigstore gate (fail-closed) ✓ |
-| §15 | Eval | 🟡 | ParityHarness, DriftGrader, MockProvider ✓. **Gap:** tier-mismatch, no-egress guard, golden-set age gate |
-| §16 | Supply chain | 🟡 | deny.toml (cargo-deny AGPL ban) ✓. sigstore signing/verify (fail-closed) + npm provenance ✓. CI workflow (lint+build+test+clippy) ✓. **Gap:** min-release-age gate, exact-pin enforcement |
-| §17 | Packages | 🟡 | PackageHost (verify→register→activate), apiVersion all-digits (F8), sigstore gate ✓. **Gap:** requireProvenance defaults off |
-| §18 | Invariants | ✅ | #10 enforced (nowWallclock everywhere + lint guard + vitest guard). #19 enforced (lint:deps grep cross-transport check). CI workflow runs lint+build+test+clippy. See `docs/invariant-audit.md`. |
-| §19 | License | ✅ | MIT OR Apache-2.0 dual; deny.toml bans copyleft |
-| §21 | Cross-cutting | 🟡 | BudgetConfig wired + real computeCost ✓. **Gap:** session-format apiVersion, ResourceBudget hooks |
-| §25 | UI surfaces | 🟡 | All 4 transports (print/sdk/tui+rpc) + gateway+web (SPA) + desktop (Tauri) ✓. **Gap:** session-cookie+CSRF, tray/overlay, desktop UI stub, collab E2E+CRDT |
+| **14** | SPEC gaps (curator, eval, goals-render, resolveToolName, perf) | +10 | All tractable SPEC gaps closed |
+| **15** | TUI/RPC/Web entry points (all transports runnable) | +5 | 4 ways to use the agent: TUI, RPC, Web, CLI |
+| **16** | `mya` command + npm publishable + verified install | +3 | `npm i -g mya && mya "hello"` works |
 
-## Remediation arc (Phases 1→13 — all DONE)
+## After Phase 16: what remains (documented, not blocking)
 
-1. **Phase 1** (honesty): 43 committed tests + real deny.toml + de-staled PLAN ✓
-2. **Phase 2** (invariant #10): 39 Date.now → nowWallclock + guard test ✓
-3. **Phase 3** (runTurn FSM): bounded retry + length→compress + Recoverable + idempotency + real computeCost ✓
-4. **Phase 4** (gates): §10 subagent gates + DAP debug tool + LSP-on-write ✓
-5. **Phase 5** (subsystems): §7 7-step permission + §8 MemoryRole + §10 CoW mergeBack + §12 gateway control-plane ✓
-6. **Phase 6** (residuals): §10 CoW runner wiring + lint gating + §14.3 RecoveryRecipe+ProjectTrust ✓
-7. **Phase 7** (memory stack): maybeSpill + RRF retrieval + ragfs unified-context-FS ✓
-8. **Phase 8** (telemetry + vector): TelemetrySink + vector arm + dream-cycle backlinks/purge ✓
-9. **Phase 9** (knowledge graph): TypedGraph + graphArm + knowledge:// source + scanner bridge ✓
-10. **Phase 10** (dream-cycle): extract_facts + embed + createRagfs factory ✓
-11. **Phase 11** (5 more phases): lint + orphans + schemaSuggest + resolveSymbolEdges + conversationFactsBackfill + agent Brain/ragfs wiring ✓
-12. **Phase 12** (drive): Brain+ragfs+roles driven by turn loop (runDreamCycle) + MemoryContextSource ✓
-13. **Phase 13** (integration tests + hardening): agent integration tests + 2 CRITICAL fixes (assistant history + syncAll ctx) + fire-and-forget + turn lock ✓
-
-## Still open (env-limited / blocked / spec-extras)
-
-| Item | Section | Blocker |
-|---|---|---|
-| DAP live adapter | §11.2 | vscode-js-debug standalone hangs in this env (client + DAP-server pipeline built + tested 7/7) |
-| 12 LLM-driven dream-cycle phases | §8 | Need a model in the loop (synthesize, grade_takes, calibration, skillopt, etc.) |
-| no-explicit-any ESLint | §2/§18 | @typescript-eslint parser incompatible with TS 7 native Go compiler |
-| SkillCurator | §9 | archive-not-delete/prune_builtins/pin (medium effort, not yet built) |
-| GoalsRole prompt rendering | §8 | systemPromptBlock exists but never called from the prompt assembler (cross-package wiring gap) |
-| CCR side-cache + Trident compaction | §5 | Reversibility for lossy compression (large) |
-| Provider compat flags | §6 | ~20 per-profile capability toggles |
-| Durable audit persistence | §14 | In-memory only (needs SQLite/file backend) |
-| Session-cookie + CSRF | §25.2 | Gateway serves headers only (no cookie mechanism) |
-| Collab E2E + CRDT | §25.4 | Relay is event-broadcast only (no encryption/state-merge) |
-| Performance: backfill O(N²) | §8 | conversationFactsBackfill scans entire history each turn (needs incremental index) |
-| Performance: backlinks no cache | §8 | brain.backlinks() recomputes O(n×regex) every turn |
-| Eval no-egress guard | §15 | Network fence for non-credentialed tier |
-
-## What IS solidly built (don't lose this)
-
-**Core loop** (§4 FSM + bounded retry + length→compress + Recoverable + idempotency + real computeCost + StreamEvent.finish + repair + assistant-history + turn-lock) · **Permission** (§7 full 7-step pipeline + rule grammar + hooks + R26-D serialization + DangerFullAccess escalation) · **Memory** (§8 10/22 dream-cycle phases + 4-arm RRF + ragfs scan-on-read + TypedGraph + MemoryContextSource + runDreamCycle driving) · **Subagents** (§10 CoW mergeBack + resultSchema + verifyGreen + chain-depth) · **Code nav** (§11 DAP debug tool + LSP-on-write + codegraph + code-exec) · **Gateway** (§12 HTTP+WS+control-plane+LRU) · **Security** (§14 Merkle audit + secrets + RecoveryRecipe + ProjectTrust user-owned) · **Telemetry** (§13 maybeSpill + TelemetrySink) · **Tools** (10 builtins + path-safety + bash env filter) · **Providers** (OpenAI/MiniMax/council/fallback/OAuth) · **CI** (lint + build + test + clippy) · **212 tests** · **Rust natives** (BLAKE3/glob/grep/compress/AST/reflink).
+- DAP live adapter (vscode-js-debug env limitation)
+- 12 LLM-driven dream-cycle phases (need a model in the loop)
+- no-explicit-any ESLint (TS-7 incompatibility)
+- CCR side-cache + Trident compaction (large)
+- Provider compat flags (~20)
+- Durable audit persistence (SQLite backend)
+- Collab E2E + CRDT (medium)
+- Desktop tray/overlay/notification
