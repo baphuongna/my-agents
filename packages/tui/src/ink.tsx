@@ -117,6 +117,16 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
   const [status, setStatus] = useState<InkStatus>(props.initialStatus);
   // Phase 27: autocomplete overlay state.
   const [acHighlighted, setAcHighlighted] = useState(0);
+  // Q4 fix: when true, a slash autocomplete accept was just performed — the
+  // parent should NOT submit on the next Enter (it would submit the
+  // pre-suggestion draft, not the accepted suggestion).
+  const [suppressNextSubmit, setSuppressNextSubmit] = useState(false);
+  // Q4 fix: an Esc was pressed on the autocomplete → unmount the overlay
+  // until the next non-/ non-@ keystroke (so the popup truly closes).
+  const [acDismissed, setAcDismissed] = useState(false);
+  // Q4 fix: derived — is the autocomplete overlay currently visible?
+  // (true when draft looks like a slash or @path AND not just dismissed)
+  const autocompleteOpen = (draft.startsWith("/") || /@/.test(draft)) && !acDismissed;
   // Phase 27: kill-ring (Ctrl+W deletes last word, Ctrl+Y pastes last killed).
   const killRingRef = useRef(new KillRing());
 
@@ -197,6 +207,11 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
 
   /** Submit handler. */
   const submit = useCallback(async () => {
+    // Q4 fix: if a slash autocomplete was just accepted, the next Enter
+    // (which fired this submit via ink-text-input's onSubmit) is a *leftover*
+    // from the autocomplete's own onAccept flow. Suppress one submit so the
+    // user gets the suggestion they just selected, not the pre-suggestion draft.
+    if (suppressNextSubmit) { setSuppressNextSubmit(false); return; }
     const trimmed = draft.trim();
     if (!trimmed || busy) return;
     setBusy(true);
@@ -282,6 +297,10 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
     }
     // Up arrow: walk history back.
     if (key.upArrow && history.length > 0) {
+      // Q4 fix: skip history-walk when autocomplete is open — let the overlay
+      // own ↑/↓ to walk the suggestion list. Otherwise a user with a history
+      // already touched would have both handlers fire and corrupt the draft.
+      if (autocompleteOpen) return;
       const idx = historyIdx < 0 ? history.length : Math.max(0, historyIdx - 1);
       const value = history[idx] ?? "";
       setHistoryIdx(idx);
@@ -290,6 +309,8 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
     }
     if (key.downArrow) {
       if (historyIdx < 0) return;
+      // Q4 fix: same — don't fight the autocomplete overlay.
+      if (autocompleteOpen) return;
       const next = historyIdx + 1;
       if (next >= history.length) {
         setHistoryIdx(-1);
@@ -323,19 +344,26 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       {approval && <ApprovalModal approval={approval} />}
 
       {/* Phase 27: autocomplete overlay above the input (only when draft
-          starts with `/` or contains `@path`). */}
-      {(draft.startsWith("/") || /@/.test(draft)) && (
+          starts with `/` or contains `@path` AND not just dismissed). */}
+      {autocompleteOpen && (
         <Autocomplete
           draft={draft}
           commands={props.commands}
           theme={defaultTheme}
           highlighted={acHighlighted}
           onAccept={(sug) => {
-            // Replace draft with the suggestion's insert string.
+            // Q4 fix: replace draft with the suggestion AND set a
+            // suppressNextSubmit flag so the next Enter doesn't submit
+            // the pre-suggestion value.
             if (sug) setDraft(sug.insert);
             setAcHighlighted(0);
+            setSuppressNextSubmit(true);
           }}
-          onDismiss={() => setAcHighlighted(0)}
+          onDismiss={() => {
+            // Q4 fix: truly dismiss (unmount) the overlay until next / or @.
+            setAcHighlighted(0);
+            setAcDismissed(true);
+          }}
           onHighlightChange={setAcHighlighted}
         />
       )}
@@ -345,7 +373,7 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
         <Text color={defaultTheme.user} bold>{">"} </Text>
         <TextInput
           value={draft}
-          onChange={setDraft}
+          onChange={(v) => { setDraft(v); setAcDismissed(false); }}
           onSubmit={() => void submit()}
           placeholder={busy ? "(running…)" : "type — Enter to send, / for commands, ↑↓ history"}
         />
