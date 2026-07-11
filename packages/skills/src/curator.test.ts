@@ -64,9 +64,10 @@ describe("SkillCurator", () => {
   });
 
   it("Bundled pruned only when pruneBuiltins is on", async () => {
+    const dir = `/tmp/mya-test-curator-${Date.now()}`;
     const storeOn = storeWith("Bundled", 60);
-    const on = await curate(storeOn, { inactiveAfterDays: 30, pruneBuiltins: true, now: Date.now() });
-    expect(on[0]!.action).toBe("pruned");
+    const on = await curate(storeOn, { inactiveAfterDays: 30, pruneBuiltins: true, archiveDir: dir, now: Date.now() });
+    expect(on[0]!.action).toBe("archived");
     expect(storeOn.size()).toBe(0);
 
     const storeOff = storeWith("Bundled", 60);
@@ -81,5 +82,28 @@ describe("SkillCurator", () => {
     const actions = await curate(store, { inactiveAfterDays: 30, now: Date.now() });
     expect(actions[0]!.action).toBe("pinned-bypass");
     expect(store.size()).toBe(1);
+  });
+
+  it("without archiveDir: fail-safe keep (no resurrection loop)", async () => {
+    const store = storeWith("AgentCreated", 60);
+    const actions = await curate(store, { inactiveAfterDays: 30, now: Date.now() }); // no archiveDir
+    expect(actions[0]!.action).toBe("kept");
+    expect(actions[0]!.reason).toContain("no archiveDir");
+    expect(store.size()).toBe(1);
+  });
+
+  it("HIGH-2: sanitizes path-traversal skill names in archive path", async () => {
+    const store = new SkillStore();
+    const skill = parseSkillMarkdown(SKILL_MD("test"), "/test", "AgentCreated");
+    store.add({ ...skill, name: "../../../etc/evil", provenance: { ...skill.provenance, loadedAt: Date.now() - 60 * 86400000 } });
+    // rename the key too (store uses name as key)
+    store.remove("test");
+    const dir = `/tmp/mya-test-traversal-${Date.now()}`;
+    const actions = await curate(store, { inactiveAfterDays: 30, archiveDir: dir, now: Date.now() });
+    // Should archive safely (no path escape), not throw.
+    const archived = actions.find((a) => a.action === "archived");
+    expect(archived).toBeDefined();
+    // The archived file should be inside the archiveDir (no traversal).
+    expect(archived!.reason).toContain(dir);
   });
 });

@@ -29,6 +29,11 @@ export async function runTool(
   override?: import("@my-agent/core").HookOverride,
   effectiveArgs: unknown = call.args,
 ): Promise<ToolResult> {
+  // Phase 14 LOW-5: resolve the tool name via the alias map BEFORE permission/dispatch.
+  // §6 R27-14: pure deterministic config-declared mapping.
+  const resolvedName = registry.resolve(call.name);
+  const resolvedCall = resolvedName === call.name ? call : { ...call, name: resolvedName };
+  call = resolvedCall;
   const decision = requiresApproval(call, ctx, registry, override, effectiveArgs);
   // M4 (review): signal AwaitingApproval to the LaneBoard/event bus BEFORE the
   // human round-trip (CC5 atomicity; §7 R26-D). Cleared after the prompt resolves.

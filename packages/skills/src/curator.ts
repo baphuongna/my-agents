@@ -205,14 +205,25 @@ export async function curate(
       actions.push({ skill: name, action: "kept", reason: "active" });
       continue;
     }
-    // Archive-not-delete.
+    // Archive-not-delete. Phase 14 security review HIGH-2: sanitize name (path traversal).
     if (archiveDir) {
       const skill = store.get(name);
       if (skill) {
         try {
           await mkdir(archiveDir, { recursive: true });
-          const dest = join(archiveDir, `${name}.md`);
-          await writeFile(dest, `---\nname: ${skill.name}\ndescription: ${skill.description}\narchivedAt: ${now}\n---\n\n${skill.body}`, "utf8");
+          // HIGH-2: strip path separators + traversal sequences from the skill name.
+          const safeName = name.replace(/[/\\]/g, "_").replace(/\.\./g, "_");
+          const dest = join(archiveDir, `${safeName}.md`);
+          // Belt-check: verify the resolved path didn't escape archiveDir.
+          if (!dest.startsWith(archiveDir)) throw new Error("archive path escaped");
+          // M1: preserve ALL frontmatter fields (triggers/model/allowedTools/registryId).
+          const fm: string[] = [`name: ${skill.name}`, `description: ${skill.description}`];
+          if (skill.triggers.length > 0) fm.push(`triggers: [${skill.triggers.join(", ")}]`);
+          if (skill.model) fm.push(`model: ${skill.model}`);
+          if (skill.allowedTools) fm.push(`allowedTools: [${skill.allowedTools.join(", ")}]`);
+          if (skill.provenance.registryId) fm.push(`"agentskills.io": ${skill.provenance.registryId}`);
+          fm.push(`archivedAt: ${now}`);
+          await writeFile(dest, `---\n${fm.join("\n")}\n---\n\n${skill.body}`, "utf8");
           store.remove(name);
           actions.push({ skill: name, action: "archived", reason: `inactive ${inactiveAfterDays}d → ${dest}` });
           continue;
@@ -224,8 +235,10 @@ export async function curate(
       }
     }
     // No archiveDir — prune from store only (but never delete the file on disk without archive).
-    store.remove(name);
-    actions.push({ skill: name, action: "pruned", reason: `inactive ${inactiveAfterDays}d` });
+    // M2: no archiveDir — fail-safe: KEEP in store (don't prune without archiving).
+    // Pruning without archiving creates a resurrection loop (discover() re-loads the file
+    // with a fresh loadedAt → active again). Require archiveDir for any destructive action.
+    actions.push({ skill: name, action: "kept", reason: "no archiveDir (cannot archive-not-delete)" });
   }
   return actions;
 }

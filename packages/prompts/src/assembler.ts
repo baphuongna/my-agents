@@ -56,7 +56,10 @@ export function buildVolatileTier(
   const lines: string[] = [];
   lines.push(`# Environment (day ${day})`);
   if (goalsBlock && goalsBlock.trim()) {
-    lines.push(goalsBlock.trim());
+    // Phase 14 security review HIGH-1: goals are durable + may be poisoned
+    // (same trust boundary as memory entries). Injection-scan before interpolating.
+    const verdict = scan(goalsBlock, "context");
+    lines.push(verdict.allowed ? goalsBlock.trim() : `## Goals\n[BLOCKED: ${verdict.reason}]`);
   }
   if (snap.entries.length > 0) {
     lines.push("## Memory (recalled)");
@@ -112,6 +115,7 @@ export function assemblePrompt(s: Session): SystemPrompt {
       s.memory.snapshot(),
       s.userMd,
       today(),
+      s.goalsBlock,
     );
     s.prompt = { stable, context, volatile };
     return s.prompt;
