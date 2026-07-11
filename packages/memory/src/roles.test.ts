@@ -96,7 +96,7 @@ describe("§8 MemoryManager — roles + one-external-provider rule + drain", () 
     const m = new MemoryManagerImpl();
     m.register(new InMemoryBackend("archivist"));
     m.addRole(new ArchivistRole());
-    const report = await m.syncAll(2);
+    const report = await m.syncAll(undefined, 2);
     expect(report.completed + report.timedOut).toBe(1);
   });
 });

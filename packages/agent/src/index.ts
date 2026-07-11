@@ -150,6 +150,30 @@ export function createAgent(config: AgentConfig = {}): Agent {
     execute: (calls, ctx) => runToolBatch(calls, ctx, toolRegistry),
   };
 
+  // HIGH-2 (review): async turn lock — serializes concurrent prompt() calls.
+  let turnLock = Promise.resolve();
+  function withTurnLock<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = turnLock;
+    let release!: () => void;
+    turnLock = new Promise<void>((r) => (release = r));
+    return prev.then(() => fn()).finally(release);
+  }
+
+  // CRITICAL-1 (review): extract the assistant's text response from RuntimeEvents
+  // + append it to session.history. Without this, multi-turn conversation breaks
+  // (the provider sees consecutive user messages with no assistant response).
+  function appendAssistantToHistory(events: RuntimeEvent[]): void {
+    const chunks: string[] = [];
+    for (const e of events) {
+      if (e.kind === "turn" && e.stage === "event" && e.turnEvent?.state === "Streaming") {
+        const chunk = e.turnEvent.chunk;
+        if (chunk && chunk.kind === "text") chunks.push(chunk.text);
+      }
+    }
+    const text = chunks.join("");
+    if (text.trim()) session.history.append({ role: "assistant", content: text });
+  }
+
   async function startTurn(text: string, signal?: AbortSignal) {
     session.history.append({ role: "user", content: text });
     // Refresh memory snapshot, then assemble the cache-stable prompt (§5) BEFORE the turn.
@@ -206,8 +230,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
       // 3. Seed the knowledge graph from the brain's zero-LLM backlinks.
       knowledgeGraph.ingestBacklinks(brain.backlinks());
       // 4. Set recentTurn for the archivist role, then sync memory roles.
-      (session as { recentTurn?: unknown[] }).recentTurn = conversation.slice(-20);
-      await memory.syncAll();
+      (session).recentTurn = conversation.slice(-20);
+      await memory.syncAll({ session } as import("@my-agent/core").TurnContext);
     } catch (e) {
       // dream-cycle failure is non-fatal — but log it (review HIGH-2).
       console.warn(`dream-cycle failed (non-fatal): ${(e as Error).message}`);
@@ -215,13 +239,18 @@ export function createAgent(config: AgentConfig = {}): Agent {
   }
 
   async function runOnce(text: string, signal?: AbortSignal): Promise<RuntimeEvent[]> {
+    return withTurnLock(async () => {
     const collected: RuntimeEvent[] = [];
     const handle = await startTurn(text, signal);
     handle.on((e) => collected.push(e));
     await handle.done;
+    // CRITICAL-1 (review): append the assistant response to history so
+    // multi-turn conversations work (the provider needs alternating user/assistant).
+    appendAssistantToHistory(collected);
     await runHindsight(text, collected, (e) => collected.push(e));
-    await runDreamCycle();
+    void runDreamCycle(); // HIGH-1: fire-and-forget — don't block the response
     return collected;
+    });
   }
 
   async function runLive(
@@ -229,12 +258,15 @@ export function createAgent(config: AgentConfig = {}): Agent {
     sink: (e: RuntimeEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> {
+    return withTurnLock(async () => {
     const handle = await startTurn(text, signal);
     const events: RuntimeEvent[] = [];
     handle.on((e) => { sink(e); events.push(e); });
     await handle.done;
+    appendAssistantToHistory(events);
     await runHindsight(text, events, sink);
-    await runDreamCycle();
+    void runDreamCycle();
+    });
   }
 
   return {

@@ -246,7 +246,7 @@ export interface MemoryManager {
   prefetchAll?(ctx: TurnContext): Promise<void>;
   /** §8: bounded shutdown drain. Returns lost-write accounting (a non-zero
    * lostWrites count surfaces Degraded health). Optional. */
-  syncAll?(deadlineS?: number): Promise<{ completed: number; timedOut: number }>;
+  syncAll?(ctx?: TurnContext, deadlineS?: number): Promise<{ completed: number; timedOut: number }>;
 }
 
 export type ScanVerdict =

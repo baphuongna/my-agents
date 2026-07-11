@@ -66,17 +66,20 @@ export class MemoryManagerImpl implements MemoryManager {
 
   /** §8 R27-18: bounded shutdown drain — drive every role's syncTurn, bounded by
    * deadlineS. Returns completed/timedOut accounting. */
-  async syncAll(deadlineS = 5): Promise<{ completed: number; timedOut: number }> {
+  async syncAll(ctx?: import("@my-agent/core").TurnContext, deadlineS = 5): Promise<{ completed: number; timedOut: number }> {
     this.drainInFlight = true;
     const deadline = nowWallclock() + deadlineS * 1000;
     let completed = 0;
     let timedOut = 0;
+    const effectiveCtx = ctx ?? ({} as import("@my-agent/core").TurnContext);
     try {
       await Promise.all(this.rolesList.map(async (r) => {
         const store = this.byRole.get(r.id as MemoryRoleId) ?? new InMemoryBackend(r.id as MemoryRoleId);
         try {
+          const p = r.syncTurn(store, effectiveCtx);
+          p.catch(() => {}); // swallow late rejection if timeout wins (review M3)
           await Promise.race([
-            r.syncTurn(store, {} as import("@my-agent/core").TurnContext),
+            p,
             new Promise((_, rej) => setTimeout(() => rej(new Error("drain-timeout")), Math.max(0, deadline - nowWallclock()))),
           ]);
           completed++;

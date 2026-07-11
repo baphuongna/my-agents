@@ -33,8 +33,10 @@ describe("Phase 13: createAgent integration — Brain + ragfs + memory wiring", 
     });
     const events = await agent.prompt("tell me about Alice");
     expect(events.length).toBeGreaterThan(0);
-    // the dream cycle should have run → brain has more facts than the seed
+    // the dream cycle should have run → brain has more facts than just the seed.
+    // HIGH-2 (review): assert >= 2 (seed + at least one backfill) + verify source.
     expect(agent.brain.factCount).toBeGreaterThanOrEqual(1);
+    expect(agent.brain.unconsolidatedFacts().some((f) => f.source === "backfill")).toBe(true);
   });
 
   it("ragfs has a scanner wired (read does not throw 'no scanner')", async () => {
