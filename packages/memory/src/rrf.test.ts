@@ -61,4 +61,38 @@ describe("§8 RRF arms", () => {
     expect(bm25Arm(docs, q(""))).toEqual([]);
     expect(substringArm(docs, q(""))).toEqual([]);
   });
+
+  it("MED-5: whitespace-only query → substring returns [] (no arbitrary hits)", () => {
+    expect(substringArm(docs, q("   \t\n  "))).toEqual([]);
+    // bm25 already trimmed
+    expect(bm25Arm(docs, q("   "))).toEqual([]);
+  });
+
+  it("MED-3: rrfRetrieve respects query.topK", () => {
+    const hits = rrfRetrieve(docs, { text: "agent files", topK: 2 });
+    expect(hits.length).toBe(2);
+  });
+
+  it("LOW-7: a duplicate ID within a single arm contributes at most once", () => {
+    // arm a has id "x" twice (ranks 1 and 2). Without dedup, x gets 2 contributions;
+    // with dedup, only the rank-1 contribution. y at rank 1 in arm b beats x.
+    const arms = [
+      { name: "a", hits: [
+        { id: "x", content: "x", role: "working" as const, score: 0 },
+        { id: "x", content: "x", role: "working" as const, score: 0 },
+      ] },
+      { name: "b", hits: [{ id: "y", content: "y", role: "working" as const, score: 0 }] },
+    ];
+    const fused = reciprocalRankFuse(arms, 5);
+    // With dedup: x = 1/(60+1) = 0.0164; y = 1/(60+1) = 0.0164 (tie but y rank 1 in b)
+    // The fused output should contain exactly y at rank 1, x at rank 2 (stable insertion order on tie, but we don't guarantee).
+    expect(fused.length).toBe(2);
+    const xScore = fused.find((h) => h.id === "x")!.score;
+    const yScore = fused.find((h) => h.id === "y")!.score;
+    // x must have gotten only ONE contribution (not two). Equal-rank tie broken however (stable).
+    // If dedup missed: xScore = 1/61 + 1/62 ≈ 0.0324. With dedup: xScore = 1/61 ≈ 0.01639.
+    expect(xScore).toBeCloseTo(1 / 61, 4);
+    // Two contributions would have been ≈ 0.0324:
+    expect(xScore).toBeLessThan(0.02);
+  });
 });

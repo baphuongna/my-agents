@@ -16,11 +16,16 @@ export interface RetrievalArm {
   hits: MemoryHit[];
 }
 
-/** Fuse multiple ranked arms via Reciprocal-Rank-Fusion (k=60). */
+/** Fuse multiple ranked arms via Reciprocal-Rank-Fusion (k=60).
+ * Review-driven: dedup hits within a single arm so the same doc id gets at
+ * most one contribution per arm (LOW-7). */
 export function reciprocalRankFuse(arms: RetrievalArm[], topK = 10): MemoryHit[] {
   const scores = new Map<string, { hit: MemoryHit; score: number }>();
   for (const arm of arms) {
+    const seenInArm = new Set<string>();
     arm.hits.forEach((hit, i) => {
+      if (seenInArm.has(hit.id)) return; // dedup within this arm
+      seenInArm.add(hit.id);
       const rank = i + 1;
       const contribution = 1 / (RRF_K + rank);
       const existing = scores.get(hit.id);
@@ -30,7 +35,6 @@ export function reciprocalRankFuse(arms: RetrievalArm[], topK = 10): MemoryHit[]
   }
   return [...scores.values()].sort((a, b) => b.score - a.score).slice(0, topK).map((e) => ({
     ...e.hit,
-    // surface the fused score (overwrites the arm-local score)
     score: Math.round(e.score * 1e6) / 1e6,
   }));
 }
@@ -38,8 +42,9 @@ export function reciprocalRankFuse(arms: RetrievalArm[], topK = 10): MemoryHit[]
 // ── Arm implementations (zero-dep; a vector arm drops in when available) ─────
 
 /** BM25-ish keyword arm: rank by term-frequency saturation over the query terms. */
-export function bm25Arm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, topK = 50): MemoryHit[] {
-  const terms = query.text.toLowerCase().split(/\s+/).filter(Boolean);
+export function bm25Arm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, candidateK = 100): MemoryHit[] {
+  // MED-5 (review): trim and drop empty-only queries.
+  const terms = query.text.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
   const N = docs.length || 1;
   const avgDl = docs.reduce((s, d) => s + d.content.length, 0) / N || 1;
@@ -58,26 +63,36 @@ export function bm25Arm(docs: { id: string; content: string; role?: MemoryRoleId
     const score = terms.reduce((s, t) => s + tfNorm(t), 0);
     return { id: d.id, content: d.content, role: (d.role ?? "working") as MemoryRoleId, score } as MemoryHit;
   });
-  return scored.filter((h) => h.score > 0).sort((a, b) => b.score - a.score).slice(0, topK);
+  const ranked = scored.filter((h) => h.score > 0).sort((a, b) => b.score - a.score);
+  return ranked.slice(0, candidateK);
 }
 
 /** Substring arm (case-insensitive containment) — a weak signal that catches exact phrases BM25 might dilute. */
-export function substringArm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, topK = 50): MemoryHit[] {
-  const q = query.text.toLowerCase();
+export function substringArm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, candidateK = 100): MemoryHit[] {
+  // MED-5 (review): whitespace-only queries → [].
+  const q = (query.text ?? "").trim().toLowerCase();
   if (!q) return [];
   return docs
     .filter((d) => d.content.toLowerCase().includes(q))
     .map((d, i) => ({ id: d.id, content: d.content, role: (d.role ?? "working") as MemoryRoleId, score: 1 / (i + 1) } as MemoryHit))
-    .slice(0, topK);
+    .slice(0, candidateK);
 }
 
 /**
  * Fuse the BM25 + substring arms (the two zero-dep arms). A vector/graph arm
- * drops in by passing more RetrievalArms to reciprocalRankFuse.
+ * drops in by passing more RetrievalArms to reciprocalRankFuse. Respects
+ * `query.topK` (MED-3 review). Uses a generous candidate window so a doc
+ * ranked #51 in two arms can still outrank a rank-1 single-arm doc.
  */
-export function rrfRetrieve(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, topK = 10): MemoryHit[] {
+export function rrfRetrieve(
+  docs: { id: string; content: string; role?: MemoryRoleId }[],
+  query: MemoryQuery,
+  topK?: number,
+  candidateK = 100,
+): MemoryHit[] {
+  const outerTopK = topK ?? query.topK ?? 10;
   return reciprocalRankFuse([
-    { name: "bm25", hits: bm25Arm(docs, query) },
-    { name: "substring", hits: substringArm(docs, query) },
-  ], topK);
+    { name: "bm25", hits: bm25Arm(docs, query, candidateK) },
+    { name: "substring", hits: substringArm(docs, query, candidateK) },
+  ], outerTopK);
 }
