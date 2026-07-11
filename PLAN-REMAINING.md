@@ -100,9 +100,14 @@ MLX, web session-cookie+CSRF) remain as noted above.
    `StreamEvent.finish`; repair wired into dispatch.
 4. **Phase 4 (gates) — DONE:** §10 subagent gates (verifyGreen + resultSchema +
    chain depth), §11.2 DAP `debug` tool, §11 LSP-on-write.
-5. **Phase 5 (large subsystems) — open:** §8 MemoryRole lifecycle, §7 full
-   permission rule grammar + HookRegistry dispatch wiring, §12 gateway
-   control-plane, §10 CoW mergeBack.
+5. **Phase 5 (subsystems) — core gates DONE:** §7 full 7-step permission
+   pipeline + rule grammar + hooks + R26-D serialization ✓; §8 MemoryRole
+   lifecycle (archivist + goals) + manager drain + one-external-rule ✓;
+   §10.2 CoW mergeBack (3-way) ✓; §12 gateway control-plane (LRU + REST) ✓.
+6. **Phase 6 (open residuals):** full §8 dream-cycle/RRF/ragfs, §10 runner↔
+   workspace wiring (spawn creates the isolated workspace + merges on yield),
+   DAP live adapter (vscode-js-debug standalone), ESLint/madge/cargo-deny CI
+   gating, RecoveryRecipe/ProjectTrust/maybeSpill/telemetry.
 
 
 ## What IS solidly built (don't lose this)
