@@ -10,6 +10,7 @@
  */
 import {
   today,
+  nowWallclock,
   type MemoryEntry,
   type MemoryHit,
   type MemoryManager,
@@ -18,17 +19,75 @@ import {
   type MemorySnapshot,
 } from "@my-agent/core";
 import { InMemoryBackend, type MemoryBackend } from "./backends.js";
+import type { MemoryRole } from "./roles.js";
 
 export class MemoryManagerImpl implements MemoryManager {
   private byRole = new Map<MemoryRoleId, MemoryBackend>();
+  private readonly rolesList: MemoryRole[] = [];
   private cached: MemorySnapshot = { entries: [], generatedDay: today() };
+  /** §8 CC4: drainLock blocks prefetchAll while a syncAll drain is in flight. */
+  private drainInFlight = false;
+  private externalCount = 0;
 
-  /** Register a backend for a role. One backend per role (SSOT). */
+  /** The registered lifecycle roles (§8 R27-4). */
+  get roles(): MemoryRole[] { return this.rolesList; }
+
+  /** The registered backends (§8 R27-4). */
+  get backends(): MemoryBackend[] { return [...this.byRole.values()]; }
+
+  /** Register a backend for a role. One backend per role (SSOT). §8 one-external-
+   * provider rule: refuses a 2nd EXTERNAL backend (governs MemoryBackend only). */
   register(backend: MemoryBackend): void {
     if (this.byRole.has(backend.role)) {
       throw new Error(`memory backend already registered for role: ${backend.role}`);
     }
+    if (backend.external) {
+      if (this.externalCount >= 1) {
+        throw new Error(`memory: one-external-provider rule violated (2nd external backend for ${backend.role})`);
+      }
+      this.externalCount++;
+    }
     this.byRole.set(backend.role, backend);
+  }
+
+  /** Register a lifecycle role (§8 R27-4). */
+  addRole(role: MemoryRole): void {
+    this.rolesList.push(role);
+  }
+
+  /** §8: drive every role's prefetch for the upcoming turn. Blocks on drainLock
+   * if a syncAll drain is in flight (CC4 — no prefetch races a draining shutdown). */
+  async prefetchAll(ctx: import("@my-agent/core").TurnContext): Promise<void> {
+    while (this.drainInFlight) await Promise.resolve();
+    await Promise.all(this.rolesList.map((r) =>
+      r.prefetch(this.byRole.get(r.id as MemoryRoleId) ?? new InMemoryBackend(r.id as MemoryRoleId), { text: "" }),
+    ));
+  }
+
+  /** §8 R27-18: bounded shutdown drain — drive every role's syncTurn, bounded by
+   * deadlineS. Returns completed/timedOut accounting. */
+  async syncAll(deadlineS = 5): Promise<{ completed: number; timedOut: number }> {
+    this.drainInFlight = true;
+    const deadline = nowWallclock() + deadlineS * 1000;
+    let completed = 0;
+    let timedOut = 0;
+    try {
+      await Promise.all(this.rolesList.map(async (r) => {
+        const store = this.byRole.get(r.id as MemoryRoleId) ?? new InMemoryBackend(r.id as MemoryRoleId);
+        try {
+          await Promise.race([
+            r.syncTurn(store, {} as import("@my-agent/core").TurnContext),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("drain-timeout")), Math.max(0, deadline - nowWallclock()))),
+          ]);
+          completed++;
+        } catch {
+          timedOut++;
+        }
+      }));
+    } finally {
+      this.drainInFlight = false;
+    }
+    return { completed, timedOut };
   }
 
   /** Ensure every role has a backend (default: InMemoryBackend). */

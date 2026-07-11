@@ -238,6 +238,12 @@ export interface MemorySnapshot {
 export interface MemoryManager {
   snapshot(): MemorySnapshot;
   query(q: MemoryQuery): Promise<MemoryHit[]>;
+  /** §8: drive all roles' prefetch for the upcoming turn (blocks on drainLock if a
+   * syncAll drain is in flight — CC4). Optional; Tier-1+ impls add it. */
+  prefetchAll?(ctx: TurnContext): Promise<void>;
+  /** §8: bounded shutdown drain. Returns lost-write accounting (a non-zero
+   * lostWrites count surfaces Degraded health). Optional. */
+  syncAll?(deadlineS?: number): Promise<{ completed: number; timedOut: number }>;
 }
 
 export type ScanVerdict =

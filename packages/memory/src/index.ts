@@ -7,5 +7,7 @@
 export { InMemoryBackend, FileBackend } from "./backends.js";
 export type { MemoryBackend } from "./backends.js";
 export { MemoryManagerImpl, stubMemoryManager } from "./manager.js";
+export { ArchivistRole, GoalsRole, cleanTurnToMarkdown } from "./roles.js";
+export type { MemoryRole } from "./roles.js";
 export { Brain } from "./brain.js";
 export type { Fact, Take, BrainPage, FactKind, FactVisibility } from "./brain.js";

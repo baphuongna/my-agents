@@ -22,8 +22,13 @@ import type {
 export interface MemoryBackend {
   readonly role: MemoryRoleId;
   readonly durability: Durability;
+  /** §8 R27-4: an EXTERNAL backend (Qdrant/Composio/etc.). The one-external-provider
+   * rule: addBackend() refuses a 2nd external backend. */
+  readonly external?: boolean;
   write(entry: MemoryEntry): Promise<WriteResult>;
   read(query: MemoryQuery): Promise<MemoryHit[]>;
+  /** §8: tree-store API the archivist uses to append cleaned conversation leaves. */
+  appendTreeLeaf?(path: string, md: string): Promise<WriteResult>;
 }
 
 // ─── InMemoryBackend (default; BestEffort; lost on restart) ──────────────────
@@ -32,12 +37,18 @@ export class InMemoryBackend implements MemoryBackend {
   private entries: MemoryEntry[] = [];
   private nextId = 1;
 
-  constructor(readonly role: MemoryRoleId) {}
+  constructor(readonly role: MemoryRoleId, readonly external: boolean = false) {}
 
   async write(entry: MemoryEntry): Promise<WriteResult> {
     // Assign a STABLE id at write time (R39: was generated at read-time → non-deterministic).
     const withId: MemoryEntry & { id: string } = { ...entry, id: `mem-${this.role}-${this.nextId++}` };
     this.entries.push(withId);
+    return { Ok: true };
+  }
+
+  /** §8: tree-store leaf append (archivist). Stored as a `tree` entry. */
+  async appendTreeLeaf(path: string, md: string): Promise<WriteResult> {
+    this.entries.push({ role: this.role, content: md, metadata: { path } });
     return { Ok: true };
   }
 
