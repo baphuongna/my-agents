@@ -169,11 +169,10 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "model-selector",
     description: "interactive model picker (↑/↓ + Enter)",
     category: "model",
-    run: async (_args, ctx) => {
-      const picked = await ctx.session.openSelector("model");
-      if (!picked) return "(no model selected)";
-      ctx.session.setModel(String(picked));
-      return `switched model → ${picked}`;
+    run: async (_args, _ctx) => {
+      // Phase 28 fix: return an InkSelector payload directly so the live
+      // session opens the modal (not the stubbed openSelector promise).
+      return { kind: "model" };
     },
   },
 
@@ -193,19 +192,16 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     name: "skill-selector",
     description: "interactive skill picker (fuzzy)",
     category: "tools",
-    run: async (_args, ctx) => {
-      const picked = await ctx.session.openSelector("skill");
-      return picked ? `selected skill → ${picked}` : "(no skill selected)";
+    run: async (_args, _ctx) => {
+      return { kind: "skill" };
     },
   },
   {
     name: "tool-selector",
     description: "multi-select tools to enable (Enter to confirm)",
     category: "tools",
-    run: async (_args, ctx) => {
-      const picked = await ctx.session.openSelector("tool", { multi: true });
-      const arr = Array.isArray(picked) ? picked : picked ? [picked] : [];
-      return arr.length === 0 ? "(no tools selected)" : `selected tools: ${arr.join(", ")}`;
+    run: async (_args, _ctx) => {
+      return { kind: "tool", multi: true };
     },
   },
 

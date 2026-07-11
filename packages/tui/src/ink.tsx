@@ -288,11 +288,8 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
     // modal's own useInput (it has its own navigation). The parent only
     // handles the no-op (does nothing else while the modal is up).
     if (selectorView) {
-      // Tab also forwards to the modal — but that's fine, both will see it.
-      if (key.escape || input === "\x1b") {
-        setSelectorView(null);
-        appendOrReplace({ seq: 0, kind: "info", text: "(selector cancelled)" });
-      }
+      // Esc handled by the child Picker's own useInput (prints "(no selection)"
+      // via onResolve). The parent does NOT re-clear state to avoid a double-fire.
       return;
     }
     // Approval modal: y/n is consumed before any input processing.
@@ -414,6 +411,19 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
               if (items.length > 0) {
                 const labels = items.map((it) => (it as { label: string }).label).join(", ");
                 appendOrReplace({ seq: 0, kind: "info", text: sanitize(`selected: ${labels}`) });
+                // Phase 28 fix: actually apply the selection. The model
+                // selector's "value" field carries the new model id; we
+                // parse it out of the picked item.
+                if (selectorView.kind === "model" && items[0] && (items[0] as { value?: string }).value) {
+                  // The host's onModel hook is wired in defaultCommands; for
+                  // host-injected sessions, we still try to apply it.
+                  setStatus((s) => ({ ...s, model: (items[0] as { value: string }).value }));
+                  appendOrReplace({
+                    seq: 0,
+                    kind: "info",
+                    text: sanitize(`model set → ${(items[0] as { value: string }).value}`),
+                  });
+                }
               } else {
                 appendOrReplace({ seq: 0, kind: "info", text: "(no selection)" });
               }
@@ -451,15 +461,20 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
         />
       )}
 
-      {/* Multi-line input */}
+      {/* Multi-line input — suppressed when a selector modal is open so the
+          user cannot type + Enter to submit a draft while the modal is up. */}
       <Box paddingX={1}>
         <Text color={defaultTheme.user} bold>{">"} </Text>
-        <TextInput
-          value={draft}
-          onChange={(v) => { setDraft(v); setAcDismissed(false); }}
-          onSubmit={() => void submit()}
-          placeholder={busy ? "(running…)" : "type — Enter to send, / for commands, ↑↓ history"}
-        />
+        {selectorView ? (
+          <Text color={defaultTheme.meta}>(selector open — press Esc to cancel)</Text>
+        ) : (
+          <TextInput
+            value={draft}
+            onChange={(v) => { setDraft(v); setAcDismissed(false); }}
+            onSubmit={() => void submit()}
+            placeholder={busy ? "(running…)" : "type — Enter to send, / for commands, ↑↓ history"}
+          />
+        )}
       </Box>
 
       {/* Status bar */}

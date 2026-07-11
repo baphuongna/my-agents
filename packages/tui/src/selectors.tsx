@@ -11,6 +11,7 @@
  */
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
+import { sanitize } from "./sanitize.js";
 import { defaultTheme as base, type Theme } from "./themes.js";
 
 /** Common selector props. */
@@ -91,14 +92,16 @@ function Picker<T>(props: SelectorProps<T>): React.ReactElement {
     }
   });
 
+  // Rules of Hooks fix: useEffect must be unconditional. Move it above
+  // the empty-items early-return and guard inside.
+  useEffect(() => {
+    if (dedup.length === 0) onResolve(null);
+  }, [dedup.length]);
   if (dedup.length === 0) {
-    useEffect(() => {
-      onResolve(null);
-    }, []);
     return (
       <Box borderStyle="round" borderColor={theme.warn} paddingX={1} flexDirection="column">
-        <Text color={theme.warn}>{title}</Text>
-        <Text dimColor>(empty)</Text>
+        <Text color={theme.warn}>{sanitize(title)}</Text>
+        <Text dimColor>(empty — no selectable items)</Text>
       </Box>
     );
   }
@@ -117,9 +120,9 @@ function Picker<T>(props: SelectorProps<T>): React.ReactElement {
             <Text color={isHi ? theme.user : theme.text}>
               {isHi ? "> " : "  "}
               {multi ? (isCk ? "[x] " : "[ ] ") : ""}
-              {props.labelOf(it)}
+              {sanitize(props.labelOf(it))}
             </Text>
-            <Text color={theme.meta}> {props.descOf?.(it) ?? ""}</Text>
+            <Text color={theme.meta}> {sanitize(props.descOf?.(it) ?? "")}</Text>
           </Box>
         );
       })}
