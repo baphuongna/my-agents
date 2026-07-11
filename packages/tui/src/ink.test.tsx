@@ -20,7 +20,7 @@ describe("InkSession renders pi-quality UI", () => {
     );
     const f = lastFrame();
     expect(f).toContain("mya");
-    expect(f).toContain("interactive agent");
+    expect(f).toContain("unified agent");
     expect(f).toContain("minimax");
     expect(f).toContain("MiniMax-M3");
   });

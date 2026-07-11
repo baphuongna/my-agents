@@ -22,7 +22,7 @@ describe("Phase 27 ink.tsx wires all Phase 19-24 modules (no more dead code)", (
     );
     const f = lastFrame();
     expect(f).toContain("mya");
-    expect(f).toContain("interactive agent");
+    expect(f).toContain("unified agent");
     expect(f).toContain("minimax");
   });
 });
