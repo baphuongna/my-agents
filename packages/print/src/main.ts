@@ -168,6 +168,8 @@ async function runInkTui(model?: string): Promise<void> {
     initialStatus: { provider: providerId, model: model ?? "MiniMax-M3", tokensIn: 0, tokensOut: 0, spentUsd: 0, budgetUsd: 0 },
     onClear: () => handle.clear(),
     getModel: () => model ?? "MiniMax-M3",
+    getModels: async () => agent.providers.all().map((p) => ({ label: `${p.id}`, value: p.model })),
+    getTools: () => agent.tools.list().map((t) => ({ name: t.name })),
     getSpent: () => spentUsd,
   });
 

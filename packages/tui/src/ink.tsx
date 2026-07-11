@@ -96,6 +96,10 @@ export interface InkSessionProps {
   initialStatus: InkStatus;
   /** Slash commands table. */
   commands: InkSlashCommand[];
+  /** Phase 29: live model list (replaces hard-coded defaultModelItems). */
+  getModels?: () => Promise<{ label: string; value: string }[]>;
+  /** Phase 29: live tool list (replaces hard-coded defaultToolItems). */
+  getTools?: () => Array<{ name: string; description?: string }>;
 }
 
 /**
@@ -138,6 +142,9 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
   const [selectorView, setSelectorView] = useState<SelectorView | null>(null);
   // Phase 27: kill-ring (Ctrl+W deletes last word, Ctrl+Y pastes last killed).
   const killRingRef = useRef(new KillRing());
+  // Phase 29: hold the latest selector model/tool lists so the parent
+  // can refresh them via props.getModels/getTools without re-mounting.
+  // (Treated as cached state — re-read on every open.)
 
   useImperativeHandle(
     ref,
@@ -203,15 +210,21 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
         if (out && typeof out === "object" && (out as InkSelector).kind) {
           const sel = out as InkSelector;
           if (sel.kind === "model") {
-            setSelectorView({
-              kind: "model",
-              multi: false,
-              items: [
-                { label: "minimax / MiniMax-M3", description: "default", value: "MiniMax-M3" },
-                { label: "openai / gpt-4o", description: "fast", value: "gpt-4o" },
-                { label: "openai / gpt-4.1", description: "smart", value: "gpt-4.1" },
-              ],
-            });
+            // Phase 29: source the list from the host's getModels() when
+            // provided (live provider.list()). Falls back to a small
+            // hard-coded set so the selector works without host wiring.
+            let modelItems: { label: string; description?: string; value: string }[];
+            if (props.getModels) {
+              try {
+                const live = await props.getModels();
+                modelItems = live.map((m) => ({ label: m.label, value: m.value }));
+              } catch {
+                modelItems = defaultModelItems();
+              }
+            } else {
+              modelItems = defaultModelItems();
+            }
+            setSelectorView({ kind: "model", multi: false, items: modelItems });
           } else if (sel.kind === "skill") {
             setSelectorView({
               kind: "skill",
@@ -219,18 +232,14 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
               items: [],
             });
           } else if (sel.kind === "tool") {
-            setSelectorView({
-              kind: "tool",
-              multi: true,
-              items: [
-                { label: "read", value: "read" },
-                { label: "write", value: "write" },
-                { label: "edit", value: "edit" },
-                { label: "bash", value: "bash" },
-                { label: "glob", value: "glob" },
-                { label: "grep", value: "grep" },
-              ],
-            });
+            // Phase 29: source from the host's getTools() too. Defaults to
+            // the small built-in list.
+            const toolItems = (props.getTools?.() ?? defaultToolItems()).map((t) => ({
+              label: t.name,
+              value: t.name,
+              description: t.description,
+            }));
+            setSelectorView({ kind: "tool", multi: true, items: toolItems });
           }
           return true;
         }
@@ -564,6 +573,8 @@ function defaultCommands(opt: {
   onClear?: () => void;
   onModel?: (model: string) => void;
   getModel?: () => string;
+  /** Phase 29: async getter for the live provider list (label + value pairs). */
+  getModels?: () => Promise<{ label: string; value: string }[]>;
   getSpent?: () => number;
   getBudget?: () => number;
   getMemoryFacts?: () => number;
@@ -630,6 +641,10 @@ export interface InkRunnerOpts {
   onClear?: () => void;
   onModel?: (model: string) => void;
   getModel?: () => string;
+  /** Phase 29: live provider list (threaded into the model selector). */
+  getModels?: () => Promise<{ label: string; value: string }[]>;
+  /** Phase 29: live tool list (threaded into the tool selector). */
+  getTools?: () => Array<{ name: string; description?: string }>;
   getSpent?: () => number;
   getBudget?: () => number;
   getMemoryFacts?: () => number;
@@ -670,6 +685,8 @@ export function startInkSession(opts: InkRunnerOpts): InkHandle {
         provider: "minimax", model: "MiniMax-M3", tokensIn: 0, tokensOut: 0, spentUsd: 0, budgetUsd: 0,
       }}
       commands={cmds}
+      getModels={opts.getModels}
+      getTools={opts.getTools}
     />,
   );
 
@@ -684,6 +701,27 @@ export function startInkSession(opts: InkRunnerOpts): InkHandle {
       await closed;
     },
   };
+}
+
+/** Phase 29: hard-coded fallback model list (used when host doesn't thread getModels). */
+function defaultModelItems(): { label: string; description?: string; value: string }[] {
+  return [
+    { label: "minimax / MiniMax-M3", description: "default", value: "MiniMax-M3" },
+    { label: "openai / gpt-4o", description: "fast", value: "gpt-4o" },
+    { label: "openai / gpt-4.1", description: "smart", value: "gpt-4.1" },
+  ];
+}
+
+/** Phase 29: hard-coded fallback tool list. */
+function defaultToolItems(): { name: string; description?: string }[] {
+  return [
+    { name: "read", description: "read a file" },
+    { name: "write", description: "write a file" },
+    { name: "edit", description: "edit a file" },
+    { name: "bash", description: "run a shell command" },
+    { name: "glob", description: "find files" },
+    { name: "grep", description: "search content" },
+  ];
 }
 
 /** Convert a RuntimeEvent into a transcript line. */
