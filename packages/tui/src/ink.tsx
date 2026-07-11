@@ -679,6 +679,8 @@ export interface InkHandle {
   setApproval: (a: InkApproval | null) => void;
   setStatus: (s: InkStatus) => void;
   clear: () => void;
+  /** Block until the Ink session exits (Ctrl-C / /quit). */
+  waitUntilExit: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -723,6 +725,7 @@ export function startInkSession(opts: InkRunnerOpts): InkHandle {
     setApproval: (a) => sessionRef?.setApproval(a),
     setStatus: (s) => sessionRef?.setStatus(s),
     clear: () => sessionRef?.clear(),
+    waitUntilExit: () => app.waitUntilExit(),
     close: async () => {
       app.unmount();
       resolveClosed();

@@ -179,11 +179,8 @@ async function runInkTui(model?: string): Promise<void> {
     getSpent: () => spentUsd,
   });
 
-  // Block until the Ink session closes (Ctrl-D or /quit).
-  await new Promise<void>((resolve) => {
-    process.on("SIGINT", () => { controller.abort(); });
-    handle.close().then(resolve);
-  });
+  // Block until the Ink session exits (Ctrl-C or /quit).
+  await handle.waitUntilExit();
 }
 
 async function runReadlineTui(model?: string): Promise<void> {
