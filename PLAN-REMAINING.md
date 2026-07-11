@@ -104,10 +104,13 @@ MLX, web session-cookie+CSRF) remain as noted above.
    pipeline + rule grammar + hooks + R26-D serialization ✓; §8 MemoryRole
    lifecycle (archivist + goals) + manager drain + one-external-rule ✓;
    §10.2 CoW mergeBack (3-way) ✓; §12 gateway control-plane (LRU + REST) ✓.
-6. **Phase 6 (open residuals):** full §8 dream-cycle/RRF/ragfs, §10 runner↔
-   workspace wiring (spawn creates the isolated workspace + merges on yield),
-   DAP live adapter (vscode-js-debug standalone), ESLint/madge/cargo-deny CI
-   gating, RecoveryRecipe/ProjectTrust/maybeSpill/telemetry.
+6. **Phase 6 (residuals) — core DONE:** §10 CoW runner↔workspace wiring
+   (spawn creates an isolated sandbox + 3-way merges on yield) ✓; invariant
+   lint gating (Date.now grep guard + madge circular-check — ESLint is TS-7-
+   incompatible) ✓; §14.3 RecoveryRecipe FSM + ProjectTrust ✓.
+7. **Phase 7 (open — large):** maybeSpill/telemetry (§13), §8 RRF retrieval /
+   22-phase dream cycle / ragfs unified-context-FS, DAP live adapter (vscode-js-
+   debug standalone — env limitation), no-explicit-any + madge-transport CI rule.
 
 
 ## What IS solidly built (don't lose this)
