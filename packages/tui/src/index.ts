@@ -22,12 +22,15 @@ export interface TuiHandler {
 /** Render a RuntimeEvent to a human-readable line (transport-specific). */
 export type EventRenderer = (event: unknown) => string | null;
 
-/** Default renderer: turns text/tool/exec events into readable lines. */
+/** Default renderer: turns text/tool/exec events into readable lines.
+ * Reads from `e.turnEvent` (the RuntimeEvent.turn event shape) — NOT `e.e`
+ * (the field name changed when the turn FSM landed in Phase 3). */
 export const defaultRenderer: EventRenderer = (event) => {
-  const e = event as { kind?: string; e?: unknown };
+  const e = event as { kind?: string; turnEvent?: { state?: string; chunk?: { kind?: string; text?: string; call?: { name?: string } }; usage?: { input?: number; output?: number } } };
   if (!e || typeof e !== "object") return null;
   if (e.kind === "turn") {
-    const te = e.e as { state?: string; chunk?: { kind?: string; text?: string; call?: { name?: string } }; usage?: { input?: number; output?: number } };
+    const te = e.turnEvent;
+    if (!te) return null;
     if (te.state === "Streaming" && te.chunk?.kind === "text") {
       return te.chunk.text ?? null;
     }
