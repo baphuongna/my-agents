@@ -13,3 +13,5 @@ export * from "./loop.js";
 export * from "./cost.js";
 export { maybeSpill, resolveRef, sweepRefs } from "./spill.js";
 export type { LargeValueRef, MaybeSpilled } from "./spill.js";
+export { TelemetrySink, project } from "./telemetry.js";
+export type { TelemetrySnapshot, TelemetryProjection } from "./telemetry.js";

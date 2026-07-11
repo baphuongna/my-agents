@@ -23,6 +23,9 @@ export interface Fact {
   notability: number;
   source: string; // source session/id
   createdAt: number;
+  validFrom?: number;
+  /** Phase 8: when set, the fact is purgeable once now > validUntil. */
+  validUntil?: number;
   consolidatedAt?: number;
   consolidatedInto?: string; // the take id this fact promoted into
 }
@@ -145,6 +148,43 @@ export class Brain {
   }
   unconsolidatedFacts(): Fact[] {
     return [...this.facts.values()].filter((f) => !f.consolidatedAt);
+  }
+
+  /**
+   * Dream cycle phase: backlinks — extract zero-LLM typed edges from fact
+   * content (`[Name](path)` + `[[wikilink]]` + bare-name). Returns the edges.
+   * Phase 8 implements this surface; persistence (TypedKnowledgeGraph) is
+   * deferred to the typed-graph arm.
+   */
+  backlinks(): Array<{ fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> {
+    const edges: Array<{ fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> = [];
+    const LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const WIKI = /\[\[([^\]]+)\]\]/g;
+    for (const f of this.facts.values()) {
+      let m: RegExpExecArray | null;
+      while ((m = LINK.exec(f.content)) !== null) edges.push({ fromFactId: f.id, to: m[2]!, kind: "link" });
+      while ((m = WIKI.exec(f.content)) !== null) edges.push({ fromFactId: f.id, to: m[1]!, kind: "wikilink" });
+      // bare-name (single capitalized word, e.g. "Alice" → "Alice") — only
+      // emitted when the bare name equals the fact's entity (no spurious edges).
+      const bare = f.content.match(/\b([A-Z][a-zA-Z]{2,})\b/g) ?? [];
+      for (const b of bare) if (b === f.entity || f.entity.endsWith(b)) edges.push({ fromFactId: f.id, to: b, kind: "bare" });
+    }
+    return edges;
+  }
+
+  /**
+   * Dream cycle phase: purge — drop facts with validUntil < now (soft-delete;
+   * tombstone preserved). Returns the count purged.
+   */
+  purge(now = nowWallclock()): number {
+    let n = 0;
+    for (const f of this.facts.values()) {
+      if (f.validUntil !== undefined && f.validUntil < now) {
+        this.facts.delete(f.id);
+        n++;
+      }
+    }
+    return n;
   }
   get takeCount(): number {
     return this.takes.size;

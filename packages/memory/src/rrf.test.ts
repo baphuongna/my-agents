@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm } from "@my-agent/memory";
+import { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm } from "@my-agent/memory";
 import type { MemoryQuery } from "@my-agent/core";
 
 const q = (text: string): MemoryQuery => ({ text });
@@ -94,5 +94,34 @@ describe("§8 RRF arms", () => {
     expect(xScore).toBeCloseTo(1 / 61, 4);
     // Two contributions would have been ≈ 0.0324:
     expect(xScore).toBeLessThan(0.02);
+  });
+});
+
+describe("§8 Phase 8 — vector arm (char-n-gram TF-IDF cosine surrogate)", () => {
+  it("vectorArm finds docs char-shared with the query (no embedding model needed)", () => {
+    const hits = vectorArm([
+      { id: "a", content: "the agent uses tools to read files" },
+      { id: "b", content: "completely unrelated content about cats" },
+    ], q("agent tools"));
+    expect(hits[0]!.id).toBe("a"); // char n-gram overlap
+    expect(hits[1]!.score).toBeLessThan(hits[0]!.score);
+  });
+  it("vectorArm returns [] on empty/whitespace query", () => {
+    expect(vectorArm([{ id: "a", content: "x" }], q(""))).toEqual([]);
+    expect(vectorArm([{ id: "a", content: "x" }], q("   "))).toEqual([]);
+  });
+  it("rrfRetrieve default (Phase 8) now includes the vector arm", () => {
+    const docs = [
+      { id: "a", content: "the agent uses tools to read files", role: "archivist" as const },
+      { id: "b", content: "memory roles manage conversation history", role: "archivist" as const },
+      { id: "c", content: "this is about completely unrelated flowers", role: "archivist" as const },
+    ];
+    const hits = rrfRetrieve(docs, { text: "agent files" });
+    expect(hits.length).toBeGreaterThan(0);
+    // the relevant docs (a, b) should outrank the irrelevant "c" — char-n-gram
+    // overlap alone is weak, but combined with BM25/substring fusion the
+    // signal dominates.
+    const cIdx = hits.findIndex((h) => h.id === "c");
+    if (cIdx >= 0) expect(cIdx).toBeGreaterThanOrEqual(2); // c is last or absent
   });
 });

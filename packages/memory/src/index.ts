@@ -9,7 +9,7 @@ export type { MemoryBackend } from "./backends.js";
 export { MemoryManagerImpl, stubMemoryManager } from "./manager.js";
 export { ArchivistRole, GoalsRole, cleanTurnToMarkdown } from "./roles.js";
 export type { MemoryRole } from "./roles.js";
-export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm } from "./rrf.js";
+export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm } from "./rrf.js";
 export type { RetrievalArm } from "./rrf.js";
 export { RagfsRouter, StaticContextSource, parseRagfsUri, RAGFS_BLOCKED } from "./ragfs.js";
 export type { ContextSource, RagfsUri, RagfsScanner } from "./ragfs.js";

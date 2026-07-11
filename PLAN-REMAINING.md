@@ -113,9 +113,17 @@ MLX, web session-cookie+CSRF) remain as noted above.
    k=60 over BM25 + substring arms; vector/graph arms drop in) ✓; ragfs
    unified-context-FS router (memory:// skill:// knowledge:// file:// +
    ContextSource + StaticContextSource) ✓.
-8. **Phase 8 (open — very large / env-limited):** §8 22-phase dream cycle
-   (only `consolidate` exists), vector (HNSW) + graph arms for RRF, telemetry
-   export, DAP live adapter (vscode-js-debug standalone — env limitation).
+8. **Phase 8 (§13 telemetry + §8 vector arm + dream-cycle phases) — DONE:**
+   TelemetrySink (§13 sampled projection; deterministic counter-sampling;
+   bounded window) ✓; vector arm (Phase 8 char-n-gram TF-IDF cosine surrogate
+   for HNSW; real HNSW drops in by replacing the arm) ✓; Brain dream-cycle
+   backlinks (zero-LLM typed-edge extraction) + purge (validUntil) ✓.
+9. **Phase 9 (open — env-limited / very large):** DAP live adapter
+   (vscode-js-debug standalone — env limitation); §8 typed-graph arm for RRF;
+   §8 knowledge:// KnowledgeGraph source; the remaining 19 phases of the
+   22-phase dream cycle (only backlinks + purge + consolidate live); no-
+   explicit-any ESLint (awaiting a TS-7-compatible static analyzer); ragfs-
+   scanner wiring for production deploys.
 
 
 ## What IS solidly built (don't lose this)

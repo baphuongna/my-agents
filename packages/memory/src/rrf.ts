@@ -79,7 +79,56 @@ export function substringArm(docs: { id: string; content: string; role?: MemoryR
 }
 
 /**
- * Fuse the BM25 + substring arms (the two zero-dep arms). A vector/graph arm
+ * Vector arm (Phase 8, zero-dep surrogate for an HNSW/embedding arm). Builds a
+ * char-n-gram TF-IDF vector for the query and each doc, ranks by cosine similarity.
+ * This is a SURROGATE for a real embedding model — it gives vector-like behaviour
+ * (handles partial/typo overlap, character-level semantic sharing) without any
+ * external dependency. A real HNSW arm drops in by passing a different RetrievalArm.
+ */
+export function vectorArm(docs: { id: string; content: string; role?: MemoryRoleId }[], query: MemoryQuery, topK = 20): MemoryHit[] {
+  // MED-5 (review): trim + empty → []
+  const q = (query.text ?? "").trim().toLowerCase();
+  if (!q) return [];
+  const N = docs.length || 1;
+  const grams = (s: string) => {
+    // 3-gram char shingles over the lowercased content.
+    const pad = `  ${s}  `;
+    const out = new Map<string, number>();
+    for (let i = 0; i < pad.length - 2; i++) {
+      const g = pad.slice(i, i + 3);
+      out.set(g, (out.get(g) ?? 0) + 1);
+    }
+    return out;
+  };
+  const docVecs = docs.map((d) => ({ id: d.id, role: d.role, content: d.content, vec: grams(d.content.toLowerCase()) }));
+  const qVec = grams(q);
+  // document frequency per char-n-gram
+  const df = new Map<string, number>();
+  for (const dv of docVecs) for (const g of dv.vec.keys()) df.set(g, (df.get(g) ?? 0) + 1);
+  const idf = (g: string) => Math.log(1 + (N - (df.get(g) ?? 0) + 0.5) / ((df.get(g) ?? 0) + 0.5));
+  const qWeight = new Map<string, number>();
+  for (const [g, tf] of qVec) qWeight.set(g, tf * idf(g));
+  let qNorm = 0;
+  for (const w of qWeight.values()) qNorm += w * w;
+  qNorm = Math.sqrt(qNorm) || 1;
+  const scored = docVecs.map((dv) => {
+    let dot = 0, dNorm = 0;
+    const dWeight = new Map<string, number>();
+    for (const [g, tf] of dv.vec) {
+      const w = tf * idf(g);
+      dWeight.set(g, w);
+      dNorm += w * w;
+      const qw = qWeight.get(g);
+      if (qw) dot += w * qw;
+    }
+    const cos = dot / (qNorm * (Math.sqrt(dNorm) || 1));
+    return { id: dv.id, content: dv.content, role: (dv.role ?? "working") as MemoryRoleId, score: cos };
+  });
+  return scored.filter((h) => h.score > 0).sort((a, b) => b.score - a.score).slice(0, topK);
+}
+
+/**
+ * Fuse the BM25 + substring + vector arms (all zero-dep). A real HNSW/graph arm
  * drops in by passing more RetrievalArms to reciprocalRankFuse. Respects
  * `query.topK` (MED-3 review). Uses a generous candidate window so a doc
  * ranked #51 in two arms can still outrank a rank-1 single-arm doc.
@@ -94,5 +143,6 @@ export function rrfRetrieve(
   return reciprocalRankFuse([
     { name: "bm25", hits: bm25Arm(docs, query, candidateK) },
     { name: "substring", hits: substringArm(docs, query, candidateK) },
+    { name: "vector", hits: vectorArm(docs, query, candidateK) },
   ], outerTopK);
 }
