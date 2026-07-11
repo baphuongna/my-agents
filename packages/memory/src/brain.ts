@@ -328,9 +328,10 @@ export class Brain {
     const noEntity: string[] = [];
     const byContent = new Map<string, string[]>();
     for (const f of this.facts.values()) {
-      if (!f.content.trim()) empty.push(f.id);
-      if (!f.entity || f.entity === "") noEntity.push(f.id);
-      const key = f.content.trim().toLowerCase();
+      if (!f.content.trim()) { empty.push(f.id); continue; } // M3: skip empty from dup map
+      if (!f.entity) noEntity.push(f.id);
+      // M2: fold entity into the duplicate key (same content, different entity ≠ dup).
+      const key = `${f.entity.trim().toLowerCase()}\u0000${f.content.trim().toLowerCase()}`;
       const arr = byContent.get(key);
       if (arr) arr.push(f.id); else byContent.set(key, [f.id]);
     }
@@ -346,8 +347,14 @@ export class Brain {
    */
   orphans(): string[] {
     const edges = this.backlinks();
+    // M4: restrict `connected` to entity names from edges (skip URL/slug `to`
+    // targets — those live in a different namespace). Only `from` (always an
+    // entity) + bare-name/wikilink `to` targets count.
     const connected = new Set<string>();
-    for (const e of edges) { connected.add(e.from); connected.add(e.to); }
+    for (const e of edges) {
+      connected.add(e.from);
+      if (e.kind === "bare" || e.kind === "wikilink") connected.add(e.to);
+    }
     return [...this.facts.values()]
       .filter((f) => !connected.has(f.entity))
       .map((f) => f.id);
@@ -383,13 +390,28 @@ export class Brain {
    * in the fact's own entityWords set).
    */
   resolveSymbolEdges(): Array<{ from: string; to: string; kind: "bare" }> {
-    const knownEntities = new Set([...this.facts.values()].map((f) => f.entity));
+    // C2: filter empty/falsy entities (an empty entity → /\b\b/ matches every
+    // word boundary → spurious edges from every fact to "").
+    const knownEntities = new Set(
+      [...this.facts.values()].map((f) => f.entity).filter((e) => e && e.trim()),
+    );
+    if (knownEntities.size === 0) return [];
+    // H1: compile a single alternation regex ONCE (not N×M fresh compiles).
+    const escaped = [...knownEntities].map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const re = new RegExp(`\\b(${escaped})\\b`, "gi"); // 'g' flag for matchAll
+    // H2: dedup by (from|to).
+    const seen = new Set<string>();
     const edges: Array<{ from: string; to: string; kind: "bare" }> = [];
     for (const f of this.facts.values()) {
-      for (const e of knownEntities) {
-        if (e === f.entity) continue;
-        const re = new RegExp(`\\b${e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-        if (re.test(f.content)) edges.push({ from: f.entity, to: e, kind: "bare" });
+      if (!f.entity || !f.entity.trim()) continue;
+      const found = new Set<string>();
+      for (const m of f.content.matchAll(re)) {
+        const target = m[1]!;
+        if (target !== f.entity) found.add(target);
+      }
+      for (const to of found) {
+        const key = `${f.entity}|${to}`;
+        if (!seen.has(key)) { seen.add(key); edges.push({ from: f.entity, to, kind: "bare" }); }
       }
     }
     return edges;
@@ -402,23 +424,27 @@ export class Brain {
    * Returns the count of new facts recorded.
    */
   conversationFactsBackfill(conversation: Array<{ role: string; content: string }>): number {
-    const knownEntities = new Set([...this.facts.values()].map((f) => f.entity));
+    const knownEntities = new Set([...this.facts.values()].map((f) => f.entity).filter((e) => e && e.trim()));
+    // M1: dedup across the ENTIRE call (not per-message) — one fact per entity.
+    const recorded = new Set<string>();
     let n = 0;
     for (const msg of conversation) {
       if (msg.role === "tool" || msg.role === "system") continue;
       const names = msg.content.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
       for (const name of [...new Set(names)]) {
-        if (knownEntities.has(name)) {
-          this.recordFact({
-            kind: "event",
-            entity: name,
-            content: `${name} mentioned in conversation`,
-            visibility: "private",
-            notability: 1,
-            source: "backfill",
-          });
-          n++;
-        }
+        if (!knownEntities.has(name) || recorded.has(name)) continue;
+        // C1: respect the fact cap — stop gracefully (not throw mid-loop).
+        if (this.facts.size >= this.maxFactsTotal) return n;
+        this.recordFact({
+          kind: "event",
+          entity: name,
+          content: `${name} mentioned in conversation`,
+          visibility: "private",
+          notability: 1,
+          source: "backfill",
+        });
+        recorded.add(name);
+        n++;
       }
     }
     return n;
