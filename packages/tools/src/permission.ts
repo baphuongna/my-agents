@@ -1,18 +1,28 @@
 /**
- * Permission gate (§7) — the 7-step pipeline (simplified for Tier 1).
+ * Permission gate (§7) — the full 7-step pipeline.
  *
- * requiresApproval is SYNC (steps 1-3 only: denied_tools / deny / mode-rank).
- * It returns the decision + a `needsHumanPrompt` flag; the human round-trip
- * (step 4, the ask-rule) is a separate async step (R29-1/B1).
+ *   1. denied_tools (config + DELEGATE_BLOCKED) — unconditional
+ *   2. deny rules (pattern-match tool + arg-subject)
+ *   3. hook override (Deny→deny · Ask→prompt · Allow→falls through, respects ask)
+ *   4. ask rules → prompt (inviolable)
+ *   5. allow/mode (allow-rule, OR Allow-mode+!Danger, OR active≥required+!Danger)
+ *   6. escalation prompt (Prompt mode / gap / required===Danger)
+ *   7. else Deny
  *
- * The mode-rank rule: a tool's `requiredMode` must be satisfied by the active
- * mode, ELSE escalate to a human prompt (or Deny if mode can't reach it).
+ * Rule grammar: `tool(subject)` exact · `tool(subject:*)` prefix · `tool` any.
+ * Arg-subject extracted from 10 JSON keys. Names normalized lowercase. First-
+ * match-wins, top-down. requiresApproval is SYNC (R29-1); the human round-trip
+ * (step 4/6) is a separate async step via awaitHumanPrompt.
  *
- * Source: §7 Tools & Permissions, hermes clarify_gateway, R29-1.
+ * Source: §7 Tools & Permissions; claw-code permissions.rs (round-24 deep read);
+ * R27-2/D8 (Danger excluded from Allow special-case + rank), R29-1.
  */
 import {
   DELEGATE_BLOCKED_TOOLS,
   type ApprovalDecision,
+  type HookOverride,
+  type Mode,
+  type PermissionConfig,
   type PermissionOutcome,
   type ToolCall,
   type TurnContext,
@@ -25,22 +35,78 @@ export type PermissionResult = PermissionOutcome & { needsHumanPrompt: boolean }
 
 const ALLOW: PermissionResult = { outcome: "Allow", needsHumanPrompt: false };
 
+/** The 10 JSON keys from which an arg-subject is extracted (§7). */
+const SUBJECT_KEYS = ["command", "path", "file_path", "filePath", "notebook_path", "notebookPath", "url", "pattern", "code", "message"];
+
+/** A parsed permission rule. */
+export interface PermissionRule {
+  tool: string;       // lowercase; "*" = any tool
+  subject?: string;   // lowercase; absent = any subject
+  prefix?: boolean;   // subject ends with :* / *
+}
+
+/** Parse a rule string: `tool`, `tool(subject)`, `tool(subject:*)`. Lowercased. */
+export function parseRule(s: string): PermissionRule | null {
+  const raw = s.trim().toLowerCase();
+  const m = raw.match(/^([a-z_*]+)(?:\((.*)\))?$/);
+  if (!m) return null;
+  const tool = m[1]!;
+  const subj = m[2];
+  if (subj === undefined || subj === "") return { tool };
+  // prefix if ends with :* or is just *
+  const prefix = subj.endsWith(":*") || subj === "*";
+  const subject = prefix ? subj.replace(/:\*$/, "") : subj;
+  return { tool, subject: subject || undefined, prefix: prefix || undefined };
+}
+
+/** Extract the arg-subject (the first present SUBJECT_KEYS value) from a call. */
+export function extractSubject(call: ToolCall): string | undefined {
+  if (call.args && typeof call.args === "object") {
+    const a = call.args as Record<string, unknown>;
+    for (const k of SUBJECT_KEYS) {
+      const v = a[k];
+      if (typeof v === "string") return v.toLowerCase();
+    }
+  }
+  return undefined;
+}
+
+/** Does a rule match a call? (tool name + subject, case-normalized). */
+export function ruleMatches(rule: PermissionRule, call: ToolCall): boolean {
+  if (rule.tool !== "*" && rule.tool !== call.name.toLowerCase()) return false;
+  if (rule.subject === undefined) return true; // any subject
+  const subj = extractSubject(call);
+  if (subj === undefined) return false;
+  if (rule.prefix) return subj.startsWith(rule.subject);
+  return subj === rule.subject;
+}
+
+function matchAny(rules: string[] | undefined, call: ToolCall): PermissionRule | null {
+  if (!rules) return null;
+  for (const r of rules) {
+    const parsed = parseRule(r);
+    if (parsed && ruleMatches(parsed, call)) return parsed;
+  }
+  return null;
+}
+
 /**
- * Evaluate steps 1–3 (sync). Returns:
- *   - Allow (no prompt needed)
- *   - Deny (blocked; no prompt)
- *   - {outcome:"Deny"} with needsHumanPrompt (escalate — but Deny is the default
- *     if the human can't be reached; the caller awaits awaitHumanPrompt to flip it)
- *   - {outcome:"Allow", needsHumanPrompt:true} (Prompt mode: ask but lean allow)
+ * Evaluate the 7-step pipeline (sync). `override` is the pre-hook's step-3
+ * decision (CC7: the caller awaits preTool before invoking this). Returns the
+ * outcome + needsHumanPrompt (the human round-trip is a separate async step).
  */
 export function requiresApproval(
   call: ToolCall,
   ctx: TurnContext,
   registry: ToolRegistry,
+  override?: HookOverride,
 ): PermissionResult {
-  // Step 1: DELEGATE_BLOCKED_TOOLS denylist (subagents inherit this).
-  if (DELEGATE_BLOCKED_TOOLS.has(call.name)) {
-    return { outcome: "Deny", reason: `blocked: ${call.name}`, needsHumanPrompt: false };
+  const cfg: PermissionConfig = ctx.permission ?? {};
+  const name = call.name.toLowerCase();
+
+  // Step 1: denied_tools (config) + DELEGATE_BLOCKED_TOOLS (subagent denylist).
+  if (DELEGATE_BLOCKED_TOOLS.has(call.name) || (cfg.deniedTools ?? []).some((d) => d.toLowerCase() === name)) {
+    return { outcome: "Deny", reason: `denied: ${call.name}`, needsHumanPrompt: false };
   }
 
   const impl = registry.get(call.name);
@@ -48,36 +114,49 @@ export function requiresApproval(
     return { outcome: "Deny", reason: `unknown tool: ${call.name}`, needsHumanPrompt: false };
   }
 
-  // Step 2: explicit override on the context.
-  if (ctx.session) {
-    // (config-level allow/deny rules land with §7 full pipeline; Tier 1 stub.)
+  // Step 2: deny rules.
+  if (matchAny(cfg.deny, call)) {
+    return { outcome: "Deny", reason: `deny-rule: ${call.name}`, needsHumanPrompt: false };
   }
 
-  // Step 3: mode-rank gate — does the active mode satisfy the required mode?
-  const active = ctx.budget ? guessActiveMode(ctx) : "Prompt";
+  // Step 3: hook override (Allow falls through — still respects ask rules, invariant #13).
+  if (override === "Deny") return { outcome: "Deny", reason: "hook-deny", needsHumanPrompt: false };
+  if (override === "Ask") return { outcome: "Deny", reason: "hook-ask", needsHumanPrompt: true };
+
+  // Step 4: ask rules (inviolable — always prompt).
+  if (matchAny(cfg.ask, call)) {
+    return { outcome: "Deny", reason: `ask-rule: ${call.name}`, needsHumanPrompt: true };
+  }
+
   const required = impl.meta.requiredMode;
-  // F2 (security review): DangerFullAccess ALWAYS escalates to a human prompt,
-  // even in Allow / DangerFullAccess mode. modeSatisfies("Allow", ...) returns
-  // true unconditionally (registry.ts) which would silently grant bash; force the
-  // escalation here before the satisfy shortcut. Allow = "up to WorkspaceWrite".
+  // F2/D8: DangerFullAccess is EXCLUDED from the Allow special-case AND the rank
+  // comparison — it ALWAYS escalates to a step-6 prompt (privilege-escalation hole).
   if (required === "DangerFullAccess") {
     return { outcome: "Deny", reason: "DangerFullAccess requires explicit human approval", needsHumanPrompt: true };
   }
+
+  // Step 5: allow/mode.
+  const active = activeMode(ctx);
+  if (matchAny(cfg.allow, call)) return ALLOW;
+  if (active === "Allow") return ALLOW; // Allow = up to WorkspaceWrite (Danger already handled above)
+  // R27-2/D9: Prompt mode auto-allows ReadOnly, prompts for writes.
+  if (active === "Prompt") {
+    return required === "ReadOnly"
+      ? ALLOW
+      : { outcome: "Allow", needsHumanPrompt: true };
+  }
   if (modeSatisfies(active, required)) {
-    // Satisfied without escalation. Prompt mode still asks for visibility.
-    if (active === "Prompt") {
-      return { outcome: "Allow", needsHumanPrompt: true };
-    }
     return ALLOW;
   }
 
-  // Mode can't satisfy → escalate to human. Default-Deny if human unreachable.
+  // Step 6: escalation prompt (mode can't satisfy; Prompt mode already handled).
   return { outcome: "Deny", reason: `mode ${active} < required ${required}`, needsHumanPrompt: true };
 }
 
 /**
- * The human round-trip (step 4). If the sync decision already needs no prompt,
- * returns it as-is; otherwise asks via ctx.approval.
+ * The human round-trip (steps 4/6). If no prompt is needed, returns the sync
+ * decision as-is; otherwise asks via ctx.approval (an explicit handle, never
+ * parent stdin — inviolable).
  */
 export async function awaitHumanPrompt(
   call: ToolCall,
@@ -95,14 +174,16 @@ export async function awaitHumanPrompt(
   return ctx.approval.request({
     call,
     reason: decision.outcome === "Deny" ? decision.reason : "approval required",
-    currentMode: guessActiveMode(ctx),
+    currentMode: activeMode(ctx),
     requiredMode,
   });
 }
 
 // --- helpers ---
-function guessActiveMode(_ctx: TurnContext): import("@my-agent/core").Mode {
-  // Tier 1: default to Prompt (ask) unless the session signals otherwise.
-  // A real mode source (CLI flag / config) wires in with §7 full pipeline.
-  return "Prompt";
+
+/** The active permission mode. Tier-1: ctx.mode if set, else Prompt. */
+function activeMode(ctx: TurnContext): Mode {
+  // ctx.mode is the session's declared mode (CLI flag / config). Falls back to
+  // Prompt (ask for writes) per R27-2/D9.
+  return ctx.mode ?? "Prompt";
 }

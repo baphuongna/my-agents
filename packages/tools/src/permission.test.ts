@@ -26,10 +26,10 @@ function reg(): ToolRegistry {
 }
 
 describe("§7 permission gate", () => {
-  it("read with no budget-bound mode escalates to a human (active=Prompt)", () => {
-    // guessActiveMode is a Tier-1 stub returning "Prompt"; a read still asks.
+  it("read (ReadOnly) is auto-allowed in Prompt mode (R27-2/D9: Prompt prompts writes only)", () => {
     const d = requiresApproval({ id: "1", name: "read", args: {} }, ctx("Prompt"), reg());
-    expect(d.needsHumanPrompt).toBe(true);
+    expect(d.outcome).toBe("Allow");
+    expect(d.needsHumanPrompt).toBe(false);
   });
 
   it("DELEGATE_BLOCKED_TOOLS (bash/spawn/exec) are denied outright without prompt", () => {

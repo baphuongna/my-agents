@@ -140,6 +140,8 @@ export interface TurnContext {
   budget: BudgetConfig;
   approval: ApprovalChannel;
   emit: (te: TurnEvent) => void;
+  /** §7 active permission mode (CLI flag / config). Defaults to Prompt. */
+  mode?: Mode;
   /** Workspace root for path-containment (§7 F1 fix): all file tools resolve
    * paths inside this root. Defaults to process.cwd() when unset. */
   workspace?: string;
@@ -151,6 +153,12 @@ export interface TurnContext {
    * result (never a gate — write always succeeds). The LspClient adapter
    * satisfies this (it reads the file, didChange, returns diagnostics). */
   lsp?: LspWriteHook;
+  /** §7 permission config (deny/ask/allow rule lists + denied_tools). Resolved
+   * on demand from config — NEVER cached in tool handles (invariant #2). */
+  permission?: PermissionConfig;
+  /** §7 Pre/Post tool hooks (input-mutation + override triad). preTool is AWAITED
+   * before the ask-rule match (CC7/R28); it may set an override or mutate args. */
+  hooks?: ToolHookSink;
   lane?: {
     taskId: LaneId;
     setBlockedOn(b: "approval" | undefined): void;
@@ -343,7 +351,27 @@ export interface Auditor {
   append(rec: { ts: number; kind: AuditKind; actor: string; payload: Record<string, unknown> }): unknown;
 }
 
-/** §11 LSP-on-write diagnostics view (severity normalized; appended, not gated). */
+/** §7 permission rule lists (rule grammar: `tool(subject)` / `tool(subject:*)`
+ * prefix / `tool` any-subject; arg-subject from 10 JSON keys). All lowercase. */
+export interface PermissionConfig {
+  /** Unconditional denylist (step 1) — prod creds never run, even in DangerFullAccess. */
+  deniedTools?: string[];
+  /** Step 2: deny rules. */
+  deny?: string[];
+  /** Step 4: ask rules (inviolable — always prompt). */
+  ask?: string[];
+  /** Step 5: allow rules. */
+  allow?: string[];
+}
+
+/** §7 Pre/Post tool hook sink. preTool is awaited before the ask-rule (CC7). */
+export interface ToolHookSink {
+  preTool?(call: ToolCall): Promise<{ override?: "Deny" | "Ask" | "Allow"; args?: unknown }>;
+  postTool?(call: ToolCall, result: ToolResult): void;
+}
+
+/** §7 hook override (step 3). */
+export type HookOverride = "Deny" | "Ask" | "Allow";
 export interface LspDiagnosticView {
   line: number;
   severity: "error" | "warning" | "info" | "hint";

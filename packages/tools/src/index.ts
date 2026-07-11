@@ -6,7 +6,7 @@
  */
 export { ToolRegistry, ok, err, isRecord, modeSatisfies } from "./registry.js";
 export type { ToolImpl } from "./registry.js";
-export { requiresApproval, awaitHumanPrompt } from "./permission.js";
+export { requiresApproval, awaitHumanPrompt, parseRule, extractSubject, ruleMatches } from "./permission.js";
 export type { PermissionResult } from "./permission.js";
 export { runTool, runToolBatch, aggregate } from "./dispatch.js";
 export { repair } from "./repair.js";

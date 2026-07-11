@@ -26,8 +26,10 @@ export async function runTool(
   call: ToolCall,
   ctx: TurnContext,
   registry: ToolRegistry,
+  override?: import("@my-agent/core").HookOverride,
+  effectiveArgs: unknown = call.args,
 ): Promise<ToolResult> {
-  const decision = requiresApproval(call, ctx, registry);
+  const decision = requiresApproval(call, ctx, registry, override);
   const resolved = await awaitHumanPrompt(call, ctx, decision, registry);
   if (resolved.decision === "Deny") {
     // F3-perm: audit the denial too (repudiation defense).
@@ -39,15 +41,13 @@ export async function runTool(
   if (!impl) {
     return { callId: call.id, ok: false, output: null, error: `unknown tool: ${call.name}` };
   }
+  let result: ToolResult;
   try {
-    const result = await impl.run(call.args, ctx);
-    // F3-perm: audit the tool call (args are the post-redaction view; the
-    // AuditLog's own redactor strips secrets before hashing).
-    ctx.audit?.append({ ts: nowWallclock(), kind: "tool", actor: "agent", payload: { name: call.name, args: call.args, ok: result.ok } });
-    return result;
+    result = await impl.run(effectiveArgs, ctx);
+    ctx.audit?.append({ ts: nowWallclock(), kind: "tool", actor: "agent", payload: { name: call.name, args: effectiveArgs, ok: result.ok } });
   } catch (e) {
-    ctx.audit?.append({ ts: nowWallclock(), kind: "tool", actor: "agent", payload: { name: call.name, args: call.args, ok: false, error: String(e) } });
-    return {
+    ctx.audit?.append({ ts: nowWallclock(), kind: "tool", actor: "agent", payload: { name: call.name, args: effectiveArgs, ok: false, error: String(e) } });
+    result = {
       callId: call.id,
       ok: false,
       output: null,
@@ -55,6 +55,9 @@ export async function runTool(
       degraded: true,
     };
   }
+  // §7 post-hook (input-mutation + observability triad). Errors are isolated.
+  try { ctx.hooks?.postTool?.(call, result); } catch { /* a post-hook never fails the tool */ }
+  return result;
 }
 
 /**
@@ -76,9 +79,41 @@ export async function runToolBatch(
     if ("ok" in r) executable.push(r.ok);
     else repaired.push({ callId: c.id, ok: false, output: null, error: `malformed tool_call: ${r.reason}` });
   }
-  // Independent calls run in parallel (§4 tool-dispatch; pi model).
-  const results = await Promise.all(executable.map((c) => runTool(c, ctx, registry)));
-  return aggregate([...repaired, ...results]);
+
+  // §7 CC7/R28: pre-hooks are AWAITED before the ask-rule match (step 4) reads
+  // them. Collect each call's {override, args} (input-mutation + override triad).
+  const pre = await Promise.all(executable.map(async (c) => {
+    if (!ctx.hooks?.preTool) return { override: undefined, args: c.args };
+    try {
+      const h = await ctx.hooks.preTool(c);
+      return { override: h?.override, args: h?.args ?? c.args };
+    } catch {
+      return { override: undefined, args: c.args };
+    }
+  }));
+
+  // §7 R26-D: concurrent-approval serialization. Tools needing a human prompt
+  // (ask-rule / hook-Ask / DangerFullAccess) run SEQUENTIALLY (one prompt at a
+  // time); the rest run in parallel. A Deny never cancels siblings.
+  const promptCalls: { call: ToolCall; idx: number }[] = [];
+  const parallelCalls: { call: ToolCall; idx: number }[] = [];
+  executable.forEach((c, i) => {
+    const decision = requiresApproval(c, ctx, registry, pre[i]!.override);
+    (decision.needsHumanPrompt ? promptCalls : parallelCalls).push({ call: c, idx: i });
+  });
+
+  // Order preservation: results indexed by original position.
+  const out: ToolResult[] = new Array(executable.length);
+  // parallel batch (no approval)
+  await Promise.all(parallelCalls.map(async ({ call, idx }) => {
+    out[idx] = await runTool(call, ctx, registry, pre[idx]!.override, pre[idx]!.args);
+  }));
+  // sequential batch (approval — one prompt at a time)
+  for (const { call, idx } of promptCalls) {
+    out[idx] = await runTool(call, ctx, registry, pre[idx]!.override, pre[idx]!.args);
+  }
+
+  return aggregate([...repaired, ...out.filter((r) => r !== undefined)]);
 }
 
 /** aggregate — all ok ⇒ ToolResult[]; else DegradedResult{results, failedCallIds}. */
