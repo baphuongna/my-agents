@@ -32,7 +32,8 @@ await build({
   outfile: "dist/mya.js",
   // react-devtools-core is stubbed (optional dev-only inside ink).
   // ws is CJS that uses dynamic require — keep as external runtime dep (serve mode only).
-  external: ["ws"],
+  // ws is now bundled (was external — failed standalone).
+  external: [],
   plugins: [stubPlugin],
   legalComments: "none",
   minify: false,

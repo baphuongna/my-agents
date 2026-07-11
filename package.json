@@ -18,7 +18,8 @@
   "files": [
     "dist/mya.js",
     "packages/*/dist/**/*.js",
-    "packages/*/package.json"
+    "packages/*/package.json",
+    "!packages/*/dist/**/*.test.js"
   ],
   "scripts": {
     "build": "tsc -b",
