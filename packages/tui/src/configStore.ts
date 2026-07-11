@@ -15,8 +15,8 @@
  * For a real production store use a library like `smol-toml`. For the TUI
  * `/config` surface this minimal implementation is sufficient.
  */
-import { readFile, writeFile, mkdir, realpath } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { readFile, writeFile, mkdir, realpath, lstat } from "node:fs/promises";
+import { join, dirname, sep } from "node:path";
 import { homedir } from "node:os";
 
 /** The allowed config keys. Anything else → rejected. */
@@ -111,12 +111,24 @@ export async function writeConfig(key: string, value: string, filePath = configP
   const lines = Object.entries(existing).sort(([a], [b]) => a.localeCompare(b));
   const body = "# mya runtime config — written by /config\n" + lines.map(([k, v]) => `${k} = ${safeValue(v)}`).join("\n") + "\n";
   // Contain: must write to ~/.my-agent/ only (no symlinks escape).
+  // C1 fix: mkdir FIRST so fresh installs work (realpath on non-existent dir returns null).
+  // H1 fix: strict path-component containment (root + path.sep) — startsWith alone is unsafe.
+  // F5-1 fix: also reject config.toml if it's a pre-existing symlink
+  // (writeFile would follow it and clobber the symlink target).
   const dir = dirname(filePath);
-  const realDir = await realpath(dir).catch(() => null);
-  if (!realDir || !realDir.startsWith(homedir())) {
+  await mkdir(dir, { recursive: true });
+  const realDir = await realpath(dir);
+  const root = homedir();
+  const rootWithSep = root.endsWith(sep) ? root : root + sep;
+  if (!realDir || !(realDir === root || realDir.startsWith(rootWithSep))) {
     throw new Error(`refusing to write config outside $HOME: ${filePath}`);
   }
-  await mkdir(dir, { recursive: true });
+  // Reject symlink at the config file itself (i.e. ~/.my-agent/config.toml being
+  // a symlink to somewhere else).
+  const fileLs = await lstat(filePath).catch(() => null);
+  if (fileLs && fileLs.isSymbolicLink()) {
+    throw new Error(`refusing to write through a symlink: ${filePath}`);
+  }
   await writeFile(filePath, body, "utf8");
 }
 

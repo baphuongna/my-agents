@@ -322,7 +322,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
       if (!args) return "usage: /import <file>";
       const raw = args.startsWith("/") ? args : join(ctx.session.cwd, args);
       // F4 fix: contain reads to cwd + ~/.my-agent only.
-      const fullPath = await containExistingPath(raw, defaultReadRoots(ctx.session.cwd));
+      const fullPath = await containExistingPath(raw, await defaultReadRoots(ctx.session.cwd));
       if (!fullPath) return `refused: "${raw}" is outside cwd and ~/.my-agent`;
       const n = await ctx.session.importFrom(fullPath);
       return `imported ${n} entries from ${fullPath}`;
