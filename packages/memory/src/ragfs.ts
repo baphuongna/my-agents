@@ -200,3 +200,49 @@ export class StaticContextSource implements ContextSource {
     return out;
   }
 }
+
+/**
+ * A knowledge:// ContextSource backed by a TypedGraph (Phase 9). Exposes the
+ * typed knowledge graph (spec §8 R35) over the RAGFS knowledge:// namespace.
+ * `read("knowledge://<doc>")` returns a serialized KG entity card; `grep()`
+ * returns every entity whose name/aliases match the pattern.
+ */
+export class KnowledgeSource implements ContextSource {
+  readonly scheme = "knowledge" as const;
+  /** doc-id → human-readable summary string (the "doc card"). */
+  private readonly cards = new Map<string, string>();
+
+  constructor(private readonly graph: import("./graph.js").TypedGraph) {}
+
+  /** Register a human-readable summary for an entity (used by read()). */
+  registerCard(entityId: string, summary: string): void {
+    this.cards.set(entityId, summary);
+  }
+
+  async list(query: MemoryQuery): Promise<MemoryHit[]> {
+    const q = (query.text ?? "").trim().toLowerCase();
+    const hits: MemoryHit[] = [];
+    for (const e of this.graph.allEntities()) {
+      if (!q || e.id.toLowerCase().includes(q) || e.aliases.some((a) => a.toLowerCase().includes(q))) {
+        hits.push({ id: e.id, role: SCHEME_ROLE.knowledge, content: this.cards.get(e.id) ?? `(entity ${e.id})`, score: q ? 1 : 1 });
+      }
+    }
+    return hits.slice(0, query.topK ?? hits.length);
+  }
+
+  async read(uri: string): Promise<string> {
+    const parsed = parseRagfsUri(uri);
+    if (!parsed) throw new Error(`ragfs.knowledge: invalid uri ${uri}`);
+    const e = this.graph.allEntities().find((x) => x.id === parsed.rest);
+    if (!e) throw new Error(`ragfs.knowledge: not found ${uri}`);
+    return this.cards.get(e.id) ?? JSON.stringify(e);
+  }
+
+  async grep(pattern: string): Promise<MemoryHit[]> {
+    let re: RegExp;
+    try { re = new RegExp(pattern, "i"); } catch { return []; }
+    return this.graph.allEntities()
+      .filter((e) => re.test(e.id) || e.aliases.some((a) => re.test(a)))
+      .map((e) => ({ id: e.id, role: SCHEME_ROLE.knowledge, content: this.cards.get(e.id) ?? `(entity ${e.id})`, score: 1 }));
+  }
+}

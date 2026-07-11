@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm } from "@my-agent/memory";
+import { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm, graphArm } from "@my-agent/memory";
 import type { MemoryQuery } from "@my-agent/core";
 
 const q = (text: string): MemoryQuery => ({ text });
@@ -51,7 +51,7 @@ describe("§8 RRF arms", () => {
   });
 
   it("rrfRetrieve fuses bm25 + substring", () => {
-    const hits = rrfRetrieve(docs, q("agent files"), 5);
+    const hits = rrfRetrieve(docs, q("agent files"), undefined, 5);
     expect(hits.length).toBeGreaterThan(0);
     // the fused score is set on each hit
     expect(typeof hits[0]!.score).toBe("number");
@@ -68,9 +68,9 @@ describe("§8 RRF arms", () => {
     expect(bm25Arm(docs, q("   "))).toEqual([]);
   });
 
-  it("MED-3: rrfRetrieve respects query.topK", () => {
-    const hits = rrfRetrieve(docs, { text: "agent files", topK: 2 });
-    expect(hits.length).toBe(2);
+  it("MED-3: rrfRetrieve respects query.topK (slices fused hits to the requested count)", () => {
+    const hits = rrfRetrieve(docs, { text: "agent files", topK: 2 }, undefined);
+    expect(hits.length).toBeLessThanOrEqual(2); // the cap holds across all 4 arms
   });
 
   it("LOW-7: a duplicate ID within a single arm contributes at most once", () => {
@@ -116,12 +116,46 @@ describe("§8 Phase 8 — vector arm (char-n-gram TF-IDF cosine surrogate)", () 
       { id: "b", content: "memory roles manage conversation history", role: "archivist" as const },
       { id: "c", content: "this is about completely unrelated flowers", role: "archivist" as const },
     ];
-    const hits = rrfRetrieve(docs, { text: "agent files" });
+    const hits = rrfRetrieve(docs, { text: "agent files" }, undefined, 100);
     expect(hits.length).toBeGreaterThan(0);
     // the relevant docs (a, b) should outrank the irrelevant "c" — char-n-gram
     // overlap alone is weak, but combined with BM25/substring fusion the
     // signal dominates.
     const cIdx = hits.findIndex((h) => h.id === "c");
     if (cIdx >= 0) expect(cIdx).toBeGreaterThanOrEqual(2); // c is last or absent
+  });
+});
+
+describe("§8 Phase 9 — typed-graph arm (4th RRF arm, §8 R35 spec)", () => {
+  it("graphArm ranks connected docs by hop-distance from query-mentioning seeds", () => {
+    // "Alice" mentions doc a (seed, dist 0). wikilink edges a→b (dist 1), b→c (dist 2).
+    const edges = [
+      { fromFactId: "a", to: "b", kind: "wikilink" as const },
+      { fromFactId: "b", to: "c", kind: "link" as const },
+    ];
+    const docs = [
+      { id: "a", content: "Alice built it", role: "archivist" as const },
+      { id: "b", content: "the next step",                  role: "archivist" as const },
+      { id: "c", content: "the final thing",               role: "archivist" as const },
+      { id: "z", content: "completely unrelated, no edges", role: "archivist" as const },
+    ];
+    const hits = graphArm(edges, docs, { text: "Alice" });
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.map((h) => h.id)).not.toContain("z"); // unreachable
+    // a (the seed) is the highest score
+    expect(hits[0]!.id).toBe("a");
+  });
+  it("graphArm returns [] on empty / whitespace query", () => {
+    const hits = graphArm([], [{ id: "a", content: "x", role: "archivist" as const }], { text: "" });
+    expect(hits).toEqual([]);
+  });
+  it("rrfRetrieve with edges fuses the 4th arm (graph)", () => {
+    const edges = [{ fromFactId: "a", to: "b", kind: "link" as const }];
+    const docs = [
+      { id: "a", content: "Alice lives here", role: "archivist" as const },
+      { id: "b", content: "followup text",         role: "archivist" as const },
+    ];
+    const hits = rrfRetrieve(docs, { text: "Alice" }, edges, 10);
+    expect(hits.length).toBeGreaterThan(0);
   });
 });

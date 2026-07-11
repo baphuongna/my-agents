@@ -9,9 +9,13 @@ export type { MemoryBackend } from "./backends.js";
 export { MemoryManagerImpl, stubMemoryManager } from "./manager.js";
 export { ArchivistRole, GoalsRole, cleanTurnToMarkdown } from "./roles.js";
 export type { MemoryRole } from "./roles.js";
-export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm } from "./rrf.js";
+
 export type { RetrievalArm } from "./rrf.js";
-export { RagfsRouter, StaticContextSource, parseRagfsUri, RAGFS_BLOCKED } from "./ragfs.js";
-export type { ContextSource, RagfsUri, RagfsScanner } from "./ragfs.js";
 export { Brain } from "./brain.js";
 export type { Fact, Take, BrainPage, FactKind, FactVisibility } from "./brain.js";
+export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm, graphArm } from "./rrf.js";
+export { RagfsRouter, StaticContextSource, KnowledgeSource, parseRagfsUri, RAGFS_BLOCKED } from "./ragfs.js";
+export { makeRagfsScanner, allowAllScanner, denyAllScanner } from "./ragfs-bridge.js";
+export type { ContextSource, RagfsUri, RagfsScanner } from "./ragfs.js";
+export { TypedGraph } from "./graph.js";
+export type { KGEntity, KGRelation } from "./graph.js";

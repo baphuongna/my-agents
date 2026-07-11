@@ -118,12 +118,18 @@ MLX, web session-cookie+CSRF) remain as noted above.
    bounded window) ✓; vector arm (Phase 8 char-n-gram TF-IDF cosine surrogate
    for HNSW; real HNSW drops in by replacing the arm) ✓; Brain dream-cycle
    backlinks (zero-LLM typed-edge extraction) + purge (validUntil) ✓.
-9. **Phase 9 (open — env-limited / very large):** DAP live adapter
-   (vscode-js-debug standalone — env limitation); §8 typed-graph arm for RRF;
-   §8 knowledge:// KnowledgeGraph source; the remaining 19 phases of the
-   22-phase dream cycle (only backlinks + purge + consolidate live); no-
-   explicit-any ESLint (awaiting a TS-7-compatible static analyzer); ragfs-
-   scanner wiring for production deploys.
+9. **Phase 9 (§8 knowledge graph + typed-graph RRF arm + ragfs scanner wiring) — DONE:**
+   TypedGraph (R35 entity graph + BFS hop-distance query + knowledgeGraphSpec
+   R36 shape) ✓; graphArm (Phase 9 — the 4th arm of §8 R35 4-arm RRF: typed-edge
+   hop-distance from query-mentioning seeds) ✓; KnowledgeSource (ragfs
+   knowledge:// backed by TypedGraph) ✓; ragfs-bridge (production scanner wiring:
+   makeRagfsScanner + allowAllScanner + denyAllScanner; host wraps prompts'
+   scanInject) ✓.
+10. **Phase 10 (open — env-limited / very large):** DAP live adapter
+    (vscode-js-debug standalone — env limitation); the remaining 18 phases of
+    the 22-phase dream cycle (only backlinks + purge + consolidate live);
+    no-explicit-any ESLint (awaiting a TS-7-compatible static analyzer); ragfs-
+    scanner production wiring in the agent loop.
 
 
 ## What IS solidly built (don't lose this)

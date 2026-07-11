@@ -149,21 +149,92 @@ export function vectorArm(docs: { id: string; content: string; role?: MemoryRole
 }
 
 /**
- * Fuse the BM25 + substring + vector arms (all zero-dep). A real HNSW/graph arm
- * drops in by passing more RetrievalArms to reciprocalRankFuse. Respects
- * `query.topK` (MED-3 review). Uses a generous candidate window so a doc
- * ranked #51 in two arms can still outrank a rank-1 single-arm doc.
+ * Typed-graph arm (Phase 9 — the 4th arm of the §8 R35 4-arm RRF spec).
+ *
+ * Walks a typed edge graph seeded from `docs` (the graph is the zero-LLM
+ * backlinks + an operator-declared KG). Rank by hop-distance from entities
+ * matching the query: distance 0 = query itself; distance 1 = direct neighbor;
+ * score = 1 / (1 + dist). Entities not reachable within `maxDepth` hops are
+ * absent from the hits.
+ */
+export function graphArm(
+  edges: { fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }[],
+  docs: { id: string; content: string; role?: MemoryRoleId }[],
+  query: MemoryQuery,
+  candidateK = 50,
+  maxDepth = 2,
+): MemoryHit[] {
+  // Build a per-call adjacency: seed entities are the FIRST WORD of doc ids
+  // and the doc's own "bare"-extracted tokens (lightweight seed extraction).
+  // Phase 9 keeps this per-call — a hot-loop caller should build the graph once.
+  const adj = new Map<string, { from: string; to: string; kind: string }[]>();
+  for (const e of edges) {
+    const seed = e.fromFactId; // doc id that originated the edge
+    const list = adj.get(seed);
+    if (list) list.push({ from: seed, to: e.to, kind: e.kind });
+    else adj.set(seed, [{ from: seed, to: e.to, kind: e.kind }]);
+  }
+  // Seed entry: docs whose content mentions a query token directly.
+  const q = (query.text ?? "").trim().toLowerCase();
+  if (!q) return [];
+  const terms = q.split(/\s+/).filter(Boolean);
+  const seeds = new Set<string>();
+  for (const d of docs) {
+    const lc = d.content.toLowerCase();
+    if (terms.some((t) => lc.includes(t))) seeds.add(d.id);
+  }
+  if (seeds.size === 0) return [];
+  // BFS hop-distance.
+  const rank: Array<{ id: string; score: number; doc: { id: string; content: string; role?: MemoryRoleId } }> = [];
+  const seen = new Set<string>();
+  let frontier: { id: string; dist: number }[] = [...seeds].map((id) => ({ id, dist: 0 }));
+  while (frontier.length > 0 && rank.length < candidateK) {
+    const next: typeof frontier = [];
+    for (const node of frontier) {
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      const doc = docs.find((d) => d.id === node.id);
+      if (doc) rank.push({ id: node.id, score: 1 / (1 + node.dist), doc });
+      if (node.dist >= maxDepth) continue;
+      for (const e of adj.get(node.id) ?? []) {
+        // graph-edge typed walk: only "wikilink" + "link" edges (typed) form
+        // the graph; "bare" edges are ambiguous and would inflate the walk.
+        if (e.kind === "bare") continue;
+        if (!seen.has(e.to)) next.push({ id: e.to, dist: node.dist + 1 });
+      }
+    }
+    frontier = next;
+  }
+  return rank
+    .sort((a, b) => b.score - a.score)
+    .slice(0, candidateK)
+    .map((r) => ({
+      id: r.id,
+      content: r.doc.content,
+      role: (r.doc.role ?? "working") as MemoryRoleId,
+      score: r.score,
+    }));
+}
+
+/**
+ * Fuse the BM25 + substring + vector + graph arms (all four spec-required arms).
+ * Respects `query.topK` (MED-3 review). Uses a generous candidate window so a
+ * doc ranked #51 in two arms can still outrank a rank-1 single-arm doc.
  */
 export function rrfRetrieve(
   docs: { id: string; content: string; role?: MemoryRoleId }[],
   query: MemoryQuery,
+  edges?: { fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }[],
   topK?: number,
   candidateK = 100,
 ): MemoryHit[] {
   const outerTopK = topK ?? query.topK ?? 10;
+  // DBG
+  console.error("[DBG rrfRetrieve]", { topK, queryTopK: query.topK, outerTopK, docCount: docs.length });
   return reciprocalRankFuse([
     { name: "bm25", hits: bm25Arm(docs, query, candidateK) },
     { name: "substring", hits: substringArm(docs, query, candidateK) },
     { name: "vector", hits: vectorArm(docs, query, candidateK) },
+    { name: "graph", hits: edges ? graphArm(edges, docs, query, candidateK) : [] },
   ], outerTopK);
 }
