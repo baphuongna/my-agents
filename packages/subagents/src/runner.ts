@@ -95,6 +95,9 @@ export class InProcessRunner {
     // CC2: refund unused pre-charge on ANY terminal state (incl. fail/cancel).
     this.opts.parentBudget.releasePrecharge(childId);
 
+    // §10.1: cleanup ALWAYS runs (even on crash / yield-validation failure / merge
+    // throw). try/finally guarantees the sandbox temp dir never leaks (review HIGH-3).
+    try {
     if (terminal.state === "Completed") {
       const text = collected.join("");
       const data = tryParseJson(text);
@@ -120,24 +123,23 @@ export class InProcessRunner {
       let changedPaths: string[] = [];
       if (iso && s.parentWorkspace) {
         const merge = iso.mergeBack(s.parentWorkspace);
-        iso.cleanup();
         if (!merge.ok) {
           return { ok: false, error: `cow-merge conflict: ${merge.conflicts.map((c) => c.path).join(", ")}` };
         }
         changedPaths = [...merge.merged, ...merge.added];
-      } else {
-        iso?.cleanup();
       }
       return { ok: true, data, changedPaths };
     }
-    // non-Completed: a failed/cancelled child never merges back; always clean up.
-    iso?.cleanup();
+    // non-Completed: a failed/cancelled child never merges back.
     return {
       ok: false,
       error: terminal.state === "Failed"
         ? `subagent failed: ${terminal.error.context["reason"] ?? terminal.error.phase}`
         : `subagent ${terminal.state}`,
     };
+    } finally {
+      iso?.cleanup();
+    }
   }
 }
 

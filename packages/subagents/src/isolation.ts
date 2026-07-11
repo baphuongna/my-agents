@@ -19,6 +19,7 @@ export type IsoBackend = "file_copy" | "overlayfs" | "reflink_apfs" | "btrfs" | 
 
 export interface ConflictError {
   path: string;
+  /** A short descriptor of each side (binary-safe: byte-length or text snippet). */
   baseContent: string | null;
   childContent: string;
   parentContent: string | null;
@@ -106,41 +107,34 @@ const writes = new Map<string, string>(); // relPath → content
       return out;
     },
     mergeBack(parentRoot: string): MergeResult {
-      const merged: string[] = [];
-      const added: string[] = [];
+      // Two-pass (review HIGH-2): dry-run first to detect ALL conflicts, then
+      // apply atomically only if zero conflicts — a conflict never leaves the
+      // parent partially merged. Uses Buffers (review HIGH-1: utf8 corrupts binaries).
+      const decisions: { rel: string; kind: "merge" | "add"; content: Buffer; parentFile: string }[] = [];
       const conflicts: ConflictError[] = [];
-      // Scan the WHOLE sandbox root (not just ws.write() callers — the child's
-      // tools write via fs directly to sandboxRoot). Compare each file to base.
       for (const rel of walkFiles(sandboxRoot)) {
         assertContained(sandboxRoot, rel); assertContained(base, rel); assertContained(parentRoot, rel);
         const sandboxFile = join(sandboxRoot, rel);
         const baseFile = join(base, rel);
         const parentFile = join(parentRoot, rel);
-        const childContent = readFileSync(sandboxFile, "utf8");
-        const baseContent = existsSync(baseFile) ? readFileSync(baseFile, "utf8") : null;
-        const parentContent = existsSync(parentFile) ? readFileSync(parentFile, "utf8") : null;
-        // New file in child (not in base/parent) → add to parent.
-        if (baseContent === null && parentContent === null) {
-          mkdirSync(dirname(parentFile), { recursive: true });
-          writeFileSync(parentFile, childContent, "utf8");
-          added.push(rel);
-          continue;
-        }
-        // Child unchanged from base → parent wins (parent moved, child idle).
-        if (childContent === baseContent) continue;
-        // Parent unchanged from base → fast-forward child's version.
-        if (parentContent === baseContent) {
-          mkdirSync(dirname(parentFile), { recursive: true });
-          writeFileSync(parentFile, childContent, "utf8");
-          merged.push(rel);
-          continue;
-        }
-        // BOTH changed + differ → conflict (never silently clobber).
-        if (childContent !== parentContent) {
-          conflicts.push({ path: rel, baseContent, childContent, parentContent });
-        }
+        const childBuf = readFileSync(sandboxFile); // Buffer — binary-safe
+        const baseBuf = existsSync(baseFile) ? readFileSync(baseFile) : null;
+        const parentBuf = existsSync(parentFile) ? readFileSync(parentFile) : null;
+        if (baseBuf === null && parentBuf === null) { decisions.push({ rel, kind: "add", content: childBuf, parentFile }); continue; }
+        if (baseBuf !== null && childBuf.equals(baseBuf)) continue; // child unchanged → parent wins
+        if (parentBuf !== null && baseBuf !== null && parentBuf.equals(baseBuf)) { decisions.push({ rel, kind: "merge", content: childBuf, parentFile }); continue; }
+        // parent deleted (parentBuf null) OR both changed + differ → conflict
+        if (parentBuf === null || (baseBuf !== null && !childBuf.equals(parentBuf))) conflicts.push({ path: rel, baseContent: bufDesc(baseBuf), childContent: bufDesc(childBuf)!, parentContent: bufDesc(parentBuf) });
       }
-      return conflicts.length === 0 ? { ok: true, merged, added } : { ok: false, conflicts, merged };
+      if (conflicts.length > 0) return { ok: false, conflicts, merged: [] }; // atomic: nothing applied
+      const merged: string[] = [];
+      const added: string[] = [];
+      for (const d of decisions) {
+        mkdirSync(dirname(d.parentFile), { recursive: true });
+        writeFileSync(d.parentFile, d.content);
+        (d.kind === "add" ? added : merged).push(d.rel);
+      }
+      return { ok: true, merged, added };
     },
     write(relPath: string, content: string): void {
       assertContained(sandboxRoot, relPath);
@@ -193,4 +187,10 @@ function walkFiles(root: string, dir = ""): string[] {
     else if (ent.isFile()) out.push(rel);
   }
   return out;
+}
+
+/** Describe a buffer for a ConflictError (binary-safe: never decode non-utf8). */
+function bufDesc(b: unknown): string | null {
+  if (b === null || b === undefined) return null;
+  return `${(b as Uint8Array).length} bytes`;
 }

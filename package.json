@@ -17,14 +17,13 @@
     "clean": "tsc -b --clean && rm -rf packages/*/dist",
     "natives:build": "cargo build -p my-agent-natives",
     "lint": "node scripts/lint.mjs",
-    "lint:deps": "madge --circular --extensions ts packages/tui/src/index.ts packages/rpc/src/index.ts packages/sdk/src/index.ts packages/print/src/index.ts",
+    "lint:deps": "node scripts/lint-deps.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.7.2",
     "@types/node": "^22.20.1",
-    "madge": "^8.0.0",
     "typescript": "^7.0.2",
     "vitest": "^2.1.9"
   }

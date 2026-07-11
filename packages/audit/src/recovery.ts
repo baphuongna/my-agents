@@ -14,7 +14,8 @@ export type FailureScenario =
   | "InvalidOutput"
   | "PermissionDenied"
   | "Provider5xx"
-  | "ApprovalExpired";
+  | "ApprovalExpired"
+  | "Unknown";
 
 /** A single recovery step. */
 export type RecoveryStep =
@@ -87,6 +88,9 @@ export interface RecoveryAttempt {
   scenario: FailureScenario;
   stepsTaken: number;
   exhausted: boolean;
+  /** MEDIUM-2 (review): did the recipe give up because an apply threw? The host
+   * must distinguish this from a clean bounded-exhaustion. */
+  aborted: boolean;
   policy: EscalationPolicy;
 }
 
@@ -100,19 +104,22 @@ export async function runRecovery(
 ): Promise<RecoveryAttempt> {
   const recipe = recipes.find((r) => r.detect(err));
   if (!recipe) {
-    return { scenario: "PermissionDenied", stepsTaken: 0, exhausted: true, policy: "surface" };
+    // MEDIUM-1 (review): unknown errors are "Unknown", NOT mislabeled PermissionDenied.
+    return { scenario: "Unknown", stepsTaken: 0, exhausted: true, aborted: false, policy: "surface" };
   }
   const { steps, bound, escalateAfter } = recipe.classify(err);
   let stepsTaken = 0;
+  let aborted = false;
   for (let i = 0; i < Math.min(steps.length, bound); i++) {
     try {
       await recipe.apply(steps[i]!, err);
       stepsTaken++;
     } catch {
-      break; // an apply failure stops the recipe (don't infinite-loop)
+      aborted = true; // MEDIUM-2: an apply failure aborts the recipe (distinct from exhaustion)
+      break;
     }
     if (stepsTaken >= escalateAfter) break;
   }
   const exhausted = stepsTaken >= escalateAfter || steps.length === 0;
-  return { scenario: recipe.scenario, stepsTaken, exhausted, policy: recipe.onExhaust };
+  return { scenario: recipe.scenario, stepsTaken, exhausted, aborted, policy: recipe.onExhaust };
 }

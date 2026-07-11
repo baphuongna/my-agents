@@ -40,7 +40,7 @@ describe("§12 HandleLruCache — bounded LRU + idle-TTL eviction", () => {
     cache.set("a", {});
     // simulate time passing beyond TTL by backdating lastUsed
     const entries = (cache as unknown as { entries: Map<string, { lastUsed: number }> }).entries;
-    entries.get("a")!.lastUsed = Date.now() - 1000;
+    entries.get("a")!.lastUsed = 1; // backdate to epoch (invariant #10: no Date.now in tests)
     const swept = cache.sweepIdle();
     expect(swept).toBe(1);
     expect(cache.get("a")).toBeUndefined();

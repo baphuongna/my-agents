@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { defaultRecoveryRecipes, runRecovery, loadTrust, promoteTrust, safeContextOnly, canAutoApprove } from "@my-agent/audit";
 import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,36 +32,52 @@ describe("§14.3 RecoveryRecipe FSM — detect → classify → bounded apply �
     expect(r.exhausted).toBe(true);
   });
 
-  it("an unknown error → exhausted surface (no infinite retry)", async () => {
+  it("MEDIUM-1: an unknown error is 'Unknown' (not mislabeled PermissionDenied)", async () => {
     const recipes = defaultRecoveryRecipes(async () => {});
     const r = await runRecovery(err("memory", "weird unknown"), recipes);
+    expect(r.scenario).toBe("Unknown");
     expect(r.exhausted).toBe(true);
   });
 
-  it("an apply failure stops the recipe (no infinite loop)", async () => {
+  it("an apply failure sets aborted=true (distinct from clean exhaustion)", async () => {
     let calls = 0;
     const recipes = defaultRecoveryRecipes(async () => { calls++; throw new Error("apply broke"); });
     const r = await runRecovery(err("provider", "fetch timeout"), recipes);
     expect(calls).toBe(1); // stopped after the first apply failure
     expect(r.stepsTaken).toBe(0);
+    expect(r.aborted).toBe(true); // MEDIUM-2: the host can tell it gave up via apply-failure
   });
 });
 
-describe("§14.3 ProjectTrust — per-root trust gate + persistence", () => {
-  it("loadTrust defaults to untrusted when no trust.json", () => {
+describe("§14.3 ProjectTrust — per-root trust gate + USER-OWNED persistence", () => {
+  beforeEach(() => {
+    // isolate the user-owned trust store to a temp dir (review: never pollute ~)
+    process.env.MY_AGENT_TRUST_DIR = mkdtempSync(join(tmpdir(), "trust-store-"));
+  });
+
+  it("loadTrust defaults to untrusted when no user-owned record exists", () => {
     const root = mkdtempSync(join(tmpdir(), "trust-"));
     const t = loadTrust(root);
     expect(t.level).toBe("untrusted");
     expect(t.source).toBe("default");
-    expect(safeContextOnly(t)).toBe(true); // before trust: safe context only
-    expect(canAutoApprove(t)).toBe(false); // no auto-approve when untrusted
+    expect(safeContextOnly(t)).toBe(true);
+    expect(canAutoApprove(t)).toBe(false);
   });
 
-  it("promoteTrust persists trust.json + elevates level", () => {
+  it("CRITICAL-1 fix: a project committing {level:privileged} does NOT self-elevate", () => {
+    const root = mkdtempSync(join(tmpdir(), "trust-"));
+    const { mkdirSync, writeFileSync } = require("node:fs");
+    mkdirSync(join(root, ".my-agent"), { recursive: true });
+    writeFileSync(join(root, ".my-agent", "trust.json"), '{"level":"privileged","trustedAt":0}');
+    const t = loadTrust(root); // MUST ignore the in-project file
+    expect(t.level).toBe("untrusted");
+    expect(canAutoApprove(t)).toBe(false);
+  });
+
+  it("promoteTrust writes the USER-OWNED store (not the project) + loadTrust reads it", () => {
     const root = mkdtempSync(join(tmpdir(), "trust-"));
     promoteTrust(root, "trusted");
-    const file = join(root, ".my-agent/trust.json");
-    expect(existsSync(file)).toBe(true);
+    expect(existsSync(join(root, ".my-agent", "trust.json"))).toBe(false); // NOT in project
     const t2 = loadTrust(root);
     expect(t2.level).toBe("trusted");
     expect(t2.source).toBe("persisted");
@@ -74,11 +90,13 @@ describe("§14.3 ProjectTrust — per-root trust gate + persistence", () => {
     expect(canAutoApprove(t)).toBe(true);
   });
 
-  it("a corrupt trust.json fails-safe to untrusted", () => {
+  it("a corrupt user-owned record fails-safe to untrusted", () => {
     const root = mkdtempSync(join(tmpdir(), "trust-"));
-    const { mkdirSync, writeFileSync } = require("node:fs");
-    mkdirSync(join(root, ".my-agent"), { recursive: true });
-    writeFileSync(join(root, ".my-agent/trust.json"), "{ not valid json");
+    promoteTrust(root, "trusted");
+    const { writeFileSync } = require("node:fs");
+    const canon = loadTrust(root).root;
+    const key = require("node:crypto").createHash("sha256").update(canon).digest("hex").slice(0, 32);
+    writeFileSync(join(process.env.MY_AGENT_TRUST_DIR!, `${key}.json`), "{ not valid json");
     const t = loadTrust(root);
     expect(t.level).toBe("untrusted"); // fail-safe
   });

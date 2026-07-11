@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.0"
+          components: clippy
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # §18 invariant enforcement (TS-7-compatible grep guards — ESLint's
+      # @typescript-eslint parser is incompatible with the native Go compiler).
+      - name: Lint (invariant #10 — single time helper)
+        run: npm run lint
+      - name: Lint deps (invariant #19 — no cross-transport imports)
+        run: npm run lint:deps
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Clippy (natives)
+        working-directory: crates/natives
+        run: cargo clippy --all-targets -- -D warnings
