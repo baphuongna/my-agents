@@ -69,6 +69,8 @@ export interface InkSessionRef {
   setStatus: (s: InkStatus) => void;
   /** Clear the transcript. */
   clear: () => void;
+  /** F2 fix: clear the kill-ring (called by /clear). */
+  clearKillRing: () => void;
   /** Get the current draft text (e.g. for tests). */
   getDraft: () => string;
 }
@@ -141,6 +143,9 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       setApproval: (a: InkApproval | null) => setApproval(a),
       setStatus: (s: InkStatus) => setStatus(s),
       clear: () => setLines([]),
+      // F2 fix: called by /clear to drop the kill-ring (so secrets killed
+      // earlier aren't yankable back into a "fresh" session).
+      clearKillRing: () => killRingRef.current.clear(),
       getDraft: () => draft,
     }),
     [draft],
@@ -170,19 +175,24 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       const args = space >= 0 ? trimmed.slice(space + 1).trim() : "";
       const def = props.commands.find((c) => c.name === cmd);
       if (!def) return false;
+      // F2 fix: clear the kill-ring on /clear so secrets killed earlier
+      // can't be yanked back into a "fresh" session.
+      if (cmd === "clear") killRingRef.current.clear();
       try {
         const out = def.run ? await def.run(args, { session: { cwd: process.cwd(), setModel: () => {}, getModel: () => "?", getProvider: () => "?", getSpent: () => 0, getBudget: () => 0, getMemoryFacts: () => 0, getTools: () => [], getSkills: () => [], getMcpServers: () => [], openSelector: async () => null, clearTranscript: () => {}, exportTranscript: () => "", compact: async () => 0, importFrom: async () => 0, setConfig: async () => {}, getConfig: async () => undefined, listConfig: async () => ({}), setMode: () => {}, getMode: () => "Prompt", tree: async () => "" } }) : null;
-        if (typeof out === "string" && out) appendOrReplace({ seq: 0, kind: "info", text: out });
+        // F4 fix: sanitize slash command output before rendering (defense vs.
+        // a hostile command that echoes untrusted text into the transcript).
+        if (typeof out === "string" && out) appendOrReplace({ seq: 0, kind: "info", text: sanitize(out) });
       } catch (e) {
         appendOrReplace({
           seq: 0,
           kind: "error",
-          text: `/${cmd} error: ${(e as Error).message}`,
+          text: sanitize(`/${cmd} error: ${(e as Error).message}`),
         });
       }
       return true;
     },
-    [props.commands, appendOrReplace],
+    [props.commands, appendOrReplace, killRingRef],
   );
 
   /** Submit handler. */
@@ -195,7 +205,8 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
       const next = prev.concat(trimmed);
       return next.length > MAX_PROMPT_HISTORY ? next.slice(-MAX_PROMPT_HISTORY) : next;
     });
-    appendOrReplace({ seq: 0, kind: "user", text: trimmed });
+    // F4 fix: sanitize the user's prompt (defense against pasting raw ESC).
+    appendOrReplace({ seq: 0, kind: "user", text: sanitize(trimmed) });
     setDraft("");
     const wasSlash = await trySlash(trimmed);
     if (!wasSlash) {
@@ -221,7 +232,8 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
         appendOrReplace({
           seq: 0,
           kind: "approval",
-          text: `[Allow] ${approval.name}`,
+          // F4 fix: sanitize — approval.name is assistant-controlled.
+          text: sanitize(`[Allow] ${approval.name}`),
         });
         setApproval(null);
         return;
@@ -231,7 +243,8 @@ export const InkSession = forwardRef<InkSessionRef, InkSessionProps>(function In
         appendOrReplace({
           seq: 0,
           kind: "approval",
-          text: `[Deny] ${approval.name}`,
+          // F4 fix: sanitize — approval.name is assistant-controlled.
+          text: sanitize(`[Deny] ${approval.name}`),
         });
         setApproval(null);
         return;
@@ -385,9 +398,11 @@ function ApprovalModal({ approval }: { approval: InkApproval }): React.ReactElem
       marginX={1}
     >
       <Text color={defaultTheme.approval} bold>approval required</Text>
-      <Text><Text color={defaultTheme.meta}>tool  </Text> <Text color={defaultTheme.tool}>{approval.name}</Text></Text>
-      <Text><Text color={defaultTheme.meta}>args  </Text> {argsShort}</Text>
-      <Text><Text color={defaultTheme.meta}>why   </Text> {approval.reason}</Text>
+      {/* F4 fix: sanitize the approval modal — approval.name and approval.reason
+          are fully assistant-controlled (from tool_call events). */}
+      <Text><Text color={defaultTheme.meta}>tool  </Text> <Text color={defaultTheme.tool}>{sanitize(approval.name)}</Text></Text>
+      <Text><Text color={defaultTheme.meta}>args  </Text> {sanitize(argsShort)}</Text>
+      <Text><Text color={defaultTheme.meta}>why   </Text> {sanitize(approval.reason)}</Text>
       <Box marginTop={1}>
         <Text color={defaultTheme.ok} bold>y</Text>
         <Text> allow   </Text>
@@ -465,6 +480,9 @@ function defaultCommands(opt: {
     category: c.category,
     run: async (args: string) => {
       // F6 fix: clear the kill-ring on /clear.
+      // F2 fix: kill-ring clear is done in trySlash (where the ref lives) when
+      // cmd === "clear". We don't try to do it from defaultCommands since this
+      // function can't see the component's ref.
       if (c.name === "clear") {
         opt.onClear?.();
         return "(transcript cleared)";

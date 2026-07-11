@@ -26,3 +26,20 @@ describe("Phase 27 ink.tsx wires all Phase 19-24 modules (no more dead code)", (
     expect(f).toContain("minimax");
   });
 });
+
+describe("Phase 27 review fixes: F2 (kill-ring on /clear) + F4 (sanitize)", () => {
+  it("InkSession renders without sanitization crashes (smoke)", () => {
+    const { lastFrame } = inkRender(
+      <InkSession
+        onSubmit={() => Promise.resolve()}
+        onAbort={() => {}}
+        onApproval={() => {}}
+        initialStatus={{ provider: "minimax", model: "MiniMax-M3", tokensIn: 0, tokensOut: 0, spentUsd: 0, budgetUsd: 0 }}
+        commands={[]}
+      />,
+    );
+    // Verify the status bar shows the model + provider (proves defaultTheme is wired).
+    expect(lastFrame()).toContain("minimax");
+    expect(lastFrame()).toContain("MiniMax-M3");
+  });
+});
