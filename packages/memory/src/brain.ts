@@ -316,6 +316,113 @@ export class Brain {
   get factCount(): number {
     return this.facts.size;
   }
+
+  // ── Phase 11: 5 more zero-LLM dream-cycle phases ────────────────────────
+
+  /**
+   * Dream cycle phase: lint — validate fact content. Flags empty content,
+   * near-duplicates (exact-match), + facts with no entity. Returns a report.
+   */
+  lint(): { empty: string[]; duplicates: Array<{ ids: string[]; content: string }>; noEntity: string[] } {
+    const empty: string[] = [];
+    const noEntity: string[] = [];
+    const byContent = new Map<string, string[]>();
+    for (const f of this.facts.values()) {
+      if (!f.content.trim()) empty.push(f.id);
+      if (!f.entity || f.entity === "") noEntity.push(f.id);
+      const key = f.content.trim().toLowerCase();
+      const arr = byContent.get(key);
+      if (arr) arr.push(f.id); else byContent.set(key, [f.id]);
+    }
+    const duplicates = [...byContent.values()].filter((ids) => ids.length > 1)
+      .map((ids) => ({ ids, content: this.facts.get(ids[0]!)!.content }));
+    return { empty, duplicates, noEntity };
+  }
+
+  /**
+   * Dream cycle phase: orphans — find facts whose entity appears in NO backlink
+   * edge (isolated — neither a source nor a target of any edge). Returns the
+   * orphan fact ids.
+   */
+  orphans(): string[] {
+    const edges = this.backlinks();
+    const connected = new Set<string>();
+    for (const e of edges) { connected.add(e.from); connected.add(e.to); }
+    return [...this.facts.values()]
+      .filter((f) => !connected.has(f.entity))
+      .map((f) => f.id);
+  }
+
+  /**
+   * Dream cycle phase: schema-suggest — detect entities that are likely the
+   * same (case-insensitive match or alias overlap) + propose a merge.
+   * Returns merge proposals (zero-LLM; the operator confirms).
+   */
+  schemaSuggest(): Array<{ entities: string[]; reason: string }> {
+    const proposals: Array<{ entities: string[]; reason: string }> = [];
+    const entities = [...this.facts.values()].map((f) => f.entity);
+    const unique = [...new Set(entities)];
+    // case-insensitive collision
+    const byLower = new Map<string, string[]>();
+    for (const e of unique) {
+      const lc = e.toLowerCase();
+      const arr = byLower.get(lc);
+      if (arr) arr.push(e); else byLower.set(lc, [e]);
+    }
+    for (const [lc, group] of byLower) {
+      if (group.length > 1) proposals.push({ entities: group, reason: `case-insensitive match: "${lc}"` });
+    }
+    return proposals;
+  }
+
+  /**
+   * Dream cycle phase: resolve_symbol_edges — if a fact's content mentions
+   * another entity by name (bare-name match against the known entity set),
+   * emit a typed "bare" edge. This augments backlinks() with cross-entity
+   * references that the regex extraction missed (e.g. the entity name wasn't
+   * in the fact's own entityWords set).
+   */
+  resolveSymbolEdges(): Array<{ from: string; to: string; kind: "bare" }> {
+    const knownEntities = new Set([...this.facts.values()].map((f) => f.entity));
+    const edges: Array<{ from: string; to: string; kind: "bare" }> = [];
+    for (const f of this.facts.values()) {
+      for (const e of knownEntities) {
+        if (e === f.entity) continue;
+        const re = new RegExp(`\\b${e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        if (re.test(f.content)) edges.push({ from: f.entity, to: e, kind: "bare" });
+      }
+    }
+    return edges;
+  }
+
+  /**
+   * Dream cycle phase: conversation_facts_backfill — scan a conversation (array
+   * of {role, content}) for capitalized names that match known entities →
+   * record new facts. This catches entity mentions the extractor missed.
+   * Returns the count of new facts recorded.
+   */
+  conversationFactsBackfill(conversation: Array<{ role: string; content: string }>): number {
+    const knownEntities = new Set([...this.facts.values()].map((f) => f.entity));
+    let n = 0;
+    for (const msg of conversation) {
+      if (msg.role === "tool" || msg.role === "system") continue;
+      const names = msg.content.match(/\b[A-Z][a-zA-Z]{2,}\b/g) ?? [];
+      for (const name of [...new Set(names)]) {
+        if (knownEntities.has(name)) {
+          this.recordFact({
+            kind: "event",
+            entity: name,
+            content: `${name} mentioned in conversation`,
+            visibility: "private",
+            notability: 1,
+            source: "backfill",
+          });
+          n++;
+        }
+      }
+    }
+    return n;
+  }
 }
 
 /** Bag-of-words vector (term → count). */

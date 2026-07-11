@@ -36,7 +36,8 @@ import {
   runToolBatch,
   type ToolImpl,
 } from "@my-agent/tools";
-import { FileBackend, MemoryManagerImpl } from "@my-agent/memory";
+import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, type RagfsRouter } from "@my-agent/memory";
+import { scan as scanContent } from "@my-agent/prompts";
 import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
 
 export interface AgentConfig {
@@ -71,6 +72,10 @@ export interface Agent {
   /** Underlying registries (for inspection / extension). */
   providers: ProviderRegistry;
   memory: MemoryManagerImpl;
+  /** §8 Brain (facts/takes/pages + dream-cycle phases). */
+  brain: Brain;
+  /** §8 ragfs unified-context-FS (scan-on-read wired). */
+  ragfs: RagfsRouter;
   tools: ToolRegistry;
 }
 
@@ -112,6 +117,17 @@ export function createAgent(config: AgentConfig = {}): Agent {
     memory.register(new FileBackend("goals", config.memoryDir));
   }
   memory.ensureDefault(["working", "archivist", "tree", "diff", "goals", "sync"]);
+  memory.addRole(new ArchivistRole());
+  memory.addRole(new GoalsRole());
+
+  // §8 Brain (facts/takes/pages + dream-cycle phases).
+  const brain = new Brain();
+  // §8 ragfs: unified-context-FS with the prompts scanner wired (R25-18 scan-on-read).
+  const knowledgeGraph = new TypedGraph();
+  const ragfs = createRagfs({
+    scanner: makeRagfsScanner(scanContent),
+    sources: [new KnowledgeSource(knowledgeGraph)],
+  });
 
   // ── tools ──
   const toolRegistry = new ToolRegistry();
@@ -199,6 +215,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
     run: (text, sink, opts) => runLive(text, sink, opts?.signal),
     providers,
     memory,
+    brain,
+    ragfs,
     tools: toolRegistry,
   };
 }

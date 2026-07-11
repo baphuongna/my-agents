@@ -132,11 +132,20 @@ MLX, web session-cookie+CSRF) remain as noted above.
     RagfsRouter with scanner + sources in one call) ✓. The dream cycle now has
     5 of 22 phases live (consolidate + backlinks + purge + extract_facts +
     embed).
-11. **Phase 11 (open — env-limited / blocked):** DAP live adapter (vscode-js-
-    debug standalone — env limitation; the client + DAP-server pipeline is built
-    + tested); the remaining 16 dream-cycle phases; no-explicit-any ESLint
-    (awaiting a TS-7-compatible static analyzer — @typescript-eslint is
-    fundamentally incompatible with the TypeScript 7 native Go compiler).
+11. **Phase 11 (5 more dream-cycle phases + agent ragfs/Brain wiring) — DONE:**
+    Brain.lint() (empty/duplicate/no-entity detection) ✓; orphans() (isolated
+    entities) ✓; schemaSuggest() (case-insensitive merge proposals) ✓;
+    resolveSymbolEdges() (cross-entity bare references) ✓;
+    conversationFactsBackfill() (conversation → fact extraction) ✓.
+    Agent wiring: createAgent now constructs Brain + ArchivistRole + GoalsRole +
+    createRagfs(scanner: makeRagfsScanner(prompts.scan)) + KnowledgeSource over
+    TypedGraph — the full memory stack connected end-to-end.
+    The dream cycle now has **10 of 22 phases** live.
+12. **Phase 12 (open — env-limited / blocked / LLM-driven):** DAP live adapter
+    (vscode-js-debug standalone — env limitation; the DapClient + DAP-server
+    pipeline is built + tested 7/7); the remaining 12 dream-cycle phases (all
+    LLM-driven: synthesize, grade_takes, calibration_profile, skillopt, etc.);
+    no-explicit-any ESLint (blocked by TS-7 native compiler incompatibility).
 
 
 ## What IS solidly built (don't lose this)

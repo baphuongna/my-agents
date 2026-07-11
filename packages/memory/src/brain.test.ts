@@ -164,3 +164,51 @@ describe("§8 Phase 10 — dream-cycle extract_facts + embed", () => {
     expect(brain.embed()).toBe(0);
   });
 });
+
+describe("§8 Phase 11 — 5 more zero-LLM dream-cycle phases", () => {
+  it("lint flags empty + duplicate + no-entity facts", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "Alice", content: "likes tea", visibility: "private", notability: 1, source: "s" });
+    brain.recordFact({ kind: "fact", entity: "Alice", content: "likes tea", visibility: "private", notability: 1, source: "s" });
+    brain.recordFact({ kind: "fact", entity: "", content: "no entity", visibility: "private", notability: 1, source: "s" });
+    const r = brain.lint();
+    expect(r.duplicates.length).toBe(1);
+    expect(r.noEntity.length).toBe(1);
+  });
+
+  it("orphans finds facts whose entity has no graph edges", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "Connected", content: "see [[Other]]", visibility: "private", notability: 1, source: "s" });
+    brain.recordFact({ kind: "fact", entity: "Lonely", content: "all alone", visibility: "private", notability: 1, source: "s" });
+    const orphans = brain.orphans();
+    expect(orphans.length).toBeGreaterThan(0);
+  });
+
+  it("schemaSuggest detects case-insensitive entity duplicates", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "Alice", content: "x", visibility: "private", notability: 1, source: "s" });
+    brain.recordFact({ kind: "fact", entity: "alice", content: "y", visibility: "private", notability: 1, source: "s" });
+    const proposals = brain.schemaSuggest();
+    expect(proposals.length).toBe(1);
+    expect(proposals[0]!.entities).toContain("Alice");
+    expect(proposals[0]!.entities).toContain("alice");
+  });
+
+  it("resolveSymbolEdges finds cross-entity bare references", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "Alice", content: "met Bob yesterday", visibility: "private", notability: 1, source: "s" });
+    brain.recordFact({ kind: "fact", entity: "Bob", content: "is a person", visibility: "private", notability: 1, source: "s" });
+    const edges = brain.resolveSymbolEdges();
+    expect(edges.some((e) => e.from === "Alice" && e.to === "Bob")).toBe(true);
+  });
+
+  it("conversationFactsBackfill records facts for known entities mentioned in chat", () => {
+    const brain = new Brain();
+    brain.recordFact({ kind: "fact", entity: "Alice", content: "initial", visibility: "private", notability: 1, source: "s" });
+    const n = brain.conversationFactsBackfill([
+      { role: "user", content: "tell me about Alice and her work" },
+      { role: "assistant", content: "Alice is great" },
+    ]);
+    expect(n).toBeGreaterThanOrEqual(1);
+  });
+});
