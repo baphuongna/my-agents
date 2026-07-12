@@ -1,5 +1,9 @@
 {
   "name": "mya",
+  "piConfig": {
+    "name": "mya",
+    "configDir": ".mya"
+  },
   "version": "0.1.0",
   "private": true,
   "description": "Unified coding/autonomous agent (TypeScript 7 + Rust napi engine)",

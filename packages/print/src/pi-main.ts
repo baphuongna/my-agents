@@ -9,6 +9,8 @@
 import { main } from "@earendil-works/pi-coding-agent";
 
 export async function runPiInteractive(): Promise<void> {
+  // Skip version check (mya has its own version lifecycle)
+  process.env.PI_SKIP_VERSION_CHECK = "1";
   const args = ["--model", "MiniMax-M3", "--no-extensions", ...process.argv.slice(2)];
   await main(args, {});
 }
