@@ -126,15 +126,9 @@ export class TUI extends Container {
     // 1. Render all components
     let newLines = this.render(width);
 
-    // 2. PAD to terminal height — fill every row so the TUI "takes over"
-    //    the entire terminal (no leftover old content visible).
-    while (newLines.length < height) {
-      newLines.push("");
-    }
-    // Trim if somehow longer than height
-    if (newLines.length > height) {
-      newLines = newLines.slice(newLines.length - height);
-    }
+    // 2. PAD to terminal height only on first render (to clear old content).
+    // After that, the DynamicFill component handles the layout — padding
+    // between chat and editor to pin editor+footer to the bottom.
 
     // 3. Check for full redraw triggers
     const needFullRedraw =

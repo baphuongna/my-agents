@@ -100,6 +100,16 @@ class SpinnerComponent implements Component {
   }
 }
 
+// ─── DynamicFill — fills remaining terminal space (pins editor to bottom) ─
+class DynamicFill implements Component {
+  constructor(private getTermHeight: () => number, private getOtherLines: () => number) {}
+  invalidate(): void {}
+  render(_width: number): string[] {
+    const fill = Math.max(1, this.getTermHeight() - this.getOtherLines());
+    return Array(fill).fill("");
+  }
+}
+
 // ─── Editor component (raw-mode key capture) ──────────────────────────
 class EditorComponent implements Component {
   private lines: string[] = [""];
@@ -224,12 +234,17 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
     const editor = new EditorComponent();
     const footer = new FooterComponent(opts.model ?? "MiniMax-M3", 0, 0, 0);
 
-    ui.addChild(header);
-    ui.addChild(new Spacer(1));
-    ui.addChild(chat);
-    ui.addChild(statusSlot);
-    ui.addChild(editor);
-    ui.addChild(footer);
+    ui.addChild(header);     // 4 lines
+    ui.addChild(chat);       // variable (grows with conversation)
+    ui.addChild(statusSlot); // 0-1 lines (spinner)
+    // DynamicFill: fills remaining space to pin editor + footer to the bottom
+    const fill = new DynamicFill(
+      () => terminal.rows,
+      () => header.render(80).length + chat.render(80).length + statusSlot.render(80).length + editor.render(80).length + footer.render(80).length,
+    );
+    ui.addChild(fill);
+    ui.addChild(editor);     // 3 lines (border + input + border)
+    ui.addChild(footer);     // 1 line
 
     let busy = false;
     let tokensIn = 0, tokensOut = 0, cost = 0;
