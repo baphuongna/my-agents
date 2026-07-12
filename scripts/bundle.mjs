@@ -52,8 +52,9 @@ const vendoredResolve = {
       return null;
     });
 
-    // Stub react-devtools-core
-    b.onResolve({ filter: /react-devtools-core/ }, () => ({ path: "stub", namespace: "stub" }));
+    // Stub react-devtools-core + optional deps we don't use
+    const stubs = ["react-devtools-core", "@opentelemetry/api", "highlight.js/lib/index.js"];
+    b.onResolve({ filter: new RegExp(stubs.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")) }, () => ({ path: "stub", namespace: "stub" }));
     b.onLoad({ filter: /stub/, namespace: "stub" }, () => ({ contents: "export default undefined;", loader: "js" }));
   },
 };
@@ -73,9 +74,6 @@ await build({
     "node:https", "node:net", "node:tls", "node:zlib", "node:buffer",
     "node:events", "node:string_decoder", "node:readline", "node:worker_threads",
     "node:async_hooks", "node:perf_hooks", "node:assert", "node:querystring",
-    // Runtime optionals (resolve from node_modules at runtime)
-    "highlight.js", "highlight.js/lib/index.js",
-    "@opentelemetry/api",
   ],
   plugins: [vendoredResolve],
   legalComments: "none",
