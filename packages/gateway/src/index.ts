@@ -293,9 +293,13 @@ export class Gateway {
       return send(200, this.sync.replicaState.export());
     }
     if (url.pathname === "/sync/pull" && this.sync) {
-      const sinceParam = url.searchParams.get("since");
-      const sinceHlc = sinceParam ? JSON.parse(sinceParam) : undefined;
-      return send(200, this.sync.pull(sinceHlc));
+      try {
+        const sinceParam = url.searchParams.get("since");
+        const sinceHlc = sinceParam ? JSON.parse(sinceParam) : undefined;
+        return send(200, this.sync.pull(sinceHlc));
+      } catch (e) {
+        return send(400, { error: "invalid since param", detail: (e as Error).message });
+      }
     }
     if (url.pathname === "/sync/push" && this.sync && req.method === "POST") {
       let body = "";
@@ -366,6 +370,8 @@ export class Gateway {
 
   private healthyTurns = 0;
   private clientSeq = 0;
+  /** Phase 3: tracks room ownership (first client to connect = owner). */
+  private readonly roomOwners = new Map<string, string>();
 
   /** Record a healthy turn (for the /functional probe). */
   recordHealthyTurn(): void {
@@ -385,10 +391,16 @@ export class Gateway {
     for (const env of retained) {
       if (env.seq > since) ws.send(JSON.stringify(env));
     }
-    // Phase 3: auto-join collab room if specified.
+    // Phase 3: auto-join collab room if specified. First connector = owner.
     if (room && this.collab) {
-      const clientObj = { id: clientId, room, role: "guest" as const, send: (e: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(e)); } };
-      this.collab.openRoom(room, clientObj);
+      const isOwner = !this.roomOwners.has(room);
+      if (isOwner) this.roomOwners.set(room, clientId);
+      const role: "owner" | "guest" = isOwner ? "owner" : "guest";
+      const clientObj = { id: clientId, room, role, send: (e: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(e)); } };
+      try {
+        if (isOwner) this.collab.openRoom(room, clientObj);
+        else this.collab.join(room, clientObj, "guest");
+      } catch { /* room already open or rejoin — best-effort */ }
     }
     ws.on("close", () => {
       this.subscribers.delete(ws);
@@ -401,15 +413,10 @@ export class Gateway {
         const msg = JSON.parse(raw.toString()) as { kind?: string; text?: string; room?: string; event?: unknown; role?: string };
         // Phase 3: collab WS protocol.
         if (msg.kind === "collab-publish" && msg.room && this.collab) {
-          const result = this.collab.publish(msg.room, { id: clientId, room: msg.room, role: "guest", send: () => {} }, msg.event as RuntimeEvent);
-          // Broadcast to room members.
-          if (result.delivered > 0) {
-            for (const [otherWs, sub] of this.subscribers) {
-              if (sub.room === msg.room && otherWs !== ws && otherWs.readyState === otherWs.OPEN) {
-                otherWs.send(JSON.stringify(msg.event));
-              }
-            }
-          }
+          // Relay handles broadcast via registered send callbacks (no double delivery).
+          const isOwner = this.roomOwners.get(msg.room) === clientId;
+          const role: "owner" | "guest" = isOwner ? "owner" : "guest";
+          this.collab.publish(msg.room, { id: clientId, room: msg.room, role, send: () => {} }, msg.event as RuntimeEvent);
           return;
         }
         if (msg.kind === "collab-snapshot" && msg.room && this.collab) {

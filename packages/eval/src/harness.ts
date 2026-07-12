@@ -59,7 +59,7 @@ export class ParityHarness {
   ): Promise<ScenarioResult[]> {
     const tier = opts?.tier ?? "unit";
     // Safety gate: credentialed tier makes real API calls — require opt-in.
-    if (tier === "credentialed" && !process.env["MYA_CREDENTIALED"]) {
+    if (tier === "credentialed" && process.env["MYA_CREDENTIALED"] !== "1") {
       throw new Error("credentialed tier requires MYA_CREDENTIALED=1 (makes real API calls)");
     }
     const grader = new DriftGrader(compressor);
@@ -83,7 +83,7 @@ export class ParityHarness {
     const out: Record<string, ScenarioResult[]> = {};
     out.unit = await this.grade(compressor, { tier: "unit" });
     out.integration = await this.grade(compressor, { tier: "integration" });
-    if (process.env["MYA_CREDENTIALED"]) {
+    if (process.env["MYA_CREDENTIALED"] === "1") {
       out.credentialed = await this.grade(compressor, { tier: "credentialed" });
     }
     return out;

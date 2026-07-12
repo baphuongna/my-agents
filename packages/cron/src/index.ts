@@ -113,10 +113,11 @@ export class CronScheduler {
     return expired;
   }
 
-  /** Jobs whose trigger fires at `now` (best-effort; cron-expr parsing is
-   * minimal — supports on-interval + once exactly, cron as "every-Nm" shorthand).
-   * A "once" job re-fires until it has a SUCCEEDED run (a crashed/failed run
-   * retries); on-interval fires on its cadence regardless of prior outcome. */
+  /** Jobs whose trigger fires at `now` (cron / on-interval / once). Cron-expr
+   * jobs match against the current wall-clock minute; on-interval fires on cadence;
+   * once fires until succeeded. A "once" job re-fires until it has a SUCCEEDED
+   * run (a crashed/failed run retries); on-interval fires on its cadence
+   * regardless of prior outcome. */
   due(now = nowWallclock()): CronJob[] {
     const out: CronJob[] = [];
     for (const job of this.jobs.values()) {
@@ -131,7 +132,7 @@ export class CronScheduler {
         if (now >= job.schedule && !succeeded) out.push(job);
       }
       else if (job.trigger === "cron" && typeof job.schedule === "string") {
-        if (matchesCronExpr(job.schedule, new Date(now * 1000))) out.push(job);
+        if (matchesCronExpr(job.schedule, new Date(now))) out.push(job);
       }
     }
     return out;
@@ -172,6 +173,7 @@ function parseField(field: string, min: number, max: number, names?: Record<stri
     // Step: */N or A-B/N or A/N
     const stepMatch = part.match(/^(.+?)\/(\d+)$/);
     const step = stepMatch ? Number(stepMatch[2]) : 1;
+    if (step < 1) return result; // guard: */0 would infinite-loop
     const rangePart = stepMatch ? stepMatch[1]! : part;
     let lo: number, hi: number;
     if (rangePart === "*") { lo = min; hi = max; }
