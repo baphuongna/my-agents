@@ -62,6 +62,22 @@ fn deep_link_take_pending(state: tauri::State<'_, Arc<Mutex<Vec<String>>>>) -> V
     std::mem::take(&mut *state.lock().expect("pending lock poisoned"))
 }
 
+/// Return the sidecar port + WS token so the renderer can connect.
+#[tauri::command]
+fn gateway_info(state: tauri::State<'_, GatewayInfo>) -> GatewayInfo {
+    GatewayInfo {
+        port: state.port,
+        ws_token: state.ws_token.clone(),
+    }
+}
+
+/// Shared gateway connection info (injected via `.manage()`).
+#[derive(Clone, serde::Serialize)]
+struct GatewayInfo {
+    port: u16,
+    ws_token: String,
+}
+
 // ─── sidecar lifecycle (§25.3 gates window on §13 readiness) ─────────────────
 
 /// Default port for the `mya serve` sidecar. Matches `packages/print/src/main.ts`'s
@@ -179,9 +195,14 @@ fn probe_ready(port: u16) -> bool {
     }
     let head = String::from_utf8_lossy(&buf);
     // HTTP status line: "HTTP/<ver> <code> <reason>". We accept any 2xx.
-    head.lines()
-        .next()
-        .is_some_and(|line| line.contains(" 2") && line.contains(" HTTP/"))
+    // Parse the status code properly (was: fragile substring check).
+    head.lines().next().is_some_and(|line| {
+        if !line.starts_with("HTTP/") {
+            return false;
+        }
+        let code = line.split_whitespace().nth(1).and_then(|s| s.parse::<u16>().ok());
+        matches!(code, Some(200..=299))
+    })
 }
 
 /// Block until `probe_ready` returns true or the timeout elapses. Runs on a
@@ -241,7 +262,8 @@ fn main() {
         // level, so we register one handler unconditionally.
         .plugin(tauri_plugin_deep_link::init())
         .manage(pending.clone())
-        .invoke_handler(tauri::generate_handler![deep_link_validate, deep_link_take_pending])
+        .manage(GatewayInfo { port: sidecar_port, ws_token: std::env::var("MYA_WS_TOKEN").unwrap_or_default() })
+        .invoke_handler(tauri::generate_handler![deep_link_validate, deep_link_take_pending, gateway_info])
         .setup(move |app| {
             // ── 1. Spawn the `mya serve` sidecar ─────────────────────────
             match spawn_sidecar(sidecar_port) {
@@ -285,7 +307,10 @@ fn main() {
                 for uri in &uris {
                     pending_push(&pending_for_event, uri.clone());
                 }
-                let _ = app_handle_for_event.emit("deep-link://received", &uris);
+                // Emit each URI as a separate string event (HTML expects string, not array).
+                for uri in &uris {
+                    let _ = app_handle_for_event.emit("deep-link://received", uri);
+                }
             });
 
             // ── 3. Window starts hidden (§25.3 readiness gate) ───────────

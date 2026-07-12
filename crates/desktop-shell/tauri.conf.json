@@ -5,6 +5,7 @@
   "identifier": "works.earendil.my-agent",
   "build": { "frontendDist": "../desktop-ui" },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "my-agent",
