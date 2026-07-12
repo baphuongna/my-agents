@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Apply mya branding to node_modules before bundling
+await import("./apply-branding.mjs");
 /**
  * Bundle mya CLI — 100% cloned pi code from vendored/ directory.
  * All deps are in vendored/node_modules/ (cloned, not npm).
