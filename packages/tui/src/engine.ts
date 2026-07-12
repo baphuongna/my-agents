@@ -91,7 +91,7 @@ export class TUI extends Container {
   private renderTimer: ReturnType<typeof setTimeout> | null = null;
   private cursorRow = 0;
   private readonly minIntervalMs = 16;
-  private lastRender = 0;
+  private lastRenderHr: bigint = 0n;
   private started = false;
 
   constructor(private terminal: Terminal) { super(); }
@@ -109,14 +109,14 @@ export class TUI extends Container {
     if (!this.started) return;
     if (force) { this.doRender(); return; }
     if (this.renderTimer) return;
-    const elapsed = Date.now() - this.lastRender;
+    const elapsed = Number((process.hrtime.bigint() - this.lastRenderHr) / 1000000n);
     const delay = Math.max(0, this.minIntervalMs - elapsed);
     this.renderTimer = setTimeout(() => { this.renderTimer = null; this.doRender(); }, delay);
   }
 
   /** The core: compose frame → diff → write only changed lines. */
   private doRender(): void {
-    this.lastRender = Date.now();
+    this.lastRenderHr = process.hrtime.bigint();
     const width = this.terminal.columns;
     const height = this.terminal.rows;
 
