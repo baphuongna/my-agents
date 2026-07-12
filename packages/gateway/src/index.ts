@@ -17,6 +17,10 @@ export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js"
 import { ControlPlane } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { nowWallclock } from "@my-agent/core";
+import { HookRegistry } from "./hooks.js";
+import { CronScheduler } from "@my-agent/cron";
+import { SyncServer } from "@my-agent/sync";
+import { CollabRelay } from "@my-agent/collab";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -117,6 +121,21 @@ export interface GatewayOptions {
   /** §12 control-plane (sessions/cron/config/tools + handle LRU). Defaults to a
    * fresh ControlPlane. */
   control?: ControlPlane;
+  /** §12 extension-lifecycle hook registry (session_start, pre_tool, ...).
+   * Default: a fresh HookRegistry. The Agent wiring (Phase 2) should pass the
+   * SAME instance here so hooks registered on the gateway also fire when the
+   * agent calls tool hooks. */
+  hooks?: HookRegistry;
+  /** §12.3 cron scheduler. If provided, start() spins up a sweep interval that
+   * claims due jobs and forwards them to onWsMessage (one-way fire-and-forget
+   * until a richer Protocol lands Tier-2). */
+  cron?: CronScheduler;
+  /** Optional sweep interval in ms. Defaults to 30_000. */
+  cronIntervalMs?: number;
+  /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
+  sync?: SyncServer;
+  /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
+  collab?: CollabRelay;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -135,6 +154,20 @@ export class Gateway {
   readonly port: number;
   /** §12 control-plane (sessions/cron/config/tools + per-session handle LRU). */
   readonly control: ControlPlane;
+  /** §12 extension-lifecycle hook registry (Phase 2 wiring). */
+  private readonly hooks: HookRegistry;
+  /** §12.3 cron scheduler (optional — Phase 3 wiring). */
+  private readonly cron?: CronScheduler;
+  /** Cron sweep interval in ms. */
+  private readonly cronIntervalMs: number;
+  /** Cron sweep timer handle; tracked so stop() can clear it. */
+  private cronTimer?: NodeJS.Timeout;
+  /** §12 sync server (optional — Phase 6 wiring). Stored; no auto-start. */
+  private readonly sync?: SyncServer;
+  /** §12 collaboration relay (optional — Phase 6 wiring). Stored; no auto-start. */
+  private readonly collab?: CollabRelay;
+  /** One-shot delivery-channel warning flag. */
+  private cronDeliveredWarned = false;
 
   constructor(opts: GatewayOptions = {}) {
     this.host = opts.host ?? "127.0.0.1";
@@ -153,6 +186,16 @@ export class Gateway {
     this.onWsMessage = opts.onWsMessage;
     this.wsToken = opts.wsToken;
     this.control = opts.control ?? new ControlPlane();
+    this.hooks = opts.hooks ?? new HookRegistry();
+    this.cron = opts.cron;
+    this.cronIntervalMs = opts.cronIntervalMs ?? 30_000;
+    this.sync = opts.sync;
+    this.collab = opts.collab;
+    // Phase 3: if cron is configured but no delivery channel exists, log once.
+    if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
+      console.warn("[gateway] cron is configured but no onWsMessage channel exists; due jobs will be claimed + completed but not delivered.");
+      this.cronDeliveredWarned = true;
+    }
   }
 
   private rootHtml?: string;
@@ -196,6 +239,35 @@ export class Gateway {
         }
       });
       this.http.on("error", reject);
+      // Phase 3 wiring: cron sweep timer. Started just before listen() so a
+      // misbehaving sweep never blocks the listening socket from accepting
+      // upgrades.
+      if (this.cron) {
+        const workerId = `gateway:${this.host}:${this.port}`;
+        this.cronTimer = setInterval(() => {
+          try {
+            const due = this.cron!.due();
+            for (const job of due) {
+              const run = this.cron!.claim(job.id, workerId);
+              if (!run) continue;
+              // Minimal delivery: forward to WS as a prompt event via the existing
+              // onWsMessage channel (one-way fire-and-forget). A richer Protocol
+              // lands Tier-2.
+              if (this.onWsMessage) {
+                this.onWsMessage("_cron", { kind: "cron-fire", jobId: job.id, runId: run.runId, prompt: job.prompt });
+              }
+              this.cron!.start(run.runId);
+              this.cron!.complete(run.runId, "succeeded");
+            }
+            this.cron!.sweepExpired();
+          } catch (e) {
+            // cron loop must NEVER crash the gateway.
+            console.warn("[gateway] cron sweep failed (non-fatal):", (e as Error).message);
+          }
+        }, this.cronIntervalMs);
+        // Don't keep the process alive solely for the cron sweep.
+        this.cronTimer.unref?.();
+      }
       this.http.listen(this.port, this.host, () => {
         const addr = this.http!.address();
         const port = addr && typeof addr === "object" ? addr.port : this.port;
@@ -307,8 +379,37 @@ export class Gateway {
     return this.subscribers.size;
   }
 
+  /** §12 hook registry getter (Phase 2). The Agent wiring should pass this
+   * SAME instance via AgentConfig.hooks so hook events emitted by the agent
+   * run turn through the gateway's listeners. */
+  get hookRegistry(): HookRegistry {
+    return this.hooks;
+  }
+
+  /** §12.3 cron scheduler getter. Named `cronScheduler` (not `cron`) to avoid
+   * clashing with the `cron` field. */
+  get cronScheduler(): CronScheduler | undefined {
+    return this.cron;
+  }
+
+  /** §12 sync server getter (stored only — no auto-start; Tier-2 follow-up). */
+  get syncServer(): SyncServer | undefined {
+    return this.sync;
+  }
+
+  /** §12 collaboration relay getter (stored only — no auto-start; Tier-2). */
+  get collabRelay(): CollabRelay | undefined {
+    return this.collab;
+  }
+
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      // Phase 3 wiring: clear the cron sweep interval BEFORE terminating WS,
+      // otherwise the timer keeps the event loop alive and http.close() hangs.
+      if (this.cronTimer) {
+        clearInterval(this.cronTimer);
+        this.cronTimer = undefined;
+      }
       // G2: terminate open WS clients first so http.close() doesn't hang.
       for (const ws of this.subscribers.keys()) {
         try {

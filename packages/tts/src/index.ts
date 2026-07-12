@@ -10,7 +10,6 @@
  * Source: §22 "On-device MLX TTS + native apps"; openclaw TTS.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nowWallclock } from "@my-agent/core";
@@ -123,4 +122,3 @@ export interface TtsEvent {
 }
 
 // silence unused-import lint
-void existsSync; void writeFileSync; void unlinkSync;

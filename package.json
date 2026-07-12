@@ -35,7 +35,8 @@
     "lint": "node scripts/lint.mjs",
     "lint:deps": "node scripts/lint-deps.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval": "node -e \"import('@my-agent/eval').then(h => h.defaultHarness().grade().then(r => console.log(JSON.stringify(r, null, 2))))\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

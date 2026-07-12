@@ -48,8 +48,8 @@ const vendoredResolve = {
           return { path: path.resolve(dir.replace("/index.js", "/" + sub + ".js")) };
         }
       }
-      // Fallback: let esbuild resolve normally
-      return null;
+      // Fallback: let esbuild resolve normally (returning undefined continues
+      // to the next resolver; do NOT return null — that's a hard denial).
     });
 
     // Stub only react-devtools + highlight.js (path mismatch)

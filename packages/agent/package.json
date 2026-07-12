@@ -22,6 +22,18 @@
     "@my-agent/memory": "*",
     "@my-agent/skills": "*",
     "@my-agent/tools": "*",
-    "@my-agent/council": "*"
+    "@my-agent/council": "*",
+    "@my-agent/audit": "*",
+    "@my-agent/secrets": "*",
+    "@my-agent/cron": "*",
+    "@my-agent/x402": "*",
+    "@my-agent/dap": "*",
+    "@my-agent/acp": "*",
+    "@my-agent/pkg": "*",
+    "@my-agent/sync": "*",
+    "@my-agent/collab": "*",
+    "@my-agent/tts": "*",
+    "@my-agent/workflows": "*",
+    "@my-agent/eval": "*"
   }
 }

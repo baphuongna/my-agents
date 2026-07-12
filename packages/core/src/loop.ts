@@ -71,6 +71,18 @@ export interface RunTurnOptions {
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
   maxToolRounds?: number;
   signal?: AbortSignal;
+  /** §7 Pre/Post tool hook sink (Phase 2/6 wiring). Optional; tools package
+   *  falls back to identity when absent. */
+  hooks?: import("./types.js").ToolHookSink;
+  /** §7 permission rule lists (Phase 2/6 wiring). Optional; tools package
+   *  uses the empty default when absent. */
+  permission?: import("./types.js").PermissionConfig;
+  /** §7 LSP write hook (Phase 6 wiring). Optional; tools package falls back
+   *  to no-op when absent. */
+  lsp?: import("./types.js").LspWriteHook;
+  /** §4 current mode (Phase 2/6 wiring). Optional; downstream consumers
+   *  default to ReadOnly when absent. */
+  mode?: import("./types.js").Mode;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -278,6 +290,10 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
             approval: opts.approval ?? makeStubApproval(),
             workspace: opts.workspace ?? process.cwd(),
             audit: opts.audit,
+            hooks: opts.hooks,
+            permission: opts.permission,
+            lsp: opts.lsp,
+            mode: opts.mode,
             emit: emitTurn,
           };
           const toolResult = await opts.tools.execute(fresh, ctx);

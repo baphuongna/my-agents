@@ -41,6 +41,17 @@ import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedG
 import { scan as scanContent } from "@my-agent/prompts";
 import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
 import { SkillStore } from "@my-agent/skills";
+// Phase 1-6 wiring: audit + secrets (Phase 1), hooks (Phase 2), x402 + dap (Phases 3-4),
+// pkg (Phase 5), tts (Phase 6). Cron is a gateway-side concern but imported here so
+// the @my-agent/cron package is part of the agent's resolved dependency set.
+import { AuditLog } from "@my-agent/audit";
+import { SecretStore, makeSecretRedactor } from "@my-agent/secrets";
+import { CronScheduler } from "@my-agent/cron";
+import { makePaidFetchTool, Wallet } from "@my-agent/x402";
+import { makeDebugTool } from "@my-agent/dap";
+import { PackageHost } from "@my-agent/pkg";
+import { speak } from "@my-agent/tts";
+import type { ToolHookSink } from "@my-agent/core";
 
 export interface AgentConfig {
   /** Explicit provider list. If absent: OpenAI (if key) + mock fallback. */
@@ -60,6 +71,23 @@ export interface AgentConfig {
   /** §10 advisor lane: a second-model critic that reviews each completed turn
    * and emits issues (auto-invoked after turn completion). */
   hindsight?: { reviewer: HindsightReviewer };
+  // ── Phase 1-6 wiring (each optional → backward-compatible) ──
+  /** Phase 1: explicit tamper-evident audit log. If absent, an identity-redacting
+   * AuditLog is constructed (with the secret-store redactor when secretStore is set). */
+  auditLog?: AuditLog;
+  /** Phase 1: secret store used both to redact audit payloads AND to resolve API keys
+   * before falling back to process.env (see createAgent). */
+  secretStore?: SecretStore;
+  /** Phase 2: pre/post-tool hook sink (§7). Forwarded into runTurn → tools dispatch. */
+  hooks?: ToolHookSink;
+  /** Phase 3: x402 wallet. When present, a `paid_fetch` tool is registered. */
+  wallet?: Wallet;
+  /** Phase 4: DAP debug-adapter connection config. When present, a `debug` tool is registered. */
+  dapConnect?: { connect: unknown };
+  /** Phase 5: extension/package host (for runtime-loaded skills + extensions). */
+  extensionHost?: PackageHost;
+  /** Phase 6: fire-and-forget TTS narration of each completed assistant turn. */
+  tts?: boolean;
 }
 
 export interface Agent {
@@ -76,6 +104,8 @@ export interface Agent {
   memory: MemoryManagerImpl;
   /** §8 Brain (facts/takes/pages + dream-cycle phases). */
   brain: Brain;
+  /** Phase 1: tamper-evident audit log (forwarded to runTurn → tools dispatch). */
+  readonly audit: AuditLog;
   /** §8 ragfs unified-context-FS (scan-on-read wired). */
   ragfs: RagfsRouter;
   tools: ToolRegistry;
@@ -139,6 +169,21 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // ── tools ──
   const toolRegistry = new ToolRegistry();
   for (const t of config.tools ?? builtinTools) toolRegistry.register(t);
+  // Phase 3: paid_fetch tool (x402) — registers only when a wallet is supplied.
+  if (config.wallet) toolRegistry.register(makePaidFetchTool(config.wallet));
+  // Phase 4: debug tool (DAP) — narrow-cast via Parameters<...>[0] so we never use `as any`.
+  if (config.dapConnect) {
+    toolRegistry.register(makeDebugTool(config.dapConnect as unknown as Parameters<typeof makeDebugTool>[0]));
+  }
+  // Phase 1: tamper-evident audit log (identity-redacted unless a secretStore is wired).
+  // Resolved BEFORE the toolExecutor so it can be forwarded into runTurn (E).
+  const audit: AuditLog = config.auditLog ?? (() => {
+    if (!config.secretStore) return new AuditLog();
+    // makeSecretRedactor returns a 1-arg (payload) function; the audit Redactor
+    // slot expects a 2-arg (kind, payload) function. Adapt with a thin lambda.
+    const redact = makeSecretRedactor(config.secretStore);
+    return new AuditLog((_kind, payload) => redact(payload));
+  })();
   // Build OpenAI-compatible function schemas (for native tool calling).
   const openAITools = buildOpenAITools(toolRegistry);
 
@@ -169,14 +214,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // + append it to session.history. Without this, multi-turn conversation breaks
   // (the provider sees consecutive user messages with no assistant response).
   function appendAssistantToHistory(events: RuntimeEvent[]): void {
-    const chunks: string[] = [];
-    for (const e of events) {
-      if (e.kind === "turn" && e.stage === "event" && e.turnEvent?.state === "Streaming") {
-        const chunk = e.turnEvent.chunk;
-        if (chunk && chunk.kind === "text") chunks.push(chunk.text);
-      }
-    }
-    const text = chunks.join("");
+    const text = extractAssistantText(events);
     if (text.trim()) session.history.append({ role: "assistant", content: text });
   }
 
@@ -200,6 +238,10 @@ export function createAgent(config: AgentConfig = {}): Agent {
           "error" in r ? { error: r.error } : { events: r.events },
         ),
       toolSchemas: openAITools, // OpenAI-compatible function schemas (for native tool calling)
+      // Phase 1: forward audit (audit is the closure variable from createAgent).
+      audit,
+      // Phase 2: forward pre/post-tool hook sink.
+      hooks: config.hooks,
       signal,
     });
   }
@@ -209,13 +251,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
    * a critic failure degrades to a logged warning (never blocks the turn). */
   async function runHindsight(text: string, events: RuntimeEvent[], emit: (e: RuntimeEvent) => void): Promise<void> {
     if (!config.hindsight) return;
-    // reconstruct the assistant's answer text from streaming chunks. The agent
-    // emits {kind:"turn", stage:"event", turnEvent:{state, chunk}} envelopes.
-    const answer = events
-      .map((e) => (e as { turnEvent?: { state?: string; chunk?: { kind?: string; text?: string } } }).turnEvent)
-      .filter((te) => te?.state === "Streaming" && te.chunk?.kind === "text")
-      .map((te) => te!.chunk!.text ?? "")
-      .join("");
+    const answer = extractAssistantText(events);
     if (!answer.trim()) return;
     try {
       const result: HindsightResult = await config.hindsight.reviewer.review(text, answer);
@@ -223,6 +259,15 @@ export function createAgent(config: AgentConfig = {}): Agent {
     } catch (e) {
       emit({ kind: "log", level: "warn", message: `hindsight critic failed: ${(e as Error).message}` } as RuntimeEvent);
     }
+  }
+
+  /** Phase 6: best-effort TTS narration of the completed assistant turn. Never throws
+   * (the .catch absorbs speak failures — TTS must NEVER block the response). */
+  function runTts(events: RuntimeEvent[]): void {
+    if (!config.tts) return;
+    const answer = extractAssistantText(events);
+    if (!answer.trim()) return;
+    void speak(answer).catch(() => { /* TTS is best-effort */ });
   }
 
   /** §8 dream cycle: after a turn, feed the brain + seed the knowledge graph +
@@ -259,6 +304,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     // multi-turn conversations work (the provider needs alternating user/assistant).
     appendAssistantToHistory(collected);
     await runHindsight(text, collected, (e) => collected.push(e));
+    runTts(collected); // Phase 6: fire-and-forget TTS narration (best-effort).
     void runDreamCycle(); // HIGH-1: fire-and-forget — don't block the response
     return collected;
     });
@@ -276,6 +322,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     await handle.done;
     appendAssistantToHistory(events);
     await runHindsight(text, events, sink);
+    runTts(events); // Phase 6: fire-and-forget TTS narration (best-effort).
     void runDreamCycle();
     });
   }
@@ -286,6 +333,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     providers,
     memory,
     brain,
+    audit,
     ragfs,
     tools: toolRegistry,
     skillStore,
@@ -333,6 +381,21 @@ function buildOpenAITools(registry: ToolRegistry): import("@my-agent/core").Open
 /** Compose identity + tools block into the stable tier. */
 function composeStableTier(identity: string, registry: ToolRegistry): string {
   return `${identity}\n\n${renderToolsBlock(registry)}`;
+}
+
+/** Reconstruct the assistant's answer text from streaming chunks. The agent
+ * emits {kind:"turn", stage:"event", turnEvent:{state, chunk}} envelopes — this
+ * joins every text chunk in turn order. Shared by appendAssistantToHistory
+ * (history bookkeeping), runHindsight (critic input), and runTts (narration). */
+function extractAssistantText(events: RuntimeEvent[]): string {
+  const chunks: string[] = [];
+  for (const e of events) {
+    if (e.kind === "turn" && e.stage === "event" && e.turnEvent?.state === "Streaming") {
+      const chunk = e.turnEvent.chunk;
+      if (chunk && chunk.kind === "text") chunks.push(chunk.text);
+    }
+  }
+  return chunks.join("");
 }
 export * from "./sdk.js";
 export * from "./subagents/index.js";
