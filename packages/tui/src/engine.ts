@@ -105,6 +105,9 @@ export class TUI extends Container {
     this.requestRender(true);
   }
 
+  /** Force next render to be a full screen redraw. */
+  forceFullRedraw(): void { this.hasRendered = false; this.requestRender(true); }
+
   stop(): void { this.terminal.stop(); }
 
   /** Schedule a render (throttled to 60fps). */

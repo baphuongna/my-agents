@@ -311,9 +311,8 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
       if (welcomeShown) { ui.removeChild(welcome); welcomeShown = false; }
       busy = true;
       chat.addChild(new MessageComponent({ role: "user", text }));
-      // Commit old chat messages to scrollback if chat exceeds visible space
       commitChatOverflow();
-      ui.requestRender();
+      ui.forceFullRedraw();
 
       // Start spinner
       spinner = new SpinnerComponent("thinking…", () => ui.requestRender());
@@ -338,7 +337,7 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
               chat.addChild(new MessageComponent({ role: "assistant", text: te.chunk.text ?? "" }));
             }
             commitChatOverflow();
-            ui.requestRender();
+            ui.forceFullRedraw();
           } else if (te.state === "ToolCalls" && te.chunk?.kind === "tool_call") {
             const name = te.chunk.call?.name ?? "?";
             const args = te.chunk.call?.arguments as Record<string, unknown> | undefined;
@@ -356,12 +355,12 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
         // Stop spinner
         if (spinner) { spinner.stop(); statusSlot.removeChild(spinner); spinner = null; }
         busy = false;
-        ui.requestRender();
+        ui.forceFullRedraw();
       }).catch((err) => {
         chat.addChild(new MessageComponent({ role: "error", text: String(err) }));
         if (spinner) { spinner.stop(); statusSlot.removeChild(spinner); spinner = null; }
         busy = false;
-        ui.requestRender();
+        ui.forceFullRedraw();
       });
     };
 
