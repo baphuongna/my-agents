@@ -15,15 +15,12 @@
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
 import { createAgent } from "@my-agent/agent";
-import { SecretStore, makeSecretRedactor } from "@my-agent/secrets";
-import { AuditLog } from "@my-agent/audit";
-import { HookRegistry } from "@my-agent/gateway";
-import { SkillStore } from "@my-agent/skills";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
+import { secretStore, auditLog, hooks, skillStore } from "./pi-main.js";
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {
@@ -89,14 +86,9 @@ async function main(): Promise<void> {
   return runPiInteractive();
 }
 
-// ── shared instances (created once in main scope) ──
-const secretStore = new SecretStore();
-const auditLog = new AuditLog((_kind, payload) => makeSecretRedactor(secretStore)(payload));
-const hooks = new HookRegistry();
-const skillStore = new SkillStore();
-
-// Eagerly discover skills from the user config dir (best-effort; non-fatal).
-void skillStore.discover(join(homedir(), ".mya", "skills")).catch(() => { /* optional */ });
+// ── shared instances (re-exported from pi-main.ts so TUI + print share) ──
+// These are created in pi-main.ts and re-exported for consistency.
+import { secretStore, auditLog, hooks, skillStore } from "./pi-main.js";
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
