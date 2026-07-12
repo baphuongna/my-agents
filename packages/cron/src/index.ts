@@ -130,7 +130,9 @@ export class CronScheduler {
         const succeeded = this.runsOf(job.id).some((r) => r.status === "succeeded");
         if (now >= job.schedule && !succeeded) out.push(job);
       }
-      // cron: best-effort skip (full cron-expr parser is Tier-2+)
+      else if (job.trigger === "cron" && typeof job.schedule === "string") {
+        if (matchesCronExpr(job.schedule, new Date(now * 1000))) out.push(job);
+      }
     }
     return out;
   }
@@ -152,4 +154,68 @@ export class CronScheduler {
   runsOf(jobId: string): RunRecord[] {
     return (this.jobRuns.get(jobId) ?? []).map((id) => this.runs.get(id)!).filter(Boolean);
   }
+}
+
+// ── Cron expression parser (5-field: min hour dom month dow) ─────────────
+const DOW_NAMES: Record<string, number> = {
+  SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6,
+};
+const MONTH_NAMES: Record<string, number> = {
+  JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+  JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
+};
+
+function parseField(field: string, min: number, max: number, names?: Record<string, number>): number[] {
+  if (field === "*") return range(min, max);
+  const result: number[] = [];
+  for (const part of field.split(",")) {
+    // Step: */N or A-B/N or A/N
+    const stepMatch = part.match(/^(.+?)\/(\d+)$/);
+    const step = stepMatch ? Number(stepMatch[2]) : 1;
+    const rangePart = stepMatch ? stepMatch[1]! : part;
+    let lo: number, hi: number;
+    if (rangePart === "*") { lo = min; hi = max; }
+    else if (rangePart.includes("-")) {
+      const [a, b] = rangePart.split("-");
+      lo = resolveVal(a ?? "", names); hi = resolveVal(b ?? "", names);
+    } else {
+      lo = resolveVal(rangePart, names);
+      hi = stepMatch ? max : lo;
+    }
+    for (let v = lo; v <= hi; v += step) result.push(v);
+  }
+  return result;
+}
+
+function resolveVal(s: string, names?: Record<string, number>): number {
+  const upper = s.toUpperCase();
+  if (names && upper in names) return names[upper]!;
+  return Number(s);
+}
+
+function range(lo: number, hi: number): number[] {
+  const r: number[] = [];
+  for (let v = lo; v <= hi; v++) r.push(v);
+  return r;
+}
+
+/** Check if a 5-field cron expression matches the given date. */
+export function matchesCronExpr(expr: string, date: Date): boolean {
+  const fields = expr.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+  const [minF, hourF, domF, monthF, dowF] = fields;
+
+  const minutes = parseField(minF!, 0, 59);
+  const hours = parseField(hourF!, 0, 23);
+  const doms = parseField(domF!, 1, 31);
+  const months = parseField(monthF!, 1, 12, MONTH_NAMES);
+  const dows = parseField(dowF!, 0, 7, DOW_NAMES).map((d) => d % 7); // 7→0 (Sunday)
+
+  return (
+    minutes.includes(date.getUTCMinutes()) &&
+    hours.includes(date.getUTCHours()) &&
+    doms.includes(date.getUTCDate()) &&
+    months.includes(date.getUTCMonth() + 1) &&
+    dows.includes(date.getUTCDay())
+  );
 }

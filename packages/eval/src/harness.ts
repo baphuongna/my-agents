@@ -51,13 +51,21 @@ export class ParityHarness {
     this.scenarios.push(s);
   }
 
-  /** Grade a compressor against all UNIT scenarios (deterministic, no network).
-   * Integration + credentialed tiers need their own runners (network/key). */
-  async grade(compressor: Compressor = { compress: (h) => h, ratio: () => 1 }): Promise<ScenarioResult[]> {
+  /** Grade a compressor against scenarios of the given tier (default: unit).
+   * Credentialed tier requires MYA_CREDENTIALED=1 env var for safety. */
+  async grade(
+    compressor: Compressor = { compress: (h) => h, ratio: () => 1 },
+    opts?: { tier?: "unit" | "integration" | "credentialed" },
+  ): Promise<ScenarioResult[]> {
+    const tier = opts?.tier ?? "unit";
+    // Safety gate: credentialed tier makes real API calls — require opt-in.
+    if (tier === "credentialed" && !process.env["MYA_CREDENTIALED"]) {
+      throw new Error("credentialed tier requires MYA_CREDENTIALED=1 (makes real API calls)");
+    }
     const grader = new DriftGrader(compressor);
     const results: ScenarioResult[] = [];
     for (const s of this.scenarios) {
-      if (s.tier !== "unit") continue; // integration/credentialed need separate runners
+      if (s.tier !== tier) continue;
       const drift = grader.grade([{ trace: s.trace, expectedResponse: s.expectedResponse }]);
       const passed = drift.passRate === 1 && drift.maxScoreDelta === 0;
       results.push({
@@ -68,6 +76,17 @@ export class ParityHarness {
       });
     }
     return results;
+  }
+
+  /** Grade ALL tiers (unit + integration; credentialed gated by env var). */
+  async gradeAll(compressor?: Compressor): Promise<Record<string, ScenarioResult[]>> {
+    const out: Record<string, ScenarioResult[]> = {};
+    out.unit = await this.grade(compressor, { tier: "unit" });
+    out.integration = await this.grade(compressor, { tier: "integration" });
+    if (process.env["MYA_CREDENTIALED"]) {
+      out.credentialed = await this.grade(compressor, { tier: "credentialed" });
+    }
+    return out;
   }
 
   /** Summary: overall pass + which scenarios drifted. */

@@ -16,7 +16,7 @@ export { ControlPlane, HandleLruCache } from "./control.js";
 export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
 import { ControlPlane } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
-import { nowWallclock } from "@my-agent/core";
+import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
 import { HookRegistry } from "./hooks.js";
 import { CronScheduler } from "@my-agent/cron";
 import { SyncServer } from "@my-agent/sync";
@@ -143,7 +143,7 @@ export interface GatewayOptions {
 export class Gateway {
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
-  private readonly subscribers = new Map<WebSocket, { session: string; since: number }>(); // ws → subscribed session + cursor
+  private readonly subscribers = new Map<WebSocket, { session: string; since: number; room?: string }>(); // ws → subscribed session + cursor
   private seq = 0;
   /** HIGH-2 fix: per-session retained-event buffers (was a single global buffer →
    * cross-session leak). Keyed by sessionId. */
@@ -288,6 +288,41 @@ export class Gateway {
       const s = this.control.getSession(sessionMatch[1]!);
       return s ? send(200, s) : send(404, { error: "session not found" });
     }
+    // Phase 3: Sync HTTP endpoints.
+    if (url.pathname === "/sync/state" && this.sync) {
+      return send(200, this.sync.replicaState.export());
+    }
+    if (url.pathname === "/sync/pull" && this.sync) {
+      const sinceParam = url.searchParams.get("since");
+      const sinceHlc = sinceParam ? JSON.parse(sinceParam) : undefined;
+      return send(200, this.sync.pull(sinceHlc));
+    }
+    if (url.pathname === "/sync/push" && this.sync && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        try {
+          const entries = JSON.parse(body);
+          return send(200, this.sync!.push(entries));
+        } catch (e) {
+          return send(400, { error: "invalid push body", detail: (e as Error).message });
+        }
+      });
+      return;
+    }
+    // Phase 3: Collab room management.
+    if (url.pathname === "/collab/rooms" && this.collab) {
+      const rooms: Record<string, unknown> = {};
+      for (const ws of this.subscribers.keys()) {
+        const sub = this.subscribers.get(ws)!;
+        if (sub.room) {
+          const r = sub.room;
+          rooms[r] = rooms[r] ?? { clients: 0 };
+          (rooms[r] as { clients: number }).clients++;
+        }
+      }
+      return send(200, rooms);
+    }
     switch (url.pathname) {
       case "/health/live": {
         const p = this.readiness.liveness();
@@ -330,6 +365,7 @@ export class Gateway {
   }
 
   private healthyTurns = 0;
+  private clientSeq = 0;
 
   /** Record a healthy turn (for the /functional probe). */
   recordHealthyTurn(): void {
@@ -341,21 +377,50 @@ export class Gateway {
     // HIGH-2 fix: each subscriber binds to ONE session (query param `session`).
     // Live events + replay are filtered to that session only (no cross-session leak).
     const session = url.searchParams.get("session") ?? "default";
-    this.subscribers.set(ws, { session, since });
+    const room = url.searchParams.get("room") ?? undefined;
+    const clientId = `ws-${++this.clientSeq}`;
+    this.subscribers.set(ws, { session, since, room });
     const retained = this.retainedBySession.get(session) ?? [];
     // §25.6 replay-from-cursor: deliver this session's retained events > since.
     for (const env of retained) {
       if (env.seq > since) ws.send(JSON.stringify(env));
     }
-    ws.on("close", () => this.subscribers.delete(ws));
+    // Phase 3: auto-join collab room if specified.
+    if (room && this.collab) {
+      const clientObj = { id: clientId, room, role: "guest" as const, send: (e: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(e)); } };
+      this.collab.openRoom(room, clientObj);
+    }
+    ws.on("close", () => {
+      this.subscribers.delete(ws);
+      // Phase 3: leave collab room on disconnect.
+      if (room && this.collab) this.collab.leave(room, clientId);
+    });
     ws.on("message", (raw: Buffer) => {
-      /* control messages (subscribe/cancel) — Tier-2+. Phase 15: forward to onWsMessage. */
-      if (this.onWsMessage) {
-        try {
-          const session = this.subscribers.get(ws)?.session ?? "default";
-          this.onWsMessage(session, JSON.parse(raw.toString()));
-        } catch { /* malformed — ignore */ }
-      }
+      try {
+        const session = this.subscribers.get(ws)?.session ?? "default";
+        const msg = JSON.parse(raw.toString()) as { kind?: string; text?: string; room?: string; event?: unknown; role?: string };
+        // Phase 3: collab WS protocol.
+        if (msg.kind === "collab-publish" && msg.room && this.collab) {
+          const result = this.collab.publish(msg.room, { id: clientId, room: msg.room, role: "guest", send: () => {} }, msg.event as RuntimeEvent);
+          // Broadcast to room members.
+          if (result.delivered > 0) {
+            for (const [otherWs, sub] of this.subscribers) {
+              if (sub.room === msg.room && otherWs !== ws && otherWs.readyState === otherWs.OPEN) {
+                otherWs.send(JSON.stringify(msg.event));
+              }
+            }
+          }
+          return;
+        }
+        if (msg.kind === "collab-snapshot" && msg.room && this.collab) {
+          ws.send(JSON.stringify({ kind: "collab-snapshot-result", room: msg.room, events: this.collab.snapshot(msg.room) }));
+          return;
+        }
+        /* Phase 15: forward to onWsMessage (default text prompt). */
+        if (this.onWsMessage) {
+          this.onWsMessage(session, msg);
+        }
+      } catch { /* malformed — ignore */ }
     });
   }
 
