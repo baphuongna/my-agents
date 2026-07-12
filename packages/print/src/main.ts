@@ -92,22 +92,12 @@ function readStdin(): Promise<string> {
 }
 
 async function runTui(model?: string, useReadline?: boolean): Promise<void> {
-  // Ink is ALWAYS the default interactive UI. No TTY check — tmux, screen,
-  // and old terminals all support Ink's raw mode fine.
-  // Use --readline only for CI/scripts/piped input.
-  if (useReadline) {
+  // Check raw mode support precisely (not try/catch — avoids the flash).
+  const supportsInk = process.stdin.isTTY && typeof (process.stdin as { setRawMode?: unknown }).setRawMode === "function";
+  if (useReadline || !supportsInk) {
     return runReadlineTui(model);
   }
-  // Try Ink first. If stdin doesn't support raw mode (piped/CI),
-  // gracefully fall back to readline.
-  try {
-    return await runInkTui(model);
-  } catch (e) {
-    if (String((e as Error).message).includes("Raw mode")) {
-      return runReadlineTui(model);
-    }
-    throw e;
-  }
+  return runInkTui(model);
 }
 
 async function runInkTui(model?: string): Promise<void> {
