@@ -21,6 +21,14 @@ import { AcpBridge } from "@my-agent/acp";
 import { SyncServer } from "@my-agent/sync";
 import { CollabRelay } from "@my-agent/collab";
 import { PackageHost } from "@my-agent/pkg";
+import { CouncilProvider } from "@my-agent/council";
+import type {
+  ComponentHealth,
+  History,
+  ProviderProfile,
+  StreamEvent,
+  SystemPrompt,
+} from "@my-agent/core";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -37,6 +45,31 @@ const sync = new SyncServer();
 const collab = new CollabRelay();
 const packageHost = new PackageHost();
 const mcp = new McpManager();
+
+// Council: a 1-member council backed by a canned-response mock profile. The
+// single-provider build (MiniMax only) has no second live model to fan out to,
+// so we wire a deterministic mock advisor. This makes /council report a
+// configured council (not "not configured") while remaining network-free.
+const councilAdvisor: ProviderProfile = {
+  id: "mya-council-advisor",
+  model: "mock-advisor",
+  health: (): ComponentHealth => "Healthy",
+  async stream(
+    _prompt: SystemPrompt,
+    _history: History,
+  ): Promise<{ events: StreamEvent[] }> {
+    return {
+      events: [
+        { kind: "text", text: "[mya council advisor] standing by — wire a second provider to enable real fan-out." },
+        { kind: "done", usage: { input: 0, output: 0 } },
+      ],
+    };
+  },
+};
+const council = new CouncilProvider({
+  members: [{ profile: councilAdvisor, role: "Advisor" }],
+  strategy: "attributed",
+});
 
 // Load MCP server configs from ~/.mya/agent/mcp.json (if present).
 const mcpConfigPath = join(homedir(), ".mya", "agent", "mcp.json");
@@ -75,7 +108,7 @@ export async function runPiInteractive(): Promise<void> {
     sync,
     collab,
     packageHost,
-    council: undefined,
+    council,
     mcp,
     mcpConfigs,
   });
@@ -86,4 +119,4 @@ export async function runPiInteractive(): Promise<void> {
 }
 
 // Re-export for use by main.ts (shared instances).
-export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, mcp };
+export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, council, mcp };
