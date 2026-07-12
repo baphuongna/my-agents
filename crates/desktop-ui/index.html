@@ -1,1 +1,784 @@
-<!doctype html><html><head><title>my-agent</title></head><body><div id="root">my-agent desktop</div></body></html>
+<!doctype html>
+<!--
+  my-agent desktop dashboard (§25.3).
+
+  Self-contained HTML served by the Tauri shell (crates/desktop-shell).
+  No build step, no external scripts, no module bundler.
+
+  Runtime requirements (provided by the Tauri shell):
+    - `window.__TAURI__` must be enabled (set `app.withGlobalTauri: true`
+      in tauri.conf.json — owned by the desktop-shell executor).
+    - The shell registers the following IPC commands (Tauri v2):
+        * `gateway_info`            → { port: number, wsPath: string, token?: string }
+        * `deep_link_take_pending`  → string[]   (drain queued myagent:// URIs)
+    - The shell emits the following events:
+        * `sidecar://state`         → { state: "booting"|"ready"|"degraded"|"stopped",
+                                        port?: number, detail?: string }
+        * `deep-link://received`    → { payload: string }   (a myagent:// URI)
+
+  Dev fallback (opened in a plain browser):
+    - The page still renders, polls /ready, connects to the gateway WS, and
+      accepts deep-link via `?deepLink=myagent://...` in the URL.
+    - All `invoke()` calls are wrapped in try/catch; missing handlers degrade
+      gracefully (logged to console, not user-visible).
+
+  Source: spec §25.2 web dashboard + §25.3 desktop shell.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' tauri: ipc: http://127.0.0.1:* http://localhost:*; connect-src 'self' tauri: ipc: http://127.0.0.1:* ws://127.0.0.1:* ws://localhost:*; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<title>my-agent desktop</title>
+<style>
+  /* ── reset ─────────────────────────────────────────────────────── */
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #0b0d10;
+    color: #e6edf3;
+    overflow: hidden;
+  }
+
+  /* ── header ────────────────────────────────────────────────────── */
+  header {
+    padding: 10px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  header strong { font-size: 15px; letter-spacing: 0.2px; }
+  header .spacer { flex: 1; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #30363d;
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 1.4;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .pill.boot-booting { background: #30363d; color: #e6edf3; }
+  .pill.boot-ready   { background: #238636; color: #fff; }
+  .pill.boot-degraded{ background: #d29922; color: #fff; }
+  .pill.boot-stopped { background: #da3633; color: #fff; }
+  .pill.ws-offline   { background: #30363d; color: #8b949e; }
+  .pill.ws-live      { background: #238636; color: #fff; }
+  .pill.ws-recon     { background: #d29922; color: #fff; }
+  .pill.ws-error     { background: #da3633; color: #fff; }
+  .pill.tauri-on     { background: #1f6feb; color: #fff; }
+  .pill.tauri-off    { background: #30363d; color: #8b949e; }
+
+  /* ── boot banner ───────────────────────────────────────────────── */
+  #boot-banner {
+    display: none;
+    padding: 12px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  #boot-banner.booting  { display: flex; background: #161b22; }
+  #boot-banner.ready    { display: none; }
+  #boot-banner.degraded { display: flex; background: #2d1d04; border-bottom-color: #d29922; color: #f0c674; }
+  #boot-banner.stopped  { display: flex; background: #2a0a0a; border-bottom-color: #da3633; color: #ff8181; }
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #30363d;
+    border-top-color: #58a6ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #boot-detail {
+    margin-left: auto;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: #8b949e;
+  }
+
+  /* ── main layout ───────────────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 1px;
+    background: #30363d;
+    /* height = viewport - header - (maybe-banner) - input-bar */
+    height: calc(100vh - 49px - 48px);
+  }
+  main.no-banner { height: calc(100vh - 49px - 48px); }
+  main.with-banner { height: calc(100vh - 49px - 48px - 48px); }
+  #stream {
+    background: #0b0d10;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  #sidebar {
+    background: #0d1117;
+    padding: 12px;
+    overflow-y: auto;
+  }
+  #sidebar h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  #info {
+    font-size: 12px;
+    color: #8b949e;
+    font-family: ui-monospace, monospace;
+    word-break: break-all;
+  }
+  #info dt { color: #58a6ff; margin-top: 6px; }
+  #info dd { margin: 0 0 4px; color: #e6edf3; }
+
+  /* ── event tiles ───────────────────────────────────────────────── */
+  .ev {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: #161b22;
+    border-left: 3px solid #388bfd;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ev.tool     { border-left-color: #f0883e; }
+  .ev.approval { border-left-color: #d29922; }
+  .ev.error    { border-left-color: #f85149; }
+  .ev.budget   { border-left-color: #a371f7; }
+  .ev.health   { border-left-color: #2ea043; }
+  .meta {
+    font-size: 11px;
+    color: #8b949e;
+    font-family: ui-monospace, monospace;
+  }
+
+  /* ── input bar ─────────────────────────────────────────────────── */
+  #input-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    padding: 8px 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+  #prompt {
+    flex: 1;
+    background: #0d1117;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+  }
+  #prompt:focus { outline: none; border-color: #58a6ff; }
+  #send-btn {
+    background: #238636;
+    color: #fff;
+    border: 0;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  #send-btn:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; }
+  button.deny { background: #da3633; color: #fff; }
+
+  /* ── approval modal ────────────────────────────────────────────── */
+  #approval-modal {
+    position: fixed;
+    bottom: 64px;
+    right: 16px;
+    background: #161b22;
+    border: 1px solid #d29922;
+    padding: 12px;
+    border-radius: 6px;
+    max-width: 360px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    z-index: 50;
+    font-size: 13px;
+  }
+  #approval-modal pre {
+    background: #0d1117;
+    padding: 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    overflow-x: auto;
+    margin: 6px 0;
+  }
+  #approval-modal .actions { display: flex; gap: 8px; }
+
+  /* ── toast container (deep-link events) ────────────────────────── */
+  #toast-container {
+    position: fixed;
+    top: 60px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 100;
+    pointer-events: none;
+    max-width: 380px;
+  }
+  .toast {
+    pointer-events: auto;
+    background: #161b22;
+    border: 1px solid #58a6ff;
+    border-left-width: 3px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.5);
+    animation: slideIn 0.2s ease-out;
+  }
+  @keyframes slideIn {
+    from { transform: translateX(120%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+  .toast.invalid { border-color: #da3633; border-left-color: #da3633; }
+  .toast strong { color: #58a6ff; font-family: ui-monospace, monospace; font-size: 12px; }
+  .toast.invalid strong { color: #ff8181; }
+  .toast-params {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: #8b949e;
+    margin: 4px 0 8px;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+  .toast-actions { display: flex; gap: 6px; }
+  .toast button {
+    background: transparent;
+    color: #8b949e;
+    font-size: 11px;
+    padding: 3px 8px;
+    border: 1px solid #30363d;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .toast button:hover { background: #30363d; color: #e6edf3; }
+</style>
+</head>
+<body>
+<header>
+  <strong>my-agent</strong>
+  <span class="pill boot-booting" id="boot-status" title="sidecar lifecycle state">booting</span>
+  <span class="pill ws-offline"   id="ws-status"   title="gateway websocket state">offline</span>
+  <span class="pill"              id="seq-pill"    title="last event sequence">seq 0</span>
+  <span class="pill"              id="port-pill"   title="gateway port">port —</span>
+  <span class="spacer"></span>
+  <span class="pill tauri-off"    id="tauri-pill"  title="Tauri IPC presence">browser</span>
+</header>
+
+<div id="boot-banner" class="booting">
+  <div class="spinner" id="boot-spinner"></div>
+  <span id="boot-text">Waiting for gateway to become ready…</span>
+  <span id="boot-detail"></span>
+</div>
+
+<main id="main">
+  <div id="stream"></div>
+  <aside id="sidebar">
+    <h3>session</h3>
+    <dl id="info">
+      <dt>address</dt><dd id="info-address">—</dd>
+      <dt>cursor</dt><dd id="info-cursor">0</dd>
+      <dt>events</dt><dd id="info-events">0</dd>
+      <dt>runtime</dt><dd id="info-runtime">browser</dd>
+    </dl>
+  </aside>
+</main>
+
+<div id="approval-modal" style="display:none"></div>
+<div id="toast-container" aria-live="polite"></div>
+
+<div id="input-bar">
+  <input id="prompt" type="text" placeholder="send a message…" autocomplete="off" spellcheck="false" />
+  <button id="send-btn" type="button">send</button>
+</div>
+
+<script>
+"use strict";
+/* ────────────────────────────────────────────────────────────────────
+ * my-agent desktop dashboard — runtime
+ * ──────────────────────────────────────────────────────────────────── */
+
+(function () {
+  // ── DOM refs ────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const bootStatus   = $("boot-status");
+  const wsStatus     = $("ws-status");
+  const seqPill      = $("seq-pill");
+  const portPill     = $("port-pill");
+  const tauriPill    = $("tauri-pill");
+  const bootBanner   = $("boot-banner");
+  const bootSpinner  = $("boot-spinner");
+  const bootText     = $("boot-text");
+  const bootDetail   = $("boot-detail");
+  const main         = $("main");
+  const stream       = $("stream");
+  const infoAddress  = $("info-address");
+  const infoCursor   = $("info-cursor");
+  const infoEvents   = $("info-events");
+  const infoRuntime  = $("info-runtime");
+  const promptInput  = $("prompt");
+  const sendBtn      = $("send-btn");
+  const approval     = $("approval-modal");
+  const toastBox     = $("toast-container");
+
+  // ── Tauri detection ─────────────────────────────────────────────────
+  // `window.__TAURI__` is only present when `app.withGlobalTauri: true`
+  // in tauri.conf.json. We treat absence as "browser/dev mode".
+  const tauri = (typeof window !== "undefined"
+                 && window.__TAURI__
+                 && window.__TAURI__.core
+                 && window.__TAURI__.event)
+                ? window.__TAURI__
+                : null;
+  const inTauri = tauri !== null;
+
+  // Safe wrappers: never throw on dev/browser.
+  async function safeInvoke(cmd, args) {
+    if (!inTauri) return undefined;
+    try {
+      return await tauri.core.invoke(cmd, args);
+    } catch (e) {
+      console.warn("[ipc] invoke '" + cmd + "' failed:", e && e.message);
+      return undefined;
+    }
+  }
+  async function safeListen(event, handler) {
+    if (!inTauri) return function () {};
+    try {
+      const unlisten = await tauri.event.listen(event, handler);
+      return typeof unlisten === "function" ? unlisten : function () {};
+    } catch (e) {
+      console.warn("[ipc] listen '" + event + "' failed:", e && e.message);
+      return function () {};
+    }
+  }
+
+  tauriPill.textContent = inTauri ? "tauri" : "browser";
+  tauriPill.className = "pill " + (inTauri ? "tauri-on" : "tauri-off");
+  infoRuntime.textContent = inTauri ? "tauri" : "browser";
+
+  // ── State ───────────────────────────────────────────────────────────
+  const qs = new URLSearchParams(location.search);
+  const DEFAULT_PORT = 3000;
+  const READY_TIMEOUT_MS = 60_000;
+  const READY_POLL_MS = 500;
+  const WS_RETRY_MS = 1000;
+
+  let gatewayPort = parseInt(qs.get("port") || "", 10) || DEFAULT_PORT;
+  let wsToken = qs.get("token") || "";
+  let cursor = 0;
+  let ws = null;
+  let wsReady = false;
+  let bootState = "booting";
+  let readyPollHandle = null;
+  let eventsRendered = 0;
+
+  // The Rust side may also inject globals as a fast path (avoids IPC roundtrip).
+  if (typeof window.__DESKTOP_GATEWAY_PORT__ === "number" && window.__DESKTOP_GATEWAY_PORT__ > 0) {
+    gatewayPort = window.__DESKTOP_GATEWAY_PORT__;
+  }
+  if (typeof window.__DESKTOP_WS_TOKEN__ === "string") {
+    wsToken = window.__DESKTOP_WS_TOKEN__;
+  }
+  // Tag the side panel with the boot port.
+  portPill.textContent = "port " + gatewayPort;
+  infoAddress.textContent = qs.get("address") || "127.0.0.1";
+
+  // ── Boot state UI ───────────────────────────────────────────────────
+  function setBootState(state, detail) {
+    bootState = state;
+    bootStatus.textContent = state;
+    bootStatus.className = "pill boot-" + state;
+    switch (state) {
+      case "ready":
+        bootBanner.className = "ready";
+        main.className = "no-banner";
+        bootSpinner.style.display = "none";
+        bootText.textContent = "Gateway ready";
+        break;
+      case "degraded":
+        bootBanner.className = "degraded";
+        main.className = "with-banner";
+        bootSpinner.style.display = "none";
+        bootText.textContent = "Gateway unreachable — retrying";
+        break;
+      case "stopped":
+        bootBanner.className = "stopped";
+        main.className = "with-banner";
+        bootSpinner.style.display = "none";
+        bootText.textContent = "Gateway stopped";
+        break;
+      case "booting":
+      default:
+        bootBanner.className = "booting";
+        main.className = "with-banner";
+        bootSpinner.style.display = "";
+        bootText.textContent = "Waiting for gateway to become ready…";
+        break;
+    }
+    if (detail) {
+      bootDetail.textContent = String(detail);
+    } else {
+      bootDetail.textContent = "";
+    }
+  }
+
+  function setWsState(state) {
+    wsStatus.textContent = state;
+    wsStatus.className = "pill ws-" + state;
+  }
+
+  function setPort(port) {
+    if (typeof port === "number" && port > 0 && port !== gatewayPort) {
+      gatewayPort = port;
+      portPill.textContent = "port " + gatewayPort;
+    }
+  }
+
+  // ── Readiness probe ─────────────────────────────────────────────────
+  async function probeReady() {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(function () { ctl.abort(); }, 2000);
+      const res = await fetch("http://127.0.0.1:" + gatewayPort + "/ready", {
+        method: "GET",
+        cache: "no-store",
+        signal: ctl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return false;
+      const body = await res.json().catch(function () { return {}; });
+      return body && body.ok === true;
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  async function waitForGateway() {
+    const deadline = Date.now() + READY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (await probeReady()) {
+        setBootState("ready");
+        connectWs();
+        return true;
+      }
+      // Yield to the event loop.
+      await new Promise(function (r) { setTimeout(r, READY_POLL_MS); });
+    }
+    setBootState("degraded", "did not become ready in " + Math.round(READY_TIMEOUT_MS / 1000) + "s");
+    return false;
+  }
+
+  // ── WebSocket ───────────────────────────────────────────────────────
+  function wsUrl() {
+    let q = "";
+    if (cursor > 0) q += (q ? "&" : "?") + "since=" + cursor;
+    if (wsToken)   q += (q ? "&" : "?") + "token=" + encodeURIComponent(wsToken);
+    return "ws://127.0.0.1:" + gatewayPort + "/events" + q;
+  }
+
+  function connectWs() {
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+    try {
+      ws = new WebSocket(wsUrl());
+    } catch (e) {
+      setWsState("error");
+      console.warn("[ws] construct failed:", e);
+      setTimeout(connectWs, WS_RETRY_MS);
+      return;
+    }
+    setWsState("offline");
+
+    ws.addEventListener("open", function () {
+      wsReady = true;
+      setWsState("live");
+    });
+    ws.addEventListener("close", function () {
+      wsReady = false;
+      setWsState("recon");
+      setTimeout(connectWs, WS_RETRY_MS);
+    });
+    ws.addEventListener("error", function () {
+      // The `close` handler will run after this; reconnect logic lives there.
+      try { ws.close(); } catch (_e) {}
+    });
+    ws.addEventListener("message", function (m) {
+      let env;
+      try {
+        env = JSON.parse(m.data);
+      } catch (_e) {
+        return; // malformed — skip
+      }
+      if (typeof env.seq === "number") {
+        cursor = env.seq;
+        seqPill.textContent = "seq " + cursor;
+        infoCursor.textContent = String(cursor);
+      }
+      renderEvent(env);
+    });
+  }
+
+  // ── Event rendering (mirrors packages/web/src/index.ts) ─────────────
+  function summarize(e) {
+    if (!e || typeof e !== "object") return "";
+    if (e.kind === "turn" && e.e) {
+      if (e.e.state === "Streaming" && e.e.chunk) return e.e.chunk.text || "";
+      if (e.e.state === "ToolExec") return "[tool results]";
+      if (e.e.state === "Completed") {
+        const u = e.e.usage || {};
+        return "[completed · in " + (u.input || 0) + "/" + (u.output || 0) + "]";
+      }
+      return "[" + e.e.state + "]";
+    }
+    if (e.kind === "budget") return "budget: $" + (Number(e.spentUsd) || 0).toFixed(4);
+    if (e.kind === "approval") return "approval: " + (e.stage || "?");
+    if (e.kind === "health")   return "health: " + (e.status || "?");
+    try {
+      return JSON.stringify(e).slice(0, 240);
+    } catch (_e) {
+      return "[unserializable event]";
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c];
+    });
+  }
+
+  function renderEvent(env) {
+    if (!env || typeof env !== "object") return;
+    const e = env.event || {};
+    const div = document.createElement("div");
+    const kind = (typeof e.kind === "string") ? e.kind : "";
+    div.className = "ev " + kind;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = "#" + (env.seq != null ? env.seq : "?") + " " + kind;
+    div.appendChild(meta);
+
+    const body = document.createElement("div");
+    body.textContent = summarize(e);
+    div.appendChild(body);
+
+    stream.appendChild(div);
+    stream.scrollTop = stream.scrollHeight;
+
+    eventsRendered++;
+    infoEvents.textContent = String(eventsRendered);
+
+    if (e.kind === "approval" && e.stage === "requested") showApproval(e);
+  }
+
+  function showApproval(e) {
+    approval.style.display = "block";
+    const callJson = JSON.stringify(e.call || {}, null, 2);
+    approval.innerHTML =
+      "<strong>approval</strong>" +
+      "<pre>" + escapeHtml(callJson) + "</pre>" +
+      "<div class=\"actions\">" +
+      "<button type=\"button\" id=\"approval-allow\">allow</button>" +
+      "<button type=\"button\" class=\"deny\" id=\"approval-deny\">deny</button>" +
+      "</div>";
+    $("approval-allow").addEventListener("click", function () {
+      approval.style.display = "none";
+      // Wire to a future IPC channel once the shell exposes approval submission.
+    });
+    $("approval-deny").addEventListener("click", function () {
+      approval.style.display = "none";
+    });
+  }
+
+  // ── Input bar ───────────────────────────────────────────────────────
+  function sendPrompt() {
+    const text = promptInput.value.trim();
+    if (!text) return;
+    if (!ws || !wsReady) {
+      console.warn("[send] ws not ready; message dropped");
+      return;
+    }
+    try {
+      ws.send(JSON.stringify({ text: text }));
+      promptInput.value = "";
+    } catch (e) {
+      console.warn("[send] failed:", e);
+    }
+  }
+  sendBtn.addEventListener("click", sendPrompt);
+  promptInput.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter" && !ev.shiftKey) {
+      ev.preventDefault();
+      sendPrompt();
+    }
+  });
+
+  // ── Deep-link handling ──────────────────────────────────────────────
+  // URI grammar (mirrors packages/desktop/src/index.ts validateDeepLink):
+  //   myagent://<action>?<key>=<value>&...
+  //   actions: open, approve, install, focus
+  function parseDeepLink(uri) {
+    let parsed;
+    try {
+      parsed = new URL(uri);
+    } catch (_e) {
+      return { ok: false, reason: "malformed URI" };
+    }
+    if (parsed.protocol !== "myagent:") {
+      return { ok: false, reason: "wrong scheme: " + parsed.protocol };
+    }
+    const host = parsed.hostname.toLowerCase();
+    const allowed = ["open", "approve", "install", "focus"];
+    if (allowed.indexOf(host) < 0) {
+      return { ok: false, reason: "unknown action: " + host };
+    }
+    const params = {};
+    for (const [k, v] of parsed.searchParams) params[k] = v;
+    return { ok: true, action: host, params: params, raw: uri };
+  }
+
+  function showDeepLinkToast(result) {
+    const toast = document.createElement("div");
+    toast.className = "toast" + (result.ok ? "" : " invalid");
+    if (result.ok) {
+      toast.innerHTML =
+        "<strong>myagent://" + escapeHtml(result.action) + "</strong>" +
+        "<div class=\"toast-params\">" + escapeHtml(JSON.stringify(result.params, null, 2)) + "</div>" +
+        "<div class=\"toast-actions\">" +
+        "<button type=\"button\" data-act=\"dismiss\">dismiss</button>" +
+        "</div>";
+    } else {
+      toast.innerHTML =
+        "<strong>invalid deep-link</strong>" +
+        "<div class=\"toast-params\">" + escapeHtml(result.reason || "unknown") + "</div>" +
+        "<div class=\"toast-actions\">" +
+        "<button type=\"button\" data-act=\"dismiss\">dismiss</button>" +
+        "</div>";
+    }
+    toast.querySelector('[data-act="dismiss"]').addEventListener("click", function () {
+      toast.remove();
+    });
+    toastBox.appendChild(toast);
+    setTimeout(function () { toast.remove(); }, 8000);
+  }
+
+  function handleDeepLink(uri) {
+    if (typeof uri !== "string" || uri.length === 0) return;
+    const result = parseDeepLink(uri);
+    showDeepLinkToast(result);
+    if (result.ok) {
+      console.info("[deep-link] action=" + result.action, result.params);
+    } else {
+      console.warn("[deep-link] rejected:", result.reason);
+    }
+  }
+
+  async function drainPendingDeepLinks() {
+    const list = await safeInvoke("deep_link_take_pending");
+    if (Array.isArray(list)) {
+      for (let i = 0; i < list.length; i++) handleDeepLink(list[i]);
+    }
+  }
+
+  function readQueryDeepLink() {
+    const uri = qs.get("deepLink");
+    if (uri) handleDeepLink(uri);
+  }
+
+  // ── IPC subscriptions ───────────────────────────────────────────────
+  function setupDeepLinkListener() {
+    return safeListen("deep-link://received", function (ev) {
+      const payload = ev && ev.payload;
+      if (typeof payload === "string") handleDeepLink(payload);
+    });
+  }
+
+  function setupSidecarListener() {
+    return safeListen("sidecar://state", function (ev) {
+      const p = ev && ev.payload;
+      if (!p || typeof p !== "object") return;
+      if (typeof p.port === "number") {
+        setPort(p.port);
+        // If we were already polling, restart so the new port is probed.
+        if (bootState !== "ready") startGatewayHandshake();
+      }
+      if (typeof p.state === "string") {
+        setBootState(p.state, p.detail);
+        if (p.state === "ready") connectWs();
+      }
+    });
+  }
+
+  async function fetchGatewayInfo() {
+    const info = await safeInvoke("gateway_info");
+    if (info && typeof info === "object") {
+      if (typeof info.port === "number") setPort(info.port);
+      if (typeof info.wsPath === "string") {
+        // The shell may hand us a fully-built WS path; honour the token.
+        try {
+          const u = new URL(info.wsPath, "ws://127.0.0.1:" + gatewayPort);
+          const tok = u.searchParams.get("token");
+          if (tok) wsToken = tok;
+        } catch (_e) { /* best-effort */ }
+      } else if (typeof info.token === "string" && info.token) {
+        wsToken = info.token;
+      }
+    }
+  }
+
+  // ── Bootstrap ───────────────────────────────────────────────────────
+  let handshakeStarted = false;
+  function startGatewayHandshake() {
+    if (handshakeStarted) return;
+    handshakeStarted = true;
+    setBootState("booting");
+    waitForGateway();
+  }
+
+  setBootState("booting");
+
+  // 1. Drain any deep-link the OS delivered before the renderer was ready.
+  readQueryDeepLink();
+  void drainPendingDeepLinks();
+
+  // 2. Subscribe to ongoing IPC events.
+  void setupDeepLinkListener();
+  void setupSidecarListener();
+
+  // 3. Resolve the gateway port + token (Rust side is the source of truth).
+  void fetchGatewayInfo().then(function () { startGatewayHandshake(); });
+
+  // In case the IPC handlers are missing (browser dev), start polling the
+  // default port after a short delay so the page is still usable.
+  setTimeout(function () {
+    if (!handshakeStarted) startGatewayHandshake();
+  }, 1000);
+})();
+</script>
+</body>
+</html>

@@ -32,6 +32,8 @@
     "typecheck": "tsc --noEmit",
     "clean": "tsc -b --clean && rm -rf packages/*/dist",
     "natives:build": "cargo build -p my-agent-natives",
+    "desktop:dev": "cargo run -p my-agent-desktop-shell",
+    "desktop:build": "cargo build --release -p my-agent-desktop-shell",
     "lint": "node scripts/lint.mjs",
     "lint:deps": "node scripts/lint-deps.mjs",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",

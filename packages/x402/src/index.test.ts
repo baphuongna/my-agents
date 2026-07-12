@@ -65,3 +65,73 @@ describe("x402 — double-pay guard (X1 / R44: pay AT MOST ONCE per fetch)", () 
     expect(wallet.receipts.length).toBe(1);
   });
 });
+
+describe("Wallet — HMAC-SHA256 + HKDF + rotation (Phase 6)", () => {
+  // Pin a deterministic master secret so signature comparison is stable.
+  const secretA = Buffer.alloc(32, 0x42);
+  const secretB = Buffer.alloc(32, 0x99);
+
+  it("signs with HMAC-SHA256 under the derived key (new format)", () => {
+    const w = new Wallet({ address: "addr-A", initial: { USDC: 10 }, masterSecret: secretA });
+    const r = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    expect(r.signature).toMatch(/^x402v1:hmac-sha256:[0-9a-f]{64}$/);
+    // Address is the IKM, NOT in the payload — signing key absorbs it.
+    expect(r.signature).not.toContain("addr-A");
+  });
+
+  it("is deterministic per (wallet, challenge)", () => {
+    const w = new Wallet({ address: "addr-A", initial: { USDC: 10 }, masterSecret: secretA });
+    const r1 = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    const r2 = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    expect(r1.signature).toBe(r2.signature);
+  });
+
+  it("two wallets with the same address produce DIFFERENT signatures (per-wallet secret)", () => {
+    const w1 = new Wallet({ address: "shared", initial: { USDC: 10 }, masterSecret: secretA });
+    const w2 = new Wallet({ address: "shared", initial: { USDC: 10 }, masterSecret: secretB });
+    const r1 = w1.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    const r2 = w2.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    expect(r1.signature).not.toBe(r2.signature);
+  });
+
+  it("rotateKey() invalidates the prior signing key (1-based counter)", () => {
+    const w = new Wallet({ address: "a", initial: { USDC: 10 }, masterSecret: secretA });
+    const before = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    expect(w.rotateKey()).toBe(1);
+    const after1 = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    expect(after1.signature).not.toBe(before.signature);
+    expect(w.rotateKey()).toBe(2);
+    // After 2 rotations, signatures continue to be deterministic per current key.
+    const after2a = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    const after2b = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    expect(after2a.signature).toBe(after2b.signature);
+  });
+
+  it("keyStatus() reports fingerprints + rotation count + age (safe to log)", () => {
+    const w = new Wallet({ address: "a", initial: { USDC: 10 }, masterSecret: secretA });
+    const s = w.keyStatus();
+    expect(s.address).toBe("a");
+    expect(s.algorithm).toBe("hmac-sha256+HKDF-SHA256");
+    expect(s.masterSecretFingerprint).toMatch(/^[0-9a-f]{12}$/);
+    expect(s.signingKeyFingerprint).toMatch(/^[0-9a-f]{12}$/);
+    expect(s.rotationCount).toBe(0);
+    expect(s.createdAt).toBeGreaterThan(0);
+    expect(s.ageMs).toBeGreaterThanOrEqual(0);
+    // Fingerprints must differ for master vs derived (HKDF does not echo salt).
+    expect(s.masterSecretFingerprint).not.toBe(s.signingKeyFingerprint);
+    w.rotateKey();
+    const s2 = w.keyStatus();
+    expect(s2.rotationCount).toBe(1);
+    // New master secret → new fingerprints.
+    expect(s2.masterSecretFingerprint).not.toBe(s.masterSecretFingerprint);
+    expect(s2.signingKeyFingerprint).not.toBe(s.signingKeyFingerprint);
+  });
+
+  it("health() stays Healthy under normal post-construction state", () => {
+    const w = new Wallet({ address: "a", initial: { USDC: 10 } });
+    expect(w.health()).toBe("Healthy");
+    // Rotation does NOT change the tri-state (no failure mode in tier 3 stub).
+    w.rotateKey();
+    expect(w.health()).toBe("Healthy");
+  });
+});

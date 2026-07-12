@@ -16,11 +16,48 @@
  *
  * Source: Frontier §20 "x402 micropayments + wallet"; the HTTP 402 pattern
  * used by cloudflare + others for paid APIs.
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ *  NOT PRODUCTION-GRADE BLOCKCHAIN CRYPTO — TIER 3 STUB
+ * ───────────────────────────────────────────────────────────────────────────
+ * `Wallet.signingKey` and `signDeterministic` use HMAC-SHA256 with a signing
+ * key derived per-wallet via HKDF-SHA256 (RFC 5869). Both primitives are
+ * provided by `node:crypto` (no extra dep). The construction is:
+ *
+ *      masterSecret  = randomBytes(32)            // per-wallet, in memory
+ *      signingKey    = HKDF-SHA256(
+ *                         ikm    = address,
+ *                         salt   = masterSecret,
+ *                         info   = "x402v1:signing-key",
+ *                         length = 32,
+ *                      )
+ *      signature     = HMAC-SHA256(signingKey, ${payee}|${currency}|${amount}|${nonce})
+ *
+ * Properties (sufficient for tier-3 testing):
+ *   • Same (signingKey, challenge) → same signature (deterministic).
+ *   • Different wallets with the same address produce DIFFERENT signatures
+ *     (per-wallet master secret provides isolation).
+ *   • Without `masterSecret`, the signature is unforgeable (HMAC security).
+ *   • `rotateKey()` invalidates the prior signing key; prior receipts remain
+ *     cryptographically valid under their original key.
+ *
+ * What this is NOT:
+ *   • Not ECDSA / secp256k1 / Ed25519 — there is NO public-key verification
+ *     and no on-chain signature semantics. A verifier in this tier relies on
+ *     the same in-process wallet; remote attestation requires Tier 4.
+ *   • Not persistent — `masterSecret` lives in memory only. On restart, the
+ *     wallet is "fresh" (intentional; Tier 3 invariant).
+ *   • Not a substitute for `Address` as a public key — `address` is a label
+ *     that anchors `signingKey` derivation; rotation does NOT change it.
+ *
+ * Tier 4 will replace this module with real asymmetric crypto. DO NOT use this
+ * against any real economic value.
+ * ───────────────────────────────────────────────────────────────────────────
  */
 import type { ComponentHealth, ToolExecutor } from "@my-agent/core";
 import { err, isRecord, ok, type ToolImpl } from "@my-agent/tools";
 import type { ToolResult } from "@my-agent/core";
-import { nativeMac } from "@my-agent/natives";
+import { createHmac, hkdfSync, randomBytes, createHash } from "node:crypto";
 import { nowWallclock } from "@my-agent/core";
 
 /** A payment challenge from a 402 response. */
@@ -36,7 +73,7 @@ export interface X402Challenge {
 /** A signed payment authorization. */
 export interface X402Receipt {
   challenge: X402Challenge;
-  /** Deterministic signature for the in-memory wallet (Tier 3 stub). */
+  /** Deterministic HMAC-SHA256 signature (Tier 3 stub — see file header). */
   signature: string;
   /** Wallet address that paid. */
   payer: string;
@@ -47,17 +84,78 @@ export interface X402Receipt {
 /** Balance per currency (smallest unit). */
 export type Balance = Record<string, number>;
 
-/** A wallet holds a balance and signs payment authorizations. */
+/**
+ * Rich key lifecycle status for the `Wallet`.
+ *
+ * `address` is the public label bound into HKDF IKM.
+ * `masterSecretFingerprint` and `signingKeyFingerprint` are short SHA-256
+ * fingerprints (first 12 hex chars) of the raw bytes — for audit logs only;
+ * NEVER the secret itself. See {@link Wallet.keyStatus}.
+ */
+export interface KeyStatus {
+  address: string;
+  algorithm: "hmac-sha256+HKDF-SHA256";
+  masterSecretFingerprint: string;
+  signingKeyFingerprint: string;
+  /** 1-based: 0 until first rotateKey() call. */
+  rotationCount: number;
+  /** Epoch ms at construction. */
+  createdAt: number;
+  /** Epoch ms - createdAt. */
+  ageMs: number;
+}
+
+/** HKDF domain-separator for the signing key (versioned). */
+const HKDF_INFO_SIGNING = Buffer.from("x402v1:signing-key", "utf8");
+const MASTER_SECRET_BYTES = 32;
+const SIGNING_KEY_BYTES = 32;
+
+/**
+ * Derive a per-wallet signing key from `(masterSecret, address)` using
+ * HKDF-SHA256 (RFC 5869). Deterministic for fixed inputs.
+ *
+ * The same `address` with a different `masterSecret` yields a different
+ * `signingKey` — this is how same-address wallets stay isolated.
+ */
+function deriveSigningKey(masterSecret: Buffer, address: string): Buffer {
+  const ikm = Buffer.from(address, "utf8");
+  const out = hkdfSync("sha256", ikm, masterSecret, HKDF_INFO_SIGNING, SIGNING_KEY_BYTES);
+  return Buffer.from(out);
+}
+
+/** Short fingerprint of a secret for audit logs (never the secret itself). */
+function fingerprintSecret(b: Buffer): string {
+  return createHash("sha256").update(b).digest("hex").slice(0, 12);
+}
+
+/** A wallet holds a balance, a derived signing key, and signs payment
+ * authorizations. Fail-closed: throws on insufficient balance, invalid
+ * amounts, or uninitialized key state. */
 export class Wallet {
   private readonly balances: Balance;
-  /** Payer address (derived from a key, or a label). Tier 3: a label. */
+  /** Payer address (public label; Tier 3: not a cryptographic pubkey). */
   readonly address: string;
+  /** 32-byte per-wallet secret. NEVER logged or persisted. */
+  private masterSecret: Buffer;
+  /** HKDF-SHA256-derive(masterSecret, address). */
+  private signingKey: Buffer;
+  /** # of rotateKey() calls since construction. */
+  private rotationCount = 0;
+  /** Wallclock at construction (for key-status reporting). */
+  private readonly createdAt: number;
   /** Audit log of all payments. */
   readonly receipts: X402Receipt[] = [];
 
-  constructor(opts: { address?: string; initial?: Balance } = {}) {
+  constructor(opts: { address?: string; initial?: Balance; masterSecret?: Buffer } = {}) {
     this.address = opts.address ?? "my-agent-wallet";
     this.balances = { ...(opts.initial ?? {}) };
+    this.masterSecret = opts.masterSecret ?? randomBytes(MASTER_SECRET_BYTES);
+    this.signingKey = deriveSigningKey(this.masterSecret, this.address);
+    this.createdAt = nowWallclock();
+    // Defensive invariant: derivation must produce a non-empty key.
+    if (this.signingKey.length === 0) {
+      throw new Error("x402: signing key derivation produced empty buffer (HKDF failure)");
+    }
   }
 
   /** Get the current balance for a currency. */
@@ -68,6 +166,20 @@ export class Wallet {
   /** Top up the wallet (deposit / faucet). */
   deposit(currency: string, amount: number): void {
     this.balances[currency] = this.balance(currency) + amount;
+  }
+
+  /**
+   * Rotate the wallet's signing key: fresh `masterSecret` → re-derived
+   * `signingKey`. Existing receipts remain valid under their original key;
+   * new `pay()` calls produce signatures only verifiable with the new key.
+   *
+   * Returns the new 1-based rotation index (1 = first rotation).
+   */
+  rotateKey(): number {
+    this.masterSecret = randomBytes(MASTER_SECRET_BYTES);
+    this.signingKey = deriveSigningKey(this.masterSecret, this.address);
+    this.rotationCount += 1;
+    return this.rotationCount;
   }
 
   /**
@@ -87,7 +199,7 @@ export class Wallet {
     this.balances[challenge.currency] = cur - challenge.amount;
     const receipt: X402Receipt = {
       challenge,
-      signature: signDeterministic(this.address, challenge),
+      signature: signDeterministic(this.signingKey, challenge),
       payer: this.address,
       signedAt: nowWallclock(),
     };
@@ -95,22 +207,55 @@ export class Wallet {
     return receipt;
   }
 
+  /**
+   * Health tri-state. Returns `"Healthy"` while the key is initialized —
+   * this is a Tier 3 stub and has no failure mode after construction.
+   *
+   * For key lifecycle detail (rotation count, age, fingerprints), see
+   * {@link Wallet.keyStatus}. Rich detail is published separately via the
+   * `health` runtime event (`detail` field) — the tri-state stays stable so
+   * the laneboard aggregates cleanly.
+   */
   health(): ComponentHealth {
-    return "Healthy"; // Tier 3: the stub never fails
+    return this.signingKey.length === 0 ? "Failed" : "Healthy";
+  }
+
+  /**
+   * Rich key lifecycle snapshot. SAFE to log / emit — fingerprints are short
+   * SHA-256 hex prefixes of the raw bytes, not the bytes themselves.
+   *
+   * Use this to surface key status to observability (e.g. wire into the
+   * `health` runtime event as `detail`).
+   */
+  keyStatus(): KeyStatus {
+    return {
+      address: this.address,
+      algorithm: "hmac-sha256+HKDF-SHA256",
+      masterSecretFingerprint: fingerprintSecret(this.masterSecret),
+      signingKeyFingerprint: fingerprintSecret(this.signingKey),
+      rotationCount: this.rotationCount,
+      createdAt: this.createdAt,
+      ageMs: nowWallclock() - this.createdAt,
+    };
   }
 }
 
-/** Deterministic signature for the wallet.
- * M2 (security review): FAIL CLOSED. Uses keyed BLAKE3 (native) or HMAC-SHA256
- * (fallback). If BOTH fail, the payment is REJECTED (throw) — never signed with
- * the forgeable FNV-1a fallback (32-bit, unkeyed, trivially forgeable). */
-function signDeterministic(address: string, c: X402Challenge): string {
-  if (!address) throw new Error("x402: wallet address required (empty key would be forgeable)");
-  const payload = `${address}|${c.payee}|${c.currency}|${c.amount}|${c.nonce}`;
-  // Keyed BLAKE3 (native) or HMAC-SHA256 (fallback) — both 64 hex. Throws if
-  // both native + node:crypto fail (fail-closed; the caller surfaces a pay error).
-  const mac = nativeMac(address, payload);
-  return `x402v1:blake3:${mac}`;
+/**
+ * Deterministic HMAC-SHA256 signature over the challenge using the wallet's
+ * derived signing key. Format: `x402v1:hmac-sha256:<64-hex>`.
+ *
+ * Not ECDSA — see file header for the full threat model + Tier 4 plan.
+ */
+function signDeterministic(signingKey: Buffer, c: X402Challenge): string {
+  if (signingKey.length === 0) {
+    throw new Error("x402: empty signing key (wallet not initialized)");
+  }
+  // Address is intentionally NOT in the payload — it is the IKM for key
+  // derivation, not part of the message. This avoids address-key coupling
+  // signature forgery if two wallets share an address.
+  const payload = `${c.payee}|${c.currency}|${c.amount}|${c.nonce}`;
+  const mac = createHmac("sha256", signingKey).update(payload).digest("hex");
+  return `x402v1:hmac-sha256:${mac}`;
 }
 
 // ─── X402Client (fetch with 402-payment handling) ────────────────────────────
