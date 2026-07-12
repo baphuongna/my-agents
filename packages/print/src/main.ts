@@ -86,10 +86,6 @@ async function main(): Promise<void> {
   return runPiInteractive();
 }
 
-// ── shared instances (re-exported from pi-main.ts so TUI + print share) ──
-// These are created in pi-main.ts and re-exported for consistency.
-import { secretStore, auditLog, hooks, skillStore } from "./pi-main.js";
-
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     let data = "";
