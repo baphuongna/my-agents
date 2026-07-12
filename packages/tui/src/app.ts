@@ -12,15 +12,39 @@
  */
 import { TUI, Container, Text, Spacer, Terminal, type Component } from "./engine.js";
 import { execSync } from "node:child_process";
+import { nowMonotonic } from "@my-agent/core";
 
-// ─── ANSI palette (pi-style 256-color, foreground only for text) ──────
+// ─── ANSI palette (pi-style 256-color, foreground + selected backgrounds) ─
 const C = {
   R: "\x1b[0m", B: "\x1b[1m", D: "\x1b[2m", I: "\x1b[3m", U: "\x1b[4m",
   accent: "\x1b[38;5;110m", green: "\x1b[38;5;108m", red: "\x1b[38;5;168m",
   yellow: "\x1b[38;5;179m", gray: "\x1b[38;5;245m", darkgray: "\x1b[38;5;238m",
   blue: "\x1b[38;5;67m", purple: "\x1b[38;5;140m", cyan: "\x1b[38;5;73m",
   border: "\x1b[38;5;239m",
+  // Backgrounds — see pi (userBg #343541) and claw-code (\x1b[48;5;236m).
+  bg236: "\x1b[48;5;236m",   // dark gray #303030 — user msgs, code blocks, running tools
+  bgGreen: "\x1b[48;5;22m",  // dark green — successful tool card fill
+  bgRed: "\x1b[48;5;52m",    // dark red — error tool card fill
 };
+
+/** Default context-window size for the context-bar percentage. Claude-class. */
+const DEFAULT_CONTEXT_LIMIT = 200_000;
+
+/** Tool-name → icon table for the tool card header. */
+const TOOL_ICON: Record<string, string> = {
+  bash: "⌘",
+  read: "📄",
+  write: "✏️",
+  edit: "📝",
+  search: "🔎",
+  grep: "🔎",
+  glob: "📂",
+};
+
+/** Visible (non-ANSI) character count. */
+function countVisibleChars(s: string): number {
+  return s.replace(/\x1b\[[0-9;]*m/g, "").length;
+}
 
 // ─── Message types ────────────────────────────────────────────────────
 interface Message {
@@ -34,49 +58,106 @@ function renderMarkdownToLines(text: string, width: number): string[] {
   const lines = text.split("\n");
   const out: string[] = [];
   let inCodeBlock = false;
-  let inThink = false; // Stateful: dim ALL lines inside <think>...</think>
-  for (const line of lines) {
-    // Handle <think> blocks (stateful — dim spans multiple lines)
-    if (line.includes("<think>")) { inThink = true; }
-    if (line.includes("</think>")) {
-      inThink = false;
-      out.push(`${C.darkgray}${line.replace(/<\/?think>/g, "")}${C.R}`);
-      continue;
+
+  // --- SINGLE PASS: think-collapse + markdown render ---
+  // When <think> is encountered, skip to </think> and emit ONE collapsed line.
+  // Then continue rendering regular markdown. This avoids the double-render bug.
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i] ?? "";
+
+    // ── Thinking-block collapse (claw-code pattern) ──
+    if (raw.includes("<think>")) {
+      let hiddenChars = 0;
+      const openIdx = raw.indexOf("<think>");
+      const afterOpen = raw.slice(openIdx + 7);
+      const closeSameIdx = afterOpen.indexOf("</think>");
+      if (closeSameIdx !== -1) {
+        // Both on same line — count between them
+        hiddenChars = countVisibleChars(afterOpen.slice(0, closeSameIdx));
+        out.push(`  ${C.darkgray}▶ Thinking (${hiddenChars} chars hidden)${C.R}`);
+        i++;
+        continue;
+      } else {
+        // Multi-line: count rest of open line, then consume until </think>
+        hiddenChars += countVisibleChars(afterOpen);
+        i++;
+        while (i < lines.length) {
+          const inner = lines[i] ?? "";
+          const ci = inner.indexOf("</think>");
+          if (ci !== -1) {
+            hiddenChars += countVisibleChars(inner.slice(0, ci));
+            break;
+          }
+          hiddenChars += countVisibleChars(inner) + 1;
+          i++;
+        }
+        out.push(`  ${C.darkgray}▶ Thinking (${hiddenChars} chars hidden)${C.R}`);
+        i++;
+        continue;
+      }
     }
-    if (inThink) {
-      out.push(`${C.darkgray}${line.replace(/<\/?think>/g, "")}${C.R}`);
-      continue;
-    }
-    let ml = line.replace(/<\/?think>/g, "");
+
+    // Skip stray </think> (shouldn't happen, but defensive)
+    if (raw.includes("</think>")) { i++; continue; }
+
+    let ml = raw.replace(/<\/?think>/g, "");
+
     if (ml.startsWith("```")) {
       if (!inCodeBlock) {
         inCodeBlock = true;
         const lang = ml.slice(3).trim();
         const label = lang || "code";
-        out.push(`${C.border}╭${C.gray}─ ${label} ${C.border}${"─".repeat(Math.max(0, width - label.length - 8))}╮${C.R}`);
+        const borderW = Math.max(0, width - label.length - 8);
+        out.push(`${C.border}╭${C.gray}─ ${label} ${C.border}${"─".repeat(borderW)}╮${C.R}`);
+        i++;
         continue;
       } else {
         inCodeBlock = false;
-        out.push(`${C.border}╰${"─".repeat(Math.max(0, width - 2))}╯${C.R}`);
+        out.push(`${C.border}╰${"─".repeat(Math.max(0, width - 4))}╯${C.R}`);
+        i++;
         continue;
       }
     }
-    if (inCodeBlock) { out.push(`${C.cyan}  ${ml}${C.R}`); continue; }
-    if (/^###\s/.test(ml)) { out.push(`${C.yellow}${C.B}${ml.replace(/^###\s/, "")}${C.R}`); continue; }
-    if (/^##\s/.test(ml))  { out.push(`${C.yellow}${C.B}${ml.replace(/^##\s/, "")}${C.R}`); continue; }
-    if (/^#\s/.test(ml))   { out.push(`${C.yellow}${C.B}${C.U}${ml.replace(/^#\s/, "")}${C.R}`); continue; }
-    if (/^---+$/.test(ml.trim())) { out.push(`${C.border}${"─".repeat(width)}${C.R}`); continue; }
-    if (ml.startsWith(">")) { out.push(`${C.gray}${C.I}${ml}${C.R}`); continue; }
+    if (inCodeBlock) {
+      // Background fill on every code line. Re-assert bg after every ${C.R}
+      // so the reset doesn't punch a hole in the card. Word-wrap inside code
+      // blocks (rare, but possible when width shrinks after rendering) also
+      // re-asserts bg per wrapped sub-line.
+      const bodyWidth = Math.max(1, width - 4);
+      const codeInner = ml.length > bodyWidth ? ml.slice(0, bodyWidth) : ml;
+      const pad = " ".repeat(Math.max(0, bodyWidth - countVisibleChars(codeInner)));
+      out.push(`${C.bg236}${C.cyan}  ${codeInner}${C.bg236}${pad}${C.R}`);
+      i++;
+      continue;
+    }
+
+    if (/^###\s/.test(ml)) { out.push(`${C.yellow}${C.B}${ml.replace(/^###\s/, "")}${C.R}`); i++; continue; }
+    if (/^##\s/.test(ml))  { out.push(`${C.yellow}${C.B}${ml.replace(/^##\s/, "")}${C.R}`); i++; continue; }
+    if (/^#\s/.test(ml))   { out.push(`${C.yellow}${C.B}${C.U}${ml.replace(/^#\s/, "")}${C.R}`); i++; continue; }
+    if (/^---+$/.test(ml.trim())) { out.push(`${C.border}${"─".repeat(width)}${C.R}`); i++; continue; }
+
+    // Blockquote gutter (pi/claw-code/hermes pattern)
+    if (ml.startsWith(">")) {
+      const inner = ml.replace(/^>\s?/, "");
+      const body = `${C.gray}${C.I}${inner}${C.R}`;
+      const bodyWidth = Math.max(1, width - 4);
+      const padLen = Math.max(0, bodyWidth - countVisibleChars(inner));
+      out.push(`${C.border}│ ${C.R}${body}${" ".repeat(padLen)}`);
+      i++;
+      continue;
+    }
+
     if (/^\s*[-*]\s/.test(ml)) ml = ml.replace(/^(\s*)[-*]\s/, `$1${C.accent}● ${C.R}`);
     ml = ml.replace(/\*\*(.+?)\*\*/g, `${C.B}$1${C.R}`);
     ml = ml.replace(/`([^`]+)`/g, `${C.cyan}$1${C.R}`);
     // Word wrap: don't break mid-word (strip ANSI for width calculation)
-    const visibleLen = ml.replace(/\x1b\[[0-9;]*m/g, "").length;
+    const visibleLen = countVisibleChars(ml);
     if (visibleLen > width - 2) {
       const words = ml.split(" ");
       let cur = "";
       for (const w of words) {
-        const testLen = (cur + " " + w).replace(/\x1b\[[0-9;]*m/g, "").trimStart().length;
+        const testLen = countVisibleChars((cur + " " + w).trimStart());
         if (testLen > width - 2 && cur) {
           out.push(cur);
           cur = w;
@@ -88,6 +169,7 @@ function renderMarkdownToLines(text: string, width: number): string[] {
     } else {
       out.push(ml);
     }
+    i++;
   }
   return out;
 }
@@ -99,9 +181,12 @@ class MessageComponent implements Component {
   render(width: number): string[] {
     const m = this.msg;
     if (m.role === "user") {
+      // Feature 1a: pad the entire user line to terminal width with bg236.
+      const line = `${C.green}${C.B}▶ you${C.R} ${m.text}`;
+      const padLen = Math.max(0, width - countVisibleChars(line));
       return [
         ``,
-        `${C.green}${C.B}▶ you${C.R} ${m.text}`,
+        `${C.bg236}${line}${" ".repeat(padLen)}${C.R}`,
       ];
     }
     if (m.role === "assistant") {
@@ -120,6 +205,76 @@ class MessageComponent implements Component {
       return [`  ${C.red}${C.B}✗ ${m.text}${C.R}`];
     }
     return [`  ${C.gray}${m.text}${C.R}`];
+  }
+}
+
+// ─── Tool card component (claw-code pattern) ──────────────────────────
+type ToolStatus = "running" | "success" | "error";
+class ToolCardComponent implements Component {
+  constructor(
+    public toolName: string,
+    public detail: string,
+    public status: ToolStatus = "running",
+  ) {}
+  invalidate(): void {}
+  setStatus(s: ToolStatus): void {
+    if (this.status !== s) {
+      this.status = s;
+      this.invalidate();
+    }
+  }
+  render(width: number): string[] {
+    const icon = TOOL_ICON[this.toolName] ?? "🔧";
+    const statusGlyph =
+      this.status === "success" ? `${C.green}✓${C.R}` :
+      this.status === "error"   ? `${C.red}✗${C.R}` :
+      "";
+    // Background by status
+    const bg =
+      this.status === "success" ? C.bgGreen :
+      this.status === "error"   ? C.bgRed :
+      C.bg236;
+
+    // Header: ╭─ {status} {icon} {name} ─…─╮
+    const headerInner = `─ ${statusGlyph ? statusGlyph + " " : ""}${icon} ${this.toolName} `;
+    const headerVisibleLen = countVisibleChars(headerInner) + 2; // +2 for the leading "╭" and trailing "╮"
+    const fillCount = Math.max(0, width - headerVisibleLen - 2); // -2 for the "╭" + "╮"
+    const header = `${C.border}╭${headerInner}${C.border}${"─".repeat(fillCount)}╮${C.R}`;
+
+    // Body: 1–N lines, each prefixed `│ ` and padded to (width - 4) so the
+    // status background fills the full card width.
+    const bodyInnerWidth = Math.max(1, width - 4);
+    const bodyLines = this.detail === "" ? ["(no detail)"] : this.detail.split("\n");
+    const bodyOut: string[] = [];
+    for (const bl of bodyLines) {
+      // Wrap long body lines to bodyInnerWidth (ANSI-stripped word-wrap).
+      const words = bl.split(" ");
+      let cur = "";
+      for (const w of words) {
+        const testLen = countVisibleChars(cur + (cur ? " " : "") + w);
+        if (testLen > bodyInnerWidth && cur) {
+          bodyOut.push(cur);
+          cur = w;
+        } else {
+          cur = cur ? cur + " " + w : w;
+        }
+      }
+      if (cur) bodyOut.push(cur);
+      if (bodyOut.length === 0) bodyOut.push("");
+    }
+    const bodyRendered: string[] = bodyOut.map((line) => {
+      const visibleLen = countVisibleChars(line);
+      const padLen = Math.max(0, bodyInnerWidth - visibleLen);
+      // Continuous bg fill across the entire row: the bg attribute persists
+      // through the reset because we re-assert it on the next emit. The `│`
+      // separator is colored via ${C.border} but its cell carries the bg fill.
+      return `${bg}${C.border}│${C.R}${bg}${C.gray} ${line}${" ".repeat(padLen)}${C.R}`;
+    });
+
+    // Bottom border (no bg) — account for 2-space assistant indent
+    const bottom = `${C.border}╰${"─".repeat(Math.max(0, width - 4))}╯${C.R}`;
+
+    return [header, ...bodyRendered, bottom];
   }
 }
 
@@ -242,16 +397,71 @@ class EditorComponent implements Component {
 
 // ─── Footer component ─────────────────────────────────────────────────
 class FooterComponent implements Component {
-  constructor(private model: string, private tokensIn: number, private tokensOut: number, private cost: number) {}
-  setStats(ti: number, to: number, cost: number): void { this.tokensIn = ti; this.tokensOut = to; this.cost = cost; }
+  constructor(
+    private model: string,
+    private tokensIn: number,
+    private tokensOut: number,
+    private cost: number,
+  ) {}
+  private contextLimit: number = DEFAULT_CONTEXT_LIMIT;
+  /** Seconds since submit (null = idle). Drives the trailing "· 12s" segment. */
+  private durationSec: number | null = null;
+
+  setStats(ti: number, to: number, cost: number): void {
+    this.tokensIn = ti;
+    this.tokensOut = to;
+    this.cost = cost;
+  }
+  setContextLimit(limit: number): void {
+    if (limit > 0) this.contextLimit = limit;
+  }
+  setDuration(sec: number | null): void {
+    this.durationSec = sec;
+  }
   invalidate(): void {}
   render(width: number): string[] {
     let cwd = process.cwd().replace(process.env["HOME"] ?? "", "~");
     let branch = "";
     try { branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", { encoding: "utf8", timeout: 500, stdio: ["pipe", "pipe", "ignore"] }).trim(); } catch {}
-    const left = `${C.gray}${cwd}${C.R}${branch ? ` ${C.green}${branch}${C.R}` : ""}`;
-    const right = `${C.accent}${this.model}${C.R} ${C.gray}· ↑${this.tokensIn} ↓${this.tokensOut} · $${this.cost.toFixed(4)}${C.R}`;
-    return [`${left}${" ".repeat(Math.max(1, width - left.length - right.length + 20))}${right}`];
+
+    // ── Line 1: cwd (branch) — branch is green if present, '(detached)' gray otherwise.
+    const branchStr = branch
+      ? `${C.green}${branch}${C.R}`
+      : `${C.gray}(detached)${C.R}`;
+    const line1Inner = `${C.gray}${cwd}${C.R} ${branchStr}`;
+    const line1Visible = countVisibleChars(line1Inner);
+    const line1Pad = Math.max(0, width - line1Visible);
+    const line1 = `${line1Inner}${" ".repeat(line1Pad)}`;
+
+    // ── Line 2: context bar + stats.
+    const ratio = this.contextLimit > 0 ? this.tokensIn / this.contextLimit : 0;
+    const filled = Math.max(0, Math.min(10, Math.round(ratio * 10)));
+    const empty = 10 - filled;
+    const pct = Math.round(ratio * 100);
+    const barColor = ratio < 0.5 ? C.green : ratio < 0.8 ? C.yellow : C.red;
+    const bar = `${barColor}[${"█".repeat(filled)}${"░".repeat(empty)}]${C.R}`;
+
+    const fmtToken = (n: number): string => {
+      if (n < 1000) return `${n}`;
+      if (n < 10_000) {
+        const k = (n / 1000).toFixed(1);
+        return `${k.endsWith(".0") ? k.slice(0, -2) : k}k`;
+      }
+      if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+      return `${(n / 1_000_000).toFixed(1)}M`;
+    };
+
+    const stats =
+      `${C.gray}· ${this.model} · ↑${fmtToken(this.tokensIn)} ↓${fmtToken(this.tokensOut)} · $${this.cost.toFixed(4)}` +
+      (this.durationSec !== null ? ` · ${this.durationSec}s` : "") +
+      `${C.R}`;
+
+    const line2Inner = `${bar} ${pct}%${stats}`;
+    const line2Visible = countVisibleChars(line2Inner);
+    const line2Pad = Math.max(0, width - line2Visible);
+    const line2 = `${line2Inner}${C.darkgray}${" ".repeat(line2Pad)}${C.R}`;
+
+    return [line1, line2];
   }
 }
 
@@ -317,6 +527,10 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
     let busy = false;
     let tokensIn = 0, tokensOut = 0, cost = 0;
     let spinner: SpinnerComponent | null = null;
+    /** Monotonic ms when the current turn was submitted (null = idle). */
+    let submitAt: number | null = null;
+    /** callId → ToolCardComponent for status updates from ToolExec events. */
+    const toolCards = new Map<string, ToolCardComponent>();
 
     // Editor submit handler
     // Set chat max height = terminal - header - editor - footer - status - 1
@@ -356,15 +570,32 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
       commitChatOverflow();
       ui.forceFullRedraw();
 
-      // Start spinner
-      spinner = new SpinnerComponent("thinking…", () => ui.requestRender());
+      // Start spinner + duration timer (monotonic ms from core.time)
+      submitAt = nowMonotonic();
+      footer.setDuration(0);
+      spinner = new SpinnerComponent("thinking…", () => {
+        // Tick the footer duration while we wait for the turn to complete.
+        if (submitAt !== null) {
+          footer.setDuration(Math.max(0, Math.round((nowMonotonic() - submitAt) / 1000)));
+        }
+        ui.requestRender();
+      });
       statusSlot.addChild(spinner);
       spinner.start();
       ui.requestRender();
 
       // Run the agent
       void opts.onPrompt(text, (event) => {
-        const e = event as { kind?: string; turnEvent?: { state?: string; chunk?: { kind?: string; text?: string; call?: { name?: string; arguments?: unknown } }; usage?: { input?: number; output?: number } } };
+        const e = event as {
+          kind?: string;
+          turnEvent?: {
+            state?: string;
+            chunk?: { kind?: string; text?: string; call?: { name?: string; arguments?: unknown } };
+            calls?: Array<{ id?: string; name?: string; args?: unknown; arguments?: unknown }>;
+            result?: Array<{ callId: string; ok: boolean; output?: unknown; error?: string }> | { results: Array<{ callId: string; ok: boolean; output?: unknown; error?: string }>; failedCallIds: string[] };
+            usage?: { input?: number; output?: number };
+          };
+        };
         if (!e) return;
         if (e.kind === "turn") {
           const te = e.turnEvent;
@@ -380,27 +611,74 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
             }
             commitChatOverflow();
             ui.forceFullRedraw();
-          } else if (te.state === "ToolCalls" && te.chunk?.kind === "tool_call") {
-            const name = te.chunk.call?.name ?? "?";
-            const args = te.chunk.call?.arguments as Record<string, unknown> | undefined;
-            const detail = name === "bash" && args?.command ? `$ ${args.command}` : args ? JSON.stringify(args).slice(0, 80) : "";
-            chat.addChild(new MessageComponent({ role: "tool", text: detail, toolName: name }));
+          } else if (te.state === "ToolCalls" && te.calls && te.calls.length > 0) {
+            // Render each tool call as a ToolCardComponent keyed by callId so
+            // the matching ToolExec event can flip its status to ✓/✗.
+            for (const call of te.calls) {
+              const name = call.name ?? "?";
+              const args = (call.args ?? call.arguments) as Record<string, unknown> | undefined;
+              const detail =
+                name === "bash" && args?.command
+                  ? `$ ${args.command}`
+                  : args
+                  ? JSON.stringify(args).slice(0, 80)
+                  : "";
+              const card = new ToolCardComponent(name, detail, "running");
+              if (call.id) toolCards.set(call.id, card);
+              chat.addChild(card);
+            }
+            commitChatOverflow();
             ui.requestRender();
+          } else if (te.state === "ToolExec" && te.result) {
+            // Tool-result event: flip each matching tool card to success/error.
+            // Result is either ToolResult[] or a DegradedResult wrapper.
+            const results = Array.isArray(te.result)
+              ? te.result
+              : te.result.results;
+            let anyUpdated = false;
+            for (const r of results) {
+              const card = toolCards.get(r.callId);
+              if (!card) continue;
+              card.setStatus(r.ok ? "success" : "error");
+              anyUpdated = true;
+            }
+            if (anyUpdated) ui.forceFullRedraw();
           } else if (te.state === "Completed") {
             tokensIn += te.usage?.input ?? 0;
             tokensOut += te.usage?.output ?? 0;
+            // Fallback: if a per-tool ToolExec event never arrived, flip any
+            // still-running cards to 'success' on turn completion (best-effort).
+            for (const card of toolCards.values()) {
+              if (card.status === "running") card.setStatus("success");
+            }
             footer.setStats(tokensIn, tokensOut, cost);
-            ui.requestRender();
+            // Freeze the duration reading, then clear the spinner on the next tick.
+            if (submitAt !== null) {
+              const elapsedSec = Math.max(0, Math.round((nowMonotonic() - submitAt) / 1000));
+              footer.setDuration(elapsedSec);
+            }
+            ui.forceFullRedraw();
           }
         }
       }).then(() => {
         // Stop spinner
         if (spinner) { spinner.stop(); statusSlot.removeChild(spinner); spinner = null; }
+        // Snapshot the duration and clear submitAt so subsequent renders are stable.
+        if (submitAt !== null) {
+          const elapsedSec = Math.max(0, Math.round((nowMonotonic() - submitAt) / 1000));
+          footer.setDuration(elapsedSec);
+          submitAt = null;
+        }
         busy = false;
         ui.forceFullRedraw();
       }).catch((err) => {
         chat.addChild(new MessageComponent({ role: "error", text: String(err) }));
         if (spinner) { spinner.stop(); statusSlot.removeChild(spinner); spinner = null; }
+        if (submitAt !== null) {
+          const elapsedSec = Math.max(0, Math.round((nowMonotonic() - submitAt) / 1000));
+          footer.setDuration(elapsedSec);
+          submitAt = null;
+        }
         busy = false;
         ui.forceFullRedraw();
       });
