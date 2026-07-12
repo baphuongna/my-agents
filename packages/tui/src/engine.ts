@@ -93,6 +93,9 @@ export class TUI extends Container {
   private readonly minIntervalMs = 16;
   private lastRenderHr: bigint = 0n;
   private started = false;
+  private hasRendered = false; // first render clears screen
+  private prevWidth = 0;
+  private prevHeight = 0;
 
   constructor(private terminal: Terminal) { super(); }
 
@@ -123,29 +126,42 @@ export class TUI extends Container {
     // 1. Render all components
     let newLines = this.render(width);
 
-    // 2. Trim to visible height (rest scrolls into native scrollback)
-    // If content is taller than terminal, commit the overflow to scrollback.
+    // 2. PAD to terminal height — fill every row so the TUI "takes over"
+    //    the entire terminal (no leftover old content visible).
+    while (newLines.length < height) {
+      newLines.push("");
+    }
+    // Trim if somehow longer than height
     if (newLines.length > height) {
-      const overflow = newLines.length - height;
-      // Write overflow lines to scrollback (permanent)
-      let scrollback = "\x1b[?2026h";
-      for (let i = 0; i < overflow; i++) {
-        scrollback += newLines[i] + "\x1b[0m\x1b]8;;\x07\n"; // SGR reset + OSC 8 close
-      }
-      scrollback += "\x1b[?2026l";
-      this.terminal.write(scrollback);
-      // Keep only visible portion
-      newLines = newLines.slice(overflow);
-      // Adjust previousLines (trim the committed lines)
-      if (this.previousLines.length > overflow) {
-        this.previousLines = this.previousLines.slice(overflow);
-      } else {
-        this.previousLines = [];
-      }
-      this.cursorRow = Math.max(0, this.cursorRow - overflow);
+      newLines = newLines.slice(newLines.length - height);
     }
 
-    // 3. Find changed lines
+    // 3. Check for full redraw triggers
+    const needFullRedraw =
+      !this.hasRendered ||            // First render
+      width !== this.prevWidth ||     // Width changed
+      height !== this.prevHeight;     // Height changed
+
+    if (needFullRedraw) {
+      // Clear screen + scrollback + cursor home
+      let buf = "\x1b[?2026h";
+      buf += "\x1b[2J\x1b[3J\x1b[H";
+      // Write all lines from top
+      for (let i = 0; i < newLines.length; i++) {
+        if (i > 0) buf += "\r\n";
+        buf += "\x1b[2K" + newLines[i] + "\x1b[0m\x1b]8;;\x07";
+      }
+      buf += "\x1b[?2026l";
+      this.terminal.write(buf);
+      this.previousLines = [...newLines];
+      this.cursorRow = newLines.length - 1;
+      this.hasRendered = true;
+      this.prevWidth = width;
+      this.prevHeight = height;
+      return;
+    }
+
+    // 4. Diff rendering — find changed lines
     let firstChanged = -1;
     let lastChanged = -1;
     const maxLines = Math.max(newLines.length, this.previousLines.length);
@@ -158,7 +174,7 @@ export class TUI extends Container {
       }
     }
 
-    // 4. No changes → skip
+    // 5. No changes → skip
     if (firstChanged === -1) {
       this.previousLines = newLines;
       return;
