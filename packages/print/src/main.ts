@@ -91,13 +91,20 @@ function readStdin(): Promise<string> {
   });
 }
 
-async function runTui(model?: string, useReadline?: boolean): Promise<void> {
-  // Check raw mode support precisely (not try/catch — avoids the flash).
-  const supportsInk = process.stdin.isTTY && typeof (process.stdin as { setRawMode?: unknown }).setRawMode === "function";
-  if (useReadline || !supportsInk) {
-    return runReadlineTui(model);
-  }
-  return runInkTui(model);
+async function runTui(model?: string, _useReadline?: boolean): Promise<void> {
+  // The new diff-rendering TUI engine (pi-style frame buffer + diff).
+  // Works on every terminal that supports raw mode.
+  const { runInteractiveTui } = await import("@my-agent/tui/app");
+  const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
+  try {
+    await agent.skillStore.discover(join(homedir(), ".my-agent", "skills"));
+  } catch { /* dir missing */ }
+  const controller = new AbortController();
+  await runInteractiveTui({
+    onPrompt: (text, onEvent) => agent.run(text, onEvent, { signal: controller.signal }),
+    onCancel: () => controller.abort(),
+    model: model ?? "MiniMax-M3",
+  });
 }
 
 async function runInkTui(model?: string): Promise<void> {

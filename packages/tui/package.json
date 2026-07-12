@@ -13,6 +13,10 @@
     "./ink": {
       "types": "./dist/ink.d.ts",
       "import": "./dist/ink.js"
+    },
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
     }
   },
   "scripts": {
