@@ -31,6 +31,10 @@ export interface RoomClient {
 /** Per-room event bus (in-memory). Tier 4: swap to Redis/CRDT for multi-host. */
 export class CollabRelay extends EventEmitter {
   private rooms = new Map<string, RoomClient[]>();
+  /** Bounded ring buffer of recently published events per room (R43 Tier 3 fix). */
+  private snapshots = new Map<string, RuntimeEvent[]>();
+  /** Max events retained per room in the snapshot ring buffer. */
+  private static readonly MAX_SNAPSHOT = 100;
 
   /** Open a room with the given owner. Idempotent. */
   openRoom(room: string, owner: RoomClient): void {
@@ -72,15 +76,26 @@ export class CollabRelay extends EventEmitter {
       if (c.id === from.id) continue; // don't echo to sender
       try { c.send(event); delivered++; } catch { /* drop on send error */ }
     }
+    // Buffer the event for late-joining clients (bounded ring buffer, R43).
+    this.buffer(room, event);
     this.emit("publish", { room, event, delivered });
     return { delivered, denied: false };
   }
 
-  /** Snapshot the current room members (for a new client catching up). */
+  /** Push an event onto a room's bounded snapshot ring buffer. */
+  private buffer(room: string, event: RuntimeEvent): void {
+    const buf = this.snapshots.get(room) ?? [];
+    buf.push(event);
+    if (buf.length > CollabRelay.MAX_SNAPSHOT) {
+      // Drop oldest entries to keep the buffer bounded (ring-buffer semantics).
+      buf.splice(0, buf.length - CollabRelay.MAX_SNAPSHOT);
+    }
+    this.snapshots.set(room, buf);
+  }
+
+  /** Snapshot the recent events for a room (bounded ring buffer for late joins). */
   snapshot(room: string): RuntimeEvent[] {
-    // The relay itself is event-source-agnostic — snapshot is a ring buffer the
-    // owner can populate. Tier 3 ships an empty snapshot; Tier 4 can add a buffer.
-    return [];
+    return [...(this.snapshots.get(room) ?? [])];
   }
 
   /** Names of all open rooms. */
