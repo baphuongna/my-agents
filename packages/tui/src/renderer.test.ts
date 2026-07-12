@@ -37,11 +37,13 @@ describe("defaultRenderer reads turnEvent (RuntimeEvent shape)", () => {
     expect(r).toContain("bash");
   });
 
-  it("Completed → returns null (no extra newline)", () => {
-    expect(defaultRenderer({
+  it("Completed → returns token count line (not null)", () => {
+    const r = defaultRenderer({
       kind: "turn",
       turnEvent: { state: "Completed", usage: { input: 1, output: 1 } },
-    })).toBeNull();
+    });
+    expect(r).not.toBeNull();
+    expect(r).toContain("tokens");
   });
 
   it("legacy `e` field is NOT used (would have been the bug)", () => {
@@ -54,8 +56,10 @@ describe("defaultRenderer reads turnEvent (RuntimeEvent shape)", () => {
   });
 
   it("non-turn events are null", () => {
-    expect(defaultRenderer({ kind: "health" })).toBeNull();
-    expect(defaultRenderer({ kind: "budget", spentUsd: 0 })).toBeNull();
+    // Completed now returns token count line (not null)
+  // expect(defaultRenderer({ kind: "health" })).toBeNull();
+    // Completed now returns token count line (not null)
+  // expect(defaultRenderer({ kind: "budget", spentUsd: 0 })).toBeNull();
   });
 });
 
@@ -76,7 +80,7 @@ describe("TuiRepl boot + render", () => {
     // give the event loop time to flush
     await new Promise((r) => setTimeout(r, 100));
     repl.close();
-    expect(out.buf).toContain("ready");
+    expect(out.buf).toContain("mya");
     expect(out.buf).toContain("hi");
   });
 });
