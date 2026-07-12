@@ -17,10 +17,10 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { makeSink } from "./index.js";
 
-/** Load MiniMax/OpenAI keys from ~/.pi/agent/auth.json if not already in env. */
+/** Load MiniMax/OpenAI keys from ~/.mya/agent/auth.json if not already in env. */
 function loadAuthConfig(): void {
   try {
-    const authPath = join(homedir(), ".pi", "agent", "auth.json");
+    const authPath = join(homedir(), ".mya", "agent", "auth.json");
     const raw = readFileSync(authPath, "utf8");
     const auth = JSON.parse(raw) as Record<string, unknown>;
     // MiniMax: { minimax: { key: "sk-..." } } → MINIMAX_API_KEY
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     (await readStdin()) ||
     "Hello. (No prompt given — running with mock fallback.)";
 
-  // Load auth from ~/.pi/agent/auth.json if env vars aren't set.
+  // Load auth from ~/.mya/agent/auth.json if env vars aren't set.
   loadAuthConfig();
 
   const agent = createAgent({

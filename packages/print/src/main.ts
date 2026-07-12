@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, hooks, skillStore } from "./pi-main.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks } from "./pi-main.js";
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {
@@ -70,6 +70,7 @@ async function main(): Promise<void> {
       auditLog,
       secretStore,
       skillStore,
+      wallet,
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
     });
     const text = prompt || (await readStdin()) || "Hello.";
@@ -109,6 +110,7 @@ async function runRpcServer(_model?: string): Promise<void> {
     auditLog,
     secretStore,
     skillStore,
+    wallet,
   });
   const server = new RpcServer({
     prompt: (text, onEvent) => {
@@ -126,19 +128,14 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const port = portIdx >= 0 ? Number(extraArgs[portIdx + 1]) : 3000;
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
-  const { CronScheduler } = await import("@my-agent/cron");
-  const { SyncServer } = await import("@my-agent/sync");
-  const { CollabRelay } = await import("@my-agent/collab");
   const agent = createAgent({
     memoryDir: join(homedir(), ".my-agent", "memory"),
     auditLog,
     secretStore,
     skillStore,
+    wallet,
   });
   const wsToken = cryptoRandomToken();
-  const cron = new CronScheduler();
-  const sync = new SyncServer();
-  const collab = new CollabRelay();
   const gw = new Gateway({
     port,
     rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
