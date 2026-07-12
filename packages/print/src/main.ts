@@ -46,6 +46,18 @@ async function main(): Promise<void> {
   if (args[0] === "serve") {
     return runWebServer(args.slice(1));
   }
+  if (args[0] === "launcher") {
+    const { runLauncherLoop } = await import("./launcher.js");
+    return runLauncherLoop();
+  }
+
+  // ── default: launcher (if no args) OR interactive TUI ──
+  // When MYA_NO_LAUNCHER=1 or --session/--resume/--continue is passed, skip launcher.
+  const skipLauncher = process.env["MYA_NO_LAUNCHER"] === "1" ||
+    process.env["MYA_FROM_LAUNCHER"] === "1" ||
+    args.includes("--no-launcher") ||
+    args.includes("--session") || args.includes("--resume") || args.includes("-r") ||
+    args.includes("--continue") || args.includes("--no-session");
 
   // ── flags ──
   const json = args.includes("--json");
@@ -83,8 +95,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── interactive TUI — 100% pi InteractiveMode ──
-  return runPiInteractive();
+  // ── launcher (default when no prompt/flags) ──
+  if (!skipLauncher && !print && !prompt && !rpc && !debug) {
+    const { runLauncherLoop } = await import("./launcher.js");
+    return runLauncherLoop();
+  }
+
+  // ── interactive TUI (when launcher skipped) ──
+  if (!print && !prompt && !rpc) {
+    return runPiInteractive();
+  }
 }
 
 function readStdin(): Promise<string> {
