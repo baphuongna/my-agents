@@ -142,6 +142,17 @@ class SpinnerComponent implements Component {
   }
 }
 
+/** ScrollableContainer — limits render output to last N lines (old content scrolls into native scrollback). */
+export class ScrollableContainer extends Container {
+  private _maxLines = 1000;
+  setMaxLines(n: number): void { this._maxLines = n; }
+  render(width: number): string[] {
+    const all = super.render(width);
+    if (all.length <= this._maxLines) return all;
+    return all.slice(all.length - this._maxLines);
+  }
+}
+
 // ─── DynamicFill — fills remaining terminal space (pins editor to bottom) ─
 class DynamicFill implements Component {
   constructor(private getTermHeight: () => number, private getOtherLines: () => number) {}
@@ -284,7 +295,7 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
 
     // Component tree
     const header = new HeaderComponent();
-    const chat = new Container();
+    const chat = new ScrollableContainer();
     const statusSlot = new Container(); // spinner goes here when active
     const editor = new EditorComponent();
     const footer = new FooterComponent(opts.model ?? "MiniMax-M3", 0, 0, 0);
@@ -308,20 +319,25 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
     let spinner: SpinnerComponent | null = null;
 
     // Editor submit handler
-    // Commit old chat messages to scrollback when chat exceeds visible space.
-    // This pins header at top + editor/footer at bottom — old chat scrolls up.
-    const commitChatOverflow = () => {
+    // Set chat max height = terminal - header - editor - footer - status - 1
+    const updateChatMax = () => {
       const termH = terminal.rows;
       const headerH = header.render(80).length;
       const editorH = editor.render(80).length;
       const footerH = footer.render(80).length;
-      const statusH = statusSlot.render(80).length;
-      const maxChat = Math.max(1, termH - headerH - editorH - footerH - statusH - 1);
+      chat.setMaxLines(Math.max(1, termH - headerH - editorH - footerH - 1));
+    };
+    updateChatMax();
+    process.stdout.on("resize", updateChatMax);
+
+    // Commit old chat messages to scrollback when chat exceeds visible space.
+    const commitChatOverflow = () => {
+      updateChatMax();
       const chatChildren = (chat as unknown as { children: Component[] }).children;
       while (chatChildren.length > 0) {
         const chatH = chat.render(80).length;
+        const maxChat = (chat as unknown as { _maxLines: number })._maxLines;
         if (chatH <= maxChat) break;
-        // Commit oldest message to scrollback (permanent)
         const oldest = chatChildren[0];
         if (!oldest) break;
         const lines = oldest.render(80);
