@@ -34,24 +34,34 @@ function renderMarkdownToLines(text: string, width: number): string[] {
   const lines = text.split("\n");
   const out: string[] = [];
   let inCodeBlock = false;
-  let codeLang = "";
+  let inThink = false; // Stateful: dim ALL lines inside <think>...</think>
   for (const line of lines) {
-    if (line.startsWith("```")) {
-      if (!inCodeBlock) { inCodeBlock = true; codeLang = line.slice(3).trim(); continue; }
+    // Handle <think> blocks (stateful — dim spans multiple lines)
+    if (line.includes("<think>")) { inThink = true; }
+    if (line.includes("</think>")) {
+      inThink = false;
+      out.push(`${C.darkgray}${line.replace(/<\/?think>/g, "")}${C.R}`);
+      continue;
+    }
+    if (inThink) {
+      out.push(`${C.darkgray}${line.replace(/<\/?think>/g, "")}${C.R}`);
+      continue;
+    }
+    let ml = line.replace(/<\/?think>/g, "");
+    if (ml.startsWith("```")) {
+      if (!inCodeBlock) { inCodeBlock = true; continue; }
       else { inCodeBlock = false; continue; }
     }
-    if (inCodeBlock) { out.push(`${C.cyan}${line}${C.R}`); continue; }
-    if (/^###\s/.test(line)) { out.push(`${C.yellow}${C.B}${line.replace(/^###\s/, "")}${C.R}`); continue; }
-    if (/^##\s/.test(line)) { out.push(`${C.yellow}${C.B}${line.replace(/^##\s/, "")}${C.R}`); continue; }
-    if (/^#\s/.test(line)) { out.push(`${C.yellow}${C.B}${C.U}${line.replace(/^#\s/, "")}${C.R}`); continue; }
-    if (/^---+$/.test(line.trim())) { out.push(`${C.border}${"─".repeat(width)}${C.R}`); continue; }
-    if (line.startsWith(">")) { out.push(`${C.gray}${C.I}${line}${C.R}`); continue; }
-    let l = line;
-    if (/^\s*[-*]\s/.test(l)) l = l.replace(/^(\s*)[-*]\s/, `$1${C.accent}● ${C.R}`);
-    l = l.replace(/\*\*(.+?)\*\*/g, `${C.B}$1${C.R}`);
-    l = l.replace(/`([^`]+)`/g, `${C.cyan}$1${C.R}`);
-    l = l.replace(/<think>/g, `${C.darkgray}`).replace(/<\/think>/g, `${C.R}`);
-    out.push(l);
+    if (inCodeBlock) { out.push(`${C.cyan}${ml}${C.R}`); continue; }
+    if (/^###\s/.test(ml)) { out.push(`${C.yellow}${C.B}${ml.replace(/^###\s/, "")}${C.R}`); continue; }
+    if (/^##\s/.test(ml))  { out.push(`${C.yellow}${C.B}${ml.replace(/^##\s/, "")}${C.R}`); continue; }
+    if (/^#\s/.test(ml))   { out.push(`${C.yellow}${C.B}${C.U}${ml.replace(/^#\s/, "")}${C.R}`); continue; }
+    if (/^---+$/.test(ml.trim())) { out.push(`${C.border}${"─".repeat(width)}${C.R}`); continue; }
+    if (ml.startsWith(">")) { out.push(`${C.gray}${C.I}${ml}${C.R}`); continue; }
+    if (/^\s*[-*]\s/.test(ml)) ml = ml.replace(/^(\s*)[-*]\s/, `$1${C.accent}● ${C.R}`);
+    ml = ml.replace(/\*\*(.+?)\*\*/g, `${C.B}$1${C.R}`);
+    ml = ml.replace(/`([^`]+)`/g, `${C.cyan}$1${C.R}`);
+    out.push(ml);
   }
   return out;
 }
@@ -63,11 +73,17 @@ class MessageComponent implements Component {
   render(width: number): string[] {
     const m = this.msg;
     if (m.role === "user") {
-      return [`${C.green}${C.B}▶ you${C.R} ${m.text}`];
+      return [
+        ``,
+        `${C.green}${C.B}▶ you${C.R} ${m.text}`,
+      ];
     }
     if (m.role === "assistant") {
       const lines = renderMarkdownToLines(m.text, width);
-      return lines.map(l => `  ${l}`);
+      return [
+        `${C.border}${"─".repeat(Math.min(width, 40))}${C.R}`,
+        ...lines.map(l => `  ${l}`),
+      ];
     }
     if (m.role === "tool" && m.toolName) {
       return [
@@ -161,8 +177,8 @@ class EditorComponent implements Component {
   render(width: number): string[] {
     const innerWidth = width - 4;
     const out: string[] = [];
-    // Top border
-    out.push(`${C.border}${"─".repeat(width)}${C.R}`);
+    // Top border with accent label
+    out.push(`${C.border}${"─".repeat(2)}${C.accent}┤ mya ├${C.border}${"─".repeat(Math.max(0, width - 9))}${C.R}`);
     // Content lines
     for (let i = 0; i < this.lines.length; i++) {
       const text = this.lines[i]!;
@@ -208,9 +224,22 @@ class HeaderComponent implements Component {
   render(width: number): string[] {
     return [
       `${C.border}${"─".repeat(width)}${C.R}`,
-      `${C.accent}${C.B}● mya${C.R} ${C.gray}· unified agent${C.R}`,
-      `${C.gray}Ctrl-C abort · Ctrl-D exit · / for commands${C.R}`,
+      ` ${C.accent}${C.B}● mya${C.R} ${C.gray}· unified agent${C.R}`,
+      ` ${C.gray}Ctrl-C abort · Ctrl-D exit · / for commands${C.R}`,
       `${C.border}${"─".repeat(width)}${C.R}`,
+    ];
+  }
+}
+
+/** Shows a subtle hint when chat is empty. */
+class WelcomeComponent implements Component {
+  invalidate(): void {}
+  render(width: number): string[] {
+    return [
+      ``,
+      `  ${C.gray}Welcome. Type a message below and press Enter.${C.R}`,
+      `  ${C.gray}Use / for slash commands.↑↓ for history.${C.R}`,
+      ``,
     ];
   }
 }
@@ -235,6 +264,8 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
     const footer = new FooterComponent(opts.model ?? "MiniMax-M3", 0, 0, 0);
 
     ui.addChild(header);     // 4 lines
+    const welcome = new WelcomeComponent();
+    ui.addChild(welcome);    // hint when empty
     ui.addChild(chat);       // variable (grows with conversation)
     ui.addChild(statusSlot); // 0-1 lines (spinner)
     // DynamicFill: fills remaining space to pin editor + footer to the bottom
@@ -251,8 +282,11 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
     let spinner: SpinnerComponent | null = null;
 
     // Editor submit handler
+    // Remove welcome when first message arrives
+    let welcomeShown = true;
     editor.onSubmit = (text) => {
       if (busy) return;
+      if (welcomeShown) { ui.removeChild(welcome); welcomeShown = false; }
       busy = true;
       chat.addChild(new MessageComponent({ role: "user", text }));
       ui.requestRender();
