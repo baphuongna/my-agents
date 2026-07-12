@@ -52,10 +52,9 @@ const vendoredResolve = {
       return null;
     });
 
-    // Stub react-devtools-core + optional deps we don't use
-    const stubs = ["react-devtools-core", "@opentelemetry/api", "highlight.js/lib/index.js"];
-    b.onResolve({ filter: new RegExp(stubs.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")) }, () => ({ path: "stub", namespace: "stub" }));
-    b.onLoad({ filter: /stub/, namespace: "stub" }, () => ({ contents: "export default undefined;", loader: "js" }));
+    // Stub only react-devtools (truly unused)
+    b.onResolve({ filter: new RegExp("^react-devtools-core") }, () => ({ path: "stub-dep", namespace: "stub-dep" }));
+    b.onLoad({ filter: /.*/, namespace: "stub-dep" }, () => ({ contents: "export default undefined;", loader: "js" }));
   },
 };
 

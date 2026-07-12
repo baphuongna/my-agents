@@ -43,6 +43,7 @@
     "@earendil-works/pi-tui": "^0.80.6",
     "@google/genai": "^2.11.0",
     "@mistralai/mistralai": "^2.4.1",
+    "@opentelemetry/api": "^1.9.1",
     "@sinclair/typebox": "^0.34.52",
     "cross-spawn": "^7.0.6",
     "diff": "^9.0.0",
