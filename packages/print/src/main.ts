@@ -72,6 +72,7 @@ async function main(): Promise<void> {
       memoryDir: join(homedir(), ".my-agent", "memory"),
       auditLog,
       secretStore,
+      skillStore,
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
     });
     const text = prompt || (await readStdin()) || "Hello.";
@@ -119,6 +120,7 @@ async function runRpcServer(_model?: string): Promise<void> {
     memoryDir: join(homedir(), ".my-agent", "memory"),
     auditLog,
     secretStore,
+    skillStore,
   });
   const server = new RpcServer({
     prompt: (text, onEvent) => {
@@ -143,6 +145,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     memoryDir: join(homedir(), ".my-agent", "memory"),
     auditLog,
     secretStore,
+    skillStore,
   });
   const wsToken = cryptoRandomToken();
   const cron = new CronScheduler();

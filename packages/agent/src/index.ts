@@ -88,6 +88,9 @@ export interface AgentConfig {
   extensionHost?: PackageHost;
   /** Phase 6: fire-and-forget TTS narration of each completed assistant turn. */
   tts?: boolean;
+  /** Shared skill store. If absent, a fresh empty SkillStore is created.
+   * Pass a pre-discovered store to share skills across agent instances. */
+  skillStore?: SkillStore;
 }
 
 export interface Agent {
@@ -122,16 +125,19 @@ export function createAgent(config: AgentConfig = {}): Agent {
   } else {
     // Auto-config: MiniMax (if MINIMAX_API_KEY), then OpenAI (if OPENAI_API_KEY),
     // else a mock echo fallback (agent always runs).
-    if (process.env["MINIMAX_API_KEY"]) {
+    // Keys resolved via secretStore when available (fail-closed), else process.env.
+    const minimaxKey = config.secretStore?.resolve({ from: "env", ref: "MINIMAX_API_KEY" }) ?? process.env["MINIMAX_API_KEY"];
+    const openaiKey = config.secretStore?.resolve({ from: "env", ref: "OPENAI_API_KEY" }) ?? process.env["OPENAI_API_KEY"];
+    if (minimaxKey) {
       providers.register(
         new OpenAIAdapter({
           model: process.env["MINIMAX_MODEL"] ?? config.model ?? "MiniMax-M3",
           baseUrl: process.env["MINIMAX_BASE_URL"] ?? "https://api.minimax.io/v1",
-          apiKey: process.env["MINIMAX_API_KEY"],
+          apiKey: minimaxKey,
         }),
       );
     }
-    if (process.env["OPENAI_API_KEY"]) {
+    if (openaiKey) {
       providers.register(
         new OpenAIAdapter({
           model: config.model ?? "gpt-4o-mini",
@@ -158,7 +164,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // §8 Brain (facts/takes/pages + dream-cycle phases).
   const brain = new Brain();
   // Phase 31: skill store (for /skill-selector + /skills).
-  const skillStore = new SkillStore();
+  // Use shared store from config if provided (enables cross-agent skill sharing).
+  const skillStore = config.skillStore ?? new SkillStore();
   // §8 ragfs: unified-context-FS with the prompts scanner wired (R25-18 scan-on-read).
   const knowledgeGraph = new TypedGraph();
   const ragfs = createRagfs({
