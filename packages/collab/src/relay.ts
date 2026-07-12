@@ -83,6 +83,11 @@ export class CollabRelay extends EventEmitter {
     return [];
   }
 
+  /** Names of all open rooms. */
+  get roomNames(): string[] {
+    return [...this.rooms.keys()];
+  }
+
   /** Room stats. */
   stats(room: string): { clients: number; roles: Record<RoomRole, number> } {
     const list = this.rooms.get(room) ?? [];

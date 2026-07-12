@@ -25,6 +25,16 @@
     "@my-agent/cron": "*",
     "@my-agent/sync": "*",
     "@my-agent/collab": "*",
-    "@my-agent/dap": "*"
+    "@my-agent/dap": "*",
+    "@my-agent/memory": "*",
+    "@my-agent/x402": "*",
+    "@my-agent/eval": "*",
+    "@my-agent/tts": "*",
+    "@my-agent/acp": "*",
+    "@my-agent/workflows": "*",
+    "@my-agent/signing": "*",
+    "@my-agent/pkg": "*",
+    "@my-agent/council": "*",
+    "@my-agent/prompts": "*"
   }
 }

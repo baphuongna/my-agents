@@ -2,8 +2,9 @@
  * mya — pi InteractiveMode + mya bridge extension.
  *
  * The bridge injects mya packages (AuditLog, SecretStore, HookRegistry,
- * SkillStore, custom tools, slash commands) into pi's TUI so they are
- * VISIBLE and ACTIVE during interactive use — not just print/rpc/serve mode.
+ * SkillStore, Brain, Wallet, AcpBridge, SyncServer, CollabRelay, PackageHost,
+ * custom tools, slash commands) into pi's TUI so they are VISIBLE and ACTIVE
+ * during interactive use — not just print/rpc/serve mode.
  */
 
 // Import via package name — esbuild alias remaps to vendored/ at bundle time
@@ -14,6 +15,12 @@ import { AuditLog } from "@my-agent/audit";
 import { HookRegistry } from "@my-agent/gateway";
 import { SkillStore } from "@my-agent/skills";
 import { CronScheduler } from "@my-agent/cron";
+import { Brain } from "@my-agent/memory";
+import { Wallet } from "@my-agent/x402";
+import { AcpBridge } from "@my-agent/acp";
+import { SyncServer } from "@my-agent/sync";
+import { CollabRelay } from "@my-agent/collab";
+import { PackageHost } from "@my-agent/pkg";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -23,6 +30,12 @@ const auditLog = new AuditLog((_kind, payload) => makeSecretRedactor(secretStore
 const hooks = new HookRegistry();
 const skillStore = new SkillStore();
 const cron = new CronScheduler();
+const brain = new Brain();
+const wallet = new Wallet({ initial: { "usdc": 1_000_000 } }); // faucet stake (smallest unit)
+const acp = new AcpBridge();
+const sync = new SyncServer();
+const collab = new CollabRelay();
+const packageHost = new PackageHost();
 
 // Eagerly discover skills (best-effort, non-fatal).
 void skillStore.discover(join(homedir(), ".mya", "skills")).catch(() => { /* optional */ });
@@ -31,6 +44,12 @@ export async function runPiInteractive(): Promise<void> {
   // Skip version check (mya has its own version lifecycle)
   process.env.PI_SKIP_VERSION_CHECK = "1";
 
+  // DAP debug tool: enabled when MYA_DAP_COMMAND is set (e.g. "node --inspect").
+  const dapCommand = process.env["MYA_DAP_COMMAND"];
+  const dapConnect = dapCommand
+    ? { connect: { command: dapCommand.split(" ")[0] ?? "node", args: dapCommand.split(" ").slice(1) } }
+    : undefined;
+
   // Create the mya bridge extension — this injects all mya packages into pi.
   const myaBridge = createMyaBridge({
     auditLog,
@@ -38,6 +57,13 @@ export async function runPiInteractive(): Promise<void> {
     hooks,
     skillStore,
     cron,
+    brain,
+    wallet,
+    dapConnect,
+    acp,
+    sync,
+    collab,
+    packageHost,
   });
 
   const args = ["--model", "MiniMax-M3", ...process.argv.slice(2)];
@@ -46,4 +72,4 @@ export async function runPiInteractive(): Promise<void> {
 }
 
 // Re-export for use by main.ts (shared instances).
-export { secretStore, auditLog, hooks, skillStore, cron };
+export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost };

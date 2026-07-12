@@ -163,6 +163,11 @@ export class Wallet {
     return this.balances[currency] ?? 0;
   }
 
+  /** Read-only snapshot of all non-zero balances (currency → amount). */
+  get balancesSnapshot(): Balance {
+    return { ...this.balances };
+  }
+
   /** Top up the wallet (deposit / faucet). */
   deposit(currency: string, amount: number): void {
     this.balances[currency] = this.balance(currency) + amount;
