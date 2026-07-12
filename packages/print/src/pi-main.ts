@@ -12,7 +12,7 @@ import { main } from "@earendil-works/pi-coding-agent";
 import { createMyaBridge } from "./mya-bridge.js";
 import { SecretStore, makeSecretRedactor } from "@my-agent/secrets";
 import { AuditLog } from "@my-agent/audit";
-import { HookRegistry, McpManager, ChannelRegistry, registerBuiltinChannels } from "@my-agent/gateway";
+import { HookRegistry, McpManager, ChannelRegistry, ChannelSessionRouter, registerBuiltinChannels } from "@my-agent/gateway";
 import { SkillStore } from "@my-agent/skills";
 import { CronScheduler } from "@my-agent/cron";
 import { Brain } from "@my-agent/memory";
@@ -47,6 +47,7 @@ const packageHost = new PackageHost();
 const mcp = new McpManager();
 const channels = new ChannelRegistry();
 registerBuiltinChannels(channels);
+const channelRouter = new ChannelSessionRouter();
 
 // Auto-configure: scan env vars + channels.json, activate what's configured.
 import { autoConfigureChannels } from "@my-agent/gateway";
@@ -123,6 +124,7 @@ export async function runPiInteractive(): Promise<void> {
     council,
     mcp,
     mcpConfigs,
+    channels,
   });
 
   const args = ["--model", "MiniMax-M3", ...process.argv.slice(2)];
@@ -131,4 +133,4 @@ export async function runPiInteractive(): Promise<void> {
 }
 
 // Re-export for use by main.ts (shared instances).
-export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, council, mcp, channels };
+export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, council, mcp, channels, channelRouter };

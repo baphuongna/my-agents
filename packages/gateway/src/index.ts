@@ -21,6 +21,8 @@ import { HookRegistry } from "./hooks.js";
 import { CronScheduler } from "@my-agent/cron";
 import { SyncServer } from "@my-agent/sync";
 import { CollabRelay } from "@my-agent/collab";
+import { ChannelSessionRouter } from "./channel-session.js";
+import type { ChannelRegistry, ChannelMessage } from "./channels.js";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -136,6 +138,10 @@ export interface GatewayOptions {
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
   collab?: CollabRelay;
+  /** Channel session router (inbound messages → sessions). */
+  channelRouter?: ChannelSessionRouter;
+  /** Channel registry (messaging adapters). */
+  channels?: ChannelRegistry;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -166,6 +172,10 @@ export class Gateway {
   private readonly sync?: SyncServer;
   /** §12 collaboration relay (optional — Phase 6 wiring). Stored; no auto-start. */
   private readonly collab?: CollabRelay;
+  /** Channel session router (inbound messages → sessions). */
+  private readonly channelRouter?: ChannelSessionRouter;
+  /** Channel registry (messaging adapters). */
+  private readonly channels?: ChannelRegistry;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
 
@@ -191,6 +201,8 @@ export class Gateway {
     this.cronIntervalMs = opts.cronIntervalMs ?? 30_000;
     this.sync = opts.sync;
     this.collab = opts.collab;
+    this.channelRouter = opts.channelRouter;
+    this.channels = opts.channels;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
       console.warn("[gateway] cron is configured but no onWsMessage channel exists; due jobs will be claimed + completed but not delivered.");
@@ -363,8 +375,41 @@ export class Gateway {
         }
         return send(404, { error: "no dashboard configured" });
       }
-      default:
+      // ── Channel webhooks: POST /channel/:id/webhook ───────────────────
+      // Each channel adapter parses its own webhook payload format.
+      default: {
+        const webhookMatch = url.pathname.match(/^\/channel\/([^/]+)\/webhook$/);
+        if (webhookMatch && req.method === "POST" && this.channelRouter) {
+          const channelId = webhookMatch[1]!;
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", async () => {
+            try {
+              const msg = parseChannelWebhook(channelId, body);
+              if (msg) {
+                const result = await this.channelRouter!.route(msg);
+                if ("response" in result) {
+                  // Send response back via the channel
+                  if (this.channels) {
+                    await this.channels.send(result.session.channelId, result.session.userId, result.response);
+                  }
+                  return send(200, { ok: true, sessionId: result.session.sessionId });
+                }
+                return send(200, { ok: false, error: result.error });
+              }
+              return send(200, { ok: true }); // webhook ACK (unparseable → still 200)
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
+        // Channel sessions listing
+        if (url.pathname === "/channel/sessions" && this.channelRouter) {
+          return send(200, this.channelRouter.listSessions());
+        }
         return send(404, { error: "not found" });
+      }
     }
   }
 
@@ -502,3 +547,58 @@ export * from "./mcp-client.js";
 export * from "./channels.js";
 export * from "./channel-adapters.js";
 export * from "./channel-setup.js";
+export * from "./channel-session.js";
+
+/** Parse a channel webhook payload into a ChannelMessage. */
+function parseChannelWebhook(channelId: string, body: string): ChannelMessage | null {
+  try {
+    const data = JSON.parse(body) as Record<string, unknown>;
+    // Telegram: { message: { chat: { id }, from: { first_name }, text } }
+    if (channelId === "telegram" && data.message) {
+      const msg = data.message as { chat?: { id?: number }; from?: { first_name?: string }; text?: string };
+      return {
+        channelId: "telegram",
+        from: msg.from?.first_name ?? "unknown",
+        text: msg.text ?? "",
+        ts: nowWallclock(),
+        replyTarget: String(msg.chat?.id ?? ""),
+      };
+    }
+    // Discord: { content, author: { username }, channel_id }
+    if (channelId === "discord" && data.content) {
+      const d = data as { content?: string; author?: { username?: string }; channel_id?: string };
+      return {
+        channelId: "discord",
+        from: d.author?.username ?? "unknown",
+        text: d.content ?? "",
+        ts: nowWallclock(),
+        replyTarget: d.channel_id ?? "",
+      };
+    }
+    // Slack: { event: { type: "message", text, user, channel } }
+    if (channelId === "slack" && data.event) {
+      const ev = data.event as { type?: string; text?: string; user?: string; channel?: string };
+      if (ev.type !== "message") return null;
+      return {
+        channelId: "slack",
+        from: ev.user ?? "unknown",
+        text: ev.text ?? "",
+        ts: nowWallclock(),
+        replyTarget: ev.channel ?? "",
+      };
+    }
+    // Generic webhook: { from, text, target }
+    if (data.from && data.text) {
+      return {
+        channelId,
+        from: String(data.from),
+        text: String(data.text),
+        ts: nowWallclock(),
+        replyTarget: String(data.target ?? data.from),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
