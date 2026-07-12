@@ -282,13 +282,37 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
     let spinner: SpinnerComponent | null = null;
 
     // Editor submit handler
-    // Remove welcome when first message arrives
+    // Commit old chat messages to scrollback when chat exceeds visible space.
+    // This pins header at top + editor/footer at bottom — old chat scrolls up.
+    const commitChatOverflow = () => {
+      const termH = terminal.rows;
+      const headerH = header.render(80).length;
+      const editorH = editor.render(80).length;
+      const footerH = footer.render(80).length;
+      const statusH = statusSlot.render(80).length;
+      const maxChat = Math.max(1, termH - headerH - editorH - footerH - statusH - 1);
+      const chatChildren = (chat as unknown as { children: Component[] }).children;
+      while (chatChildren.length > 0) {
+        const chatH = chat.render(80).length;
+        if (chatH <= maxChat) break;
+        // Commit oldest message to scrollback (permanent)
+        const oldest = chatChildren[0];
+        if (!oldest) break;
+        const lines = oldest.render(80);
+        for (const line of lines) {
+          process.stdout.write(line + "\x1b[0m\n");
+        }
+        chat.removeChild(oldest);
+      }
+    };
     let welcomeShown = true;
     editor.onSubmit = (text) => {
       if (busy) return;
       if (welcomeShown) { ui.removeChild(welcome); welcomeShown = false; }
       busy = true;
       chat.addChild(new MessageComponent({ role: "user", text }));
+      // Commit old chat messages to scrollback if chat exceeds visible space
+      commitChatOverflow();
       ui.requestRender();
 
       // Start spinner
@@ -313,6 +337,7 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
             } else {
               chat.addChild(new MessageComponent({ role: "assistant", text: te.chunk.text ?? "" }));
             }
+            commitChatOverflow();
             ui.requestRender();
           } else if (te.state === "ToolCalls" && te.chunk?.kind === "tool_call") {
             const name = te.chunk.call?.name ?? "?";
