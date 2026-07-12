@@ -36,4 +36,4 @@ Everything else stays TS. Moving code to Rust "for speed" without a gate adds a 
 
 ## Structure (§3)
 
-`packages/{core,ai,extensions,prompts,memory,skills,subagents,channels,gateway,tui,cli,sdk,rpc,eval}` + `crates/{natives,search,ast,compress}`. Transports (`tui/cli/sdk/rpc`) depend on `core`, never reverse. `core` has no upward imports.
+`packages/{core,agent,ai,memory,prompts,skills,tools,council,natives,print,rpc,gateway,web,tui}` + standalone `{audit,signing,secrets,pkg,dap,dap-server,eval,workflows,cron,acp,collab,sync,tts,desktop,x402}` + `vendored/{pi,pi-ai,pi-agent-core}` (cloned pi-coding-agent). Transports (`tui/cli/sdk/rpc`) depend on `core`, never reverse. `core` has no upward imports.
