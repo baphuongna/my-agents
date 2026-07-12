@@ -24,7 +24,6 @@
     { "path": "packages/acp" },
     { "path": "packages/gateway" },
     { "path": "packages/rpc" },
-    { "path": "packages/tui" },
     { "path": "packages/approval" },
     { "path": "packages/search" },
     { "path": "packages/toolssearch" },
@@ -39,6 +38,7 @@
     { "path": "packages/secrets" },
     { "path": "packages/session" },
     { "path": "packages/agent" },
+    { "path": "packages/tui" },
     { "path": "packages/print" },
     { "path": "packages/sdk" }
   ]

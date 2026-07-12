@@ -1,6 +1,6 @@
 {
   "name": "@my-agent/tui",
-  "version": "0.0.0",
+  "version": "0.80.6",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -9,29 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./ink": {
-      "types": "./dist/ink.d.ts",
-      "import": "./dist/ink.js"
-    },
-    "./app": {
-      "types": "./dist/app.d.ts",
-      "import": "./dist/app.js"
     }
   },
-  "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc --noEmit"
-  },
   "dependencies": {
-    "@my-agent/core": "*",
-    "ink": "^5.2.0",
-    "ink-text-input": "^5.0.0",
-    "react": "^18.3.1",
-    "strip-ansi": "^7.1.0"
-  },
-  "devDependencies": {
-    "ink-testing-library": "^4.0.0",
-    "@types/react": "^18.3.0"
+    "get-east-asian-width": "1.6.0",
+    "marked": "18.0.5"
   }
 }

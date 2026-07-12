@@ -16,7 +16,6 @@
   "dependencies": {
     "@my-agent/core": "*",
     "@my-agent/agent": "*",
-    "@my-agent/tui": "*",
     "@my-agent/rpc": "*",
     "@my-agent/gateway": "*",
     "@my-agent/web": "*"

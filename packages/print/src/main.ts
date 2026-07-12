@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * mya — interactive TUI mode (§25.1).
+ * mya — interactive agent (100% pi InteractiveMode for TUI).
  *
  * Usage:
- *   mya                  # interactive REPL (default)
+ *   mya                  # interactive REPL (pi InteractiveMode, default)
  *   mya "prompt"         # one-shot then exit (print mode)
  *   mya --print "prompt" # same as above (explicit)
  *   mya --json "prompt"  # one-shot, newline-delimited JSON stream
@@ -11,7 +11,7 @@
  *   mya serve            # web dashboard + gateway
  *   mya --model m "..."  # explicit model override
  *
- * Auto-config: reads ~/.pi/agent/auth.json (minimax/openai keys) → env vars.
+ * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
 import { createAgent } from "@my-agent/agent";
 import { homedir } from "node:os";
@@ -19,23 +19,20 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { TuiRepl } from "@my-agent/tui";
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {
   try {
-    const authPath = join(homedir(), ".pi", "agent", "auth.json");
+    const authPath = join(homedir(), ".mya", "agent", "auth.json");
     const raw = readFileSync(authPath, "utf8");
-    const auth = JSON.parse(raw) as Record<string, unknown>;
-    const minimax = auth["minimax"] as Record<string, unknown> | undefined;
-    if (minimax?.["key"] && !process.env["MINIMAX_API_KEY"]) {
-      process.env["MINIMAX_API_KEY"] = String(minimax["key"]);
+    const cfg = JSON.parse(raw) as Record<string, { key?: string }>;
+    if (cfg.minimax?.key && !process.env["MINIMAX_API_KEY"]) {
+      process.env["MINIMAX_API_KEY"] = cfg.minimax.key;
     }
-    const openai = auth["openai"] as Record<string, unknown> | undefined;
-    if (openai?.["key"] && !process.env["OPENAI_API_KEY"]) {
-      process.env["OPENAI_API_KEY"] = String(openai["key"]);
+    if (cfg.openai?.key && !process.env["OPENAI_API_KEY"]) {
+      process.env["OPENAI_API_KEY"] = cfg.openai.key;
     }
-  } catch { /* auth.json absent — fall through to env/mock */ }
+  } catch { /* auth.json optional */ }
 }
 
 async function main(): Promise<void> {
@@ -51,9 +48,7 @@ async function main(): Promise<void> {
   // ── flags ──
   const json = args.includes("--json");
   const print = args.includes("--print") || json;
-  const readline = args.includes("--readline");
   const rpc = args.includes("--rpc");
-  const ink = args.includes("--ink");
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
   const positional = args.filter((a) => !a.startsWith("--") && a !== model);
@@ -92,117 +87,8 @@ function readStdin(): Promise<string> {
 }
 
 async function runPiInteractive(): Promise<void> {
-  // Use pi-coding-agent's full InteractiveMode — 100% pi UI.
   const { runPiInteractive: runPi } = await import("./pi-main.js");
   await runPi();
-}
-
-async function runTui(model?: string, _useReadline?: boolean): Promise<void> {
-  // Use pi-tui directly (@earendil-works/pi-tui) — pi's actual rendering engine.
-  const { runPiTui } = await import("@my-agent/tui");
-  const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
-  try {
-    await agent.skillStore.discover(join(homedir(), ".my-agent", "skills"));
-  } catch { /* dir missing */ }
-  const controller = new AbortController();
-  await runPiTui({
-    onPrompt: (text, onEvent) => agent.run(text, onEvent, { signal: controller.signal }),
-    getModel: () => model ?? "MiniMax-M3",
-    getCwd: () => process.cwd(),
-  });
-}
-
-async function runInkTui(model?: string): Promise<void> {
-  const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
-  // Phase 31: discover skills from ~/.my-agent/skills/ if present.
-  try {
-    await agent.skillStore.discover(join(homedir(), ".my-agent", "skills"));
-  } catch { /* dir missing — no skills loaded */ }
-  const controller = new AbortController();
-  // Track cumulative cost + tokens for the status bar.
-  let tokensIn = 0;
-  let tokensOut = 0;
-  let spentUsd = 0;
-  let providerId = process.env["MINIMAX_API_KEY"] ? "minimax" : process.env["OPENAI_API_KEY"] ? "openai" : "mock";
-  const registeredApprovals = new Map<string, (decision: "Allow" | "Deny") => void>();
-
-  // We import ink dynamically so non-TTY callers don't pay the bundle cost
-  // (the bundle inlines it, but the cost of the require() is identical here).
-  const ink: typeof import("@my-agent/tui/ink") = await import("@my-agent/tui/ink");
-  const handle = ink.startInkSession({
-    onSubmit: async (text) => {
-      await agent.run(text, (event) => {
-        // Translate the RuntimeEvent into a transcript line + status updates.
-        const line = ink.eventToLine(0, event);
-        if (line) handle.pushLine(line);
-        const e = event as { kind?: string; turnEvent?: { state?: string; usage?: { input?: number; output?: number }; chunk?: { kind?: string; call?: { id?: string; name?: string; arguments?: unknown } } }; usage?: { input?: number; output?: number }; cost?: { usd?: number }; state?: string };
-        // Update token + cost counters.
-        const usage = (e.turnEvent?.usage ?? e.usage);
-        if (usage) {
-          tokensIn += usage.input ?? 0;
-          tokensOut += usage.output ?? 0;
-        }
-        const cost = (e as { cost?: { usd?: number } }).cost;
-        if (cost?.usd !== undefined) spentUsd = cost.usd;
-        // Approval requests — push modal + register resolver.
-        const te = e.turnEvent;
-        if (te?.state === "AwaitingApproval" && te.chunk?.kind === "tool_call" && te.chunk.call) {
-          const callId = te.chunk.call.id ?? "";
-          const name = te.chunk.call.name ?? "?";
-          const args = JSON.stringify(te.chunk.call.arguments ?? {});
-          const reason = "permission gate requires user confirmation";
-          // Register a resolver the approval handler will invoke.
-          const decisionPromise = new Promise<"Allow" | "Deny">((resolve) => {
-            registeredApprovals.set(callId, resolve);
-          });
-          handle.setApproval({ callId, name, args, reason });
-          // Forward the decision back to the agent's permission gate.
-          decisionPromise.then((d) => {
-            // Currently best-effort: log the decision; the agent's awaitHumanPrompt
-            // resolves via the same channel once the permission gate listens.
-            // Phase 19: wire a 2-way WS-style approval through the dispatch hook.
-          });
-        }
-        // Status bar refresh on every event.
-        handle.setStatus({
-          provider: providerId,
-          model: model ?? "MiniMax-M3",
-          tokensIn,
-          tokensOut,
-          spentUsd,
-          budgetUsd: 0,
-        });
-      });
-    },
-    onAbort: () => controller.abort(),
-    onApproval: (callId: string, decision: "Allow" | "Deny") => {
-      const r = registeredApprovals.get(callId);
-      if (r) {
-        r(decision);
-        registeredApprovals.delete(callId);
-      }
-    },
-    initialStatus: { provider: providerId, model: model ?? "MiniMax-M3", tokensIn: 0, tokensOut: 0, spentUsd: 0, budgetUsd: 0 },
-    onClear: () => handle.clear(),
-    getModel: () => model ?? "MiniMax-M3",
-    getModels: async () => agent.providers.all().map((p) => ({ label: `${p.id}`, value: p.model })),
-    getTools: () => agent.tools.list().map((t) => ({ name: t.name })),
-    getSkills: () => agent.skillStore.index().map((s: { name: string; description: string }) => ({ name: s.name, description: s.description })),
-    getSpent: () => spentUsd,
-  });
-
-  // Block until the Ink session exits (Ctrl-C or /quit).
-  await handle.waitUntilExit();
-}
-
-async function runReadlineTui(model?: string): Promise<void> {
-  const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
-  const controller = new AbortController();
-  const repl = new TuiRepl({
-    prompt: (text, onEvent) => agent.run(text, onEvent, { signal: controller.signal }),
-    cancel: () => controller.abort(),
-  });
-  repl.start("mya — interactive agent. Type a message, Ctrl-C to abort a turn, Ctrl-D to exit.");
 }
 
 async function runRpcServer(_model?: string): Promise<void> {
@@ -222,7 +108,6 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
   const agent = createAgent({ memoryDir: join(homedir(), ".my-agent", "memory") });
-  // Phase 15 M2: generate a local-only WS token (blocks other local processes).
   const wsToken = cryptoRandomToken();
   const gw = new Gateway({
     port,
@@ -244,7 +129,6 @@ main().catch((e) => {
   process.exit(1);
 });
 
-/** Generate a 32-char hex token for local WS auth. */
 function cryptoRandomToken(): string {
   return randomBytes(16).toString("hex");
 }
