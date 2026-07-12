@@ -306,23 +306,24 @@ export function runInteractiveTui(opts: InteractiveTuiOpts): Promise<void> {
       });
     };
 
-    // Input handler (raw mode)
+    // Input handler (raw mode) — split multi-char data into individual keys
     const onInput = (data: string) => {
-      // Ctrl-C: abort or exit
-      if (data === "\x03") {
-        if (busy) { opts.onCancel(); }
-        else { ui.stop(); process.stdout.write(`\n${C.gray}bye${C.R}\n`); resolve(); }
-        return;
+      for (const ch of data) {
+        // Ctrl-C: abort or exit
+        if (ch === "\x03") {
+          if (busy) { opts.onCancel(); }
+          else { ui.stop(); process.stdout.write(`\n${C.gray}bye${C.R}\n`); resolve(); }
+          return;
+        }
+        // Ctrl-D: exit
+        if (ch === "\x04") {
+          ui.stop(); process.stdout.write(`\n${C.gray}bye${C.R}\n`); resolve();
+          return;
+        }
+        // Forward each character to editor
+        editor.handleInput(ch);
       }
-      // Ctrl-D: exit
-      if (data === "\x04") {
-        ui.stop(); process.stdout.write(`\n${C.gray}bye${C.R}\n`); resolve();
-        return;
-      }
-      // Forward to editor
-      if (editor.handleInput(data)) {
-        ui.requestRender();
-      }
+      ui.requestRender();
     };
 
     // Start the TUI
