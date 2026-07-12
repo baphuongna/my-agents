@@ -39,6 +39,7 @@ import { fileSha256, verifyTarball, type SigstoreBundle } from "@my-agent/signin
 import type { AuditLog } from "@my-agent/audit";
 import type { SecretStore } from "@my-agent/secrets";
 import type { HookRegistry } from "@my-agent/gateway";
+import type { McpManager, McpServerConfig } from "@my-agent/gateway";
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
 import type { Brain } from "@my-agent/memory";
@@ -64,6 +65,10 @@ export interface MyaBridgeOptions {
   collab?: CollabRelay;
   packageHost?: PackageHost;
   council?: CouncilProvider;
+  /** MCP server manager (connects external MCP servers as tool sources). */
+  mcp?: McpManager;
+  /** MCP server configs to auto-register on startup. */
+  mcpConfigs?: McpServerConfig[];
   /** Register custom tools — kept for backwards compatibility. */
   registerTools?: (pi: MyaPiApi) => void;
 }
@@ -467,11 +472,53 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         const ui = uiOf(ctx);
         ui.notify(
           "[mya] Commands: /audit, /secrets, /skills, /memory, /wallet, /debug, " +
-            "/eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mya-help",
+            "/eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /mya-help",
           "info",
         );
       },
     });
+
+    // ── MCP: list servers + connect ────────────────────────────────────
+    if (opts.mcp) {
+      const mcp = opts.mcp;
+      // Auto-register configs.
+      for (const cfg of opts.mcpConfigs ?? []) {
+        try { mcp.register(cfg); } catch { /* already registered */ }
+      }
+
+      pi.registerCommand("mcp", {
+        description: "List MCP servers, connect, or call tools. Usage: /mcp [list|connect <id>|tools|health]",
+        handler: async (args: string, ctx: unknown) => {
+          const ui = uiOf(ctx);
+          const parts = args.trim().split(/\s+/);
+          const sub = parts[0] ?? "list";
+
+          if (sub === "list" || sub === "") {
+            const servers = mcp.listServers();
+            if (servers.length === 0) {
+              ui.notify("[mya] No MCP servers registered. Use /mcp connect <id> or configure in ~/.mya/agent/mcp.json", "info");
+            } else {
+              const summary = servers.map((s) => `${s.id}: ${s.phase} (${s.tools.length} tools)`).join(" | ");
+              ui.notify(`[mya] MCP servers: ${summary}`, "info");
+            }
+          } else if (sub === "connect" && parts[1]) {
+            try {
+              const server = await mcp.start(parts[1]!);
+              ui.notify(`[mya] MCP ${server.id}: ${server.phase}, ${server.tools.length} tools discovered`, "info");
+            } catch (e) {
+              ui.notify(`[mya] MCP connect failed: ${(e as Error).message}`, "error");
+            }
+          } else if (sub === "tools") {
+            const tools = mcp.tools;
+            ui.notify(`[mya] MCP available tools (${tools.length}): ${tools.join(", ") || "none"}`, "info");
+          } else if (sub === "health") {
+            ui.notify(`[mya] MCP aggregate health: ${mcp.health}`, "info");
+          } else {
+            ui.notify("[mya] Usage: /mcp [list|connect <id>|tools|health]", "warning");
+          }
+        },
+      });
+    }
 
     // ── 8. Cron sweep (best-effort, non-blocking) ───────────────────────
     if (opts.cron) {

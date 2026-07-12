@@ -12,7 +12,7 @@ import { main } from "@earendil-works/pi-coding-agent";
 import { createMyaBridge } from "./mya-bridge.js";
 import { SecretStore, makeSecretRedactor } from "@my-agent/secrets";
 import { AuditLog } from "@my-agent/audit";
-import { HookRegistry } from "@my-agent/gateway";
+import { HookRegistry, McpManager } from "@my-agent/gateway";
 import { SkillStore } from "@my-agent/skills";
 import { CronScheduler } from "@my-agent/cron";
 import { Brain } from "@my-agent/memory";
@@ -36,6 +36,17 @@ const acp = new AcpBridge();
 const sync = new SyncServer();
 const collab = new CollabRelay();
 const packageHost = new PackageHost();
+const mcp = new McpManager();
+
+// Load MCP server configs from ~/.mya/agent/mcp.json (if present).
+const mcpConfigPath = join(homedir(), ".mya", "agent", "mcp.json");
+let mcpConfigs: import("@my-agent/gateway").McpServerConfig[] = [];
+try {
+  const raw = await import("node:fs").then((fs) => fs.readFileSync(mcpConfigPath, "utf8"));
+  const parsed = JSON.parse(raw) as { servers?: import("@my-agent/gateway").McpServerConfig[] };
+  mcpConfigs = parsed.servers ?? [];
+  for (const cfg of mcpConfigs) mcp.register(cfg);
+} catch { /* mcp.json optional */ }
 
 // Eagerly discover skills (best-effort, non-fatal).
 void skillStore.discover(join(homedir(), ".mya", "skills")).catch(() => { /* optional */ });
@@ -64,6 +75,9 @@ export async function runPiInteractive(): Promise<void> {
     sync,
     collab,
     packageHost,
+    council: undefined,
+    mcp,
+    mcpConfigs,
   });
 
   const args = ["--model", "MiniMax-M3", ...process.argv.slice(2)];
@@ -72,4 +86,4 @@ export async function runPiInteractive(): Promise<void> {
 }
 
 // Re-export for use by main.ts (shared instances).
-export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost };
+export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, mcp };
