@@ -1,173 +1,191 @@
 /**
- * mya Session Launcher — multi-session TUI using raw ANSI.
+ * mya Session Launcher — multi-session TUI using tmux for background sessions.
  *
- * Shows all sessions (saved JSONL + active channel sessions).
- * Selecting a session spawns pi as a child process with that session.
- * When pi exits, control returns to the launcher.
+ * Architecture:
+ *   Launcher → tmux new-session -d → pi runs in tmux (real PTY, background)
+ *   Launcher → tmux attach-session → user interacts (pi takes over terminal)
+ *   Ctrl+B D → tmux detach → back to launcher (pi KEEPS RUNNING in background)
+ *
+ * Sessions survive launcher exit. Multiple sessions run in parallel.
  */
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { nowWallclock } from "@my-agent/core";
 
-// ── ANSI helpers ───────────────────────────────────────────────────────────
+// ── ANSI ───────────────────────────────────────────────────────────────────
 const A = {
-  reset: "\x1b[0m",
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
   accent: (s: string) => `\x1b[38;2;138;190;183m${s}\x1b[39m`,
   muted: (s: string) => `\x1b[38;2;130;130;140m${s}\x1b[39m`,
   dim2: (s: string) => `\x1b[38;2;100;100;110m${s}\x1b[39m`,
+  green: (s: string) => `\x1b[38;2;143;187;122m${s}\x1b[39m`,
   selBg: (s: string) => `\x1b[48;2;58;58;74m${s}\x1b[49m`,
   clear: "\x1b[2J\x1b[H",
   home: "\x1b[H",
+  clrEol: "\x1b[K",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
-  // Clear from cursor to end of line (erases leftover chars)
-  clrEol: "\x1b[K",
 };
 
 // ── Session types ──────────────────────────────────────────────────────────
-interface LauncherSession {
+interface Sess {
   id: string;
   label: string;
   detail: string;
   icon: string;
-  type: "saved" | "channel" | "new";
-  sessionArg?: string;
+  type: "tmux" | "saved" | "channel" | "new";
+  /** tmux session name (for tmux type) or JSONL path (for saved). */
+  arg?: string;
 }
 
-function formatTime(ts: number): string {
+const TMUX_PREFIX = "mya-";
+
+function tmux(args: string): string {
+  try { return execSync(`tmux ${args}`, { encoding: "utf8", timeout: 2000 }).trim(); }
+  catch { return ""; }
+}
+
+/** List running tmux sessions (mya-* prefix only). */
+function loadTmuxSessions(): Sess[] {
+  const raw = tmux('list-sessions -F "#{session_name}|#{session_created}|session_attached" 2>/dev/null');
+  if (!raw) return [];
+  return raw.split("\n").filter(Boolean).map((line) => {
+    const [name, created, attached] = line.split("|");
+    if (!name?.startsWith(TMUX_PREFIX)) return null;
+    const age = Math.floor((nowWallclock() / 1000 - Number(created)) / 60);
+    const isAttached = attached === "1";
+    return {
+      id: name!,
+      label: name!.slice(TMUX_PREFIX.length),
+      detail: `${isAttached ? "🟢 attached" : "🔵 background"} · ${age}m`,
+      icon: isAttached ? "📌" : "🟢",
+      type: "tmux" as const,
+      arg: name!,
+    };
+  }).filter(Boolean) as Sess[];
+}
+
+/** Format timestamp. */
+function fmt(ts: number): string {
   if (!ts) return "—";
-  const diff = nowWallclock() - ts;
-  if (diff < 60_000) return "now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-  return `${Math.floor(diff / 86_400_000)}d`;
+  const d = nowWallclock() - ts;
+  if (d < 60_000) return "now";
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
+  return `${Math.floor(d / 86_400_000)}d`;
 }
 
-/** Load saved sessions from ~/.mya/sessions/ (synchronous — fast enough). */
-function loadSavedSessions(): LauncherSession[] {
+/** Load saved JSONL sessions. */
+function loadSaved(): Sess[] {
   const dir = join(homedir(), ".mya", "sessions");
   if (!existsSync(dir)) return [];
-  const result: LauncherSession[] = [];
+  const out: Sess[] = [];
   try {
-    for (const cwdDir of readdirSync(dir)) {
-      const full = join(dir, cwdDir);
-      if (!statSync(full).isDirectory()) continue;
-      for (const file of readdirSync(full)) {
-        if (!file.endsWith(".jsonl")) continue;
-        const fp = join(full, file);
+    for (const cwd of readdirSync(dir)) {
+      const full = join(dir, cwd);
+      if (!statSync(full).isDirectory() || cwd === "bg") continue;
+      for (const f of readdirSync(full)) {
+        if (!f.endsWith(".jsonl")) continue;
+        const fp = join(full, f);
         try {
           const lines = readFileSync(fp, "utf8").split("\n").filter(Boolean);
-          const header = JSON.parse(lines[0] ?? "{}") as { id?: string; name?: string };
-          let msgCount = 0;
-          let firstText = "";
-          let lastTs = 0;
-          for (const line of lines) {
+          const hdr = JSON.parse(lines[0] ?? "{}") as { id?: string; name?: string };
+          let n = 0; let first = ""; let ts = 0;
+          for (const l of lines) {
             try {
-              const e = JSON.parse(line) as { type?: string; message?: { role?: string; content?: Array<{ text?: string }> }; timestamp?: number };
-              if (e.type === "message") {
-                msgCount++;
-                if (e.message?.role === "user" && !firstText) firstText = (e.message.content?.[0]?.text ?? "").slice(0, 40);
-                if (e.timestamp) lastTs = e.timestamp;
-              }
+              const e = JSON.parse(l) as { type?: string; message?: { role?: string; content?: Array<{ text?: string }> }; timestamp?: number };
+              if (e.type === "message") { n++; if (e.message?.role === "user" && !first) first = (e.message.content?.[0]?.text ?? "").slice(0, 40); if (e.timestamp) ts = e.timestamp; }
             } catch { /* */ }
           }
-          result.push({
-            id: header.id ?? file,
-            label: header.name ?? firstText ?? file.slice(0, 30),
-            detail: `${msgCount} msgs · ${formatTime(lastTs)}`,
-            icon: "💬",
-            type: "saved",
-            sessionArg: fp,
-          });
+          out.push({ id: hdr.id ?? f, label: hdr.name ?? first ?? f.slice(0, 30), detail: `${n} msgs · ${fmt(ts)}`, icon: "💬", type: "saved", arg: fp });
         } catch { /* */ }
       }
     }
   } catch { /* */ }
-  return result.sort((a, b) => b.id.localeCompare(a.id));
+  return out.sort((a, b) => b.id.localeCompare(a.id));
 }
 
-async function loadChannelSessions(): Promise<LauncherSession[]> {
-  try {
-    const res = await fetch("http://127.0.0.1:3000/channel/sessions", { signal: AbortSignal.timeout(500) });
-    if (!res.ok) return [];
-    const arr = (await res.json()) as Array<{ channelId: string; userId: string; sessionId: string; lastActivity: number; history: unknown[] }>;
-    return arr.map((s) => ({
-      id: s.sessionId,
-      label: `${s.channelId}:${s.userId}`,
-      detail: `${s.history.length} msgs · ${formatTime(s.lastActivity)}`,
-      icon: s.channelId === "telegram" ? "📱" : "🎮",
-      type: "channel" as const,
-      sessionArg: s.sessionId,
-    }));
-  } catch { return []; }
-}
+/** Build render lines. */
+function buildLines(sessions: Sess[], sel: number, filter: string): string[] {
+  const o: string[] = [];
+  o.push("");
+  o.push(`  ${A.bold(A.accent("mya"))} ${A.muted("— Session Launcher")}`);
+  const tmuxCount = sessions.filter((s) => s.type === "tmux").length;
+  o.push(`  ${A.dim2("─".repeat(50))}${tmuxCount > 0 ? A.green(`  ${tmuxCount} running`) : ""}`);
+  o.push("");
+  o.push(`  ${A.dim2("filter:")} ${filter ? A.accent(filter + "█") : A.dim2("(type to search)")}`);
+  o.push("");
 
-/** Build render lines (pure — no I/O). */
-function buildLines(sessions: LauncherSession[], selected: number, filter: string): string[] {
-  const out: string[] = [];
-  out.push("");
-  out.push(`  ${A.bold(A.accent("mya"))} ${A.muted("— Session Launcher")}`);
-  out.push(`  ${A.dim2("──────────────────────────────────────────")}`);
-  out.push("");
-  out.push(`  ${A.dim2("filter:")} ${filter ? A.accent(filter + "█") : A.dim2("(type to search)")}`);
-  out.push("");
+  const f = filter ? sessions.filter((s) => s.label.toLowerCase().includes(filter.toLowerCase())) : sessions;
+  if (f.length === 0) o.push(`  ${A.muted("No sessions found.")}`);
 
-  const filtered = filter ? sessions.filter((s) => s.label.toLowerCase().includes(filter.toLowerCase())) : sessions;
-
-  if (filtered.length === 0) out.push(`  ${A.muted("No sessions found.")}`);
-
-  for (let i = 0; i < filtered.length; i++) {
-    const s = filtered[i]!;
-    const sel = i === selected;
-    const txt = `${s.icon} ${sel ? A.bold(A.accent(s.label)) : s.label}  ${A.dim2(s.detail)}`;
-    out.push(sel ? `  ${A.selBg(txt)}` : `  ${txt}`);
+  for (let i = 0; i < f.length; i++) {
+    const s = f[i]!;
+    const is = i === sel;
+    const txt = `${s.icon} ${is ? A.bold(A.accent(s.label)) : s.label}  ${A.dim2(s.detail)}`;
+    o.push(is ? `  ${A.selBg(txt)}` : `  ${txt}`);
   }
 
-  out.push("");
-  out.push(`  ${A.dim2("──────────────────────────────────────────")}`);
-  out.push(`  ${A.dim2("↑↓ navigate · Enter open · n new · q/Ctrl+C quit")}`);
-  return out;
+  o.push("");
+  o.push(`  ${A.dim2("─".repeat(50))}`);
+  o.push(`  ${A.dim2("↑↓ nav · Enter open · n new · x kill · q quit · detach: Ctrl+B D")}`);
+  return o;
 }
 
-/**
- * Run the launcher. Returns user's choice or undefined (quit).
- */
-export function runSessionLauncher(): Promise<{ sessionPath?: string; isNew?: boolean } | undefined> {
-  return new Promise(async (resolve) => {
-    const sessions: LauncherSession[] = [
-      { id: "new", label: "New session", detail: "Start a fresh conversation", icon: "✨", type: "new" },
-      ...(await loadChannelSessions()),
-      ...loadSavedSessions(),
+/** Create a new tmux session running pi, then attach. */
+function tmuxNewAndAttach(sessionPath?: string): void {
+  const name = `${TMUX_PREFIX}${Date.now().toString(36)}`;
+  const piArgs = ["--model", "MiniMax-M3"];
+  if (sessionPath) piArgs.push("--session", sessionPath);
+  const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
+  const cmd = `${process.execPath} ${entry} ${piArgs.join(" ")}`;
+  // Create detached session, then attach
+  execSync(`tmux new-session -d -s ${name} "${cmd}"`, { env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" } });
+  // Attach (blocks until user detaches with Ctrl+B D)
+  spawn("tmux", ["attach-session", "-t", name], { stdio: "inherit" });
+}
+
+/** Attach to existing tmux session. */
+function tmuxAttach(name: string): void {
+  spawn("tmux", ["attach-session", "-t", name], { stdio: "inherit" });
+}
+
+/** Kill a tmux session. */
+function tmuxKill(name: string): void {
+  tmux(`kill-session -t ${name}`);
+}
+
+/** Run launcher UI. Returns selected session or undefined. */
+export function runSessionLauncher(): Promise<
+  { action: "open"; session?: Sess } | { action: "new" } | { action: "kill"; session: Sess } | { action: "quit" }
+> {
+  return new Promise((resolve) => {
+    const sessions: Sess[] = [
+      { id: "new", label: "New session", detail: "Start fresh conversation", icon: "✨", type: "new" },
+      ...loadTmuxSessions(),
+      ...loadSaved(),
     ];
 
-    let selected = 0;
+    let sel = 0;
     let filter = "";
-    let firstRender = true;
+    let first = true;
 
     const isTTY = process.stdin.isTTY;
     if (isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdout.write(A.hideCursor);
 
-    const doRender = () => {
-      const lines = buildLines(sessions, selected, filter);
-      if (firstRender) {
-        process.stdout.write(A.clear);
-        firstRender = false;
-      }
-      // Move cursor home + rewrite each line with clrEol (no full clear — avoids flicker)
-      let out = A.home;
-      for (const line of lines) {
-        out += line + A.clrEol + "\n";
-      }
-      out += A.clrEol; // clear last line
+    const render = () => {
+      const lines = buildLines(sessions, sel, filter);
+      let out = first ? A.clear : A.home;
+      first = false;
+      for (const l of lines) out += l + A.clrEol + "\n";
+      out += A.clrEol;
       process.stdout.write(out);
     };
-
-    doRender();
+    render();
 
     const cleanup = () => {
       process.stdin.pause();
@@ -177,73 +195,64 @@ export function runSessionLauncher(): Promise<{ sessionPath?: string; isNew?: bo
     };
 
     const onData = (data: Buffer) => {
-      const key = data.toString();
-
-      // Ctrl+C or Ctrl+D → quit immediately
-      if (key === "\x03" || key === "\x04") {
-        cleanup();
-        resolve(undefined);
-        return;
-      }
-      if (key === "\x1b[A") { // ↑
-        selected = Math.max(0, selected - 1);
-        doRender();
-      } else if (key === "\x1b[B") { // ↓
-        const f = filter ? sessions.filter((s) => s.label.toLowerCase().includes(filter.toLowerCase())) : sessions;
-        selected = Math.min(f.length - 1, selected + 1);
-        doRender();
-      } else if (key === "\r" || key === "\n") { // Enter
+      const k = data.toString();
+      if (k === "\x03" || k === "\x04") { cleanup(); resolve({ action: "quit" }); return; }
+      if (k === "\x1b[A") { sel = Math.max(0, sel - 1); render(); }
+      else if (k === "\x1b[B") { const f = filter ? sessions.filter((s) => s.label.toLowerCase().includes(filter.toLowerCase())) : sessions; sel = Math.min(f.length - 1, sel + 1); render(); }
+      else if (k === "\r" || k === "\n") {
         cleanup();
         const f = filter ? sessions.filter((s) => s.label.toLowerCase().includes(filter.toLowerCase())) : sessions;
-        const chosen = f[selected];
-        if (chosen?.type === "new") resolve({ isNew: true });
-        else resolve({ sessionPath: chosen?.sessionArg });
-      } else if ((key === "q" && !filter) || key === "\x1b") { // q or Esc
-        if (filter && key === "\x1b") { filter = ""; selected = 0; doRender(); }
-        else if (key === "q") { cleanup(); resolve(undefined); }
-      } else if (key === "n" && !filter) { // n = new
-        cleanup();
-        resolve({ isNew: true });
-      } else if (key === "\x7f" || key === "\b") { // Backspace
-        filter = filter.slice(0, -1);
-        selected = 0;
-        doRender();
-      } else if (key.length === 1 && key >= " " && key !== "q" && key !== "n") {
-        filter += key;
-        selected = 0;
-        doRender();
+        resolve({ action: "open", session: f[sel] });
       }
+      else if (k === "n" && !filter) { cleanup(); resolve({ action: "new" }); }
+      else if (k === "x" && !filter) {
+        const f = filter ? sessions.filter((s) => s.label.toLowerCase().includes(filter.toLowerCase())) : sessions;
+        const s = f[sel];
+        if (s?.type === "tmux" && s.arg) tmuxKill(s.arg);
+        render(); // refresh list
+      }
+      else if (k === "\x1b") { filter = ""; sel = 0; render(); }
+      else if (k === "\x7f" || k === "\b") { filter = filter.slice(0, -1); sel = 0; render(); }
+      else if (k === "q" && !filter) { cleanup(); resolve({ action: "quit" }); }
+      else if (k.length === 1 && k >= " " && k !== "q" && k !== "n" && k !== "x") { filter += k; sel = 0; render(); }
     };
 
     process.stdin.on("data", onData);
   });
 }
 
-/** Launch pi as a child process. Returns when child exits. */
-export function launchSession(sessionPath?: string): Promise<void> {
-  return new Promise((resolve) => {
-    const args = ["--model", "MiniMax-M3"];
-    if (sessionPath) args.push("--session", sessionPath);
-
-    const child = spawn(process.execPath, [
-      process.argv[1] ?? process.cwd() + "/dist/mya.js",
-      ...args,
-    ], {
-      stdio: "inherit",
-      env: { ...process.env, PI_SKIP_VERSION_CHECK: "1", MYA_FROM_LAUNCHER: "1" },
-    });
-
-    child.on("exit", () => resolve());
-    child.on("error", () => resolve());
-  });
-}
-
-/** Main loop: launcher → select → pi → launcher → ... */
+/** Main loop. */
 export async function runLauncherLoop(): Promise<void> {
+  // Check tmux availability
+  const hasTmux = (() => { try { execSync("tmux -V", { stdio: "ignore" }); return true; } catch { return false; } })();
+  if (!hasTmux) {
+    process.stderr.write("[mya] tmux not found. Install tmux for background sessions.\n");
+    process.stderr.write("[mya] Falling back to foreground mode.\n");
+    // Fallback: simple foreground pi
+    const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
+    const child = spawn(process.execPath, [entry, "--model", "MiniMax-M3"], {
+      stdio: "inherit",
+      env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" },
+    });
+    return new Promise((r) => child.on("exit", () => r()));
+  }
+
   while (true) {
     const result = await runSessionLauncher();
-    if (result === undefined) return;
-    if (result.isNew) await launchSession();
-    else await launchSession(result.sessionPath);
+    if (result.action === "quit") return;
+
+    if (result.action === "new") {
+      tmuxNewAndAttach();
+    } else if (result.action === "open" && result.session) {
+      const s = result.session;
+      if (s.type === "tmux" && s.arg) {
+        tmuxAttach(s.arg);
+      } else if (s.type === "saved" && s.arg) {
+        tmuxNewAndAttach(s.arg);
+      } else if (s.type === "new") {
+        tmuxNewAndAttach();
+      }
+    }
+    // After tmux detach, loop back to launcher
   }
 }
