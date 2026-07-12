@@ -49,7 +49,12 @@ await build({
   define: {
     "process.env.NODE_ENV": '"production"',
   },
-  external: [],
+  external: [
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-tui",
+    "@earendil-works/pi-ai",
+    "marked",
+  ],
   plugins: [stubPlugin],
   legalComments: "none",
   minify: false,

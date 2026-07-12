@@ -77,8 +77,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── interactive TUI ──
-  return runTui(model, readline);
+  // ── interactive TUI — 100% pi InteractiveMode ──
+  return runPiInteractive();
 }
 
 function readStdin(): Promise<string> {
@@ -89,6 +89,12 @@ function readStdin(): Promise<string> {
     process.stdin.on("data", (c) => (data += c));
     process.stdin.on("end", () => resolve(data.trim()));
   });
+}
+
+async function runPiInteractive(): Promise<void> {
+  // Use pi-coding-agent's full InteractiveMode — 100% pi UI.
+  const { runPiInteractive: runPi } = await import("./pi-main.js");
+  await runPi();
 }
 
 async function runTui(model?: string, _useReadline?: boolean): Promise<void> {
