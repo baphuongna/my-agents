@@ -125,9 +125,15 @@ export function createAgent(config: AgentConfig = {}): Agent {
   } else {
     // Auto-config: MiniMax (if MINIMAX_API_KEY), then OpenAI (if OPENAI_API_KEY),
     // else a mock echo fallback (agent always runs).
-    // Keys resolved via secretStore when available (fail-closed), else process.env.
-    const minimaxKey = config.secretStore?.resolve({ from: "env", ref: "MINIMAX_API_KEY" }) ?? process.env["MINIMAX_API_KEY"];
-    const openaiKey = config.secretStore?.resolve({ from: "env", ref: "OPENAI_API_KEY" }) ?? process.env["OPENAI_API_KEY"];
+    // Keys resolved via secretStore when available, else process.env.
+    // secretStore.resolve() is fail-closed (throws if missing) — catch → undefined.
+    const tryResolve = (ref: string): string | undefined => {
+      if (!config.secretStore) return process.env[ref];
+      try { return config.secretStore.resolve({ from: "env", ref }); }
+      catch { return process.env[ref]; }
+    };
+    const minimaxKey = tryResolve("MINIMAX_API_KEY");
+    const openaiKey = tryResolve("OPENAI_API_KEY");
     if (minimaxKey) {
       providers.register(
         new OpenAIAdapter({
