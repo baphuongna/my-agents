@@ -527,7 +527,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     if (opts.channels) {
       const channels = opts.channels;
       pi.registerCommand("channel", {
-        description: "Manage messaging channels. Usage: /channel [list|send <id> <target> <text>|health]",
+        description: "Manage messaging channels. Usage: /channel [list|setup|status|send <id> <target> <text>|health]",
         handler: async (args: string, ctx: unknown) => {
           const ui = uiOf(ctx);
           const parts = args.trim().split(/\s+/);
@@ -539,10 +539,43 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               ui.notify("[mya] No channels registered", "info");
             } else {
               const summary = all.map((c) => {
-                const cfg = c.isConfigured() ? "✓" : "✗";
+                const cfg = c.isConfigured() ? "✅" : "⬜";
                 return `${cfg} ${c.id}`;
               }).join(" | ");
               ui.notify(`[mya] Channels: ${summary}`, "info");
+            }
+          } else if (sub === "status") {
+            // Detailed status with missing credentials
+            const { channelStatusSummary } = await import("@my-agent/gateway/channel-setup.js");
+            ui.notify(`[mya] Channel status:\n${channelStatusSummary()}`, "info");
+          } else if (sub === "setup") {
+            // Interactive setup wizard
+            const { detectChannels } = await import("@my-agent/gateway/channel-setup.js");
+            const detections = detectChannels();
+            const configured = detections.filter((d) => d.configured).map((d) => d.id);
+            const needsSetup = detections.filter((d) => !d.configured);
+            if (configured.length > 0) {
+              ui.notify(`[mya] Already configured: ${configured.join(", ")}`, "info");
+            }
+            if (needsSetup.length > 0) {
+              const help = needsSetup.map((d) =>
+                `${d.name}: set ${d.missing.map((m) => m.envVar).join(" + ")}`
+              ).join("\n");
+              ui.notify(`[mya] To configure:\n${help}\n\nRun: /channel config <id> <ENV_VAR> <value>`, "info");
+            } else {
+              ui.notify("[mya] All channels configured! 🎉", "info");
+            }
+          } else if (sub === "config" && parts[1] && parts[2] && parts[3]) {
+            // /channel config telegram TELEGRAM_BOT_TOKEN 123456:ABC-DEF
+            const channelId = parts[1]!;
+            const envVar = parts[2]!;
+            const value = parts.slice(3).join(" ");
+            const { saveChannelCredential } = await import("@my-agent/gateway/channel-setup.js");
+            try {
+              saveChannelCredential(channelId, envVar, value);
+              ui.notify(`[mya] ✓ Saved ${envVar} for ${channelId} (written to ~/.mya/agent/channels.json)`, "info");
+            } catch (e) {
+              ui.notify(`[mya] Config save failed: ${(e as Error).message}`, "error");
             }
           } else if (sub === "send" && parts[1] && parts[2] && parts[3]) {
             const channelId = parts[1]!;
@@ -557,7 +590,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           } else if (sub === "health") {
             ui.notify(`[mya] Channel health: ${channels.health}`, "info");
           } else {
-            ui.notify("[mya] Usage: /channel [list|send <id> <target> <text>|health]", "warning");
+            ui.notify("[mya] Usage: /channel [list|setup|status|config <id> <var> <val>|send <id> <target> <text>|health]", "warning");
           }
         },
       });

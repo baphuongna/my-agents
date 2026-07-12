@@ -48,6 +48,16 @@ const mcp = new McpManager();
 const channels = new ChannelRegistry();
 registerBuiltinChannels(channels);
 
+// Auto-configure: scan env vars + channels.json, activate what's configured.
+import { autoConfigureChannels } from "@my-agent/gateway/channel-setup.js";
+const { activated: channelsActive, skipped: channelsSkipped } = autoConfigureChannels(channels);
+if (channelsActive.length > 0) {
+  console.error(`[mya] channels active: ${channelsActive.join(", ")}`);
+}
+if (channelsSkipped.length > 0 && process.env["MYA_DEBUG"]) {
+  console.error(`[mya] channels skipped (not configured): ${channelsSkipped.join(", ")}`);
+}
+
 // Council: a 1-member council backed by a canned-response mock profile. The
 // single-provider build (MiniMax only) has no second live model to fan out to,
 // so we wire a deterministic mock advisor. This makes /council report a
