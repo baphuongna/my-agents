@@ -499,3 +499,5 @@ export class Gateway {
 export * from "./hooks.js";
 export * from "./mcp-lifecycle.js";
 export * from "./mcp-client.js";
+export * from "./channels.js";
+export * from "./channel-adapters.js";

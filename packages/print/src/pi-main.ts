@@ -12,7 +12,7 @@ import { main } from "@earendil-works/pi-coding-agent";
 import { createMyaBridge } from "./mya-bridge.js";
 import { SecretStore, makeSecretRedactor } from "@my-agent/secrets";
 import { AuditLog } from "@my-agent/audit";
-import { HookRegistry, McpManager } from "@my-agent/gateway";
+import { HookRegistry, McpManager, ChannelRegistry, registerBuiltinChannels } from "@my-agent/gateway";
 import { SkillStore } from "@my-agent/skills";
 import { CronScheduler } from "@my-agent/cron";
 import { Brain } from "@my-agent/memory";
@@ -45,6 +45,8 @@ const sync = new SyncServer();
 const collab = new CollabRelay();
 const packageHost = new PackageHost();
 const mcp = new McpManager();
+const channels = new ChannelRegistry();
+registerBuiltinChannels(channels);
 
 // Council: a 1-member council backed by a canned-response mock profile. The
 // single-provider build (MiniMax only) has no second live model to fan out to,
@@ -119,4 +121,4 @@ export async function runPiInteractive(): Promise<void> {
 }
 
 // Re-export for use by main.ts (shared instances).
-export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, council, mcp };
+export { secretStore, auditLog, hooks, skillStore, cron, brain, wallet, acp, sync, collab, packageHost, council, mcp, channels };

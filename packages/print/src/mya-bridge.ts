@@ -40,6 +40,7 @@ import type { AuditLog } from "@my-agent/audit";
 import type { SecretStore } from "@my-agent/secrets";
 import type { HookRegistry } from "@my-agent/gateway";
 import type { McpManager, McpServerConfig } from "@my-agent/gateway";
+import type { ChannelRegistry } from "@my-agent/gateway";
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
 import type { Brain } from "@my-agent/memory";
@@ -69,6 +70,8 @@ export interface MyaBridgeOptions {
   mcp?: McpManager;
   /** MCP server configs to auto-register on startup. */
   mcpConfigs?: McpServerConfig[];
+  /** Channel registry (messaging adapters: Telegram, Discord, Slack, ...). */
+  channels?: ChannelRegistry;
   /** Register custom tools — kept for backwards compatibility. */
   registerTools?: (pi: MyaPiApi) => void;
 }
@@ -472,7 +475,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         const ui = uiOf(ctx);
         ui.notify(
           "[mya] Commands: /audit, /secrets, /skills, /memory, /wallet, /debug, " +
-            "/eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /mya-help",
+            "/eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /mya-help",
           "info",
         );
       },
@@ -515,6 +518,46 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
             ui.notify(`[mya] MCP aggregate health: ${mcp.health}`, "info");
           } else {
             ui.notify("[mya] Usage: /mcp [list|connect <id>|tools|health]", "warning");
+          }
+        },
+      });
+    }
+
+    // ── Channel: messaging adapters (Telegram/Discord/Slack/Email/Webhook) ──
+    if (opts.channels) {
+      const channels = opts.channels;
+      pi.registerCommand("channel", {
+        description: "Manage messaging channels. Usage: /channel [list|send <id> <target> <text>|health]",
+        handler: async (args: string, ctx: unknown) => {
+          const ui = uiOf(ctx);
+          const parts = args.trim().split(/\s+/);
+          const sub = parts[0] ?? "list";
+
+          if (sub === "list" || sub === "") {
+            const all = channels.list();
+            if (all.length === 0) {
+              ui.notify("[mya] No channels registered", "info");
+            } else {
+              const summary = all.map((c) => {
+                const cfg = c.isConfigured() ? "✓" : "✗";
+                return `${cfg} ${c.id}`;
+              }).join(" | ");
+              ui.notify(`[mya] Channels: ${summary}`, "info");
+            }
+          } else if (sub === "send" && parts[1] && parts[2] && parts[3]) {
+            const channelId = parts[1]!;
+            const target = parts[2]!;
+            const text = parts.slice(3).join(" ");
+            const result = await channels.send(channelId, target, text);
+            if (result.ok) {
+              ui.notify(`[mya] Sent via ${channelId} to ${target}`, "info");
+            } else {
+              ui.notify(`[mya] Send failed: ${result.error}`, "error");
+            }
+          } else if (sub === "health") {
+            ui.notify(`[mya] Channel health: ${channels.health}`, "info");
+          } else {
+            ui.notify("[mya] Usage: /channel [list|send <id> <target> <text>|health]", "warning");
           }
         },
       });
