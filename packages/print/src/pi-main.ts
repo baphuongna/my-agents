@@ -127,7 +127,16 @@ export async function runPiInteractive(): Promise<void> {
     channels,
   });
 
-  const args = ["--model", "MiniMax-M3", ...process.argv.slice(2)];
+  // Filter out mya-specific flags that pi doesn't understand.
+  const MYA_FLAGS = new Set(["--no-launcher", "--print", "--json", "--rpc", "--debug"]);
+  const piArgs = process.argv.slice(2).filter((a, i, arr) => {
+    // Skip the flag and its value (for flags that take values)
+    if (MYA_FLAGS.has(a)) return false;
+    // Skip value of a filtered flag (e.g. --debug was removed, don't keep its value)
+    if (i > 0 && MYA_FLAGS.has(arr[i - 1]!)) return false;
+    return true;
+  });
+  const args = ["--model", "MiniMax-M3", ...piArgs];
   // Pass the bridge as an inline extension — pi loads it into the agent session.
   await main(args, { extensionFactories: [{ name: "mya-bridge", factory: myaBridge }] });
 }

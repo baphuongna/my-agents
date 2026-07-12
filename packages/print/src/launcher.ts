@@ -241,7 +241,7 @@ export function launchSession(sessionPath?: string): Promise<void> {
   return new Promise((resolve) => {
     const args = ["--model", "MiniMax-M3"];
     if (sessionPath) args.push("--session", sessionPath);
-    args.push("--no-launcher"); // skip launcher when launched from launcher
+    // MYA_FROM_LAUNCHER=1 env var skips launcher (no --no-launcher flag — pi doesn't know it)
 
     const child = spawn(process.execPath, [
       process.argv[1] ?? process.cwd() + "/dist/mya.js",
