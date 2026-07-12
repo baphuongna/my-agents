@@ -546,11 +546,11 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
             }
           } else if (sub === "status") {
             // Detailed status with missing credentials
-            const { channelStatusSummary } = await import("@my-agent/gateway/channel-setup.js");
+            const { channelStatusSummary } = await import("@my-agent/gateway");
             ui.notify(`[mya] Channel status:\n${channelStatusSummary()}`, "info");
           } else if (sub === "setup") {
             // Interactive setup wizard
-            const { detectChannels } = await import("@my-agent/gateway/channel-setup.js");
+            const { detectChannels } = await import("@my-agent/gateway");
             const detections = detectChannels();
             const configured = detections.filter((d) => d.configured).map((d) => d.id);
             const needsSetup = detections.filter((d) => !d.configured);
@@ -559,7 +559,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
             }
             if (needsSetup.length > 0) {
               const help = needsSetup.map((d) =>
-                `${d.name}: set ${d.missing.map((m) => m.envVar).join(" + ")}`
+                `${d.name}: set ${d.missing.map((m: { envVar: string }) => m.envVar).join(" + ")}`
               ).join("\n");
               ui.notify(`[mya] To configure:\n${help}\n\nRun: /channel config <id> <ENV_VAR> <value>`, "info");
             } else {
@@ -570,7 +570,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
             const channelId = parts[1]!;
             const envVar = parts[2]!;
             const value = parts.slice(3).join(" ");
-            const { saveChannelCredential } = await import("@my-agent/gateway/channel-setup.js");
+            const { saveChannelCredential } = await import("@my-agent/gateway");
             try {
               saveChannelCredential(channelId, envVar, value);
               ui.notify(`[mya] ✓ Saved ${envVar} for ${channelId} (written to ~/.mya/agent/channels.json)`, "info");

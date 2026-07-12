@@ -49,7 +49,7 @@ const channels = new ChannelRegistry();
 registerBuiltinChannels(channels);
 
 // Auto-configure: scan env vars + channels.json, activate what's configured.
-import { autoConfigureChannels } from "@my-agent/gateway/channel-setup.js";
+import { autoConfigureChannels } from "@my-agent/gateway";
 const { activated: channelsActive, skipped: channelsSkipped } = autoConfigureChannels(channels);
 if (channelsActive.length > 0) {
   console.error(`[mya] channels active: ${channelsActive.join(", ")}`);
