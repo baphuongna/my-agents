@@ -302,3 +302,4 @@ export const defaultRenderer: EventRenderer = (event) => {
   if (e.kind === "health") return null;
   return null;
 };
+export { runPiTui } from "./pi-app.js";

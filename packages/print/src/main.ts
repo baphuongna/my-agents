@@ -92,18 +92,17 @@ function readStdin(): Promise<string> {
 }
 
 async function runTui(model?: string, _useReadline?: boolean): Promise<void> {
-  // The new diff-rendering TUI engine (pi-style frame buffer + diff).
-  // Works on every terminal that supports raw mode.
-  const { runInteractiveTui } = await import("@my-agent/tui/app");
+  // Use pi-tui directly (@earendil-works/pi-tui) — pi's actual rendering engine.
+  const { runPiTui } = await import("@my-agent/tui");
   const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
   try {
     await agent.skillStore.discover(join(homedir(), ".my-agent", "skills"));
   } catch { /* dir missing */ }
   const controller = new AbortController();
-  await runInteractiveTui({
+  await runPiTui({
     onPrompt: (text, onEvent) => agent.run(text, onEvent, { signal: controller.signal }),
-    onCancel: () => controller.abort(),
-    model: model ?? "MiniMax-M3",
+    getModel: () => model ?? "MiniMax-M3",
+    getCwd: () => process.cwd(),
   });
 }
 
