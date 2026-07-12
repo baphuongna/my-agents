@@ -52,8 +52,9 @@ const vendoredResolve = {
       return null;
     });
 
-    // Stub only react-devtools (truly unused)
+    // Stub only react-devtools + highlight.js (path mismatch)
     b.onResolve({ filter: new RegExp("^react-devtools-core") }, () => ({ path: "stub-dep", namespace: "stub-dep" }));
+    b.onResolve({ filter: new RegExp("^highlight\\.js/lib") }, (args) => ({ path: "highlight.js", external: true }));
     b.onLoad({ filter: /.*/, namespace: "stub-dep" }, () => ({ contents: "export default undefined;", loader: "js" }));
   },
 };
