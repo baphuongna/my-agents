@@ -5,6 +5,7 @@
  * Sending uses fetch() (HTTP API) — no SDK dependencies.
  */
 import type { Channel, ChannelMessage } from "./channels.js";
+import { nowWallclock } from "@my-agent/core";
 
 // ── Telegram ──────────────────────────────────────────────────────────────
 export class TelegramChannel implements Channel {
@@ -210,7 +211,7 @@ export class WebhookChannel implements Channel {
       const res = await fetch(this.url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ target, text, ts: Date.now() }),
+        body: JSON.stringify({ target, text, ts: nowWallclock() }),
       });
       if (!res.ok) return { ok: false, error: `Webhook ${res.status}` };
       return { ok: true };
