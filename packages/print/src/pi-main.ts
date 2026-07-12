@@ -1,14 +1,14 @@
 /**
- * mya — 100% pi-coding-agent InteractiveMode with MiniMax-M3.
+ * mya — 100% pi InteractiveMode CLONED into this repo.
  *
- * Calls pi's main() directly with model=MiniMax-M3.
- * This gives the EXACT pi TUI — no modifications, no filtering, no reduction.
+ * Uses vendored/pi/ (cloned source), NOT the npm package.
+ * MiniMax-M3 as default model.
  */
 
+// Import via package name — esbuild alias remaps to vendored/ at bundle time
 import { main } from "@earendil-works/pi-coding-agent";
 
 export async function runPiInteractive(): Promise<void> {
-  // Pass --model MiniMax-M3 to pi's main(). All other args pass through.
-  const args = ["--model", "MiniMax-M3", ...process.argv.slice(2)];
+  const args = ["--model", "MiniMax-M3", "--no-extensions", ...process.argv.slice(2)];
   await main(args, {});
 }

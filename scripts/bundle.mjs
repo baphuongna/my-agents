@@ -1,64 +1,58 @@
 #!/usr/bin/env node
 /**
- * Bundle the mya CLI into a single self-contained ESM file using esbuild.
- * All workspace packages are inlined; the optional .node binary fails to
- * load at runtime → graceful JS fallback kicks in (pure-JS mode).
- *
- * Output: dist/mya.js (the publishable bin entry point).
- *
- * Phase 18: Ink/React + Yoga bundled inline. The CJS-shim banner lets Node's
- * createRequire() back-stop bundled dynamic requires (yoga-layout uses TLA,
- * so format=esm is required). dev env is forced to "production" to skip
- * ink's devtools branch (which pulls `ws`).
+ * Bundle mya CLI — 100% cloned pi code from vendored/ directory.
+ * All deps are in vendored/node_modules/ (cloned, not npm).
  */
-import { build } from "esbuild";
 
-/** Stub out optional dev-only deps that ink tries to import (react-devtools-core). */
+import { build } from "esbuild";
+import path from "node:path";
+import fs from "node:fs";
+
+const cjsShim = `import { createRequire as __myaCreateRequire } from "node:module";
+const require = __myaCreateRequire(import.meta.url);`;
+
 const stubPlugin = {
-  name: "stub-optional",
-  setup(build) {
-    build.onResolve({ filter: /^react-devtools-core$/ }, () => ({
-      path: "react-devtools-core",
-      namespace: "stub",
-    }));
-    build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
-      contents: `
-export function connectToDevTools() {}
-export default { connectToDevTools };
-`,
-      loader: "js",
-    }));
+  name: "stub",
+  setup(b) {
+    b.onResolve({ filter: /react-devtools-core/ }, () => ({ path: "stub", namespace: "stub" }));
+    b.onLoad({ filter: /stub/, namespace: "stub" }, () => ({ contents: "export default undefined;", loader: "js" }));
   },
 };
-
-/** CJS require shim — esbuild's __require helper throws on dynamic require in
- * ESM format. We back-stop it with a real Node createRequire so bundled
- * CJS deps (ink/yoga/ws wrappers if they survive) still work. */
-const cjsShim = `import { createRequire as __myaCreateRequire } from "node:module";
-const require = __myaCreateRequire(import.meta.url);
-`;
 
 await build({
   entryPoints: ["packages/print/src/main.ts"],
   bundle: true,
-  platform: "node",
   format: "esm",
+  platform: "node",
   target: "node20",
   outfile: "dist/mya.js",
   banner: { js: cjsShim },
-  define: {
-    "process.env.NODE_ENV": '"production"',
-  },
+  define: { "process.env.NODE_ENV": '"production"' },
+  // Resolve everything from vendored/node_modules first, then regular node_modules
+  nodePaths: [path.resolve("vendored/node_modules")],
   external: [
-    "@earendil-works/pi-coding-agent",
-    "@earendil-works/pi-tui",
-    "@earendil-works/pi-ai",
-    "marked",
+    "node:crypto", "node:fs", "node:os", "node:path", "node:child_process",
+    "node:url", "node:module", "node:util", "node:stream", "node:http",
+    "node:https", "node:net", "node:tls", "node:zlib", "node:buffer",
+    "node:events", "node:string_decoder", "node:readline", "node:worker_threads",
+    "node:async_hooks", "node:perf_hooks", "node:assert", "node:querystring",
   ],
   plugins: [stubPlugin],
   legalComments: "none",
   minify: false,
   sourcemap: false,
+  logLevel: "error",
 });
+
+// Copy pi theme JSONs to dist/ (runtime reads via fs.readFileSync)
+const themeSrc = path.resolve("vendored/pi/dist/modes/interactive/theme");
+const themeDst = path.resolve("dist/modes/interactive/theme");
+if (fs.existsSync(themeSrc)) {
+  fs.mkdirSync(themeDst, { recursive: true });
+  for (const f of fs.readdirSync(themeSrc)) {
+    if (f.endsWith(".json")) fs.copyFileSync(path.join(themeSrc, f), path.join(themeDst, f));
+  }
+  console.log(`✓ copied ${fs.readdirSync(themeDst).length} theme files`);
+}
 
 console.log("✓ bundled: dist/mya.js");
