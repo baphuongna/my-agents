@@ -49,10 +49,19 @@ function renderMarkdownToLines(text: string, width: number): string[] {
     }
     let ml = line.replace(/<\/?think>/g, "");
     if (ml.startsWith("```")) {
-      if (!inCodeBlock) { inCodeBlock = true; continue; }
-      else { inCodeBlock = false; continue; }
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        const lang = ml.slice(3).trim();
+        const label = lang || "code";
+        out.push(`${C.border}╭${C.gray}─ ${label} ${C.border}${"─".repeat(Math.max(0, width - label.length - 8))}╮${C.R}`);
+        continue;
+      } else {
+        inCodeBlock = false;
+        out.push(`${C.border}╰${"─".repeat(Math.max(0, width - 2))}╯${C.R}`);
+        continue;
+      }
     }
-    if (inCodeBlock) { out.push(`${C.cyan}${ml}${C.R}`); continue; }
+    if (inCodeBlock) { out.push(`${C.cyan}  ${ml}${C.R}`); continue; }
     if (/^###\s/.test(ml)) { out.push(`${C.yellow}${C.B}${ml.replace(/^###\s/, "")}${C.R}`); continue; }
     if (/^##\s/.test(ml))  { out.push(`${C.yellow}${C.B}${ml.replace(/^##\s/, "")}${C.R}`); continue; }
     if (/^#\s/.test(ml))   { out.push(`${C.yellow}${C.B}${C.U}${ml.replace(/^#\s/, "")}${C.R}`); continue; }
@@ -61,7 +70,24 @@ function renderMarkdownToLines(text: string, width: number): string[] {
     if (/^\s*[-*]\s/.test(ml)) ml = ml.replace(/^(\s*)[-*]\s/, `$1${C.accent}● ${C.R}`);
     ml = ml.replace(/\*\*(.+?)\*\*/g, `${C.B}$1${C.R}`);
     ml = ml.replace(/`([^`]+)`/g, `${C.cyan}$1${C.R}`);
-    out.push(ml);
+    // Word wrap: don't break mid-word (strip ANSI for width calculation)
+    const visibleLen = ml.replace(/\x1b\[[0-9;]*m/g, "").length;
+    if (visibleLen > width - 2) {
+      const words = ml.split(" ");
+      let cur = "";
+      for (const w of words) {
+        const testLen = (cur + " " + w).replace(/\x1b\[[0-9;]*m/g, "").trimStart().length;
+        if (testLen > width - 2 && cur) {
+          out.push(cur);
+          cur = w;
+        } else {
+          cur = cur ? cur + " " + w : w;
+        }
+      }
+      if (cur) out.push(cur);
+    } else {
+      out.push(ml);
+    }
   }
   return out;
 }
