@@ -1,6 +1,6 @@
 # mya
 
-A **unified coding/autonomous agent** — TypeScript core + Rust napi engine. Built from a [25-section SPEC](source/.learned/AGENT-SPEC.md) synthesized from 16 reference projects, reviewed across 44 rounds. 40 packages, 239 tests.
+A **unified coding/autonomous agent** — TypeScript core + Rust napi engine. Built from a [25-section SPEC](source/.learned/AGENT-SPEC.md) synthesized from 16 reference projects, reviewed across 44 rounds. 29 packages, 223 tests.
 
 > **Status:** All major SPEC subsystems built + tested. Runs end-to-end with real LLM providers (MiniMax-M3 / OpenAI — verified). Installable via npm.
 
@@ -68,9 +68,10 @@ npm install              # TypeScript 7 + workspace packages
 npm run build            # tsc -b (all packages)
 npm run bundle           # esbuild → dist/mya.js (single-file bundle)
 npm run typecheck        # tsc --noEmit
-npm test                 # vitest (239 tests)
+npm test                 # vitest (223 tests)
 npm run lint             # invariant #10 guard (no Date.now outside core.time)
 npm run lint:deps        # invariant #19 guard (no cross-transport imports)
+npm run lint:rust        # clippy clean (Rust natives)
 ```
 
 ## Architecture
@@ -171,35 +172,6 @@ npm run build              # tsc -b (all packages)
 npm run typecheck          # tsc --noEmit
 cargo build -p my-agent-natives   # Rust natives
 cargo clippy -p my-agent-natives -- -D warnings   # clippy clean
-```
-
-### Test suites (110 tests)
-
-```sh
-# Core (budget, loop, cancel, no-profile)
-node /tmp/r3-test.mjs           # 11 tests
-
-# Tier 1 (tools, memory, subagents, eval)
-node /tmp/t1-test.mjs           # 10 tests
-
-# Tier 2 (skills, codeexec, codegraph, hashline)
-node /tmp/t2-test.mjs           # 11 tests
-node /tmp/hashline-test.mjs     # 10 tests
-
-# Council (fan-out, majority, judge, timeout, usage)
-node /tmp/council-final.mjs     # 6 tests
-
-# Workflows (sandbox, timeout, concurrent, security)
-node /tmp/r42-r2.mjs            # 6 tests
-
-# Channels + MCP + LSP + CoW
-node /tmp/t2-final-test.mjs     # 18 tests
-
-# Tier 3 (DAP, hindsight, collab)
-node /tmp/t3-test.mjs           # 15 tests
-
-# x402 (wallet, 402→pay→200, double-pay prevention, timeout)
-node /tmp/t4-test.mjs           # 15 tests
 ```
 
 ## Review history

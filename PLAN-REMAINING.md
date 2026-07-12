@@ -28,8 +28,10 @@ workflows, cron, acp, collab, sync, tts, desktop, x402
 vendored/pi/ (pi-coding-agent), vendored/pi-ai/, vendored/pi-agent-core/
 
 ## Remaining work
+- [x] Wire main.ts → createAgent + Gateway (Phase 1)
+- [x] Codebase hygiene (Phase 8)
+- [x] DAP TCP socket leak fix + CLI debug tool wiring (Phase 4)
 - [ ] Wrap pi-ai providers into mya ProviderProfile interface
 - [ ] Port pi's ls/find tools into mya tools
 - [ ] Wire extensions support (pi-crew needs runtime package resolution)
-- [ ] DAP adapter for debugging
 - [ ] LLM-driven dream cycle

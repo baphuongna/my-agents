@@ -34,9 +34,11 @@
     "natives:build": "cargo build -p my-agent-natives",
     "lint": "node scripts/lint.mjs",
     "lint:deps": "node scripts/lint-deps.mjs",
+    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
     "test": "vitest run",
     "test:watch": "vitest",
-    "eval": "node -e \"import('@my-agent/eval').then(h => h.defaultHarness().grade().then(r => console.log(JSON.stringify(r, null, 2))))\""
+    "eval": "node -e \"import('@my-agent/eval').then(h => h.defaultHarness().grade().then(r => console.log(JSON.stringify(r, null, 2))))\"",
+    "prepublishOnly": "npm run build && npm test && npm run bundle"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
@@ -65,6 +67,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^3.7.2",
     "@types/node": "^22.20.1",
+    "esbuild": "^0.21.5",
     "typescript": "^7.0.2",
     "vitest": "^2.1.9"
   }

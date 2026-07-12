@@ -18,6 +18,13 @@
     "@my-agent/agent": "*",
     "@my-agent/rpc": "*",
     "@my-agent/gateway": "*",
-    "@my-agent/web": "*"
+    "@my-agent/web": "*",
+    "@my-agent/secrets": "*",
+    "@my-agent/audit": "*",
+    "@my-agent/skills": "*",
+    "@my-agent/cron": "*",
+    "@my-agent/sync": "*",
+    "@my-agent/collab": "*",
+    "@my-agent/dap": "*"
   }
 }

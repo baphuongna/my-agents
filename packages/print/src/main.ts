@@ -10,10 +10,15 @@
  *   mya --rpc            # JSON-RPC 2.0 server over stdio
  *   mya serve            # web dashboard + gateway
  *   mya --model m "..."  # explicit model override
+ *   mya --debug "..."    # one-shot with DAP debug tool enabled
  *
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
 import { createAgent } from "@my-agent/agent";
+import { SecretStore, makeSecretRedactor } from "@my-agent/secrets";
+import { AuditLog } from "@my-agent/audit";
+import { HookRegistry } from "@my-agent/gateway";
+import { SkillStore } from "@my-agent/skills";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -49,6 +54,7 @@ async function main(): Promise<void> {
   const json = args.includes("--json");
   const print = args.includes("--print") || json;
   const rpc = args.includes("--rpc");
+  const debug = args.includes("--debug");
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
   const positional = args.filter((a) => !a.startsWith("--") && a !== model);
@@ -61,7 +67,13 @@ async function main(): Promise<void> {
 
   // ── one-shot (print mode) ──
   if (print || prompt) {
-    const agent = createAgent({ model, memoryDir: join(homedir(), ".my-agent", "memory") });
+    const agent = createAgent({
+      model,
+      memoryDir: join(homedir(), ".my-agent", "memory"),
+      auditLog,
+      secretStore,
+      ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
+    });
     const text = prompt || (await readStdin()) || "Hello.";
     const sink = makeSink({ json });
     await agent.run(text, sink.write);
@@ -75,6 +87,15 @@ async function main(): Promise<void> {
   // ── interactive TUI — 100% pi InteractiveMode ──
   return runPiInteractive();
 }
+
+// ── shared instances (created once in main scope) ──
+const secretStore = new SecretStore();
+const auditLog = new AuditLog((_kind, payload) => makeSecretRedactor(secretStore)(payload));
+const hooks = new HookRegistry();
+const skillStore = new SkillStore();
+
+// Eagerly discover skills from the user config dir (best-effort; non-fatal).
+void skillStore.discover(join(homedir(), ".mya", "skills")).catch(() => { /* optional */ });
 
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -93,10 +114,18 @@ async function runPiInteractive(): Promise<void> {
 
 async function runRpcServer(_model?: string): Promise<void> {
   const { RpcServer } = await import("@my-agent/rpc");
-  const agent = createAgent({ memoryDir: join(homedir(), ".my-agent", "memory") });
+  let controller = new AbortController();
+  const agent = createAgent({
+    memoryDir: join(homedir(), ".my-agent", "memory"),
+    auditLog,
+    secretStore,
+  });
   const server = new RpcServer({
-    prompt: (text, onEvent) => agent.run(text, onEvent),
-    cancel: () => { /* abort handled per-session */ },
+    prompt: (text, onEvent) => {
+      controller = new AbortController();
+      return agent.run(text, onEvent, { signal: controller.signal });
+    },
+    cancel: () => controller.abort(),
     status: () => ({ ok: true }),
   });
   server.start();
@@ -107,15 +136,31 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const port = portIdx >= 0 ? Number(extraArgs[portIdx + 1]) : 3000;
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
-  const agent = createAgent({ memoryDir: join(homedir(), ".my-agent", "memory") });
+  const { CronScheduler } = await import("@my-agent/cron");
+  const { SyncServer } = await import("@my-agent/sync");
+  const { CollabRelay } = await import("@my-agent/collab");
+  const agent = createAgent({
+    memoryDir: join(homedir(), ".my-agent", "memory"),
+    auditLog,
+    secretStore,
+  });
   const wsToken = cryptoRandomToken();
+  const cron = new CronScheduler();
+  const sync = new SyncServer();
+  const collab = new CollabRelay();
   const gw = new Gateway({
     port,
     rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
     wsToken,
+    hooks,
+    cron,
+    sync,
+    collab,
     onWsMessage: (session: string, data: unknown) => {
-      const msg = data as { text?: string };
-      if (msg.text) {
+      const msg = data as { text?: string; kind?: string; prompt?: string };
+      if (msg.kind === "cron-fire" && msg.prompt) {
+        void agent.run(msg.prompt, (e: unknown) => gw.broadcast(session, e));
+      } else if (msg.text) {
         void agent.run(msg.text, (e: unknown) => gw.broadcast(session, e));
       }
     },

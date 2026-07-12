@@ -60,6 +60,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
  */
 export class DapClient extends EventEmitter {
   private proc: ChildProcess | null = null;
+  private socket: Socket | null = null;
   private buf = "";
   private nextId = 1;
   /** Wire writer (stdio stdin OR tcp socket) — set in initialize(). */
@@ -78,12 +79,12 @@ export class DapClient extends EventEmitter {
   async initialize(clientId = "my-agent", clientName = "my-agent-dap"): Promise<{ capabilities: unknown }> {
     if (this.opts.transport) {
       // TCP transport — connect to a running adapter (vscode-js-debug dapDebugServer.js).
-      const sock = await connectSocket(this.opts.transport.host, this.opts.transport.port);
-      sock.setEncoding("utf8");
-      sock.on("data", (chunk: string) => this.onStdout(chunk));
-      sock.on("close", () => { this.initialized = false; this.emit("exited", 0); });
+      this.socket = await connectSocket(this.opts.transport.host, this.opts.transport.port);
+      this.socket.setEncoding("utf8");
+      this.socket.on("data", (chunk: string) => this.onStdout(chunk));
+      this.socket.on("close", () => { this.initialized = false; this.emit("exited", 0); });
       // redirect writes to the socket (this.write() is set up below to use the live writer).
-      this.writer = (data: string) => sock.write(data);
+      this.writer = (data: string) => this.socket!.write(data);
     } else {
       this.proc = spawn(this.opts.command!, this.opts.args ?? [], { stdio: ["pipe", "pipe", "pipe"] });
       this.proc.stdout?.setEncoding("utf8");
@@ -179,10 +180,15 @@ export class DapClient extends EventEmitter {
 
   /** Disconnect + exit. */
   async disconnect(): Promise<void> {
-    if (!this.proc) return;
-    try { await this.request("disconnect", { terminateDebuggee: true }); } catch { /* ignore */ }
-    this.proc.kill();
-    this.proc = null;
+    if (this.proc) {
+      try { await this.request("disconnect", { terminateDebuggee: true }); } catch { /* ignore */ }
+      this.proc.kill();
+      this.proc = null;
+    }
+    if (this.socket) {
+      this.socket.end();
+      this.socket = null;
+    }
   }
 
   // ── DAP plumbing (Content-Length framed). DAP is NOT JSON-RPC 2.0: requests
