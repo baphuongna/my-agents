@@ -146,7 +146,7 @@ class SpinnerComponent implements Component {
 export class ScrollableContainer extends Container {
   private _maxLines = 1000;
   setMaxLines(n: number): void { this._maxLines = n; }
-  render(width: number): string[] {
+  override render(width: number): string[] {
     const all = super.render(width);
     if (all.length <= this._maxLines) return all;
     return all.slice(all.length - this._maxLines);
