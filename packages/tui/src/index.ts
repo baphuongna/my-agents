@@ -1,226 +1,188 @@
 /**
- * @my-agent/tui — pi-quality readline UI.
+ * mya TUI — following claw-code's rendering approach (simplest viable).
  *
- * Full visual parity with pi-coding-agent's interactive mode:
- *   - Pi-style header (accent box border, model/provider)
- *   - Spinner ⠋⠙⠹ during model thinking (stderr, 80ms)
- *   - Markdown rendering: # headers, ```code blocks``` with border,
- *     **bold**, `inline code`, > quotes, - lists, --- separators
- *   - Tool execution cards: ▌ bash $cmd ▐ with output, ▌ read path ▐,
- *     ▌ edit path ▐ with diff (green/red)
- *   - Thinking blocks: <think>...</think> → dimmed, collapsible
- *   - Context bar: cwd, git branch, model, cost meter
- *   - Turn separators: ───────── between user↔assistant
- *   - ANSI 256-color throughout (accent, success, error, warning, muted, tool)
- *
- * Source: pi-coding-agent/dist/modes/interactive/ + claw-code + oh-my-pi.
+ * Line-by-line append with ANSI colors. No raw mode for content.
+ * Key patterns ported from claw-code/rusty-claude-cli/src/render.rs:
+ *   - Streaming markdown with boundary detection (render only complete blocks)
+ *   - Spinner: save cursor → clear line → write frame → restore cursor (stdout)
+ *   - Code blocks: adaptive ╭─ {lang} ╰─ border (terminal width)
+ *   - <think> tags: dim all content between them
+ *   - No background colors (foreground ANSI only for max compatibility)
  */
 import { createInterface, type Interface } from "node:readline";
 import { execSync } from "node:child_process";
+import { stdout, stderr } from "node:process";
 
-// ─── ANSI 256-color palette (pi-style hex → xterm) ────────────────────
+// ─── ANSI (foreground only — no backgrounds for max terminal compat) ──
 const C = {
-  reset: "\x1b[0m",  bold: "\x1b[1m",  dim: "\x1b[2m",  italic: "\x1b[3m",
-  underline: "\x1b[4m",
-  accent: "\x1b[38;5;117m",    // sky blue
-  success: "\x1b[38;5;155m",   // lime green
-  error: "\x1b[38;5;203m",     // soft red
-  warning: "\x1b[38;5;221m",   // amber
-  muted: "\x1b[38;5;103m",     // gray-blue
-  dimtext: "\x1b[38;5;240m",   // darker gray
-  tool: "\x1b[38;5;177m",      // purple
-  heading: "\x1b[38;5;221m",   // amber
-  code: "\x1b[38;5;81m",       // cyan
-  codeBg: "\x1b[48;5;236m",    // dark bg
-  userBg: "\x1b[48;5;235m",    // dark slate
-  diffAdd: "\x1b[38;5;114m",   // green
-  diffDel: "\x1b[38;5;174m",   // red
-  diffCtx: "\x1b[38;5;240m",   // gray
-  border: "\x1b[38;5;60m",     // dark blue-gray
+  R: "\x1b[0m",
+  B: "\x1b[1m",     // bold
+  D: "\x1b[2m",     // dim
+  I: "\x1b[3m",     // italic
+  U: "\x1b[4m",     // underline
+  // Pi-style 256 colors
+  accent: "\x1b[38;5;110m",    // soft sky
+  green: "\x1b[38;5;108m",     // sage green
+  red: "\x1b[38;5;168m",       // soft red
+  yellow: "\x1b[38;5;179m",    // amber
+  gray: "\x1b[38;5;245m",      // light gray
+  darkgray: "\x1b[38;5;238m",  // dark gray
+  blue: "\x1b[38;5;67m",       // steel blue
+  purple: "\x1b[38;5;140m",    // soft purple
+  cyan: "\x1b[38;5;73m",       // teal
+  border: "\x1b[38;5;239m",    // subtle border color
 };
 
-/** The handler the host implements (binds tui → the agent core). */
+const SAVE = "\x1b7";      // save cursor
+const RESTORE = "\x1b8";   // restore cursor
+const CLR_LINE = "\x1b[2K"; // clear entire line
+const CR = "\r";
+
 export interface TuiHandler {
   prompt(text: string, onEvent: (event: unknown) => void): Promise<unknown>;
   cancel(): void;
 }
 export type EventRenderer = (event: unknown) => string | null;
 
-// ─── Markdown-lite renderer ───────────────────────────────────────────
-/** Render assistant text with markdown → ANSI. Handles code blocks, bold,
- * inline code, headers, quotes, lists, hr, think tags. */
-function renderMarkdown(text: string): string {
-  const lines = text.split("\n");
-  const out: string[] = [];
-  let inCodeBlock = false;
-  for (const line of lines) {
-    // Code block toggle
-    if (line.startsWith("```")) {
-      if (!inCodeBlock) {
-        inCodeBlock = true;
-        out.push(`${C.border}┌${"─".repeat(38)}┐${C.reset}`);
-      } else {
-        inCodeBlock = false;
-        out.push(`${C.border}└${"─".repeat(38)}┘${C.reset}`);
-      }
-      continue;
-    }
-    if (inCodeBlock) {
-      out.push(`${C.border}│${C.reset} ${C.code}${line}${C.reset}`);
-      continue;
-    }
-    let l = line;
-    // Headers
-    if (/^###\s/.test(l)) { out.push(`${C.heading}${C.bold}${l.replace(/^###\s/, "")}${C.reset}`); continue; }
-    if (/^##\s/.test(l))  { out.push(`${C.heading}${C.bold}${l.replace(/^##\s/, "")}${C.reset}`); continue; }
-    if (/^#\s/.test(l))   { out.push(`${C.heading}${C.bold}${C.underline}${l.replace(/^#\s/, "")}${C.reset}`); continue; }
-    // HR
-    if (/^---+$/.test(l.trim())) { out.push(`${C.border}${"─".repeat(40)}${C.reset}`); continue; }
-    // Quote
-    if (l.startsWith(">")) { out.push(`${C.muted}${C.italic}${l}${C.reset}`); continue; }
-    // Bullet
-    if (/^[-*]\s/.test(l)) { l = l.replace(/^([-*]\s)/, `${C.accent}● ${C.reset}`); }
-    // Numbered
-    if (/^\d+\.\s/.test(l)) { l = l.replace(/^(\d+)\.\s/, `${C.accent}$1. ${C.reset}`); }
-    // Inline formatting
-    l = l.replace(/\*\*(.+?)\*\*/g, `${C.bold}$1${C.reset}`);
-    l = l.replace(/`([^`]+)`/g, `${C.codeBg}${C.code} $1 ${C.reset}`);
-    l = l.replace(/_([^_]+)_/g, `${C.italic}$1${C.reset}`);
-    out.push(l);
+// ─── Markdown streaming (claw-code pattern) ───────────────────────────
+/** Accumulates streaming text deltas. Only renders complete markdown blocks
+ * (delimited by blank lines or closed code fences). Prevents flicker from
+ * half-rendered markdown. */
+class MarkdownStream {
+  private buffer = "";
+  private lastRendered = "";
+
+  /** Push a text delta. Returns the complete, ready-to-render text
+   * (null if no new complete blocks since last render). */
+  push(delta: string): string | null {
+    this.buffer += delta;
+    // Find stream-safe boundary: end of a complete block.
+    // A block ends at a blank line, or after a closed code fence.
+    const safeEnd = this.findSafeBoundary();
+    if (safeEnd <= this.lastRendered.length) return null;
+    const newComplete = this.buffer.slice(0, safeEnd);
+    const diff = newComplete.slice(this.lastRendered.length);
+    this.lastRendered = newComplete;
+    return diff;
   }
-  return out.join("\n");
+
+  /** Flush remaining buffer (call on turn end). */
+  flush(): string | null {
+    if (this.buffer.length <= this.lastRendered.length) return null;
+    const diff = this.buffer.slice(this.lastRendered.length);
+    this.lastRendered = this.buffer;
+    return diff;
+  }
+
+  reset(): void { this.buffer = ""; this.lastRendered = ""; }
+
+  /** Find the latest safe boundary in the buffer. */
+  private findSafeBoundary(): number {
+    // Check for code fence state — don't split inside a code block.
+    let inFence = false;
+    let lastSafe = 0;
+    const lines = this.buffer.split("\n");
+    let offset = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const lineLen = line.length + 1; // +1 for \n
+      if (line.startsWith("```")) {
+        inFence = !inFence;
+        if (!inFence) {
+          // Closed fence — safe to render up to here.
+          lastSafe = offset + lineLen;
+        }
+      } else if (!inFence && line.trim() === "") {
+        // Blank line outside code block — safe boundary.
+        lastSafe = offset + lineLen;
+      }
+      offset += lineLen;
+    }
+    // If we're inside a code fence, don't render past the fence start.
+    if (inFence) return lastSafe;
+    return Math.max(lastSafe, this.lastRendered.length);
+  }
 }
 
-// ─── Tool card renderer ───────────────────────────────────────────────
-/** Build a bordered tool-execution card. */
-function toolCard(name: string, detail: string, opts?: { error?: boolean }): string {
-  const color = opts?.error ? C.error : C.tool;
-  const label = opts?.error ? "✗" : "▸";
-  const lines = [
-    `${C.border}┌${"─".repeat(38)}┐${C.reset}`,
-    `${C.border}│${C.reset} ${color}${C.bold}${label} ${name}${C.reset}`,
-  ];
-  if (detail) {
-    const detailLines = detail.split("\n").slice(0, 8);
-    for (const dl of detailLines) {
-      const truncated = dl.length > 36 ? dl.slice(0, 36) + "…" : dl;
-      lines.push(`${C.border}│${C.reset} ${C.muted}${truncated}${C.reset}`);
-    }
+// ─── Markdown renderer (line-by-line ANSI) ────────────────────────────
+function renderMarkdownLine(line: string, width: number): string {
+  // Code block border
+  if (line.startsWith("```")) {
+    const lang = line.slice(3).trim();
+    return `${C.border}╭${lang ? `${C.gray}─ ${lang}` : "─"}${"─".repeat(Math.max(0, width - lang.length - 4))}${C.border}╮${C.R}`;
   }
-  lines.push(`${C.border}└${"─".repeat(38)}┘${C.reset}`);
-  return "\n" + lines.join("\n") + "\n";
+  // Headers
+  if (/^###\s/.test(line)) return `${C.yellow}${C.B}${line.replace(/^###\s/, "")}${C.R}`;
+  if (/^##\s/.test(line))  return `${C.yellow}${C.B}${line.replace(/^##\s/, "")}${C.R}`;
+  if (/^#\s/.test(line))   return `${C.yellow}${C.B}${C.U}${line.replace(/^#\s/, "")}${C.R}`;
+  // HR
+  if (/^---+$/.test(line.trim())) return `${C.border}${"─".repeat(width)}${C.R}`;
+  // Quote
+  if (line.startsWith(">")) return `${C.gray}${C.I}${line}${C.R}`;
+  // Bullet
+  let l = line;
+  if (/^\s*[-*]\s/.test(l)) l = l.replace(/^(\s*)[-*]\s/, `$1${C.accent}● ${C.R}`);
+  // Numbered
+  if (/^\d+\.\s/.test(l)) l = l.replace(/^(\d+)\.\s/, `${C.accent}$1. ${C.R}`);
+  // Inline formatting
+  l = l.replace(/\*\*(.+?)\*\*/g, `${C.B}$1${C.R}`);
+  l = l.replace(/`([^`]+)`/g, `${C.cyan}$1${C.R}`);
+  l = l.replace(/\[([^\]]+)\]\(([^)]+)\)/g, `${C.blue}$1${C.R}${C.gray} ($2)${C.R}`);
+  return l;
 }
 
 // ─── Context bar ──────────────────────────────────────────────────────
-let _cwd = process.cwd();
-let _branch = "";
-let _model = "MiniMax-M3";
-let _spentUsd = 0;
-let _budgetUsd = 0;
-
-function updateContext(opts: { cwd?: string; model?: string; spent?: number; budget?: number }): void {
-  if (opts.cwd) _cwd = opts.cwd;
-  if (opts.model) _model = opts.model;
-  if (opts.spent !== undefined) _spentUsd = opts.spent;
-  if (opts.budget !== undefined) _budgetUsd = opts.budget;
-  try { _branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: _cwd, encoding: "utf8", timeout: 1000, stdio: ["pipe", "pipe", "pipe"] }).trim(); } catch { _branch = ""; }
+function getContextBar(): string {
+  const cwd = process.cwd().replace(process.env["HOME"] ?? "", "~");
+  let branch = "";
+  try { branch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", { encoding: "utf8", timeout: 500, stdio: ["pipe", "pipe", "ignore"] }).trim(); } catch {}
+  const cols = stdout.columns || 80;
+  const left = `${C.gray}${cwd}${C.R}${branch ? ` ${C.green}${branch}${C.R}` : ""}`;
+  return left;
 }
 
-function renderContextBar(): string {
-  const branch = _branch ? `${C.success} ${_branch}${C.reset}` : "";
-  const pct = _budgetUsd > 0 ? Math.min(100, (_spentUsd / _budgetUsd) * 100) : 0;
-  const meter = _budgetUsd > 0
-    ? `${pct >= 80 ? C.error : pct >= 50 ? C.warning : C.success}[${"█".repeat(Math.floor(pct / 5))}${"░".repeat(20 - Math.floor(pct / 5))}]${C.reset} ${C.muted}${pct.toFixed(0)}%${C.reset}`
-    : `${C.muted}$${_spentUsd.toFixed(4)}${C.reset}`;
-  return `${C.muted}${_cwd}${C.reset}${branch} ${C.muted}·${C.reset} ${C.accent}${_model}${C.reset} ${C.muted}·${C.reset} ${meter}\n`;
-}
-
-// ─── Pi-quality event renderer ────────────────────────────────────────
-export const defaultRenderer: EventRenderer = (event) => {
-  const e = event as {
-    kind?: string;
-    turnEvent?: {
-      state?: string;
-      chunk?: { kind?: string; text?: string; call?: { name?: string; arguments?: unknown } };
-      usage?: { input?: number; output?: number };
-    };
-    usage?: { input?: number; output?: number };
-    cost?: { usd?: number };
-  };
-  if (!e || typeof e !== "object") return null;
-  if (e.kind === "turn") {
-    const te = e.turnEvent;
-    if (!te) return null;
-    if (te.state === "Streaming" && te.chunk?.kind === "text") {
-      const raw = te.chunk.text ?? "";
-      // Handle <think> blocks → dim
-      if (raw.includes("<think>")) return `${C.dimtext}`;
-      if (raw.includes("</think>")) return `${C.reset}\n`;
-      return renderMarkdown(raw);
-    }
-    if (te.state === "ToolCalls" && te.chunk?.kind === "tool_call") {
-      const name = te.chunk.call?.name ?? "?";
-      const args = te.chunk.call?.arguments as Record<string, unknown> | undefined;
-      let detail = "";
-      if (name === "bash" && args?.command) detail = `$ ${String(args.command)}`;
-      else if (name === "read" && args?.path) detail = `📖 ${String(args.path)}`;
-      else if ((name === "write" || name === "edit") && args?.path) detail = `✏️ ${String(args.path)}`;
-      else if (name === "grep") detail = `🔍 ${String(args?.pattern ?? "")}`;
-      else if (name === "glob") detail = `📂 ${String(args?.pattern ?? "")}`;
-      else if (args) detail = JSON.stringify(args).slice(0, 100);
-      return toolCard(name, detail);
-    }
-    if (te.state === "Completed") {
-      const i = te.usage?.input ?? 0;
-      const o = te.usage?.output ?? 0;
-      if (i > 0 || o > 0) return `\n${C.border}${"─".repeat(40)}${C.reset}\n${C.muted}↑${i} ↓${o} tokens${C.reset}\n`;
-      return null;
-    }
-    if (te.state === "AwaitingApproval") {
-      return `\n${C.warning}${C.bold}⚡ Approval required${C.reset} ${C.muted}(y = allow, n = deny)${C.reset}\n`;
-    }
-  }
-  if (e.kind === "budget") {
-    const spent = e.cost?.usd ?? 0;
-    updateContext({ spent });
-    return null;
-  }
-  if (e.kind === "health") return null;
-  return null;
-};
-
-// ─── TuiRepl — full interactive REPL ──────────────────────────────────
+// ─── TuiRepl ──────────────────────────────────────────────────────────
 export class TuiRepl {
   private rl: Interface | null = null;
   private activePrompt: string | null = null;
-  private spinnerInterval: ReturnType<typeof setInterval> | null = null;
-  private spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  private spinnerTimer: ReturnType<typeof setInterval> | null = null;
   private spinnerIdx = 0;
+  private spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  private md = new MarkdownStream();
+  private inThinkBlock = false;
+  private width = 80;
 
   constructor(
     private readonly handler: TuiHandler,
     private readonly renderer: EventRenderer = defaultRenderer,
     private readonly input: NodeJS.ReadableStream = process.stdin,
-    private readonly output: NodeJS.WritableStream = process.stdout,
-  ) {}
+    private readonly output: NodeJS.WritableStream = stdout,
+  ) {
+    this.width = stdout.columns || 80;
+    stdout.on("resize", () => { this.width = stdout.columns || 80; });
+  }
 
   start(_greeting?: string): void {
-    // Pi-style header
+    const w = this.width;
+    // Pi-style header (foreground colors only, no backgrounds)
+    const hdr = "● mya";
+    const sub = " · unified agent";
+    const padR = Math.max(2, w - hdr.length - sub.length - 4);
     this.output.write(
-      `\n${C.accent}${C.bold}╭──────────────────────────────────╮${C.reset}\n` +
-      `${C.accent}${C.bold}│${C.reset} ${C.accent}${C.bold}● mya${C.reset} ${C.muted}· unified agent${C.reset}${C.accent}${C.bold}${" ".repeat(Math.max(0, 13))}│${C.reset}\n` +
-      `${C.accent}${C.bold}╰──────────────────────────────────╯${C.reset}\n` +
-      `${renderContextBar()}` +
-      `${C.muted}Ctrl-C abort · Ctrl-D exit · / for commands · ↑↓ history${C.reset}\n\n`
+      `\n${C.border}╭${"─".repeat(w - 2)}╮${C.R}\n` +
+      `${C.border}│${C.R} ${C.accent}${C.B}${hdr}${C.R}${C.gray}${sub}${C.R}${" ".repeat(padR)}${C.border}│${C.R}\n` +
+      `${C.border}╰${"─".repeat(w - 2)}╯${C.R}\n` +
+      `${getContextBar()}\n` +
+      `${C.gray}Ctrl-C abort · Ctrl-D exit · / commands${C.R}\n\n`
     );
     this.rl = createInterface({ input: this.input, output: this.output as NodeJS.WriteStream });
     this.rl.on("SIGINT", () => {
       if (this.activePrompt !== null) {
         this.handler.cancel();
         this.stopSpinner();
-        this.output.write(`\n${C.warning}^C — turn aborted${C.reset}\n`);
+        this.output.write(`\n${C.yellow}^C aborted${C.R}\n`);
       } else {
-        this.output.write(`\n${C.muted}bye 👋${C.reset}\n`);
+        this.output.write(`\n${C.gray}bye${C.R}\n`);
         this.rl?.close();
       }
     });
@@ -228,36 +190,60 @@ export class TuiRepl {
       const text = line.trim();
       if (!text) { this.rl?.prompt(); return; }
       this.activePrompt = text;
-      // Echo user input with background + separator
-      this.output.write(`${C.userBg} ${C.success}${C.bold}▶ you${C.reset} ${C.userBg}${text} ${C.reset}\n`);
+      this.md.reset();
+      this.output.write(`${C.green}${C.B}▶ you${C.R} ${text}\n`);
       this.startSpinner();
       void this.runTurn(text).finally(() => {
         this.activePrompt = null;
         this.stopSpinner();
-        this.output.write(`\n${renderContextBar()}`);
-        this.rl?.setPrompt(`${C.accent}>${C.reset} `);
+        // Flush any remaining markdown
+        const flushed = this.md.flush();
+        if (flushed) this.renderText(flushed);
+        this.output.write(`\n${C.border}${"─".repeat(this.width)}${C.R}\n`);
+        this.rl?.setPrompt(`${C.accent}>${C.R} `);
         this.rl?.prompt();
       });
     });
     this.rl.on("close", () => { this.output.write("\n"); });
-    this.rl.setPrompt(`${C.accent}>${C.reset} `);
+    this.rl.setPrompt(`${C.accent}>${C.R} `);
     this.rl.prompt();
   }
 
+  // Spinner: claw-code pattern (save cursor, clear line, write, restore)
   private startSpinner(): void {
     this.spinnerIdx = 0;
-    this.spinnerInterval = setInterval(() => {
+    this.spinnerTimer = setInterval(() => {
       const frame = this.spinnerFrames[this.spinnerIdx % this.spinnerFrames.length];
       this.spinnerIdx++;
-      process.stderr.write(`\r${C.accent}${frame}${C.reset} ${C.muted}thinking…${C.reset}`);
+      // Write to STDOUT (not stderr) with save/restore cursor
+      stdout.write(`${SAVE}${CR}${CLR_LINE}${C.accent}${frame}${C.R} ${C.gray}thinking…${C.R}${RESTORE}`);
     }, 80);
   }
 
   private stopSpinner(): void {
-    if (this.spinnerInterval) {
-      clearInterval(this.spinnerInterval);
-      this.spinnerInterval = null;
-      process.stderr.write("\r" + " ".repeat(20) + "\r");
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = null;
+      stdout.write(`${SAVE}${CR}${CLR_LINE}${RESTORE}`);
+    }
+  }
+
+  private renderText(text: string): void {
+    // Handle <think> blocks
+    const parts = text.split(/(<\/?think>)/);
+    for (const part of parts) {
+      if (part === "<think>") { this.inThinkBlock = true; continue; }
+      if (part === "</think>") { this.inThinkBlock = false; this.output.write("\n"); continue; }
+      if (this.inThinkBlock) {
+        // Dim thinking text
+        this.output.write(`${C.darkgray}${part}${C.R}`);
+        continue;
+      }
+      // Render markdown line-by-line
+      const lines = part.split("\n");
+      for (const line of lines) {
+        this.output.write(renderMarkdownLine(line, this.width) + "\n");
+      }
     }
   }
 
@@ -268,7 +254,7 @@ export class TuiRepl {
         if (line !== null) this.output.write(line);
       });
     } catch (e) {
-      this.output.write(`${C.error}${C.bold}✗ error:${C.reset} ${C.error}${(e as Error).message}${C.reset}\n`);
+      this.output.write(`${C.red}${C.B}✗ ${(e as Error).message}${C.R}\n`);
     }
   }
 
@@ -279,5 +265,40 @@ export class TuiRepl {
   }
 }
 
-/** Update context from the host (called by main.ts). */
-export { updateContext };
+// ─── Event renderer ───────────────────────────────────────────────────
+export const defaultRenderer: EventRenderer = (event) => {
+  const e = event as {
+    kind?: string;
+    turnEvent?: {
+      state?: string;
+      chunk?: { kind?: string; text?: string; call?: { name?: string; arguments?: unknown } };
+      usage?: { input?: number; output?: number };
+    };
+  };
+  if (!e || typeof e !== "object") return null;
+  if (e.kind === "turn") {
+    const te = e.turnEvent;
+    if (!te) return null;
+    if (te.state === "Streaming" && te.chunk?.kind === "text") {
+      return te.chunk.text ?? "";
+    }
+    if (te.state === "ToolCalls" && te.chunk?.kind === "tool_call") {
+      const name = te.chunk.call?.name ?? "?";
+      const args = te.chunk.call?.arguments as Record<string, unknown> | undefined;
+      let detail = "";
+      if (name === "bash" && args?.command) detail = `$ ${args.command}`;
+      else if (args) detail = JSON.stringify(args).slice(0, 80);
+      return `\n${C.purple}${C.B}▸ ${name}${C.R} ${C.gray}${detail}${C.R}\n`;
+    }
+    if (te.state === "Completed") {
+      const i = te.usage?.input ?? 0, o = te.usage?.output ?? 0;
+      if (i > 0 || o > 0) return `${C.gray}↑${i} ↓${o} tokens${C.R}`;
+      return null;
+    }
+    if (te.state === "AwaitingApproval") {
+      return `\n${C.yellow}${C.B}⚡ approval${C.R} ${C.gray}(y/n)${C.R}\n`;
+    }
+  }
+  if (e.kind === "health") return null;
+  return null;
+};
