@@ -30,6 +30,8 @@ function walk(dir) {
 
 for (const t of TRANSPORTS) {
   const pkgDir = join(root, t, "src");
+  // Skip packages without src/ (e.g. tui is a pure re-export wrapper with only dist/).
+  try { statSync(pkgDir); } catch { continue; }
   const others = TRANSPORTS.filter((x) => x !== t);
   const files = walk(pkgDir);
   for (const f of files) {

@@ -480,6 +480,8 @@
   }
 
   async function waitForGateway() {
+    // NOTE: browser JS uses Date.now() directly (cannot import core.time in a static HTML asset;
+    // the §18 single-time-helper invariant applies to TS/Rust, not browser-side JS).
     const deadline = Date.now() + READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (await probeReady()) {

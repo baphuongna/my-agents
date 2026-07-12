@@ -1,1 +1,1 @@
-{}
+{"main-window":{"identifier":"main-window","description":"Capabilities for the main window of my-agent desktop shell","local":true,"windows":["main"],"permissions":["core:event:default","core:event:allow-listen","core:event:allow-emit","core:window:default","core:window:allow-show","core:window:allow-hide","core:window:allow-set-title","core:window:allow-close","core:window:allow-is-visible","core:app:default","deep-link:default","deep-link:allow-register","deep-link:allow-unregister"]}}
