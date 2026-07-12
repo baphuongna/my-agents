@@ -334,3 +334,5 @@ function buildOpenAITools(registry: ToolRegistry): import("@my-agent/core").Open
 function composeStableTier(identity: string, registry: ToolRegistry): string {
   return `${identity}\n\n${renderToolsBlock(registry)}`;
 }
+export * from "./sdk.js";
+export * from "./subagents/index.js";

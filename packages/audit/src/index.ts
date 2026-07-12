@@ -18,7 +18,7 @@
  * Source: §14 Security, claw-code mcp_audit + oh-my-pi hash-chain.
  */
 import { createHash } from "node:crypto";
-import { canonicalJson as canonicalJsonUtil } from "@my-agent/json";
+import { canonicalJson as canonicalJsonUtil } from "@my-agent/core";
 
 /** Mirrors the RuntimeEvent.kind subset (§13/§14.1). */
 export type AuditKind = "tool" | "approval" | "repair" | "channel";

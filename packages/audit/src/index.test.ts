@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AuditLog } from "@my-agent/audit";
+import { AuditLog } from "./index.js";
 
 describe("AuditLog — Merkle hash-chain (§14.1, C1)", () => {
   it("append produces monotonically increasing seq + recomputable chain", () => {

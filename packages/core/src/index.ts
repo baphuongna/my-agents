@@ -15,3 +15,5 @@ export { maybeSpill, resolveRef, sweepRefs } from "./spill.js";
 export type { LargeValueRef, MaybeSpilled } from "./spill.js";
 export { TelemetrySink, project } from "./telemetry.js";
 export type { TelemetrySnapshot, TelemetryProjection } from "./telemetry.js";
+export * from "./canonical-json.js";
+export * from "./session-utils.js";

@@ -18,6 +18,5 @@
   "dependencies": {
     "@my-agent/core": "*",
     "@my-agent/natives": "*",
-    "@my-agent/json": "*"
   }
 }

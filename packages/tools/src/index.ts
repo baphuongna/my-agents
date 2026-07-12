@@ -15,3 +15,9 @@ export { builtinTools, readTool, writeTool, editTool, replaceTool, bashTool, glo
 export { lineHashes, formatHashed, replaceByHash, isValidAnchor, fileFingerprint } from "./hashline.js";
 export { resolveInsideWorkspace, resolveExistingInsideWorkspace, isInsideWorkspace } from "./path-safety.js";
 export type { ResolveMode, ResolveResult } from "./path-safety.js";
+export * from "./codegraph.js";
+export * from "./codeexec.js";
+export * from "./lsp-client.js";
+export * from "./approval.js";
+export * from "./tool-search.js";
+export * from "./search-index.js";

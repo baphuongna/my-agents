@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { defaultRecoveryRecipes, runRecovery, loadTrust, promoteTrust, safeContextOnly, canAutoApprove } from "@my-agent/audit";
+import { defaultRecoveryRecipes, runRecovery, loadTrust, promoteTrust, safeContextOnly, canAutoApprove } from "./index.js";
 import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
