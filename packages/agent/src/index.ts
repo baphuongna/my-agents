@@ -413,7 +413,5 @@ function extractAssistantText(events: RuntimeEvent[]): string {
 export * from "./sdk.js";
 export * from "./subagents/index.js";
 
-// AgentPool — manages multiple agent instances (used by gateway)
-export { AgentPool, type AgentPoolOptions, type PoolEntry } from "./pool.js";
-
-export { PiSessionPool, type PiAgentSession, type PiSessionEntry } from "./pi-pool.js";
+// AgentPool — manages multiple pi AgentSession instances (used by gateway)
+export { AgentPool, type AgentPoolOptions, type AgentSessionEntry, type AgentSession, type SessionFactory } from "./pool.js";

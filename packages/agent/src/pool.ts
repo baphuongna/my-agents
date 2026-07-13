@@ -1,87 +1,107 @@
 /**
- * @my-agent/agent — AgentPool: manages multiple agent instances.
+ * @my-agent/agent — AgentPool: manages pi AgentSession instances.
  *
- * Each session gets its own agent (own history, own turnLock) → parallel.
- * Shared across pool: providers, tools, skillStore, auditLog, etc.
+ * Each background session uses pi's FULL AgentSession (same as TUI):
+ * - pi providers (30+ from models.json)
+ * - pi tools (bash, read, write, edit, grep, find)
+ * - pi session management (JSONL, compaction)
+ * - Extensions (mya-bridge commands)
  *
- * Used by the gateway to serve multiple WS sessions concurrently.
- * Sessions persist in the pool even when WS clients disconnect.
+ * This replaced the legacy AgentPool (which used mya's basic createAgent).
  */
-import { createAgent, type Agent, type AgentConfig } from "./index.js";
 import { nowWallclock } from "@my-agent/core";
 
-export interface PoolEntry {
-  agent: Agent;
+export interface AgentSessionEntry {
   sessionId: string;
+  /** Pi AgentSession (full agent, same as TUI). */
+  session: AgentSession;
   createdAt: number;
   lastActivity: number;
   messageCount: number;
-  /** Whether an agent turn is currently in-flight. */
   busy: boolean;
+  /** JSONL file path for this session (for pi --session resume). */
+  sessionFile?: string;
 }
+
+/** Minimal interface for pi AgentSession (duck-typed to avoid tight coupling). */
+export interface AgentSession {
+  prompt(text: string, options?: unknown): Promise<void>;
+  subscribe(listener: (event: unknown) => void): () => void;
+  abort(): void;
+  readonly sessionFile?: string;
+}
+
+export type SessionFactory = (sessionId: string, cwd?: string) => Promise<AgentSession>;
 
 export interface AgentPoolOptions {
-  /** Max concurrent agents (LRU eviction). Default 16. */
-  maxAgents?: number;
-  /** Idle TTL in ms (evict agents inactive for this long). Default 1 hour. */
+  maxSessions?: number;
   idleTtlMs?: number;
-  /** Agent config factory — receives sessionId, returns AgentConfig. */
-  createConfig?: (sessionId: string) => AgentConfig;
+  /** Factory that creates a pi AgentSession for a new session ID. */
+  createSession: SessionFactory;
 }
 
-/**
- * Pool of agent instances. Each session gets an isolated agent.
- * Idle agents are evicted by LRU + TTL.
- */
 export class AgentPool {
-  private pool = new Map<string, PoolEntry>();
-  private maxAgents: number;
+  private pool = new Map<string, AgentSessionEntry>();
+  private maxSessions: number;
   private idleTtlMs: number;
-  private createConfig: (sessionId: string) => AgentConfig;
+  private createSession: SessionFactory;
 
-  constructor(opts: AgentPoolOptions = {}) {
-    this.maxAgents = opts.maxAgents ?? 16;
+  constructor(opts: AgentPoolOptions) {
+    this.maxSessions = opts.maxSessions ?? 16;
     this.idleTtlMs = opts.idleTtlMs ?? 3_600_000;
-    this.createConfig = opts.createConfig ?? (() => ({}));
+    this.createSession = opts.createSession;
   }
 
-  /** Get or create an agent for a session. */
-  acquire(sessionId: string): Agent {
+  /** Get or create a pi AgentSession for a session ID. */
+  async acquire(sessionId: string): Promise<AgentSession> {
     let entry = this.pool.get(sessionId);
     if (!entry) {
-      // Evict if at capacity
-      if (this.pool.size >= this.maxAgents) this.evictOldest();
-      const agent = createAgent(this.createConfig(sessionId));
+      if (this.pool.size >= this.maxSessions) this.evictOldest();
+      const session = await this.createSession(sessionId);
       entry = {
-        agent,
         sessionId,
+        session,
         createdAt: nowWallclock(),
         lastActivity: nowWallclock(),
         messageCount: 0,
         busy: false,
+        sessionFile: (session as { sessionFile?: string }).sessionFile,
       };
       this.pool.set(sessionId, entry);
     }
     entry.lastActivity = nowWallclock();
-    return entry.agent;
+    return entry.session;
   }
 
-  /** Get pool entry metadata (without creating). */
-  get(sessionId: string): PoolEntry | undefined {
+  /** Create a new pool session for a given cwd (used by launcher). */
+  async createForCwd(sessionId: string, cwd: string): Promise<AgentSession> {
+    if (this.pool.size >= this.maxSessions) this.evictOldest();
+    const session = await this.createSession(sessionId, cwd);
+    const entry: AgentSessionEntry = {
+      sessionId,
+      session,
+      createdAt: nowWallclock(),
+      lastActivity: nowWallclock(),
+      messageCount: 0,
+      busy: false,
+      sessionFile: (session as { sessionFile?: string }).sessionFile,
+    };
+    this.pool.set(sessionId, entry);
+    return session;
+  }
+
+  get(sessionId: string): AgentSessionEntry | undefined {
     return this.pool.get(sessionId);
   }
 
-  /** List all active sessions. */
-  list(): PoolEntry[] {
+  list(): AgentSessionEntry[] {
     return [...this.pool.values()].sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  /** Evict a specific session. */
   release(sessionId: string): boolean {
     return this.pool.delete(sessionId);
   }
 
-  /** Evict idle sessions (call periodically). Returns count evicted. */
   sweepIdle(): number {
     const now = nowWallclock();
     let evicted = 0;
@@ -94,12 +114,8 @@ export class AgentPool {
     return evicted;
   }
 
-  /** Get pool size. */
-  get size(): number {
-    return this.pool.size;
-  }
+  get size(): number { return this.pool.size; }
 
-  /** Evict the oldest idle entry. */
   private evictOldest(): void {
     let oldest: string | null = null;
     let oldestTime = Infinity;

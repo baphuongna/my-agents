@@ -14,7 +14,7 @@
  *
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
-import { createAgent, AgentPool, PiSessionPool, type PiAgentSession } from "@my-agent/agent";
+import { createAgent, AgentPool, type AgentSession } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -218,9 +218,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
 
-  // PiSessionPool: each session uses pi's FULL AgentSession (same as TUI).
+  // AgentPool: each session uses pi's FULL AgentSession (same as TUI).
   // Background sessions have the same providers, tools, and features as interactive TUI.
-  const pool = new PiSessionPool({
+  const pool = new AgentPool({
     maxSessions: 8,
     idleTtlMs: 3_600_000,
     createSession: async (sessionId) => {
@@ -231,7 +231,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         cwd: process.cwd(),
         agentDir: join(homedir(), ".mya", "agent"),
       });
-      return result.session as unknown as PiAgentSession;
+      return result.session as unknown as AgentSession;
     },
   });
 
@@ -285,7 +285,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     return responseText;
   }
 
-  // Wire channel router → PiSessionPool: channel messages use pi AgentSession.
+  // Wire channel router → AgentPool: channel messages use pi AgentSession.
   channelRouter.onPrompt(async (session, prompt) => {
     return runOnSession(session.sessionId, prompt);
   });
