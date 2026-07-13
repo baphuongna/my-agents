@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, channelRouter, channels } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, channelRouter, channels, packageHost, council } from "./shared-instances.js";
 
 
 // ── auth.json loader ──
@@ -160,6 +160,9 @@ async function main(): Promise<void> {
       secretStore,
       skillStore,
       wallet,
+      hooks,
+      extensionHost: packageHost,
+      ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
     });
     const text = prompt || (await readStdin()) || "Hello.";
@@ -203,6 +206,9 @@ async function runRpcServer(_model?: string): Promise<void> {
     secretStore,
     skillStore,
     wallet,
+    hooks,
+    extensionHost: packageHost,
+    ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
   });
   const server = new RpcServer({
     prompt: (text, onEvent) => {

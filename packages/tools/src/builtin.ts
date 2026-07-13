@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { readdir, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, dirname } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
@@ -344,6 +344,117 @@ export const replaceTool: ToolImpl = {
 };
 
 /** All built-in tools, ready to register. */
+// ─── ls ───────────────────────────────────────────────────────────────────
+
+export const lsTool: ToolImpl = {
+  meta: {
+    name: "ls",
+    args: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Directory to list (default: current directory)" },
+        limit: { type: "number", description: "Maximum entries to return (default: 500)" },
+      },
+    },
+    requiredMode: READONLY,
+  },
+  async run(args, ctx): Promise<ToolResult> {
+    if (!isRecord(args)) return err("ls", "invalid args");
+    const targetPath = typeof args.path === "string" ? args.path : ".";
+    const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 500;
+    const c = contain(ctx, targetPath, "read");
+    if (!c.ok) return c.err;
+    try {
+      const entries = await readdir(c.abs, { withFileTypes: true });
+      const items: Array<{ name: string; type: string; size?: number }> = [];
+      for (const entry of entries) {
+        if (items.length >= limit) break;
+        let type = "file";
+        let size: number | undefined;
+        try {
+          if (entry.isDirectory()) {
+            type = "dir";
+          } else if (entry.isSymbolicLink()) {
+            type = "symlink";
+          }
+          if (type === "file") {
+            const s = await stat(join(c.abs, entry.name));
+            size = s.size;
+          }
+        } catch { /* ignore stat errors */ }
+        items.push({ name: entry.name, type, ...(size !== undefined ? { size } : {}) });
+      }
+      items.sort((a, b) => a.name.localeCompare(b.name));
+      return ok("ls", { path: targetPath, entries: items, count: items.length });
+    } catch (e) {
+      return err("ls", e instanceof Error ? e.message : String(e));
+    }
+  },
+};
+
+// ─── find ───────────────────────────────────────────────────────────────────
+
+export const findTool: ToolImpl = {
+  meta: {
+    name: "find",
+    args: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Root directory to search from (default: current directory)" },
+        pattern: { type: "string", description: "Glob pattern to match filenames (e.g. *.ts)" },
+        type: { type: "string", enum: ["file", "dir", "any"], description: "Filter by type (default: any)" },
+        limit: { type: "number", description: "Maximum results (default: 200)" },
+      },
+    },
+    requiredMode: READONLY,
+  },
+  async run(args, ctx): Promise<ToolResult> {
+    if (!isRecord(args)) return err("find", "invalid args");
+    const targetPath = typeof args.path === "string" ? args.path : ".";
+    const pattern = typeof args.pattern === "string" ? args.pattern : "*";
+    const typeFilter = typeof args.type === "string" ? args.type : "any";
+    const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 200;
+    const c = contain(ctx, targetPath, "read");
+    if (!c.ok) return c.err;
+    const rootAbs = c.abs;
+    try {
+      const regex = globToRegex(pattern);
+      const results: string[] = [];
+      const seen = new Set<string>();
+
+      async function walk(dir: string, depth: number): Promise<void> {
+        if (results.length >= limit || depth > 10) return;
+        let entries;
+        try { entries = await readdir(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const entry of entries) {
+          if (results.length >= limit) return;
+          const fullPath = join(dir, entry.name);
+          const relPath = relative(rootAbs, fullPath);
+          if (seen.has(relPath)) continue;
+          seen.add(relPath);
+          const isDir = entry.isDirectory();
+          const matchesType =
+            typeFilter === "any" ||
+            (typeFilter === "dir" && isDir) ||
+            (typeFilter === "file" && !isDir);
+          if (regex.test(entry.name) && matchesType) {
+            results.push(relPath);
+          }
+          if (isDir && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+            await walk(fullPath, depth + 1);
+          }
+        }
+      }
+      await walk(c.abs, 0);
+      results.sort();
+      return ok("find", { path: targetPath, pattern, results: results.slice(0, limit), count: results.length });
+    } catch (e) {
+      return err("find", e instanceof Error ? e.message : String(e));
+    }
+  },
+};
+
 export const builtinTools: ToolImpl[] = [
   readTool,
   writeTool,
@@ -352,6 +463,8 @@ export const builtinTools: ToolImpl[] = [
   bashTool,
   globTool,
   grepTool,
+  lsTool,
+  findTool,
 ];
 
 function globToRegex(pattern: string): RegExp {

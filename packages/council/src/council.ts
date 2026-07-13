@@ -26,6 +26,7 @@ import type {
   SystemPrompt,
   TokenUsage,
 } from "@my-agent/core";
+import { HindsightReviewer } from "./hindsight.js";
 
 export type CouncilStrategy = "attributed" | "majority" | "judge";
 
@@ -81,6 +82,12 @@ export class CouncilProvider implements ProviderProfile {
     if (healthy === this.members.length) return "Healthy";
     if (healthy === 0) return "Failed";
     return "Degraded";
+  }
+
+  /** Create a HindsightReviewer backed by the first healthy member. */
+  makeReviewer(): HindsightReviewer {
+    const critic = this.members.find((m) => m.profile.health() !== "Failed")?.profile ?? this.members[0]!.profile;
+    return new HindsightReviewer(critic);
   }
 
   async stream(
