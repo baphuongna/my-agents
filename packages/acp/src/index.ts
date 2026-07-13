@@ -105,7 +105,7 @@ export class AcpBridge {
       const timer = setTimeout(() => {
         if (this.pending.has(requestId)) {
           this.pending.delete(requestId);
-          reject(new Error(`AcpBridge: request ${requestId} timed out after ${this.requestTimeoutMs}ms`));
+          reject(new Error(`AcpBridge: request ${requestId} timeout after ${this.requestTimeoutMs}ms`));
         }
       }, this.requestTimeoutMs);
       this.pending.set(requestId, { resolve: resolve as (v: unknown) => void, reject, timer });
