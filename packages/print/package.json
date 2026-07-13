@@ -35,6 +35,7 @@
     "@my-agent/signing": "*",
     "@my-agent/pkg": "*",
     "@my-agent/council": "*",
-    "@my-agent/prompts": "*"
+    "@my-agent/prompts": "*",
+    "@my-agent/ai": "*"
   }
 }

@@ -21,3 +21,6 @@ export { createRagfs } from "./ragfs-factory.js";
 export { MemoryContextSource } from "./memory-source.js";
 export { TypedGraph } from "./graph.js";
 export type { KGEntity, KGRelation } from "./graph.js";
+
+export { DreamCycle, DEFAULT_DREAM_INTERVAL_MS, STALE_SKILL_AFTER_DAYS } from "./dream-cycle.js";
+export type { DreamResult, DreamCycleOptions, SkillCurator } from "./dream-cycle.js";

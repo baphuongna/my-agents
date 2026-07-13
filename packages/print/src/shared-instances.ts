@@ -15,7 +15,9 @@ import { AcpBridge } from "@my-agent/acp";
 import { SyncServer } from "@my-agent/sync";
 import { CollabRelay } from "@my-agent/collab";
 import { PackageHost } from "@my-agent/pkg";
-import { CouncilProvider } from "@my-agent/council";
+import { CouncilProvider, type CouncilMember } from "@my-agent/council";
+import { PiAiProviderBridge } from "@my-agent/ai";
+import { createRequire } from "node:module";
 import { autoConfigureChannels } from "@my-agent/gateway";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -47,20 +49,73 @@ export const channels = new ChannelRegistry();
 registerBuiltinChannels(channels);
 export const channelRouter = new ChannelSessionRouter();
 
-// ── Council (mock 1-member) ──
+// ── Council (multi-model when ≥2 provider keys set, else mock 1-member) ──
+
+/** Known pi-ai provider configs for council multi-model support.
+ * Each entry maps an env API key to a pi-ai provider module + default model. */
+const COUNCIL_PROVIDERS = [
+  { envKey: "ANTHROPIC_API_KEY", providerId: "anthropic", role: "Anthropic", defaultModel: "claude-sonnet-4-20250514" },
+  { envKey: "OPENAI_API_KEY", providerId: "openai", role: "OpenAI", defaultModel: "gpt-4o" },
+  { envKey: "GOOGLE_API_KEY", providerId: "google", role: "Google", defaultModel: "gemini-2.0-flash" },
+  { envKey: "DEEPSEEK_API_KEY", providerId: "deepseek", role: "DeepSeek", defaultModel: "deepseek-chat" },
+  { envKey: "GROQ_API_KEY", providerId: "groq", role: "Groq", defaultModel: "llama-3.3-70b-versatile" },
+  { envKey: "MISTRAL_API_KEY", providerId: "mistral", role: "Mistral", defaultModel: "mistral-large-latest" },
+  { envKey: "XAI_API_KEY", providerId: "xai", role: "xAI", defaultModel: "grok-3" },
+  { envKey: "OPENROUTER_API_KEY", providerId: "openrouter", role: "OpenRouter", defaultModel: "anthropic/claude-3.5-sonnet" },
+] as const;
+
+/** Mock advisor profile — fallback when <2 real providers are configured. */
+function mockAdvisorProfile(): import("@my-agent/core").ProviderProfile {
+  return {
+    id: "mock-advisor",
+    model: "mock-advisor",
+    health: () => "Healthy" as const,
+    stream: async () => ({ events: [{ kind: "text" as const, text: "[council advisor not fully configured — add a second provider]" }] }),
+  };
+}
+
+/** Detect real provider env keys and build CouncilMember profiles via
+ * PiAiProviderBridge. Returns undefined when <2 providers are configured
+ * (signals mock fallback per requirement #4). */
+function detectCouncilMembers(): CouncilMember[] | undefined {
+  let requireFn: NodeRequire;
+  try { requireFn = createRequire(import.meta.url); }
+  catch { return undefined; }
+
+  const members: CouncilMember[] = [];
+  for (const cfg of COUNCIL_PROVIDERS) {
+    const apiKey = process.env[cfg.envKey];
+    if (!apiKey) continue;
+    try {
+      const mod = requireFn(`../../vendored/pi-ai/dist/providers/${cfg.providerId}.js`);
+      const factory = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
+      if (typeof factory !== "function") continue;
+      // pi-ai provider factories return a Provider object (envApiKeyAuth reads
+      // the key from process.env internally); the apiKey arg is for the bridge.
+      const provider = factory();
+      const modelId = process.env[`${cfg.envKey.replace("_API_KEY", "_MODEL")}`] ?? cfg.defaultModel;
+      const bridge = new PiAiProviderBridge({ provider, model: { id: modelId, api: "messages" }, apiKey, id: cfg.providerId });
+      members.push({ profile: bridge, role: cfg.role });
+    } catch { /* provider module not found or init failed — skip silently */ }
+  }
+  return members.length >= 2 ? members : undefined;
+}
+
 export const council: CouncilProvider | undefined = (() => {
   try {
+    const realMembers = detectCouncilMembers();
+    if (realMembers && realMembers.length >= 2) {
+      // Multi-model council: fan out to all configured providers (attributed).
+      return new CouncilProvider({
+        id: "mya-council",
+        members: realMembers,
+        strategy: "attributed",
+      });
+    }
+    // Fallback: mock 1-member (current behavior when <2 providers configured).
     return new CouncilProvider({
       id: "mya-council",
-      members: [{
-        role: "advisor",
-        profile: {
-          id: "mock-advisor",
-          model: "mock-advisor",
-          health: () => "Healthy" as const,
-          stream: async () => ({ events: [{ kind: "text" as const, text: "[council advisor not fully configured — add a second provider]" }] }),
-        },
-      }],
+      members: [{ role: "advisor", profile: mockAdvisorProfile() }],
     });
   } catch { return undefined; }
 })();
