@@ -90,7 +90,7 @@ import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
 import { type SessionEntry, SessionManager, sessionEntryToContextMessages } from "../../core/session-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
-import { listSubagents } from "../../core/subagent.ts";
+import { listSubagents, setSubagentCountListener } from "../../core/subagent.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
@@ -823,6 +823,12 @@ export class InteractiveMode {
 
 		// Set up git branch watcher (uses provider instead of footer)
 		this.footerDataProvider.onBranchChange(() => {
+			this.ui.requestRender();
+		});
+
+		// Subagent count → footer (Issue: subagent UI)
+		setSubagentCountListener((n) => {
+			this.footerDataProvider.setSubagentCount(n);
 			this.ui.requestRender();
 		});
 

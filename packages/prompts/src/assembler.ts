@@ -53,6 +53,7 @@ export function buildVolatileTier(
   day: number,
   goalsBlock?: string,
 ): string {
+  const t0 = PROMPT_TIMING ? performance.now() : 0;
   const lines: string[] = [];
   lines.push(`# Environment (day ${day})`);
   if (goalsBlock && goalsBlock.trim()) {
@@ -67,18 +68,48 @@ export function buildVolatileTier(
     // crafted conversation, a direct write to the memory dir, or a malicious
     // tool). Injection-scan EACH entry before interpolating — matches the
     // context-tier treatment. Blocked entries become a [BLOCKED] placeholder.
-    for (const h of snap.entries.slice(0, 20)) {
+    const entries = snap.entries.slice(0, 20);
+    const tScan0 = PROMPT_TIMING ? performance.now() : 0;
+    for (const h of entries) {
       const verdict = scan(h.content, "context");
       lines.push(
         verdict.allowed ? `- [${h.role}] ${h.content}` : `- [${h.role}] [BLOCKED: ${verdict.reason}]`,
       );
+    }
+    if (PROMPT_TIMING) {
+      recordTiming("scanMemory", entries.length, performance.now() - tScan0);
     }
   }
   if (userMd.trim()) {
     lines.push("## User preferences");
     lines.push(userMd.trim());
   }
+  if (PROMPT_TIMING) {
+    recordTiming("buildVolatile", snap.entries.length, performance.now() - t0);
+  }
   return lines.join("\n");
+}
+
+/** When true, buildVolatileTier/assemblePrompt emit per-call timing to stderr.
+ *  Default off. Enable with `MY_AGENT_PROMPT_TIMING=1`. */
+export const PROMPT_TIMING = !!process.env.MY_AGENT_PROMPT_TIMING;
+
+const TIMING_WINDOW = 50;
+const timingBuckets = new Map<string, { count: number; totalMs: number; maxMs: number }>();
+
+/** Rolling-window timing log. Cheap, no-op when PROMPT_TIMING is off. */
+function recordTiming(label: string, n: number, ms: number): void {
+  const key = `${label}(n=${n})`;
+  const b = timingBuckets.get(key) ?? { count: 0, totalMs: 0, maxMs: 0 };
+  b.count++;
+  b.totalMs += ms;
+  if (ms > b.maxMs) b.maxMs = ms;
+  timingBuckets.set(key, b);
+  if (b.count % TIMING_WINDOW === 0) {
+    process.stderr.write(
+      `[prompt-timing] ${key} avg=${(b.totalMs / b.count).toFixed(3)}ms max=${b.maxMs.toFixed(3)}ms n=${b.count}\n`,
+    );
+  }
 }
 
 /** Default stable-tier identity text (Tier 1; customizable via packages). */
@@ -106,9 +137,11 @@ export function defaultStableTier(name = "my-agent"): string {
  */
 export function assemblePrompt(s: Session): SystemPrompt {
   if (s.prompt) return s.prompt;
+  const t0 = PROMPT_TIMING ? performance.now() : 0;
   const mutex = getMutex(s);
-  return mutex.withLock(() => {
+  const result = mutex.withLock(() => {
     if (s.prompt) return s.prompt; // double-check under lock
+    const tBuild0 = PROMPT_TIMING ? performance.now() : 0;
     const stable = s.stableTier || defaultStableTier();
     const context = s.ctxFiles.length > 0 ? scanInject(s.ctxFiles) : "";
     const volatile = buildVolatileTier(
@@ -117,9 +150,16 @@ export function assemblePrompt(s: Session): SystemPrompt {
       today(),
       s.goalsBlock,
     );
+    if (PROMPT_TIMING) {
+      recordTiming("assembleBuild", s.ctxFiles.length, performance.now() - tBuild0);
+    }
     s.prompt = { stable, context, volatile };
     return s.prompt;
   });
+  if (PROMPT_TIMING) {
+    recordTiming("assemblePrompt", 1, performance.now() - t0);
+  }
+  return result;
 }
 
 /** Re-derive ONLY the stable tier (e.g. after a skill write). Preserves cache prefix. */

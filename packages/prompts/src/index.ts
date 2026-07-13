@@ -11,6 +11,7 @@ export {
   buildVolatileTier,
   createPromptMutex,
   defaultStableTier,
+  PROMPT_TIMING,
 } from "./assembler.js";
 export { scan, scanInject } from "./inject.js";
 export { DriftGrader, identityCompressor } from "./drift.js";

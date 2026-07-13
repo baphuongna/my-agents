@@ -110,6 +110,8 @@ export class FooterDataProvider {
 	private reftableTablesListWatcher: FSWatcher | null = null;
 	private reftableTablesListPath: string | null = null;
 	private branchChangeCallbacks = new Set<() => void>();
+	private subagentCount = 0;
+	private subagentChangeCallbacks = new Set<() => void>();
 	private availableProviderCount = 0;
 	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	private gitWatcherRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,22 +145,28 @@ export class FooterDataProvider {
 	}
 
 	/** Internal: set extension status */
-	setExtensionStatus(key: string, text: string | undefined): void {
-		if (text === undefined) {
-			this.extensionStatuses.delete(key);
-		} else {
-			this.extensionStatuses.set(key, text);
-		}
-	}
-
-	/** Internal: clear extension statuses */
-	clearExtensionStatuses(): void {
-		this.extensionStatuses.clear();
-	}
-
 	/** Number of unique providers with available models (for footer display) */
 	getAvailableProviderCount(): number {
 		return this.availableProviderCount;
+	}
+
+	/** Number of running subagents (for footer display) */
+	getSubagentCount(): number {
+		return this.subagentCount;
+	}
+
+	/** Update subagent count + notify listeners (for footer re-render) */
+	setSubagentCount(count: number): void {
+		if (this.subagentCount !== count) {
+			this.subagentCount = count;
+			for (const cb of this.subagentChangeCallbacks) cb();
+		}
+	}
+
+	/** Subscribe to subagent count changes. Returns unsubscribe. */
+	onSubagentChange(callback: () => void): () => void {
+		this.subagentChangeCallbacks.add(callback);
+		return () => this.subagentChangeCallbacks.delete(callback);
 	}
 
 	/** Internal: update available provider count */
@@ -385,4 +393,5 @@ export class FooterDataProvider {
 export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
 	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
+	| "getSubagentCount" | "onSubagentChange"
 >;

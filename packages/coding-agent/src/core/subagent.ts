@@ -24,6 +24,9 @@ import { createAgentSession, type AgentSession, type CreateAgentSessionOptions }
 
 export type SubagentStatus = "running" | "done" | "failed" | "aborted";
 
+/** Max recursion depth for subagent tree (parent → sub → sub). Default 3. */
+export const MAX_SUBAGENT_DEPTH = 3;
+
 export interface SubagentOptions {
   /** Working directory for the subagent (isolated from parent). */
   cwd?: string;
@@ -31,6 +34,8 @@ export interface SubagentOptions {
   allowedTools?: string[];
   /** Model override (defaults to parent's model). */
   model?: string;
+  /** Depth in the subagent tree. 0 = top-level. Max 3. */
+  parentDepth?: number;
 }
 
 export interface SubagentHandle {
@@ -39,6 +44,8 @@ export interface SubagentHandle {
   readonly startedAt: number;
   readonly allowedTools?: string[];
   readonly parentSessionId: string;
+  /** Depth in subagent tree (0 = top-level). */
+  readonly depth: number;
   status: SubagentStatus;
   output: string;
   error?: string;
@@ -62,10 +69,17 @@ function nextSubagentId(): string {
  */
 export async function spawnSubagent(
   parent: AgentSession,
-  opts: { goal: string; cwd?: string; allowedTools?: string[]; model?: string },
+  opts: { goal: string; cwd?: string; allowedTools?: string[]; model?: string; parentDepth?: number },
 ): Promise<SubagentHandle> {
+  const depth = opts.parentDepth ?? 0;
+  if (depth >= MAX_SUBAGENT_DEPTH) {
+    throw new Error(
+      `spawnSubagent: max recursion depth ${MAX_SUBAGENT_DEPTH} reached (current depth: ${depth})`,
+    );
+  }
   const id = nextSubagentId();
   const cwd = opts.cwd ?? process.cwd();
+  const depthLine = depth > 0 ? `\nYou are a sub-subagent (depth ${depth + 1}).` : "";
   const toolLine = opts.allowedTools?.length
     ? `\nAllowed tools: ${opts.allowedTools.join(", ")}\nUse only these tools.`
     : "";
@@ -76,6 +90,11 @@ export async function spawnSubagent(
 
   const sessionOpts: CreateAgentSessionOptions = {
     cwd,
+    // Strict tool restriction: if allowedTools specified, disable ALL builtins
+    // and let subagent use only the allowed set (via extension custom tools).
+    // If not specified, subagent gets no tools (must rely on its own prompt).
+    noTools: "builtin",
+    tools: opts.allowedTools, // empty array = no tools, ["read","grep"] = only those
   };
   if (opts.model) sessionOpts.model = opts.model as never;
 
@@ -109,6 +128,7 @@ export async function spawnSubagent(
     startedAt: Date.now(),
     allowedTools: opts.allowedTools,
     parentSessionId: parent.sessionId ?? "",
+    depth,
     status: "running",
     output: "",
     session,
@@ -137,7 +157,7 @@ export async function spawnSubagent(
   const completionPromise = (async () => {
     try {
       // Inject subagent identity + tool restriction into the goal.
-      const effectivePrompt = `[SUBAGENT — focused task]${toolLine}\nGoal: ${opts.goal}\n\nWhen done, output the final answer prefixed with "<DONE>".`;
+      const effectivePrompt = `[SUBAGENT — focused task${depth > 0 ? ` (depth ${depth + 1})` : ""}]${depthLine}${toolLine}\nGoal: ${opts.goal}\n\nWhen done, output the final answer prefixed with "<DONE>".`;
       const unsub = session.subscribe((event) => {
         // Stream + accumulate text chunks from session events
         const ev = event as { type?: string; message?: { content?: Array<{ type?: string; text?: string }> } };
@@ -179,6 +199,18 @@ export async function spawnSubagent(
 
 /** Active subagents per parent session. */
 const activeByParent = new Map<string, Set<SubagentHandle>>();
+/** Optional global hook to notify UI when subagent count changes (for footer). */
+let subagentCountListener: ((n: number) => void) | null = null;
+export function setSubagentCountListener(fn: ((n: number) => void) | null): void {
+  subagentCountListener = fn;
+}
+function totalActiveSubagents(): number {
+  let n = 0;
+  for (const set of activeByParent.values()) {
+    for (const s of set) if (s.status === "running") n++;
+  }
+  return n;
+}
 
 /** Register a subagent under its parent (for /subagents listing). */
 export function trackSubagent(parentId: string, sub: SubagentHandle): void {
@@ -188,12 +220,14 @@ export function trackSubagent(parentId: string, sub: SubagentHandle): void {
     activeByParent.set(parentId, set);
   }
   set.add(sub);
+  subagentCountListener?.(totalActiveSubagents());
   // Auto-untrack when finished
   const interval = setInterval(() => {
     if (sub.status !== "running") {
       set?.delete(sub);
       clearInterval(interval);
       if (set && set.size === 0) activeByParent.delete(parentId);
+      subagentCountListener?.(totalActiveSubagents());
     }
   }, 500);
 }

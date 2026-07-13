@@ -162,6 +162,11 @@ export class FooterComponent implements Component {
 		if (areExperimentalFeaturesEnabled()) {
 			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
 		}
+		// Subagent count (running) — small badge in footer
+		const subagentCount = this.footerData.getSubagentCount();
+		if (subagentCount > 0) {
+			statsParts.push(theme.fg("accent", `${subagentCount} sub`));
+		}
 
 		let statsLeft = statsParts.join(" ");
 
