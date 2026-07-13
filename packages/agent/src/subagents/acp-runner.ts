@@ -116,7 +116,7 @@ export class AcpSubagentRunner implements SubagentRunner {
       }
 
       this.bridge.terminate(node.id, "terminated");
-      return { ok: true, result: response.result };
+      return { ok: true, data: response.result };
     } catch (e) {
       this.bridge.terminate(node.id, "failed");
       return {

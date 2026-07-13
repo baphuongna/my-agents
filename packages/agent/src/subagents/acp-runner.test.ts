@@ -44,7 +44,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect((result.result as { output: string }).output).toBe("ok");
+    expect((result as { data: { output: string } }).data.output).toBe("ok");
     expect(sent.length).toBe(1);
     expect(sent[0]!.method).toBe("spawn");
   });
