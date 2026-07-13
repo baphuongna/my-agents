@@ -67,6 +67,18 @@ async function main(): Promise<void> {
     console.log("Usage: mya channels {list|test <id>|add <type> [alias]}");
     return;
   }
+  if (args[0] === "cron") {
+    const { cronList, cronAdd, cronRemove, cronToggle, cronRun, cronHistory } = await import("./cron-cli.js");
+    const sub = args[1];
+    if (sub === "list" || sub === undefined) return cronList();
+    if (sub === "add") return cronAdd(args[2], args[3], args[4]);
+    if (sub === "remove" || sub === "rm") return cronRemove(args[2]);
+    if (sub === "enable" || sub === "disable") return cronToggle(args[2], sub);
+    if (sub === "run") return cronRun(args[2]);
+    if (sub === "history") return cronHistory(args[2]);
+    console.log("Usage: mya cron {list|add|remove|enable|disable|run|history}");
+    return;
+  }
 
   // Background session mode: run agent as TCP RPC server
   const bgIdx = args.indexOf("--bg");
@@ -269,6 +281,47 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     return result?.output ?? null;
   };
 
+  // Sync cron jobs from scheduler to control plane.
+  function syncCronJobs() {
+    for (const job of cron.listJobs()) {
+      gw.control.registerCronJob({
+        id: job.id,
+        name: job.name,
+        trigger: job.trigger,
+        schedule: job.schedule,
+        prompt: job.prompt,
+        deliveryTarget: job.deliveryTarget,
+        enabled: job.enabled,
+      });
+    }
+  }
+  syncCronJobs();
+  // Periodic re-sync (e.g. when jobs are added/updated via CLI at runtime)
+  setInterval(syncCronJobs, 5000).unref?.();
+
+  // Load cron jobs from ~/.mya/agent/cron.json (if exists)
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const os = await import("node:os");
+    const cronFile = path.join(os.homedir(), ".mya", "agent", "cron.json");
+    if (fs.existsSync(cronFile)) {
+      const data = JSON.parse(fs.readFileSync(cronFile, "utf-8")) as Array<{ id: string; name: string; schedule: string | number; prompt: string; enabled?: boolean; deliveryTarget?: string; trigger?: "cron" | "on-interval" | "once"; timezone?: string }>;
+      for (const j of data) {
+        cron.register({
+          id: j.id,
+          name: j.name,
+          trigger: j.trigger ?? "cron",
+          schedule: j.schedule,
+          prompt: j.prompt,
+          enabled: j.enabled ?? true,
+          deliveryTarget: j.deliveryTarget ?? "_cron",
+          leaseMs: 5 * 60_000,
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
   const wsToken = cryptoRandomToken();
   const gw = new Gateway({
     port,
@@ -286,6 +339,19 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       const sessionId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       await pool.createForCwd(sessionId, cwd);
       return sessionId;
+    },
+    cronRunNow: async (jobId: string) => {
+      const job = cron.getJob(jobId);
+      if (!job) return;
+      const run = cron.claim(jobId, `gateway:${port}`);
+      if (!run) return;
+      cron.start(run.runId);
+      try {
+        await runOnSession("_cron", job.prompt, (e: unknown) => gw.broadcast("_cron", e));
+        cron.complete(run.runId, "succeeded");
+      } catch (e) {
+        cron.complete(run.runId, "failed", (e as Error).message);
+      }
     },
     wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {

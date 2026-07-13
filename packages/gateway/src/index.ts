@@ -148,6 +148,8 @@ export interface GatewayOptions {
   poolKill?: (sessionId: string) => boolean;
   /** Optional: acquire a new pool session for POST /pool/acquire. */
   poolAcquire?: (cwd: string) => string | Promise<string>;
+  /** Optional: trigger an immediate run of a cron job. */
+  cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
 }
@@ -190,6 +192,7 @@ export class Gateway {
   private readonly poolKill?: (sessionId: string) => boolean;
   /** Optional pool acquire callback. */
   private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
+  private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
@@ -230,6 +233,7 @@ export class Gateway {
     this.poolStatus = opts.poolStatus;
     this.poolKill = opts.poolKill;
     this.poolAcquire = opts.poolAcquire;
+    this.cronRunNow = opts.cronRunNow;
     this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
@@ -400,7 +404,6 @@ export class Gateway {
       }
       // §12 control-plane: read-only management surface (sessions/cron/config/tools).
       case "/sessions": return send(200, this.control.listSessions());
-      case "/cron/jobs": return send(200, this.control.listCronJobs());
       case "/config": return send(200, this.control.getConfig());
       case "/tools": return send(200, this.control.listTools());
       case "/":
@@ -453,6 +456,59 @@ export class Gateway {
         // Channel sessions listing
         if (url.pathname === "/channel/sessions" && this.channelRouter) {
           return send(200, this.channelRouter.listSessions());
+        }
+        // ── Cron management ──
+        if (url.pathname === "/cron/jobs") {
+          if (req.method === "GET") return send(200, this.control.listCronJobs());
+          if (req.method === "POST") {
+            let body = "";
+            req.on("data", (c) => (body += c));
+            req.on("end", () => {
+              try {
+                const job = JSON.parse(body || "{}") as { id?: string; name?: string };
+                if (!job.id || !job.name) return send(400, { error: "id and name required" });
+                const created = this.control.registerCronJob({
+                  id: job.id,
+                  name: job.name,
+                  trigger: "cron",
+                  schedule: "* * * * *",
+                  prompt: "",
+                  deliveryTarget: "_cron",
+                  enabled: true,
+                });
+                return send(201, created);
+              } catch (e) { return send(400, { error: (e as Error).message }); }
+            });
+            return;
+          }
+        }
+        const cronJobMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)$/);
+        if (cronJobMatch && req.method === "GET") {
+          const job = this.control.getCronJob(cronJobMatch[1]!);
+          return job ? send(200, job) : send(404, { error: "not found" });
+        }
+        const cronPatchMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)\/patch$/);
+        if (cronPatchMatch && req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const patch = JSON.parse(body || "{}") as Record<string, unknown>;
+              const updated = this.control.updateCronJob(cronPatchMatch[1]!, patch);
+              return updated ? send(200, updated) : send(404, { error: "not found" });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        const cronDelMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)$/);
+        if (cronDelMatch && req.method === "DELETE") {
+          const ok = this.control.removeCronJob(cronDelMatch[1]!);
+          return send(ok ? 200 : 404, { ok });
+        }
+        const cronRunMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)\/run$/);
+        if (cronRunMatch && req.method === "POST" && this.cronRunNow) {
+          void this.cronRunNow(cronRunMatch[1]!);
+          return send(200, { ok: true });
         }
         // AgentPool sessions
         if (url.pathname === "/pool/sessions" && this.poolStatus) {

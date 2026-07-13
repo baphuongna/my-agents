@@ -85,9 +85,19 @@ export interface ControlSession {
 /** A registered cron job. */
 export interface ControlCronJob {
   id: string;
-  schedule: string;
-  nextRunAt?: number;
+  name: string;
+  trigger: "cron" | "on-interval" | "once";
+  /** cron expression (cron) / interval-ms (on-interval) / epoch-ms (once). */
+  schedule: string | number;
+  prompt: string;
+  deliveryTarget: string;
   enabled: boolean;
+  /** Optional timezone (e.g. "America/Los_Angeles"). */
+  timezone?: string;
+  lastRunAt?: number;
+  nextRunAt?: number;
+  lastStatus?: "succeeded" | "failed" | "lease-expired" | "running" | "claimed";
+  lastError?: string;
 }
 
 /** The gateway control-plane: a read/management registry over sessions/cron/etc. */
@@ -118,6 +128,15 @@ export class ControlPlane {
   // --- cron ---
   registerCronJob(job: ControlCronJob): void { this.cronJobs.set(job.id, job); }
   listCronJobs(): ControlCronJob[] { return [...this.cronJobs.values()]; }
+  getCronJob(id: string): ControlCronJob | undefined { return this.cronJobs.get(id); }
+  updateCronJob(id: string, patch: Partial<ControlCronJob>): ControlCronJob | undefined {
+    const cur = this.cronJobs.get(id);
+    if (!cur) return undefined;
+    const updated = { ...cur, ...patch, id: cur.id };
+    this.cronJobs.set(id, updated);
+    return updated;
+  }
+  removeCronJob(id: string): boolean { return this.cronJobs.delete(id); }
 
   // --- config / tools ---
   getConfig(): Record<string, unknown> { return this.config; }

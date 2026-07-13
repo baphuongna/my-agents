@@ -54,7 +54,7 @@ interface GatewayInfo {
   model?: string;
   uptime?: number;
   channels?: Array<{ id: string; type: string; alias?: string; label: string; enabled: boolean; configured: boolean; health: string }>;
-  cronJobs?: Array<{ id: string; schedule: string; lastRun?: string; enabled: boolean }>;
+  cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>;
 }
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
@@ -94,10 +94,11 @@ async function loadGatewaySessions(): Promise<Sess[]> {
 }
 
 async function loadGatewayInfo(): Promise<GatewayInfo> {
-  const [health, sessions, status] = await Promise.all([
+  const [health, sessions, status, cronJobs] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
-    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; cronJobs?: GatewayInfo["cronJobs"] }>(`http://127.0.0.1:${GW_PORT}/status`),
+    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"] }>(`http://127.0.0.1:${GW_PORT}/status`),
+    fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
   ]);
   return {
     connected: !!health?.ok,
@@ -107,7 +108,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     model: status?.model,
     uptime: status?.uptime,
     channels: status?.channels,
-    cronJobs: status?.cronJobs,
+    cronJobs,
   };
 }
 
@@ -346,10 +347,18 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       } else if (state.tab === "cron") {
         if (!state.info.cronJobs?.length) {
           lines.push(`  ${A.muted("No cron jobs.")}`);
+          lines.push(`  ${A.muted("Add: ")}${A.accent("mya cron add <name> <schedule> <prompt>")}`);
         } else {
           for (const job of state.info.cronJobs) {
             const icon = job.enabled ? A.green("●") : A.dim2("○");
-            lines.push(`  ${icon}  ${job.id.padEnd(20)}  ${A.dim2(job.schedule)}  ${job.enabled ? A.green("on") : A.dim2("off")}`);
+            const sched = job.trigger === "on-interval" ? `every ${(job.schedule as number) / 1000}s` : String(job.schedule);
+            const lastStatus = job.lastStatus
+              ? job.lastStatus === "succeeded" ? A.green("✓")
+              : job.lastStatus === "failed" ? A.red("✗")
+              : A.yellow("?")
+              : A.dim2("-");
+            lines.push(`  ${icon}  ${job.name.padEnd(20)}  ${A.dim2(sched)}  ${A.dim2(job.trigger)}  ${lastStatus} ${A.dim2(fmt(job.lastRunAt))}`);
+            if (job.prompt) lines.push(`      ${A.dim2("\"" + job.prompt.slice(0, 60) + (job.prompt.length > 60 ? "..." : "") + "\"")}`);
           }
         }
       } else if (state.tab === "status") {
