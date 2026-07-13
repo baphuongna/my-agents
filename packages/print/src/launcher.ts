@@ -1,18 +1,52 @@
 /**
- * mya Session Launcher — cross-platform multi-session TUI.
+ * mya Session Launcher — multi-session TUI.
  *
- * Uses TCP-based background sessions (no tmux dependency):
- *   - Background sessions run `mya --bg` (agent + TCP RPC server)
- *   - Launcher connects via TCP for live chat
- *   - Ctrl+Q disconnects → session KEEPS RUNNING
- *   - Works on Linux, macOS, AND Windows
+ * Hybrid approach:
+ * - If tmux available: full pi InteractiveMode + background detach (Ctrl+B D)
+ * - If no tmux: foreground pi (full TUI, /exit to return)
+ * - TCP bg sessions available for headless/channel use (mya --bg)
  */
 import { createConnection, type Socket } from "node:net";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { nowWallclock } from "@my-agent/core";
+import { listBgSessions, killBgSession, spawnBgSession, type BgManifest } from "./bg-runner.js";
+
+/** Check if tmux is available. */
+function hasTmux(): boolean {
+  try { execSync("tmux -V", { stdio: "ignore" }); return true; } catch { return false; }
+}
+
+/** Launch pi in a tmux session (full InteractiveMode, survives detach). */
+function tmuxNewAndAttach(sessionPath?: string): void {
+  const name = `mya-${nowWallclock().toString(36)}`;
+  const piArgs = ["--model", "MiniMax-M3"];
+  if (sessionPath) piArgs.push("--session", sessionPath);
+  const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
+  const cmd = `${process.execPath} ${entry} ${piArgs.join(" ")}`;
+  execSync(`tmux new-session -d -s ${name} "${cmd}"`, {
+    env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" },
+  });
+  // Attach (blocks until user detaches with Ctrl+B D)
+  spawn("tmux", ["attach-session", "-t", name], { stdio: "inherit" });
+}
+
+/** Launch pi in foreground (full InteractiveMode, /exit to return). */
+function launchForegroundPi(sessionPath?: string): Promise<void> {
+  return new Promise((resolve) => {
+    const args = ["--model", "MiniMax-M3"];
+    if (sessionPath) args.push("--session", sessionPath);
+    const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
+    const child = spawn(process.execPath, [entry, ...args], {
+      stdio: "inherit",
+      env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" },
+    });
+    child.on("exit", () => resolve());
+    child.on("error", () => resolve());
+  });
+}
 import { listBgSessions, killBgSession, spawnBgSession, type BgManifest } from "./bg-runner.js";
 
 // ── ANSI ───────────────────────────────────────────────────────────────────
@@ -265,42 +299,33 @@ export function runSessionLauncher(): Promise<{ action: "open"; session?: Sess }
 }
 
 export async function runLauncherLoop(): Promise<void> {
+  const useTmux = hasTmux();
+
   while (true) {
     const result = await runSessionLauncher();
     if (result.action === "quit") return;
 
-    if (result.action === "new") {
-      // Spawn background session, then attach
-      process.stdout.write(A.clear + A.hideCursor);
-      process.stdout.write(`\n  ${A.muted("Starting background session...")}\n`);
-      const m = await spawnBgSession({});
-      if (m?.port && m.port > 0) {
-        await attachTcp(m.port);
+    if (result.action === "new" || (result.action === "open" && result.session?.type === "new")) {
+      // New session → full pi InteractiveMode (tmux background or foreground)
+      if (useTmux) {
+        tmuxNewAndAttach();
       } else {
-        process.stdout.write(`\n  ${A.muted("Failed to start session.")}\n`);
-        await new Promise((r) => setTimeout(r, 1500));
+        await launchForegroundPi();
       }
     } else if (result.action === "open" && result.session) {
       const s = result.session;
-      if (s.type === "new") {
-        // Enter on "New session" → spawn bg + attach
-        process.stdout.write(A.clear + A.hideCursor);
-        process.stdout.write(`\n  ${A.muted("Starting background session...")}\n`);
-        const m = await spawnBgSession({});
-        if (m?.port && m.port > 0) {
-          await attachTcp(m.port);
-        } else {
-          process.stdout.write(`\n  ${A.muted("Failed to start. Press any key.")}\n`);
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      } else if (s.type === "bg" && s.port) {
+      if (s.type === "bg" && s.port) {
+        // TCP background session → simple chat attach
         await attachTcp(s.port);
       } else if (s.type === "saved" && s.arg) {
-        process.stdout.write(A.clear + A.hideCursor);
-        process.stdout.write(`\n  ${A.muted("Starting background session...")}\n`);
-        const m = await spawnBgSession({});
-        if (m?.port && m.port > 0) await attachTcp(m.port);
+        // Saved JSONL → full pi InteractiveMode
+        if (useTmux) {
+          tmuxNewAndAttach(s.arg);
+        } else {
+          await launchForegroundPi(s.arg);
+        }
       }
     }
+    // After pi exits / tmux detach, loop back to launcher
   }
 }
