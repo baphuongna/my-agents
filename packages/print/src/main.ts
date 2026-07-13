@@ -219,10 +219,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const { dashboardHtml } = await import("@my-agent/web");
 
   // AgentPool: each session uses pi's FULL AgentSession (same as TUI).
-  // Background sessions have the same providers, tools, and features as interactive TUI.
+  // Phase 2 wired: multi-agent via MYA_AGENTS env (JSON array of {name, agentDir, maxSessions}).
+  const agents = parseAgentsEnv();
   const pool = new AgentPool({
     maxSessions: 8,
     idleTtlMs: 3_600_000,
+    agents: agents.length > 0 ? agents : undefined,
     createSession: async (sessionId, _cwd, agentDir) => {
       // Create pi AgentSession — same code as InteractiveMode uses.
       // Phase 2: respect per-agent agentDir (multi-agent isolation).
@@ -435,4 +437,50 @@ process.on("uncaughtException", (err) => {
 
 function cryptoRandomToken(): string {
   return randomBytes(16).toString("hex");
+}
+
+/**
+ * Parse MYA_AGENTS env var to register named agents with AgentPool.
+ *
+ * Format: JSON array of {name, agentDir?, maxSessions?, idleTtlMs?}
+ * Example:
+ *   MYA_AGENTS='[
+ *     {"name":"alice","agentDir":"~/.mya/agents/alice","maxSessions":4},
+ *     {"name":"bob","agentDir":"~/.mya/agents/bob","maxSessions":2}
+ *   ]'
+ *
+ * If unset/empty, returns [] (default single-agent pool, all sessions share one namespace).
+ * Invalid JSON → logs warning + returns [] (fail-soft).
+ */
+function parseAgentsEnv(): Array<{ name: string; agentDir?: string; maxSessions?: number; idleTtlMs?: number }> {
+  const raw = process.env["MYA_AGENTS"];
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      console.warn("[gateway] MYA_AGENTS must be a JSON array, ignoring");
+      return [];
+    }
+    const out: Array<{ name: string; agentDir?: string; maxSessions?: number; idleTtlMs?: number }> = [];
+    for (const item of parsed) {
+      if (typeof item !== "object" || item === null) continue;
+      const obj = item as Record<string, unknown>;
+      if (typeof obj["name"] !== "string" || !obj["name"]) continue;
+      out.push({
+        name: obj["name"],
+        agentDir: typeof obj["agentDir"] === "string" ? obj["agentDir"] : undefined,
+        maxSessions: typeof obj["maxSessions"] === "number" ? obj["maxSessions"] : undefined,
+        idleTtlMs: typeof obj["idleTtlMs"] === "number" ? obj["idleTtlMs"] : undefined,
+      });
+    }
+    if (out.length === 0) {
+      console.warn("[gateway] MYA_AGENTS parsed but no valid agents found");
+    } else {
+      console.warn(`[gateway] registered ${out.length} agent(s) from MYA_AGENTS: ${out.map((a) => a.name).join(", ")}`);
+    }
+    return out;
+  } catch (e) {
+    console.warn(`[gateway] MYA_AGENTS invalid JSON, ignoring: ${(e as Error).message}`);
+    return [];
+  }
 }
