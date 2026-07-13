@@ -1,12 +1,15 @@
 /**
- * mya Session Launcher — simple, cross-platform, full pi TUI.
+ * mya Session Launcher.
  *
- * No tmux, no background, no WS chat. Just:
- *   Launcher → select → pi InteractiveMode (FULL TUI) → /quit → launcher
- *   Pi saves conversation to JSONL → resume from launcher next time.
+ * mya launcher → shows:
+ *   🟢 Gateway pool sessions (pi AgentSession running in background)
+ *   💬 Saved JSONL sessions (from disk)
+ *   ✨ New session
  *
- * Works on Linux, macOS, Windows (no tmux dependency).
- * Session history persists via pi's native JSONL save.
+ * Select saved → pi InteractiveMode (full TUI, loads conversation)
+ * Select gateway pool → shows status (background pi AgentSession)
+ *
+ * mya → pi InteractiveMode directly (no launcher)
  */
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
@@ -32,23 +35,42 @@ interface Sess {
   id: string;
   label: string;
   detail: string;
-  type: "saved" | "new";
+  type: "gateway" | "saved" | "new";
   arg?: string;
+}
+
+const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+
+async function checkGateway(): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${GW_PORT}/health/live`, { signal: AbortSignal.timeout(500) });
+    return res.ok;
+  } catch { return false; }
+}
+
+async function loadGatewaySessions(): Promise<Sess[]> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${GW_PORT}/pool/sessions`, { signal: AbortSignal.timeout(500) });
+    if (!res.ok) return [];
+    const arr = (await res.json()) as Array<{ sessionId: string; messages: number; lastActivity: number; busy: boolean }>;
+    return arr.map((s) => ({
+      id: s.sessionId,
+      label: s.sessionId.replace(/^ch-/, "").replace(/-/g, " "),
+      detail: `${s.messages} msgs | ${s.busy ? "running" : "idle"} | ${fmt(s.lastActivity)}`,
+      type: "gateway" as const,
+    }));
+  } catch { return []; }
 }
 
 function fmt(ts: number): string {
   if (!ts || isNaN(ts)) return "-";
-  // Pi stores timestamps in MILLISECONDS (ISO-based). Handle both ms and s.
   const ms = ts > 1e12 ? ts : ts * 1000;
   const d = nowWallclock() - ms;
-  if (d < 0) return "now";
-  if (d < 60_000) return "now";
+  if (d < 0 || d < 60_000) return "now";
   if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
-  return `${Math.floor(d / 86_400_000)}d`;
+  return `${Math.floor(d / 3_600_000)}h`;
 }
 
-/** Load saved sessions from pi's session dir: ~/.mya/agent/sessions/ */
 function loadSaved(): Sess[] {
   const dir = join(homedir(), ".mya", "agent", "sessions");
   if (!existsSync(dir)) return [];
@@ -74,13 +96,7 @@ function loadSaved(): Sess[] {
               }
             } catch { /* */ }
           }
-          out.push({
-            id: hdr.id ?? f,
-            label: hdr.name ?? first ?? f.slice(11, 30),
-            detail: `${n} msgs | ${fmt(ts)}`,
-            type: "saved",
-            arg: fp,
-          });
+          out.push({ id: hdr.id ?? f, label: hdr.name ?? first ?? f.slice(11, 30), detail: `${n} msgs | ${fmt(ts)}`, type: "saved", arg: fp });
         } catch { /* */ }
       }
     }
@@ -88,10 +104,11 @@ function loadSaved(): Sess[] {
   return out.sort((a, b) => b.id.localeCompare(a.id));
 }
 
-function buildLines(sessions: Sess[], sel: number, filter: string): string[] {
+function buildLines(sessions: Sess[], sel: number, filter: string, gw: boolean): string[] {
   const o: string[] = [];
   o.push("");
-  o.push(`  ${A.bold(A.accent("mya"))} ${A.muted("- Session Launcher")}`);
+  const status = gw ? A.green("[gateway connected]") : A.muted("[standalone]");
+  o.push(`  ${A.bold(A.accent("mya"))} ${A.muted("- Session Launcher")}  ${status}`);
   o.push(`  ${A.dim2("-".repeat(50))}`);
   o.push("");
   o.push(`  ${A.dim2("filter:")} ${filter ? A.accent(filter + "_") : A.dim2("(type to search)")}`);
@@ -101,8 +118,9 @@ function buildLines(sessions: Sess[], sel: number, filter: string): string[] {
   for (let i = 0; i < f.length; i++) {
     const s = f[i]!;
     const is = i === sel;
-    const txt = `${is ? "> " : "  "}${is ? A.bold(A.accent(s.label)) : s.label}  ${A.dim2(s.detail)}`;
-    o.push(is ? `  ${A.selBg(txt.slice(2))}` : txt);
+    const icon = s.type === "gateway" ? (s.detail.includes("running") ? "*" : "o") : s.type === "new" ? "+" : "+";
+    const txt = `${icon} ${is ? A.bold(A.accent(s.label)) : s.label}  ${A.dim2(s.detail)}`;
+    o.push(is ? `  ${A.selBg(txt)}` : `  ${txt}`);
   }
   o.push("");
   o.push(`  ${A.dim2("-".repeat(50))}`);
@@ -111,19 +129,12 @@ function buildLines(sessions: Sess[], sel: number, filter: string): string[] {
   return o;
 }
 
-/** Launch pi InteractiveMode (FULL TUI) in foreground. */
 function launchPi(sessionPath?: string): Promise<void> {
-  // Loading screen
   process.stdout.write("\x1b[2J\x1b[H");
-  process.stdout.write(`\n  ${A.bold(A.accent("mya"))}\n`);
-  process.stdout.write(`  ${A.muted("Loading pi InteractiveMode...")}\n\n`);
-  process.stdout.write(`  ${A.dim2("Dynamic-loading pi (lazy import)...")}\n`);
-
+  process.stdout.write(`\n  ${A.bold(A.accent("mya"))}\n  ${A.muted("Loading pi InteractiveMode...")}\n\n`);
   return new Promise((resolve) => {
     const args = ["--model", "MiniMax-M3"];
-    if (sessionPath) {
-      args.push("--session", sessionPath);
-    }
+    if (sessionPath) args.push("--session", sessionPath);
     const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
     const child = spawn(process.execPath, [entry, ...args], {
       stdio: "inherit",
@@ -134,21 +145,17 @@ function launchPi(sessionPath?: string): Promise<void> {
   });
 }
 
-interface Choice {
-  type: "new" | "saved";
-  arg?: string;
-}
+interface Choice { type: "new" | "saved"; arg?: string; }
 
-function showLauncher(sessions: Sess[]): Promise<Choice | undefined> {
+function showLauncher(sessions: Sess[], gw: boolean): Promise<Choice | undefined> {
   return new Promise((resolve) => {
     let sel = 0; let filter = ""; let first = true;
     const isTTY = process.stdin.isTTY;
     if (isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdout.write(A.hideCursor);
-
     const render = () => {
-      const lines = buildLines(sessions, sel, filter);
+      const lines = buildLines(sessions, sel, filter, gw);
       let out = first ? A.clear : A.home;
       first = false;
       for (const l of lines) out += l + A.clrEol + "\n";
@@ -156,14 +163,12 @@ function showLauncher(sessions: Sess[]): Promise<Choice | undefined> {
       process.stdout.write(out);
     };
     render();
-
     const cleanup = () => {
       process.stdin.pause();
       process.stdin.removeListener("data", onData);
       if (isTTY) process.stdin.setRawMode(false);
       process.stdout.write(A.clear + A.showCursor);
     };
-
     const onData = (data: Buffer) => {
       const k = data.toString();
       if (k === "\x03" || k === "\x04") { cleanup(); resolve(undefined); return; }
@@ -189,18 +194,15 @@ function showLauncher(sessions: Sess[]): Promise<Choice | undefined> {
 
 export async function runLauncherLoop(): Promise<void> {
   while (true) {
+    const gw = await checkGateway();
     const sessions: Sess[] = [
-      { id: "new", label: "New session", detail: "Start fresh conversation", type: "new" },
+      { id: "new", label: "New session", detail: "Open pi InteractiveMode", type: "new" },
+      ...(gw ? await loadGatewaySessions() : []),
       ...loadSaved(),
     ];
-
-    const result = await showLauncher(sessions);
+    const result = await showLauncher(sessions, gw);
     if (result === undefined) return;
-
-    if (result.type === "saved" && result.arg) {
-      await launchPi(result.arg);
-    } else {
-      await launchPi();
-    }
+    if (result.type === "saved" && result.arg) await launchPi(result.arg);
+    else await launchPi();
   }
 }
