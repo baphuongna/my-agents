@@ -245,6 +245,64 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       opts.registerTools(pi);
     }
 
+    // ── 6.5. Subagent tool (spawn focused sub-tasks from TUI) ────────────
+    try {
+      // @ts-ignore - cross-package dynamic import
+      void import("../../coding-agent/dist/core/subagent.js").then((mod) => {
+        const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } = mod;
+
+        pi.registerTool({
+          name: "delegate_task",
+          label: "Delegate Task",
+          description: `Spawn a subagent for a focused task (max depth ${MAX_SUBAGENT_DEPTH}). Use allowed_tools to constrain scope (e.g. ['read','grep']).`,
+          parameters: {
+            type: "object",
+            properties: {
+              goal: { type: "string", description: "Task for the subagent" },
+              allowed_tools: { type: "array", items: { type: "string" } },
+              cwd: { type: "string" },
+              parent_depth: { type: "number", minimum: 0, maximum: MAX_SUBAGENT_DEPTH },
+              wait: { type: "boolean", default: true },
+            },
+            required: ["goal"],
+          },
+          async execute(
+            _toolCallId: string,
+            params: { goal: string; allowed_tools?: string[]; cwd?: string; parent_depth?: number; wait?: boolean },
+            _signal: AbortSignal | undefined,
+            _onUpdate: unknown,
+            ctx: { session: { sessionId?: string } },
+          ) {
+            const sub = await spawnSubagent(ctx.session as never, {
+              goal: params.goal,
+              cwd: params.cwd,
+              allowedTools: params.allowed_tools,
+              parentDepth: params.parent_depth ?? 0,
+            });
+            trackSubagent(ctx.session.sessionId ?? "", sub);
+            if (params.wait !== false) {
+              const output = await sub.wait();
+              return { content: [{ type: "text", text: `[Subagent ${sub.id}]\n${output || "(no output)"}` }] };
+            }
+            return { content: [{ type: "text", text: `[Subagent ${sub.id} spawned fire-and-forget]` }] };
+          },
+        });
+
+        pi.registerCommand("subagents", {
+          description: "List active subagents",
+          handler: async () => {
+            const subs = listSubagents("");
+            return `Subagents (${subs.length})\n` +
+              subs.map((s: { id: string; status: string; goal: string; depth: number }) =>
+                `  ${s.id} [${s.status}] depth=${s.depth}: ${s.goal.slice(0, 50)}`).join("\n");
+          },
+        });
+      });
+    } catch {
+      /* subagent tool is best-effort */
+    }
+
+
     // ── 7. Slash commands ───────────────────────────────────────────────
 
     registerSharedCommand(pi, "audit", "Show mya audit log summary", async (_args) => {
