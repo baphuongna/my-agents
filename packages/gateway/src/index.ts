@@ -152,6 +152,8 @@ export interface GatewayOptions {
   cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: remove a job from the underlying cron scheduler. */
   cronRemove?: (jobId: string) => boolean;
+  /** Optional: returns current queue depth for a session. */
+  poolQueueDepth?: (sessionId: string) => number;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
 }
@@ -196,6 +198,7 @@ export class Gateway {
   private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   private readonly cronRemove?: (jobId: string) => boolean;
+  private readonly poolQueueDepth?: (sessionId: string) => number;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
@@ -238,6 +241,7 @@ export class Gateway {
     this.poolAcquire = opts.poolAcquire;
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
+    this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
@@ -526,6 +530,12 @@ export class Gateway {
         if (poolKillMatch && req.method === "POST" && this.poolKill) {
           const ok = this.poolKill(poolKillMatch[1]!);
           return send(ok ? 200 : 404, { ok });
+        }
+        // Queue depth for a session (Phase 1 backpressure observability)
+        const poolQueueMatch = url.pathname.match(/^\/pool\/queue\/(.+)$/);
+        if (poolQueueMatch && req.method === "GET" && this.poolQueueDepth) {
+          const id = decodeURIComponent(poolQueueMatch[1]!);
+          return send(200, { sessionId: id, depth: this.poolQueueDepth(id) });
         }
         // Acquire new pool session
         if (url.pathname === "/pool/acquire" && req.method === "POST" && this.poolAcquire) {

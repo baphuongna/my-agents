@@ -236,7 +236,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   });
 
   /** Per-session prompt queue: serializes prompts to the same session. */
-  const promptQueue = new SessionPromptQueue();
+  // Backpressure: maxQueueDepth=8, queueTimeoutMs=30s (Phase 1)
+  const promptQueue = new SessionPromptQueue({ maxQueueDepth: 8, queueTimeoutMs: 30_000 });
 
   /** Run a prompt on a pi session, collect streaming text for response. */
   function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
@@ -366,6 +367,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       await pool.createForCwd(sessionId, cwd);
       return sessionId;
     },
+    poolQueueDepth: (sessionId: string) => promptQueue.depth(sessionId),
     cronRunNow: async (jobId: string) => {
       const job = cron.getJob(jobId);
       if (!job) return;
