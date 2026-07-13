@@ -146,6 +146,55 @@
   #info dt { color: #58a6ff; margin-top: 6px; }
   #info dd { margin: 0 0 4px; color: #e6edf3; }
 
+  /* ── session list ─────────────────────────────────────── */
+  #sidebar h3.list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+  }
+  #sidebar h3.list-head button {
+    background: #21262d;
+    color: #58a6ff;
+    border: 1px solid #30363d;
+    border-radius: 3px;
+    font-size: 10px;
+    padding: 2px 6px;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: inherit;
+  }
+  #sidebar h3.list-head button:hover { background: #30363d; }
+  #session-list { list-style: none; margin: 0; padding: 0; }
+  #session-list li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+  }
+  #session-list li:hover { background: #161b22; }
+  #session-list .sid { color: #e6edf3; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #session-list .sstat { font-size: 10px; padding: 1px 5px; border-radius: 8px; background: #30363d; color: #8b949e; }
+  #session-list .sstat.active   { background: #238636; color: #fff; }
+  #session-list .sstat.idle     { background: #30363d; color: #8b949e; }
+  #session-list .sstat.errored  { background: #da3633; color: #fff; }
+  #session-list .skill {
+    background: transparent;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    border-radius: 3px;
+    font-size: 10px;
+    padding: 1px 5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #session-list .skill:hover { background: #da3633; color: #fff; border-color: #da3633; }
+  #session-empty { font-size: 12px; color: #8b949e; font-style: italic; padding: 4px 6px; }
+
   /* ── event tiles ───────────────────────────────────────────────── */
   .ev {
     margin-bottom: 8px;
@@ -306,6 +355,9 @@
       <dt>events</dt><dd id="info-events">0</dd>
       <dt>runtime</dt><dd id="info-runtime">browser</dd>
     </dl>
+    <h3 class="list-head">sessions <span><button type="button" id="new-session" title="new session">+</button><button type="button" id="refresh-sessions" title="refresh session list">↻</button></span></h3>
+    <ul id="session-list"></ul>
+    <div id="session-empty">no sessions</div>
   </aside>
 </main>
 
@@ -345,6 +397,10 @@
   const sendBtn      = $("send-btn");
   const approval     = $("approval-modal");
   const toastBox     = $("toast-container");
+  const sessionList  = $("session-list");
+  const sessionEmpty = $("session-empty");
+  const refreshBtn   = $("refresh-sessions");
+  const newSessBtn   = $("new-session");
 
   // ── Tauri detection ─────────────────────────────────────────────────
   // `window.__TAURI__` is only present when `app.withGlobalTauri: true`
@@ -487,6 +543,8 @@
       if (await probeReady()) {
         setBootState("ready");
         connectWs();
+        void refreshSessions();
+        void fetchStatus();
         return true;
       }
       // Yield to the event loop.
@@ -617,6 +675,103 @@
     });
   }
 
+  // ── Session list (proxied via IPC bridge + gateway HTTP) ───────────
+  // Fetches the session list from the gateway `/sessions` endpoint. In
+  // Tauri this could go through the `get_status` IPC, but `/sessions` is a
+  // separate endpoint; we use a direct `fetch` (the CSP allows 127.0.0.1)
+  // and fall back to the IPC bridge for new/kill actions.
+  async function fetchGatewaySessions() {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(function () { ctl.abort(); }, 2000);
+      const res = await fetch("http://127.0.0.1:" + gatewayPort + "/sessions", {
+        method: "GET",
+        cache: "no-store",
+        signal: ctl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function renderSessionList(sessions) {
+    sessionList.innerHTML = "";
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      sessionEmpty.style.display = "";
+      return;
+    }
+    sessionEmpty.style.display = "none";
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i];
+      const id = (typeof s.id === "string") ? s.id : String(s.id || "?");
+      const status = (typeof s.status === "string") ? s.status : "";
+      const li = document.createElement("li");
+
+      const sid = document.createElement("span");
+      sid.className = "sid";
+      sid.textContent = id;
+      sid.title = id;
+      li.appendChild(sid);
+
+      if (status) {
+        const stat = document.createElement("span");
+        stat.className = "sstat " + status;
+        stat.textContent = status;
+        li.appendChild(stat);
+      }
+
+      const kill = document.createElement("button");
+      kill.type = "button";
+      kill.className = "skill";
+      kill.textContent = "×";
+      kill.title = "kill session " + id;
+      kill.addEventListener("click", function () { void killSessionById(id); });
+      li.appendChild(kill);
+
+      sessionList.appendChild(li);
+    }
+  }
+
+  async function refreshSessions() {
+    const data = await fetchGatewaySessions();
+    if (data === null) {
+      sessionEmpty.textContent = "unavailable";
+      sessionEmpty.style.display = "";
+      sessionList.innerHTML = "";
+      return;
+    }
+    sessionEmpty.textContent = "no sessions";
+    renderSessionList(data);
+  }
+
+  async function killSessionById(id) {
+    const result = await safeInvoke("kill_session", { id: id });
+    if (result === undefined && !inTauri) {
+      // Browser dev fallback: try a direct DELETE.
+      try {
+        await fetch("http://127.0.0.1:" + gatewayPort + "/sessions/" + encodeURIComponent(id), { method: "DELETE" });
+      } catch (_e) { /* best-effort */ }
+    }
+    await refreshSessions();
+  }
+
+  async function newSession() {
+    const result = await safeInvoke("new_session");
+    if (result === undefined && !inTauri) {
+      // Browser dev fallback: try a direct POST.
+      try {
+        await fetch("http://127.0.0.1:" + gatewayPort + "/sessions", { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
+      } catch (_e) { /* best-effort */ }
+    }
+    await refreshSessions();
+  }
+
+  refreshBtn.addEventListener("click", function () { void refreshSessions(); });
+  newSessBtn.addEventListener("click", function () { void newSession(); });
+
   // ── Input bar ───────────────────────────────────────────────────────
   function sendPrompt() {
     const text = promptInput.value.trim();
@@ -731,7 +886,7 @@
       }
       if (typeof p.state === "string") {
         setBootState(p.state, p.detail);
-        if (p.state === "ready") connectWs();
+        if (p.state === "ready") { connectWs(); void refreshSessions(); }
       }
     });
   }
@@ -749,6 +904,27 @@
         } catch (_e) { /* best-effort */ }
       } else if (typeof info.token === "string" && info.token) {
         wsToken = info.token;
+      }
+    }
+  }
+
+  // Query the gateway `/status` via the IPC bridge (`get_status` command).
+  // Populates the sidebar with model + version so the user can see what the
+  // sidecar is running. Falls back to a direct fetch in browser dev mode.
+  async function fetchStatus() {
+    let status = await safeInvoke("get_status");
+    if (!status) {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(function () { ctl.abort(); }, 2000);
+        const res = await fetch("http://127.0.0.1:" + gatewayPort + "/status", { cache: "no-store", signal: ctl.signal });
+        clearTimeout(timer);
+        if (res.ok) status = await res.json();
+      } catch (_e) { /* best-effort */ }
+    }
+    if (status && typeof status === "object") {
+      if (typeof status.model === "string") {
+        infoRuntime.textContent = (inTauri ? "tauri · " : "browser · ") + status.model;
       }
     }
   }

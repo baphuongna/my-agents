@@ -12,6 +12,8 @@
  * Source: §12 Channels & Gateway, §13 Observability readiness, §25.6 contract.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { join, extname } from "node:path";
 export { ControlPlane, HandleLruCache } from "./control.js";
 export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
 import { ControlPlane } from "./control.js";
@@ -112,6 +114,10 @@ export interface GatewayOptions {
   /** HTML served at `/` (the dashboard SPA). The host wires @my-agent/web's
    * dashboardHtml() here — gateway stays UI-independent (layering). */
   rootHtml?: string;
+  /** Optional: directory to serve static files from (e.g., dist/web/).
+   * Files are served with appropriate MIME types. Falls back to rootHtml
+   * for `/` if no index.html exists in staticDir. */
+  staticDir?: string;
   /** M8 fix: allow binding to a non-loopback host. The default loopback bind is
    * safe; setting this to true is required (with a logged warning) for any
    * network-facing bind, since the gateway's WS/HTTP surface is unauthenticated. */
@@ -203,6 +209,22 @@ export class Gateway {
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
+  /** Static file directory (optional — Phase 25.2 build pipeline). */
+  private readonly staticDir?: string;
+  /** MIME type map for common static file extensions. */
+  private readonly mimeTypes: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+  };
 
   constructor(opts: GatewayOptions = {}) {
     this.host = opts.host ?? "127.0.0.1";
@@ -218,6 +240,7 @@ export class Gateway {
     }
     this.readiness = opts.readiness ?? new ReadinessRegistry();
     this.rootHtml = opts.rootHtml;
+    this.staticDir = opts.staticDir;
     this.onWsMessage = opts.onWsMessage;
     this.wsToken = opts.wsToken;
     this.control = opts.control ?? new ControlPlane();
@@ -416,6 +439,25 @@ export class Gateway {
       case "/tools": return send(200, this.control.listTools());
       case "/":
       case "/index.html": {
+        // Serve static files from dist/web/ if available
+        if (this.staticDir) {
+          const indexPath = join(this.staticDir, "index.html");
+          if (existsSync(indexPath)) {
+            try {
+              const content = readFileSync(indexPath, "utf-8");
+              res.writeHead(200, {
+                "content-type": "text/html; charset=utf-8",
+                "x-frame-options": "DENY",
+                "x-content-type-options": "nosniff",
+                "content-security-policy": "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
+              });
+              res.end(content);
+              return;
+            } catch {
+              // Fall through to rootHtml
+            }
+          }
+        }
         if (this.rootHtml) {
           // HIGH-3 fix: anti-clickjacking + nosniff headers (§25.2). A full
           // session-cookie + CSRF double-submit lands when the dashboard grows
@@ -556,6 +598,26 @@ export class Gateway {
         // WS connection info (for launcher to get token)
         if (url.pathname === "/ws-info" && this.wsInfo) {
           return send(200, this.wsInfo());
+        }
+        // Serve static files from dist/web/ if available
+        if (this.staticDir && req.method === "GET") {
+          const filePath = join(this.staticDir, url.pathname);
+          // Prevent path traversal
+          if (!filePath.startsWith(this.staticDir)) {
+            return send(403, { error: "forbidden" });
+          }
+          try {
+            if (existsSync(filePath) && statSync(filePath).isFile()) {
+              const content = readFileSync(filePath);
+              const ext = extname(filePath);
+              const contentType = this.mimeTypes[ext] ?? "application/octet-stream";
+              res.writeHead(200, { "content-type": contentType });
+              res.end(content);
+              return;
+            }
+          } catch {
+            // Fall through to 404
+          }
         }
         return send(404, { error: "not found" });
       }

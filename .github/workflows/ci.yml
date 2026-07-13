@@ -42,6 +42,8 @@ jobs:
         run: npm run lint
       - name: Lint deps (invariant #19 — no cross-transport imports)
         run: npm run lint:deps
+      - name: Lint core size (invariant #20 — minimal core)
+        run: npm run lint:core-size
 
       - name: Typecheck
         run: npm run typecheck

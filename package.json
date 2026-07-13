@@ -37,6 +37,7 @@
     "lint": "node scripts/lint.mjs",
     "lint:deps": "node scripts/lint-deps.mjs",
     "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
+    "lint:core-size": "node scripts/lint-core-size.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "node -e \"import('@my-agent/eval').then(h => h.defaultHarness().grade().then(r => console.log(JSON.stringify(r, null, 2))))\"",

@@ -6,9 +6,17 @@
  * agent's tool calls route through OUR §7 permission gate, not theirs); external-
  * agent spawn policy + failure modes.
  *
+ * The stdio transport speaks a minimal JSON-RPC 2.0 framing (one message per
+ * line over the external agent's stdin/stdout):
+ *   → {"jsonrpc":"2.0","method":"task/start","params":{"goal":"..."}}
+ *   ← {"jsonrpc":"2.0","method":"task/progress","params":{"text":"..."}}
+ *   ← {"jsonrpc":"2.0","method":"task/done","params":{"result":"..."}}
+ *
  * Source: §12.2 ACP bridge; MyAgents ACP, harness catalog.
  */
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { nowWallclock } from "@my-agent/core";
 
 export type AcpEventKind = "spawn" | "message" | "tool-request" | "tool-result" | "permission" | "terminated";
@@ -78,6 +86,52 @@ export function relayPermission(opts: {
   return { allow: true };
 }
 
+// ---------------------------------------------------------------------------
+// Stdio transport: JSON-RPC over a child process's stdin/stdout.
+// ---------------------------------------------------------------------------
+
+/** Streamed delegate events produced while a task runs on an external agent. */
+export type AcpDelegateEvent =
+  | { type: "progress"; text: string }
+  | { type: "done"; result: string }
+  | { type: "error"; error: string };
+
+/** A task sent to an external agent via {@link AcpBridge.delegate}. */
+export interface AcpDelegateTask {
+  /** The lineage node id returned by {@link AcpBridge.spawnExternal}. */
+  sessionId: string;
+  /** The goal the external agent should pursue. */
+  goal: string;
+}
+
+/** Per-session state for an external agent connected over stdio. */
+interface ExternalSession {
+  proc: ChildProcess;
+  nodeId: string;
+  command: string;
+  /** Incomplete stdout line buffer (messages are newline-delimited). */
+  stdoutBuf: string;
+  /** Accumulated stderr (used for crash diagnostics). */
+  stderrBuf: string;
+  /** Pending delegate events waiting to be consumed. */
+  queue: AcpDelegateEvent[];
+  /** Wake functions for delegate consumers blocked on the queue. */
+  queueWaiters: Array<() => void>;
+  /** True once a task/done message has been received. */
+  doneReceived: boolean;
+  /** True once the child process has exited (or been killed). */
+  closed: boolean;
+  /** True while a delegate() generator is actively consuming the queue. */
+  taskActive: boolean;
+}
+
+/** A parsed JSON-RPC notification from the external agent. */
+interface AcpWireMessage {
+  jsonrpc?: string;
+  method?: string;
+  params?: Record<string, unknown>;
+}
+
 /** The ACP bridge: tracks lineage + relays events/permissions. */
 export class AcpBridge {
   readonly ledger = new AcpEventLedger();
@@ -87,6 +141,8 @@ export class AcpBridge {
   private readonly pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   /** Default request timeout in ms. */
   readonly requestTimeoutMs: number;
+  /** External stdio sessions keyed by lineage node id. */
+  private readonly sessions = new Map<string, ExternalSession>();
 
   constructor(opts: { requestTimeoutMs?: number } = {}) {
     this.requestTimeoutMs = opts.requestTimeoutMs ?? 60_000;
@@ -154,7 +210,17 @@ export class AcpBridge {
     return node;
   }
 
-  terminate(nodeId: string, status: "terminated" | "failed"): void {
+  /**
+   * Terminate a lineage node. When the node is an external stdio session, the
+   * underlying child process is killed (SIGTERM) and any in-flight delegate is
+   * surfaced an error event. The `status` argument is optional for callers that
+   * only need the external-kill behaviour (e.g. `terminate(sessionId)`).
+   */
+  terminate(nodeId: string, status: "terminated" | "failed" = "terminated"): void {
+    const session = this.sessions.get(nodeId);
+    if (session) {
+      this.killSession(session, "session terminated by caller");
+    }
     const node = this.nodes.get(nodeId);
     if (!node) return;
     node.status = status;
@@ -184,5 +250,264 @@ export class AcpBridge {
 
   get(id: string): LineageNode | undefined {
     return this.nodes.get(id);
+  }
+
+  // -------------------------------------------------------------------------
+  // External-agent stdio transport.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Spawn an external agent as a child process and perform the ACP handshake.
+   * The handshake resolves once the child has actually started (Node emits the
+   * "spawn" event) and the stdin/stdout/stderr pipes are connected. A spawn
+   * failure (missing binary, etc.) rejects and records a `failed` lineage node.
+   *
+   * @returns the new lineage node; its `id` is the sessionId used by
+   *   {@link AcpBridge.delegate} / {@link AcpBridge.terminate}.
+   */
+  async spawnExternal(
+    parentId: string | null,
+    command: string,
+    args: string[] = [],
+    opts: { cwd?: string; env?: Record<string, string> } = {},
+  ): Promise<LineageNode> {
+    const spawnOpts: SpawnOptions = {
+      stdio: ["pipe", "pipe", "pipe"],
+      cwd: opts.cwd,
+      env: opts.env ? { ...process.env, ...opts.env } : undefined,
+    };
+
+    let proc: ChildProcess;
+    try {
+      proc = spawn(command, args, spawnOpts);
+    } catch (err) {
+      throw new Error(`AcpBridge: spawn failed for "${command}": ${(err as Error).message}`);
+    }
+
+    const node = this.spawn(parentId, `external:${command}`);
+    node.status = "spawning";
+
+    const session: ExternalSession = {
+      proc,
+      nodeId: node.id,
+      command,
+      stdoutBuf: "",
+      stderrBuf: "",
+      queue: [],
+      queueWaiters: [],
+      doneReceived: false,
+      closed: false,
+      taskActive: false,
+    };
+
+    // Handshake: resolve on "spawn", reject on the first "error" before spawn.
+    let handshakeSettled = false;
+    const handshake = new Promise<void>((resolve, reject) => {
+      const onSpawn = (): void => {
+        if (handshakeSettled) return;
+        handshakeSettled = true;
+        resolve();
+      };
+      const onHandshakeError = (err: Error): void => {
+        if (handshakeSettled) return;
+        handshakeSettled = true;
+        reject(new Error(`AcpBridge: ACP handshake failed for "${command}": ${err.message}`));
+      };
+      proc.once("spawn", onSpawn);
+      proc.once("error", onHandshakeError);
+    });
+
+    this.sessions.set(node.id, session);
+    this.attachSessionHandlers(session);
+
+    try {
+      await handshake;
+    } catch (err) {
+      this.killSession(session, "handshake failed");
+      node.status = "failed";
+      node.terminatedAt = nowWallclock();
+      this.ledger.append(node.id, "terminated", { status: "failed", error: (err as Error).message });
+      throw err;
+    }
+
+    node.status = "running";
+    return node;
+  }
+
+  /**
+   * Send a task to an external agent and stream its response. Emits
+   * `progress` events as they arrive and a final `done` (success) or `error`
+   * (crash / unexpected exit / caller-terminated) event. One task may be in
+   * flight per session at a time.
+   */
+  async *delegate(task: AcpDelegateTask): AsyncIterable<AcpDelegateEvent> {
+    const session = this.sessions.get(task.sessionId);
+    if (!session) {
+      throw new Error(`AcpBridge: unknown session ${task.sessionId}`);
+    }
+    if (session.taskActive) {
+      throw new Error(`AcpBridge: a task is already in flight for session ${task.sessionId}`);
+    }
+    if (session.closed || session.proc.stdin == null) {
+      throw new Error(`AcpBridge: session ${task.sessionId} is closed`);
+    }
+
+    session.taskActive = true;
+    session.queue.length = 0;
+    session.doneReceived = false;
+
+    const payload =
+      JSON.stringify({ jsonrpc: "2.0", method: "task/start", params: { goal: task.goal } }) + "\n";
+    try {
+      session.proc.stdin.write(payload);
+    } catch (err) {
+      session.taskActive = false;
+      throw new Error(`AcpBridge: failed to send task/start: ${(err as Error).message}`);
+    }
+    this.ledger.append(session.nodeId, "message", { direction: "out", method: "task/start", goal: task.goal });
+
+    try {
+      while (true) {
+        // Drain anything queued.
+        while (session.queue.length > 0) {
+          const ev = session.queue.shift();
+          if (ev === undefined) break;
+          yield ev;
+          if (ev.type === "done" || ev.type === "error") {
+            return;
+          }
+        }
+        if (session.closed) {
+          // Child gone with nothing else queued.
+          yield {
+            type: "error",
+            error: session.stderrBuf.trim() || "external agent closed without task/done",
+          };
+          return;
+        }
+        // Wait for the next event.
+        await new Promise<void>((resolve) => {
+          session.queueWaiters.push(resolve);
+        });
+      }
+    } finally {
+      session.taskActive = false;
+      session.queue.length = 0;
+    }
+  }
+
+  /** True if an external stdio session exists for this node and is tracked. */
+  hasExternalSession(nodeId: string): boolean {
+    return this.sessions.has(nodeId);
+  }
+
+  /** OS pid of the external agent for `nodeId`, or undefined if no session. */
+  sessionPid(nodeId: string): number | undefined {
+    return this.sessions.get(nodeId)?.proc.pid;
+  }
+
+  // -------------------------------------------------------------------------
+  // Internal helpers.
+  // -------------------------------------------------------------------------
+
+  private attachSessionHandlers(session: ExternalSession): void {
+    const { proc } = session;
+
+    proc.stdout?.setEncoding("utf8");
+    proc.stdout?.on("data", (chunk: string) => {
+      session.stdoutBuf += chunk;
+      let nl: number;
+      while ((nl = session.stdoutBuf.indexOf("\n")) >= 0) {
+        const line = session.stdoutBuf.slice(0, nl).trim();
+        session.stdoutBuf = session.stdoutBuf.slice(nl + 1);
+        if (line.length === 0) continue;
+        this.dispatchLine(session, line);
+      }
+    });
+
+    proc.stderr?.setEncoding("utf8");
+    proc.stderr?.on("data", (chunk: string) => {
+      session.stderrBuf += chunk;
+    });
+
+    proc.on("error", (err: Error) => {
+      // Post-handshake runtime error (handshake errors are handled in spawnExternal).
+      if (!session.closed) {
+        session.closed = true;
+        if (session.taskActive && !session.doneReceived) {
+          session.queue.push({ type: "error", error: `external agent error: ${err.message}` });
+        }
+        this.wakeWaiters(session);
+      }
+    });
+
+    proc.once("close", (code: number | null, signal: NodeJS.Signals | null) => {
+      if (session.closed) return;
+      session.closed = true;
+      if (session.taskActive && !session.doneReceived) {
+        const reason = code !== null ? `exit code ${code}` : `signal ${signal ?? "unknown"}`;
+        const detail = session.stderrBuf.trim();
+        session.queue.push({
+          type: "error",
+          error: `external agent closed (${reason})${detail ? `: ${detail}` : ""}`,
+        });
+      }
+      this.wakeWaiters(session);
+    });
+  }
+
+  private dispatchLine(session: ExternalSession, line: string): void {
+    let msg: AcpWireMessage;
+    try {
+      msg = JSON.parse(line) as AcpWireMessage;
+    } catch {
+      this.ledger.append(session.nodeId, "message", { direction: "in", raw: line, parseError: true });
+      return;
+    }
+
+    const params = msg.params ?? {};
+    if (msg.method === "task/progress" && typeof params["text"] === "string") {
+      session.queue.push({ type: "progress", text: params["text"] });
+      this.ledger.append(session.nodeId, "message", { direction: "in", method: "task/progress" });
+      this.wakeWaiters(session);
+    } else if (msg.method === "task/done" && typeof params["result"] === "string") {
+      session.doneReceived = true;
+      session.queue.push({ type: "done", result: params["result"] });
+      this.ledger.append(session.nodeId, "message", { direction: "in", method: "task/done" });
+      this.wakeWaiters(session);
+    } else {
+      this.ledger.append(session.nodeId, "message", {
+        direction: "in",
+        method: msg.method ?? "unknown",
+      });
+    }
+  }
+
+  private wakeWaiters(session: ExternalSession): void {
+    const waiters = session.queueWaiters;
+    session.queueWaiters = [];
+    for (const w of waiters) {
+      try {
+        w();
+      } catch {
+        /* a waiter throwing should not break the others */
+      }
+    }
+  }
+
+  /** Kill the child, remove the session, and unblock any consumer. */
+  private killSession(session: ExternalSession, reason: string): void {
+    if (session.taskActive && !session.doneReceived) {
+      session.queue.push({ type: "error", error: reason });
+    }
+    session.closed = true;
+    session.doneReceived = true;
+    try {
+      if (!session.proc.killed) session.proc.kill("SIGTERM");
+    } catch {
+      /* process may have already exited */
+    }
+    this.sessions.delete(session.nodeId);
+    this.wakeWaiters(session);
   }
 }

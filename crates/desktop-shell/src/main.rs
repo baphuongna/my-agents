@@ -205,6 +205,115 @@ fn probe_ready(port: u16) -> bool {
     })
 }
 
+/// Issue a blocking HTTP/1.0 request to the loopback gateway and return the
+/// status code + body. Used by the IPC bridge commands (`get_status`,
+/// `new_session`, `kill_session`) to proxy renderer requests through to the
+/// `mya serve` sidecar without exposing raw network access to the webview.
+///
+/// Like `probe_ready`, this is deliberately `std::net`-only — no `reqwest`/
+/// `ureq` dep explosion for what is loopback JSON plumbing.
+fn gateway_request(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> Result<(u16, String), String> {
+    let addr = format!("127.0.0.1:{port}")
+        .to_socket_addrs()
+        .map_err(|e| e.to_string())?
+        .next()
+        .ok_or_else(|| "no addr resolved for 127.0.0.1".to_string())?;
+    let mut stream =
+        TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|e| e.to_string())?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    let mut request = format!(
+        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n"
+    );
+    if let Some(b) = body {
+        request.push_str(&format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\n",
+            b.len()
+        ));
+    }
+    request.push_str("\r\n");
+    if let Some(b) = body {
+        request.push_str(b);
+    }
+    stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    let response = String::from_utf8_lossy(&buf).into_owned();
+    let status_line = response.lines().next().ok_or_else(|| "empty response".to_string())?;
+    let code = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<u16>().ok())
+        .ok_or_else(|| format!("bad status line: {status_line}"))?;
+    // Body is everything after the blank line separating headers from body.
+    let resp_body = response
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    Ok((code, resp_body))
+}
+
+/// Validate a session ID before interpolating it into a gateway path. Session
+/// IDs are system-generated (UUID-shaped); rejecting anything outside that
+/// charset is defence-in-depth against a renderer compromise injecting path
+/// traversal or CRLF into the HTTP request line.
+fn is_safe_session_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Proxy `GET /status` from the gateway. Returns the parsed JSON so the
+/// renderer can display model/uptime/channels without its own HTTP access.
+#[tauri::command]
+fn get_status(state: tauri::State<'_, GatewayInfo>) -> Result<serde_json::Value, String> {
+    let (code, body) = gateway_request(state.port, "GET", "/status", None)?;
+    if !(200..=299).contains(&code) {
+        return Err(format!("gateway /status returned {code}: {body}"));
+    }
+    serde_json::from_str::<serde_json::Value>(&body)
+        .map_err(|e| format!("invalid JSON from /status: {e}"))
+}
+
+/// Create a new session via the gateway control-plane. Proxies `POST /sessions`
+/// — the gateway may not implement this yet (returns 404/405), in which case
+/// the error surfaces to the renderer. The bridge is wired and forward-
+/// compatible: once the gateway adds the handler this works with no shell
+/// change.
+#[tauri::command]
+fn new_session(state: tauri::State<'_, GatewayInfo>) -> Result<serde_json::Value, String> {
+    let (code, body) = gateway_request(state.port, "POST", "/sessions", Some("{}"))?;
+    if !(200..=299).contains(&code) {
+        return Err(format!("gateway POST /sessions returned {code}: {body}"));
+    }
+    serde_json::from_str::<serde_json::Value>(&body)
+        .map_err(|e| format!("invalid JSON from POST /sessions: {e}"))
+}
+
+/// Kill a session by ID via the gateway control-plane. Proxies
+/// `DELETE /sessions/:id`. The session ID is validated (`is_safe_session_id`)
+/// before interpolation into the request path.
+#[tauri::command]
+fn kill_session(state: tauri::State<'_, GatewayInfo>, id: String) -> Result<serde_json::Value, String> {
+    if !is_safe_session_id(&id) {
+        return Err(format!("unsafe session id: {id}"));
+    }
+    let path = format!("/sessions/{id}");
+    let (code, body) = gateway_request(state.port, "DELETE", &path, None)?;
+    if !(200..=299).contains(&code) {
+        return Err(format!("gateway DELETE {path} returned {code}: {body}"));
+    }
+    serde_json::from_str::<serde_json::Value>(&body)
+        .map_err(|e| format!("invalid JSON from DELETE /sessions/:id: {e}"))
+}
+
 /// Block until `probe_ready` returns true or the timeout elapses. Runs on a
 /// dedicated OS thread (NOT in Tauri's async runtime) so a slow loopback
 /// probe can't stall the setup of other plugins or the renderer.
@@ -263,7 +372,7 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .manage(pending.clone())
         .manage(GatewayInfo { port: sidecar_port, ws_token: std::env::var("MYA_WS_TOKEN").unwrap_or_default() })
-        .invoke_handler(tauri::generate_handler![deep_link_validate, deep_link_take_pending, gateway_info])
+        .invoke_handler(tauri::generate_handler![deep_link_validate, deep_link_take_pending, gateway_info, get_status, new_session, kill_session])
         .setup(move |app| {
             // ── 1. Spawn the `mya serve` sidecar ─────────────────────────
             match spawn_sidecar(sidecar_port) {
