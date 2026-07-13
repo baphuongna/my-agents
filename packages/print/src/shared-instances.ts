@@ -87,7 +87,7 @@ function detectCouncilMembers(): CouncilMember[] | undefined {
     const apiKey = process.env[cfg.envKey];
     if (!apiKey) continue;
     try {
-      const mod = requireFn(`../../vendored/pi-ai/dist/providers/${cfg.providerId}.js`);
+      const mod = requireFn(`../../../vendored/pi-ai/dist/providers/${cfg.providerId}.js`);
       const factory = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
       if (typeof factory !== "function") continue;
       // pi-ai provider factories return a Provider object (envApiKeyAuth reads

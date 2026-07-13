@@ -55,6 +55,8 @@ export interface DreamCycleOptions {
   intervalMs?: number;
   /** LLM provider for richer consolidation (optional; absent → zero-LLM digest). */
   provider?: ProviderProfile;
+  /** Idle check: cycle only runs when this returns true (default: always idle). */
+  isIdle?: () => boolean;
 }
 
 /** Default cycle interval: 30 minutes. */
@@ -78,12 +80,14 @@ export class DreamCycle {
   private readonly intervalMs: number;
   private readonly provider?: ProviderProfile;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private isIdle: () => boolean;
 
   constructor(opts: DreamCycleOptions) {
     this.brain = opts.brain;
     this.skillCurator = opts.skillCurator;
     this.intervalMs = opts.intervalMs ?? DEFAULT_DREAM_INTERVAL_MS;
     this.provider = opts.provider;
+    this.isIdle = opts.isIdle ?? (() => true);
   }
 
   /** Whether the periodic timer is currently armed. */
@@ -95,6 +99,8 @@ export class DreamCycle {
   start(): void {
     if (this.timer !== null) return;
     this.timer = setInterval(() => {
+      // Skip if agent is active (idle check prevents competing for LLM tokens).
+      if (!this.isIdle()) return;
       // Fire-and-forget; periodic cycles must never reject the timer.
       void this.dream().catch(() => {
         /* swallow — next tick retries */
@@ -172,10 +178,15 @@ export class DreamCycle {
       context: `Consolidate these ${recent.length} memory entries:\n${corpus}`,
       volatile: "",
     };
-    const { events } = await this.provider!.stream(prompt, makeStubHistory());
-    const text = collectText(events);
-    // If the provider emitted no text, fall back to the deterministic digest.
-    return text.trim().length > 0 ? text : this.basicSummarize(recent);
+    try {
+      const { events } = await this.provider!.stream(prompt, makeStubHistory());
+      const text = collectText(events);
+      // If the provider emitted no text, fall back to the deterministic digest.
+      return text.trim().length > 0 ? text : this.basicSummarize(recent);
+    } catch {
+      // Provider error (network, auth, timeout) → fall back to deterministic digest.
+      return this.basicSummarize(recent);
+    }
   }
 
   /** Zero-LLM basic consolidation: a deterministic digest of recent facts. */

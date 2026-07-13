@@ -39,7 +39,7 @@ import {
   runToolBatch,
   type ToolImpl,
 } from "@my-agent/tools";
-import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter } from "@my-agent/memory";
+import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter, DreamCycle } from "@my-agent/memory";
 import { scan as scanContent } from "@my-agent/prompts";
 import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
 import { SkillStore } from "@my-agent/skills";
@@ -232,6 +232,14 @@ export function createAgent(config: AgentConfig = {}): Agent {
 
   // §8 Brain (facts/takes/pages + dream-cycle phases).
   const brain = new Brain();
+  // DreamCycle: periodic offline consolidation (30min when idle).
+  let activeTurns = 0;
+  const dreamCycle = new DreamCycle({
+    brain,
+    provider: providers.all()[0],
+    isIdle: () => activeTurns === 0,
+  });
+  dreamCycle.start();
   // Phase 31: skill store (for /skill-selector + /skills).
   // Use shared store from config if provided (enables cross-agent skill sharing).
   const skillStore = config.skillStore ?? new SkillStore();
@@ -641,8 +649,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
   }
 
   return {
-    prompt: (text, opts) => runOnce(text, opts?.signal),
-    run: (text, sink, opts) => runLive(text, sink, opts?.signal),
+    prompt: (text, opts) => { activeTurns++; return runOnce(text, opts?.signal).finally(() => activeTurns--); },
+    run: (text, sink, opts) => { activeTurns++; return runLive(text, sink, opts?.signal).finally(() => activeTurns--); },
     providers,
     memory,
     brain,
