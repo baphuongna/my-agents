@@ -357,7 +357,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
               : job.lastStatus === "failed" ? A.red("✗")
               : A.yellow("?")
               : A.dim2("-");
-            lines.push(`  ${icon}  ${job.name.padEnd(20)}  ${A.dim2(sched)}  ${A.dim2(job.trigger)}  ${lastStatus} ${A.dim2(fmt(job.lastRunAt))}`);
+            lines.push(`  ${icon}  ${job.name.padEnd(20)}  ${A.dim2(sched)}  ${A.dim2(job.trigger)}  ${lastStatus} ${A.dim2(fmt(job.lastRunAt ?? 0))}`);
             if (job.prompt) lines.push(`      ${A.dim2("\"" + job.prompt.slice(0, 60) + (job.prompt.length > 60 ? "..." : "") + "\"")}`);
           }
         }

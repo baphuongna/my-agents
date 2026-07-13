@@ -288,7 +288,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         id: job.id,
         name: job.name,
         trigger: job.trigger,
-        schedule: job.schedule,
+        schedule: String(job.schedule),
         prompt: job.prompt,
         deliveryTarget: job.deliveryTarget,
         enabled: job.enabled,
