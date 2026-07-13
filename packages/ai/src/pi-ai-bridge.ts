@@ -1,17 +1,10 @@
 /**
  * pi-ai Provider bridge — wraps pi-ai's 30+ providers into ProviderProfile.
  *
- * pi-ai (vendored) provides 37+ provider adapters (Anthropic, OpenAI, Google,
- * Bedrock, Mistral, DeepSeek, Groq, Together, xAI, etc.). This bridge wraps
- * any pi-ai Provider into mya's ProviderProfile interface, converting:
+ * pi-ai event protocol (real, from vendored/pi-ai/dist/types.d.ts):
+ *   start → text_start → text_delta* → text_end → toolcall_* → done/error
  *
- *   SystemPrompt (stable+context+volatile) → pi-ai systemPrompt string
- *   History entries → pi-ai Message[]
- *   pi-ai AssistantMessageEventStream → mya StreamEvent[]
- *
- * Usage:
- *   const provider = new PiAiProviderBridge(piAiProvider, piAiModel);
- *   providers.register(provider);
+ * This bridge consumes the actual event types and converts them to mya StreamEvent.
  */
 import type {
   ComponentHealth,
@@ -21,42 +14,55 @@ import type {
   SystemPrompt,
 } from "@my-agent/core";
 
-// ── pi-ai type shims (avoid importing the full pi-ai runtime) ──
+// ── Real pi-ai event types (from vendored/pi-ai/dist/types.d.ts) ──
 
-interface PiAiModel {
+interface PiAiToolCall {
+  type: "toolCall";
   id: string;
-  api?: string;
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
-interface PiAiMessage {
-  role: "user" | "assistant" | "system" | "tool";
-  content: string | Array<{ type: string; text?: string }>;
+interface PiAiContent {
+  type: "text" | "thinking" | "toolCall";
+  text?: string;
+  id?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
 }
 
-interface PiAiContext {
-  systemPrompt?: string;
-  messages: PiAiMessage[];
-  tools?: unknown[];
+interface PiAiUsage {
+  input: number;
+  output: number;
+  cacheRead?: number;
 }
 
 interface PiAiAssistantMessage {
-  content?: Array<{ type: string; text?: string }>;
-  toolCalls?: Array<{ id: string; name: string; input: unknown }>;
-  usage?: { input?: number; output?: number };
+  content: PiAiContent[];
+  usage: PiAiUsage;
   stopReason?: string;
 }
 
 interface PiAiEvent {
-  type: "start" | "partial" | "done" | "error";
+  type: "start" | "text_start" | "text_delta" | "text_end" | "thinking_start" | "thinking_delta" | "thinking_end" | "toolcall_start" | "toolcall_delta" | "toolcall_end" | "done" | "error";
+  delta?: string;
+  content?: string;
+  toolCall?: PiAiToolCall;
   partial?: PiAiAssistantMessage;
   message?: PiAiAssistantMessage;
+  reason?: string;
+}
+
+interface PiAiContext {
+  systemPrompt?: string;
+  messages: Array<{ role: string; content: string | PiAiContent[] }>;
+  tools?: unknown[];
 }
 
 interface PiAiProviderLike {
   readonly id: string;
-  readonly name: string;
   streamSimple(
-    model: PiAiModel,
+    model: { id: string; api?: string },
     context: PiAiContext,
     options?: { apiKey?: string; signal?: AbortSignal },
   ): AsyncIterable<PiAiEvent>;
@@ -66,128 +72,140 @@ interface PiAiAuth {
   apiKey?: { resolve(): string | undefined };
 }
 
-interface PiAiProviderWithAuth extends PiAiProviderLike {
-  readonly auth?: PiAiAuth;
-}
-
 export interface PiAiProviderBridgeOptions {
-  provider: PiAiProviderWithAuth;
-  model: PiAiModel;
-  /** Override the resolved API key (else uses provider.auth.apiKey.resolve()). */
+  provider: PiAiProviderLike & { auth?: PiAiAuth };
+  model: { id: string; api?: string };
   apiKey?: string;
-  /** Profile ID (defaults to `${provider.id}:${model.id}`). */
   id?: string;
 }
 
 export class PiAiProviderBridge implements ProviderProfile {
   readonly id: string;
   readonly model: string;
-  private provider: PiAiProviderWithAuth;
-  private piAiModel: PiAiModel;
-  private apiKey: string;
+  private provider: PiAiProviderBridgeOptions["provider"];
+  private piAiModel: { id: string; api?: string };
+  private _apiKey: string;
 
   constructor(opts: PiAiProviderBridgeOptions) {
     this.provider = opts.provider;
     this.piAiModel = opts.model;
     this.model = opts.model.id;
     this.id = opts.id ?? `${opts.provider.id}:${opts.model.id}`;
-    this.apiKey = opts.apiKey ?? opts.provider.auth?.apiKey?.resolve() ?? "";
+    this._apiKey = opts.apiKey ?? opts.provider.auth?.apiKey?.resolve() ?? "";
+  }
+
+  private get apiKey(): string {
+    // Lazy resolution for credential rotation (OAuth refresh).
+    return this._apiKey || this.provider.auth?.apiKey?.resolve() || "";
   }
 
   health(): ComponentHealth {
-    // If we have an API key, consider healthy. Let stream() surface failures.
     return this.apiKey ? "Healthy" : "Degraded";
   }
 
   async stream(
     prompt: SystemPrompt,
     history: History,
-    _opts?: { tools?: readonly unknown[] },
+    opts?: { tools?: readonly unknown[] },
   ): Promise<{ events: StreamEvent[] }> {
-    // ── Convert SystemPrompt → systemPrompt string ──
     const systemPrompt = [prompt.stable, prompt.context, prompt.volatile]
       .filter(Boolean)
       .join("\n\n");
 
-    // ── Convert History → pi-ai messages ──
-    const messages: PiAiMessage[] = [];
-    for (const entry of history.entries()) {
-      const msg = convertHistoryEntry(entry);
-      if (msg) messages.push(msg);
-    }
+    const messages = convertHistory(history);
+    const context: PiAiContext = { systemPrompt, messages };
 
-    // If no history entries, include the system prompt as context
-    const context: PiAiContext = {
-      systemPrompt,
-      messages,
-    };
-
-    // ── Stream from pi-ai provider ──
     const events: StreamEvent[] = [];
-    let accumulatedText = "";
-    let usage: { input?: number; output?: number } | undefined;
+    let usage: PiAiUsage | undefined;
 
     try {
-      const stream = this.provider.streamSimple(
-        this.piAiModel,
-        context,
-        { apiKey: this.apiKey },
-      );
+      const stream = this.provider.streamSimple(this.piAiModel, context, {
+        apiKey: this.apiKey,
+      });
 
       for await (const event of stream) {
-        if (event.type === "partial" || event.type === "done") {
-          const msg = event.partial ?? event.message;
-          if (msg?.content) {
-            // Extract text from content blocks
-            const text = extractText(msg.content);
-            if (text && text !== accumulatedText) {
-              // pi-ai sends accumulated text per event → emit the delta
-              const delta = text.slice(accumulatedText.length);
-              if (delta) {
-                events.push({ kind: "text", text: delta });
-                accumulatedText = text;
+        switch (event.type) {
+          case "text_delta":
+            // Incremental text — emit the delta directly.
+            if (event.delta) events.push({ kind: "text", text: event.delta });
+            break;
+
+          case "text_end":
+            // Some providers don't send text_delta — fall back to full content.
+            if (event.content && events.filter((e) => e.kind === "text").length === 0) {
+              events.push({ kind: "text", text: event.content });
+            }
+            break;
+
+          case "toolcall_end":
+            // Tool call completed — emit as tool_calls event.
+            if (event.toolCall) {
+              events.push({
+                kind: "tool_calls",
+                calls: [{
+                  id: event.toolCall.id,
+                  name: event.toolCall.name,
+                  args: event.toolCall.arguments,
+                }],
+              });
+            }
+            break;
+
+          case "done": {
+            // Terminal event — collect usage + finish reason.
+            const msg = event.message;
+            usage = msg?.usage;
+
+            // Also check content for any tool calls we might have missed.
+            if (msg?.content) {
+              for (const c of msg.content) {
+                if (c.type === "toolCall" && c.id && c.name) {
+                  // Only add if not already emitted
+                  const already = events.some(
+                    (e) => e.kind === "tool_calls" && e.calls.some((tc) => tc.id === c.id),
+                  );
+                  if (!already) {
+                    events.push({
+                      kind: "tool_calls",
+                      calls: [{ id: c.id, name: c.name, args: c.arguments ?? {} }],
+                    });
+                  }
+                }
               }
             }
-          }
-          // Collect tool calls
-          if (msg?.toolCalls && msg.toolCalls.length > 0) {
+
+            const finishMap: Record<string, "stop" | "length" | "tool"> = {
+              stop: "stop",
+              length: "length",
+              toolUse: "tool",
+            };
             events.push({
-              kind: "tool_calls",
-              calls: msg.toolCalls.map((tc) => ({
-                id: tc.id,
-                name: tc.name,
-                args: tc.input,
-              })),
+              kind: "done",
+              usage: {
+                input: usage?.input ?? 0,
+                output: usage?.output ?? 0,
+                ...(usage?.cacheRead ? { cacheRead: usage.cacheRead } : {}),
+              },
+              finish: finishMap[event.reason ?? "stop"] ?? "stop",
             });
+            break;
           }
-          if (msg?.usage) usage = msg.usage;
-        }
 
-        if (event.type === "done") {
-          events.push({
-            kind: "done",
-            usage: {
-              input: usage?.input ?? 0,
-              output: usage?.output ?? 0,
-            },
-            finish: "stop",
-          });
-        }
-
-        if (event.type === "error") {
-          events.push({
-            kind: "error",
-            error: {
-              phase: "provider",
-              recoverable: true,
-              retries: 0,
-              context: { detail: "pi-ai provider stream error" },
-            },
-          });
+          case "error":
+            events.push({
+              kind: "error",
+              error: {
+                phase: "provider",
+                recoverable: true,
+                retries: 0,
+                context: { detail: "pi-ai provider stream error" },
+              },
+            });
+            break;
         }
       }
 
-      // If no "done" event was emitted, synthesize one
+      // Synthesize done if missing
       if (!events.some((e) => e.kind === "done" || e.kind === "error")) {
         events.push({
           kind: "done",
@@ -199,51 +217,42 @@ export class PiAiProviderBridge implements ProviderProfile {
       return { events };
     } catch (e) {
       return {
-        events: [
-          {
-            kind: "error",
-            error: {
-              phase: "provider" as const,
-              recoverable: true,
-              retries: 0,
-              context: { detail: e instanceof Error ? e.message : String(e) },
-            },
+        events: [{
+          kind: "error",
+          error: {
+            phase: "provider" as const,
+            recoverable: true,
+            retries: 0,
+            context: { detail: e instanceof Error ? e.message : String(e) },
           },
-        ],
+        }],
       };
     }
   }
 }
 
-// ── Helpers ──
+// ── History conversion ──
 
-function convertHistoryEntry(entry: unknown): PiAiMessage | null {
+function convertHistory(history: History): PiAiContext["messages"] {
+  const msgs: PiAiContext["messages"] = [];
+  for (const entry of history.entries()) {
+    const msg = convertHistoryEntry(entry);
+    if (msg) msgs.push(msg);
+  }
+  return msgs;
+}
+
+function convertHistoryEntry(entry: unknown): PiAiContext["messages"][number] | null {
   if (typeof entry !== "object" || entry === null) return null;
   const e = entry as { role?: string; content?: unknown };
 
-  const role = e.role === "assistant" ? "assistant" : e.role === "tool" ? "tool" : "user";
-
-  if (typeof e.content === "string") {
-    return { role, content: e.content };
-  }
-
+  const role = e.role === "assistant" ? "assistant" : "user";
+  if (typeof e.content === "string") return { role, content: e.content };
   if (Array.isArray(e.content)) {
     const text = e.content
       .map((c: { text?: string }) => (typeof c?.text === "string" ? c.text : ""))
       .join("");
     if (text) return { role, content: text };
   }
-
   return null;
-}
-
-function extractText(content: string | Array<{ type: string; text?: string }>): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
-      .join("");
-  }
-  return "";
 }

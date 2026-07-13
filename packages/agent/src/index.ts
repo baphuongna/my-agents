@@ -55,6 +55,7 @@ import { PackageHost } from "@my-agent/pkg";
 import { speak } from "@my-agent/tts";
 import type { ToolHookSink } from "@my-agent/core";
 import { PiAiProviderBridge } from "@my-agent/ai";
+import { createRequire } from "node:module";
 
 export interface AgentConfig {
   /** Explicit provider list. If absent: OpenAI (if key) + mock fallback. */
@@ -740,9 +741,9 @@ function autoDetectPiAiProviders(
   tryResolve: (ref: string) => string | undefined,
 ): PiAiProviderBridge[] {
   const bridges: PiAiProviderBridge[] = [];
-  // Synchronous require in ESM via createRequire.
+  // Synchronous require in ESM via createRequire (static import for Node compat).
   let requireFn: NodeRequire;
-  try { requireFn = require("module").createRequire(import.meta.url); }
+  try { requireFn = createRequire(import.meta.url); }
   catch { return bridges; }
   for (const cfg of PI_AI_PROVIDERS) {
     const apiKey = tryResolve(cfg.envKey);
