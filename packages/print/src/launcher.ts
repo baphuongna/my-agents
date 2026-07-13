@@ -231,7 +231,7 @@ function showLauncher(sessions: Sess[], gw: boolean): Promise<Choice | undefined
         // Kill gateway session via HTTP
         const target = sessions[sel];
         if (target?.id) {
-          try { await fetch(`http://127.0.0.1:${GW_PORT}/pool/kill/${target.id}`, { method: "POST", signal: AbortSignal.timeout(1000) }); } catch { /* */ }
+          try { void fetch(`http://127.0.0.1:${GW_PORT}/pool/kill/${target.id}`, { method: "POST", signal: AbortSignal.timeout(1000) }); } catch { /* */ }
         }
         sessions.splice(sel, 1);
         sel = Math.min(sel, sessions.length - 1);
