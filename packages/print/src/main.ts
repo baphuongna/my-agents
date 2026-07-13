@@ -281,7 +281,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     return result?.output ?? null;
   };
 
-  // Sync cron jobs from scheduler to control plane.
+  // Sync cron jobs from scheduler to control plane. Called after `gw` is created.
   function syncCronJobs() {
     for (const job of cron.listJobs()) {
       gw.control.registerCronJob({
@@ -295,9 +295,6 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       });
     }
   }
-  syncCronJobs();
-  // Periodic re-sync (e.g. when jobs are added/updated via CLI at runtime)
-  setInterval(syncCronJobs, 5000).unref?.();
 
   // Load cron jobs from ~/.mya/agent/cron.json (if exists)
   try {
@@ -364,6 +361,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     },
   });
   const { port: actualPort } = await gw.start();
+
+  // Now gw is created — sync cron jobs to control plane + start periodic sync.
+  syncCronJobs();
+  setInterval(syncCronJobs, 5000).unref?.();
+
   process.stderr.write(`mya gateway: http://localhost:${actualPort} (AgentPool: ${pool.size} sessions)\n`);
 }
 

@@ -21,6 +21,7 @@ const A = {
   red: (s: string) => `\x1b[38;2;201;79;79m${s}\x1b[39m`,
   yellow: (s: string) => `\x1b[38;2;210;153;34m${s}\x1b[39m`,
   muted: (s: string) => `\x1b[38;2;130;130;140m${s}\x1b[39m`,
+  dim2: (s: string) => `\x1b[38;2;100;100;110m${s}\x1b[39m`,
   accent: (s: string) => `\x1b[38;2;138;190;183m${s}\x1b[39m`,
 };
 

@@ -59,7 +59,7 @@ describe("§12 ControlPlane — registry", () => {
 
   it("registers + lists cron jobs", () => {
     const cp = new ControlPlane();
-    cp.registerCronJob({ id: "nightly", schedule: "0 0 * * *", enabled: true });
+    cp.registerCronJob({ id: "nightly", name: "Nightly", trigger: "cron", schedule: "0 0 * * *", prompt: "", deliveryTarget: "_cron", enabled: true });
     expect(cp.listCronJobs().length).toBe(1);
   });
 
@@ -75,7 +75,7 @@ describe("§12 gateway REST control-plane routes", () => {
   const gw = new Gateway({ host: "127.0.0.1", port: 0 });
   beforeAll(async () => {
     gw.control.registerSession("s1");
-    gw.control.registerCronJob({ id: "j1", schedule: "*/5 * * * *", enabled: true });
+    gw.control.registerCronJob({ id: "j1", name: "J1", trigger: "cron", schedule: "*/5 * * * *", prompt: "", deliveryTarget: "_cron", enabled: true });
     const started = await gw.start();
     port = started.port;
   });
