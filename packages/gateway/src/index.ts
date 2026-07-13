@@ -150,6 +150,8 @@ export interface GatewayOptions {
   poolAcquire?: (cwd: string) => string | Promise<string>;
   /** Optional: trigger an immediate run of a cron job. */
   cronRunNow?: (jobId: string) => void | Promise<void>;
+  /** Optional: remove a job from the underlying cron scheduler. */
+  cronRemove?: (jobId: string) => boolean;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
 }
@@ -193,6 +195,7 @@ export class Gateway {
   /** Optional pool acquire callback. */
   private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
+  private readonly cronRemove?: (jobId: string) => boolean;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
@@ -234,6 +237,7 @@ export class Gateway {
     this.poolKill = opts.poolKill;
     this.poolAcquire = opts.poolAcquire;
     this.cronRunNow = opts.cronRunNow;
+    this.cronRemove = opts.cronRemove;
     this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
@@ -502,6 +506,9 @@ export class Gateway {
         }
         const cronDelMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)$/);
         if (cronDelMatch && req.method === "DELETE") {
+          // Remove from underlying scheduler first (so it doesn't get re-synced)
+          if (this.cronRemove) this.cronRemove(cronDelMatch[1]!);
+          // Then remove from control plane
           const ok = this.control.removeCronJob(cronDelMatch[1]!);
           return send(ok ? 200 : 404, { ok });
         }

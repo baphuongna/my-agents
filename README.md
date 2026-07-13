@@ -1,6 +1,6 @@
 # mya
 
-A **unified coding/autonomous agent** — TypeScript core + Rust napi engine. Built from a [25-section SPEC](source/.learned/AGENT-SPEC.md) synthesized from 16 reference projects, reviewed across 44 rounds. 29 packages, 223 tests.
+A **unified coding/autonomous agent** — TypeScript core + Rust napi engine. Built from a [25-section SPEC](source/.learned/AGENT-SPEC.md) synthesized from 16 reference projects, reviewed across 44 rounds. 32 packages, 308 tests.
 
 > **Status:** All major SPEC subsystems built + tested. Runs end-to-end with real LLM providers (MiniMax-M3 / OpenAI — verified). Installable via npm.
 
@@ -68,7 +68,7 @@ npm install              # TypeScript 7 + workspace packages
 npm run build            # tsc -b (all packages)
 npm run bundle           # esbuild → dist/mya.js (single-file bundle)
 npm run typecheck        # tsc --noEmit
-npm test                 # vitest (223 tests)
+npm test                 # vitest (308 tests)
 npm run lint             # invariant #10 guard (no Date.now outside core.time)
 npm run lint:deps        # invariant #19 guard (no cross-transport imports)
 npm run lint:rust        # clippy clean (Rust natives)
@@ -120,7 +120,7 @@ my-agent/
 > **Note on sub-systems vs packages:** `subagents`, `codeexec`, and `codenav`
 > are capabilities that live *inside* existing packages (`agent`, `tools`),
 > not separate packages. Likewise `channels`/MCP live in `gateway` and the
-> `lsp` client lives in `tools`. The 29 packages above are the real workspace
+> `lsp` client lives in `tools`. The 32 packages above are the real workspace
 > members.
 
 ## Package reference
@@ -152,7 +152,7 @@ my-agent/
 | `tts` | §25 | speak(): text-to-speech abstraction + platform detection (say/espeak/no-op) |
 | `print` | §20 | print transport: `--json` (one RuntimeEvent/line) or human transcript |
 | `rpc` | §20 | stdio JSON-RPC 2.0 transport (prompt/cancel/status/heartbeat + streaming notifications) |
-| `tui` | §20 | interactive TUI: pi InteractiveMode + mya bridge (all 17 slash commands) |
+| `tui` | §20 | interactive TUI: pi InteractiveMode + mya bridge (all 18 slash commands) |
 | `web` | §25 | HTTP + WS gateway dashboard SPA (live RuntimeEvent stream) |
 | `desktop` | §25.3 | desktop shell contracts: deep-link (`myagent://`) + IPC + sidecar lifecycle (Tauri) |
 | `natives` | §18 | TS bridge to Rust napi engine (BLAKE3 hash, glob, grep) + pure-JS fallback |
@@ -183,7 +183,7 @@ my-agent/
 
 ## Slash commands
 
-In the interactive TUI, mya exposes 17 slash commands that surface every package:
+In the interactive TUI, mya exposes 18 slash commands that surface every package:
 
 | Command | Description |
 |---|---|
@@ -203,6 +203,7 @@ In the interactive TUI, mya exposes 17 slash commands that surface every package
 | `/skills` | Show skill-store status (loaded from `~/.mya/skills/`) |
 | `/secrets` | Show secret-store status (registered secret count) |
 | `/eval` | Run eval unit-tier parity tests |
+| `/channel` | Manage messaging channels (list/setup/config/send/health) |
 | `/mya-help` | List all mya bridge commands |
 
 ## Design

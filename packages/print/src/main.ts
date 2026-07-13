@@ -18,10 +18,11 @@ import { createAgent, AgentPool, PiSessionPool, type PiAgentSession } from "@my-
 import { nowWallclock } from "@my-agent/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
 import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, channelRouter, channels } from "./shared-instances.js";
+import { SessionPromptQueue } from "./session-queue.js";
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {
@@ -234,20 +235,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     },
   });
 
-  /** Run a prompt on a pi session, collect streaming text for response. */
   /** Per-session prompt queue: serializes prompts to the same session. */
-  const sessionQueues = new Map<string, Promise<string>>();
+  const promptQueue = new SessionPromptQueue();
 
-  async function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
-    // Serialize per-session: chain this prompt after the previous one.
-    const prev = sessionQueues.get(sessionId) ?? Promise.resolve("");
-    const next = prev.catch(() => "").then(() => doRunOnSession(sessionId, prompt, onEvent));
-    sessionQueues.set(sessionId, next);
-    // Clean up queue when empty
-    next.finally(() => {
-      if (sessionQueues.get(sessionId) === next) sessionQueues.delete(sessionId);
-    });
-    return next;
+  /** Run a prompt on a pi session, collect streaming text for response. */
+  function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
+    return promptQueue.run(sessionId, () => doRunOnSession(sessionId, prompt, onEvent));
   }
 
   async function doRunOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
@@ -308,8 +301,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     return result?.output ?? null;
   };
 
-  // Sync cron jobs from scheduler to control plane. Called after `gw` is created.
+  // Sync cron jobs from scheduler to control plane (2-way: add new, remove deleted).
+  // Called after `gw` is created.
   function syncCronJobs() {
+    const inScheduler = new Set(cron.listJobs().map((j) => j.id));
+    // Add or update jobs that exist in the scheduler
     for (const job of cron.listJobs()) {
       gw.control.registerCronJob({
         id: job.id,
@@ -320,6 +316,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         deliveryTarget: job.deliveryTarget,
         enabled: job.enabled,
       });
+    }
+    // Remove jobs that no longer exist in the scheduler (were deleted via CLI / API)
+    for (const existing of gw.control.listCronJobs()) {
+      if (!inScheduler.has(existing.id)) {
+        gw.control.removeCronJob(existing.id);
+      }
     }
   }
 
@@ -376,6 +378,24 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       } catch (e) {
         cron.complete(run.runId, "failed", (e as Error).message);
       }
+    },
+    cronRemove: (jobId: string) => {
+      // Remove from underlying CronScheduler
+      const job = cron.getJob(jobId);
+      if (!job) return false;
+      // CronScheduler exposes `jobs` as private; access via cast for removal.
+      const sched = cron as unknown as { jobs?: Map<string, unknown> };
+      if (sched.jobs) sched.jobs.delete(jobId);
+      // Patch cron.json
+      const cronFile = join(homedir(), ".mya", "agent", "cron.json");
+      if (existsSync(cronFile)) {
+        try {
+          const arr = JSON.parse(readFileSync(cronFile, "utf-8")) as Array<{ id: string }>;
+          const filtered = arr.filter((j) => j.id !== jobId);
+          writeFileSync(cronFile, JSON.stringify(filtered, null, 2));
+        } catch { /* ignore */ }
+      }
+      return true;
     },
     wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {
