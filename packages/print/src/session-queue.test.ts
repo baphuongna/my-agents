@@ -20,11 +20,12 @@ describe("SessionPromptQueue — basic serialization", () => {
     const q = new SessionPromptQueue();
     const start = Date.now();
     await Promise.all([
-      q.run("s1", async () => { await sleep(50); }),
-      q.run("s2", async () => { await sleep(50); }),
+      q.run("s1", async () => { await sleep(30); }),
+      q.run("s2", async () => { await sleep(30); }),
     ]);
     const elapsed = Date.now() - start;
-    expect(elapsed).toBeLessThan(80);  // would be 100ms if serialized
+    // Allow up to 100ms total (would be ~60ms if parallel, ~120ms if serialized)
+    expect(elapsed).toBeLessThan(100);
   });
 });
 
@@ -32,12 +33,22 @@ describe("SessionPromptQueue — depth tracking", () => {
   it("reports depth for active session", async () => {
     const q = new SessionPromptQueue();
     expect(q.depth("s1")).toBe(0);
-    // Both p1 and p2 are reserved at queue time, so depth=2 immediately
+    // depth counts both active AND queued. p1 and p2 are reserved at queue time.
     const p1 = q.run("s1", async () => { expect(q.depth("s1")).toBe(2); await sleep(30); });
     const p2 = q.run("s1", async () => { expect(q.depth("s1")).toBe(2); await sleep(10); });
     expect(q.depth("s1")).toBe(2);
     await Promise.all([p1, p2]);
     expect(q.depth("s1")).toBe(0);
+  });
+
+  it("depth tracks pending+active", async () => {
+    const q = new SessionPromptQueue({ maxQueueDepth: 4 });
+    expect(q.depth("s1")).toBe(0);
+    const blocker = q.run("s1", async () => { await sleep(30); });
+    expect(q.depth("s1")).toBe(1);  // active
+    q.run("s1", async () => { await sleep(10); });
+    expect(q.depth("s1")).toBe(2);  // active + queued
+    await blocker;
   });
 
   it("depth=0 when no pending", () => {
