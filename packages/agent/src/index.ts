@@ -140,6 +140,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
           model: process.env["MINIMAX_MODEL"] ?? config.model ?? "MiniMax-M3",
           baseUrl: process.env["MINIMAX_BASE_URL"] ?? "https://api.minimax.io/v1",
           apiKey: minimaxKey,
+          id: "minimax",
         }),
       );
     }
@@ -148,8 +149,30 @@ export function createAgent(config: AgentConfig = {}): Agent {
         new OpenAIAdapter({
           model: config.model ?? "gpt-4o-mini",
           baseUrl: config.openaiBaseUrl,
+          id: "openai",
         }),
       );
+    }
+    // Phase 3: OpenAI-compatible APIs (Together, Groq, OpenRouter, local Ollama)
+    // Each uses its own baseUrl; auto-detect when API key is set.
+    const compatProviders: Array<{ envKey: string; envUrl: string; defaultUrl: string; model: string; id: string }> = [
+      { envKey: "TOGETHER_API_KEY", envUrl: "TOGETHER_BASE_URL", defaultUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3-70b-chat-hf", id: "together" },
+      { envKey: "GROQ_API_KEY", envUrl: "GROQ_BASE_URL", defaultUrl: "https://api.groq.com/openai/v1", model: "llama-3.1-70b-versatile", id: "groq" },
+      { envKey: "OPENROUTER_API_KEY", envUrl: "OPENROUTER_BASE_URL", defaultUrl: "https://openrouter.ai/api/v1", model: "anthropic/claude-3.5-sonnet", id: "openrouter" },
+      { envKey: "OLLAMA_HOST", envUrl: "OLLAMA_BASE_URL", defaultUrl: "http://127.0.0.1:11434/v1", model: "llama3.1", id: "ollama" },
+    ];
+    for (const cp of compatProviders) {
+      const key = tryResolve(cp.envKey);
+      if (key) {
+        providers.register(
+          new OpenAIAdapter({
+            model: process.env[`${cp.id.toUpperCase()}_MODEL`] ?? cp.model,
+            baseUrl: process.env[cp.envUrl] ?? cp.defaultUrl,
+            apiKey: key,
+            id: cp.id,
+          }),
+        );
+      }
     }
     // Always register a mock fallback so the agent runs without a key.
     providers.register(textMock("(no provider configured — mock echo)", "mock-fallback"));
@@ -286,25 +309,23 @@ export function createAgent(config: AgentConfig = {}): Agent {
   /** §8 dream cycle: after a turn, feed the brain + seed the knowledge graph +
    * sync memory roles. Never throws — degrades to a logged warning. */
   async function runDreamCycle(): Promise<void> {
-    try {
-      // 1. Feed the conversation to the brain (conversation_facts_backfill).
-      const history = session.history as ArrayHistory;
-      const conversation = history.entries().map((e) => {
-        const entry = e as { role?: string; content?: string };
-        return { role: entry.role ?? "user", content: entry.content ?? "" };
-      });
-      brain.conversationFactsBackfill(conversation);
-      // 2. Consolidate hot facts into takes.
-      brain.consolidate();
-      // 3. Seed the knowledge graph from the brain's zero-LLM backlinks.
-      knowledgeGraph.ingestBacklinks(brain.backlinks());
-      // 4. Set recentTurn for the archivist role, then sync memory roles.
+    // Issue #9: each phase isolated so one failure doesn't block others.
+    const safe = async (name: string, fn: () => void | Promise<void>) => {
+      try { await fn(); }
+      catch (e) { console.warn(`dream-cycle phase "${name}" failed (non-fatal): ${(e as Error).message}`); }
+    };
+    const history = session.history as ArrayHistory;
+    const conversation = history.entries().map((e) => {
+      const entry = e as { role?: string; content?: string };
+      return { role: entry.role ?? "user", content: entry.content ?? "" };
+    });
+    await safe("backfill", () => brain.conversationFactsBackfill(conversation));
+    await safe("consolidate", () => { brain.consolidate(); });
+    await safe("ingest-backlinks", () => { knowledgeGraph.ingestBacklinks(brain.backlinks()); });
+    await safe("sync-memory", async () => {
       (session).recentTurn = conversation.slice(-20);
       await memory.syncAll({ session } as import("@my-agent/core").TurnContext);
-    } catch (e) {
-      // dream-cycle failure is non-fatal — but log it (review HIGH-2).
-      console.warn(`dream-cycle failed (non-fatal): ${(e as Error).message}`);
-    }
+    });
   }
 
   async function runOnce(text: string, signal?: AbortSignal): Promise<RuntimeEvent[]> {
@@ -316,7 +337,9 @@ export function createAgent(config: AgentConfig = {}): Agent {
     // CRITICAL-1 (review): append the assistant response to history so
     // multi-turn conversations work (the provider needs alternating user/assistant).
     appendAssistantToHistory(collected);
-    await runHindsight(text, collected, (e) => collected.push(e));
+    // Issue #5: Hindsight now fire-and-forget (don't block response).
+    // Hindsight is a critic — its result is informational, not blocking.
+    runHindsight(text, collected, (e) => collected.push(e));
     runTts(collected); // Phase 6: fire-and-forget TTS narration (best-effort).
     void runDreamCycle(); // HIGH-1: fire-and-forget — don't block the response
     return collected;
@@ -334,7 +357,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
     handle.on((e) => { sink(e); events.push(e); });
     await handle.done;
     appendAssistantToHistory(events);
-    await runHindsight(text, events, sink);
+    // Issue #5: Hindsight now fire-and-forget.
+    runHindsight(text, events, sink);
     runTts(events); // Phase 6: fire-and-forget TTS narration (best-effort).
     void runDreamCycle();
     });
