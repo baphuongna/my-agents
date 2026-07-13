@@ -66,6 +66,7 @@ export class PiSessionPool {
         messageCount: 0,
         busy: false,
         sessionFile: (session as { sessionFile?: string }).sessionFile,
+      };
       this.pool.set(sessionId, entry);
     }
     entry.lastActivity = nowWallclock();
