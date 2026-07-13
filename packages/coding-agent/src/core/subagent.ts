@@ -98,7 +98,8 @@ export async function spawnSubagent(
   };
   if (opts.model) sessionOpts.model = opts.model as never;
 
-  const session = await createAgentSession(sessionOpts);
+  const created = await createAgentSession(sessionOpts);
+  const session = created.session;
 
   const chunks: string[] = [];
   const streamWaiters: Array<(v: IteratorResult<string>) => void> = [];
@@ -165,10 +166,21 @@ export async function spawnSubagent(
           const content = ev.message?.content;
           if (Array.isArray(content)) {
             for (const c of content) {
+              // pi emits full message per message_update (not chunks).
+        // Collect only at message_end for streaming (avoid duplicates).
+        if (ev.type === "message_update") {
+          const content = ev.message?.content;
+          if (Array.isArray(content)) {
+            for (const c of content) {
               if (c?.type === "text" && c.text) {
-                handle.output += c.text;
-                pushChunk(c.text);
+                handle.output = c.text; // overwrite (last update wins)
               }
+            }
+          }
+        } else if (ev.type === "message_end") {
+          // Push final output as single chunk for stream consumers
+          if (handle.output) pushChunk(handle.output);
+        }
             }
           }
         }

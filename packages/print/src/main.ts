@@ -45,6 +45,9 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   // ── subcommands ──
+  if (args[0] === "subagent-test") {
+    return runSubagentTest(args.slice(1));
+  }
   if (args[0] === "serve") {
     return runWebServer(args.slice(1));
   }
@@ -229,7 +232,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // Create pi AgentSession — same code as InteractiveMode uses.
       // Phase 2: respect per-agent agentDir (multi-agent isolation).
       // @ts-expect-error — resolved by esbuild from project source
-      const { createAgentSession } = await import("@my-agent/coding-agent");
+      const { createAgentSession } = await import("../../coding-agent/src/index.ts");
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
@@ -432,6 +435,54 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
   console.warn("[gateway] uncaughtException:", err.message);
 });
+
+/** Hidden test command: spawn a subagent directly via the pi subagent module.
+ * Doesn't require an LLM (uses MockProvider via pi's session). Verifies the
+ * full flow: createAgentSession → spawnSubagent → stream → wait → abort.
+ *
+ * Usage: mya subagent-test [goal] [depth]
+ */
+async function runSubagentTest(args: string[]): Promise<void> {
+  const goal = args[0] ?? "Reply with exactly: hello from subagent";
+  const parentDepth = parseInt(args[1] ?? "0", 10);
+  // @ts-ignore - resolved by esbuild from project source
+  const { createAgentSession } = await import("../../coding-agent/src/index.ts");
+  // @ts-ignore - resolved by esbuild from project source
+  const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } =
+    await import("../../coding-agent/src/core/subagent.ts");
+  console.log(`Subagent test (max depth: ${MAX_SUBAGENT_DEPTH})\n`);
+  const parent = await createAgentSession({
+    cwd: process.cwd(),
+    agentDir: process.env["MYA_AGENT_DIR"] ?? `${process.env.HOME ?? "/tmp"}/.mya/agent`,
+  });
+  console.log(`✓ Parent session: ${parent.session.sessionId?.slice(0, 16)}...`);
+  console.log(`\n▶ Spawning subagent...`);
+  console.log(`  goal: ${goal}`);
+  console.log(`  parentDepth: ${parentDepth}`);
+  const sub = await spawnSubagent(parent.session, {
+    goal,
+    allowedTools: [],
+    parentDepth,
+  });
+  trackSubagent(parent.session.sessionId ?? "", sub);
+  console.log(`  spawned: ${sub.id} (depth ${sub.depth})`);
+  console.log(`  active: ${listSubagents(parent.session.sessionId ?? "").length}`);
+  console.log("\n▶ Streaming output:");
+  process.stdout.write("  ");
+  try {
+    for await (const chunk of sub.stream()) {
+      process.stdout.write(chunk);
+    }
+  } catch (e) {
+    console.log(`\n  (stream error: ${(e as Error).message})`);
+  }
+  process.stdout.write("\n");
+  console.log(`\n▶ Final state:`);
+  console.log(`  status: ${sub.status}`);
+  console.log(`  output: "${sub.output}"`);
+  console.log(`  endedAt: ${sub.endedAt ? new Date(sub.endedAt).toISOString() : "(none)"}`);
+  console.log(`  duration: ${sub.endedAt ? sub.endedAt - sub.startedAt : "?"}ms`);
+}
 
 function cryptoRandomToken(): string {
   return randomBytes(16).toString("hex");
