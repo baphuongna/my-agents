@@ -30,17 +30,6 @@ describe("SessionPromptQueue — basic serialization", () => {
 });
 
 describe("SessionPromptQueue — depth tracking", () => {
-  it("reports depth for active session", async () => {
-    const q = new SessionPromptQueue();
-    expect(q.depth("s1")).toBe(0);
-    // depth counts both active AND queued. p1 and p2 are reserved at queue time.
-    const p1 = q.run("s1", async () => { expect(q.depth("s1")).toBe(2); await sleep(30); });
-    const p2 = q.run("s1", async () => { expect(q.depth("s1")).toBe(2); await sleep(10); });
-    expect(q.depth("s1")).toBe(2);
-    await Promise.all([p1, p2]);
-    expect(q.depth("s1")).toBe(0);
-  });
-
   it("depth tracks pending+active", async () => {
     const q = new SessionPromptQueue({ maxQueueDepth: 4 });
     expect(q.depth("s1")).toBe(0);
