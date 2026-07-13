@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, channelRouter, channels } from "./shared-instances.js";
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {
@@ -201,6 +201,32 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     }),
   });
 
+  // Wire channel router → AgentPool: when a channel message arrives
+  // (Telegram/Discord/Slack webhook), the router routes it to a pool agent.
+  channelRouter.onPrompt(async (session, prompt) => {
+    const agent = pool.acquire(session.sessionId);
+    let response = "";
+    const entry = pool.get(session.sessionId);
+    if (entry) entry.busy = true;
+    await agent.run(prompt, (e: unknown) => {
+      const ev = e as { kind?: string; text?: string };
+      if (ev?.text) response += ev.text;
+    });
+    if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = nowWallclock(); }
+    return response;
+  });
+
+  // Wire command checker: channel users can run /audit, /skills, etc.
+  const { commandRegistry } = await import("./command-registry.js");
+  channelRouter.commandChecker = async (msg, ctx) => {
+    const result = await commandRegistry.tryExecute(msg, {
+      source: ctx.channelId,
+      user: ctx.userId,
+      sessionKey: `${ctx.channelId}:${ctx.userId}`,
+    });
+    return result?.output ?? null;
+  };
+
   const wsToken = cryptoRandomToken();
   const gw = new Gateway({
     port,
@@ -210,6 +236,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     cron,
     sync,
     collab,
+    channels,
+    channelRouter,
     poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy })),
     wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {
