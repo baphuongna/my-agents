@@ -102,9 +102,16 @@ async function main(): Promise<void> {
   const print = args.includes("--print") || json;
   const rpc = args.includes("--rpc");
   const debug = args.includes("--debug");
+  // Flags that consume the next argument as their value
+  const FLAGS_WITH_VALUE = new Set(["--model", "--session", "--session-id", "--fork", "--session-dir", "--port", "--bg-id"]);
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
-  const positional = args.filter((a) => !a.startsWith("--") && a !== model);
+  const positional = args.filter((a, i) => {
+    if (a.startsWith("--")) return false;
+    if (i > 0 && FLAGS_WITH_VALUE.has(args[i - 1]!)) return false; // value of a flag
+    if (a === model) return false;
+    return true;
+  });
 
   if (rpc) {
     return runRpcServer(model);
