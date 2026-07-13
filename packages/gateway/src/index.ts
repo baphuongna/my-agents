@@ -147,7 +147,7 @@ export interface GatewayOptions {
   /** Optional: kill a pool session for POST /pool/kill/:id. */
   poolKill?: (sessionId: string) => boolean;
   /** Optional: acquire a new pool session for POST /pool/acquire. */
-  poolAcquire?: (cwd: string) => string;
+  poolAcquire?: (cwd: string) => string | Promise<string>;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
 }
@@ -442,11 +442,11 @@ export class Gateway {
         if (url.pathname === "/pool/acquire" && req.method === "POST" && this.poolAcquire) {
           let body = "";
           req.on("data", (c: Buffer) => (body += c.toString()));
-          req.on("end", () => {
+          req.on("end", async () => {
             try {
               const { cwd } = JSON.parse(body || "{}") as { cwd?: string };
               if (!cwd) return send(400, { error: "cwd required" });
-              const sessionId = this.poolAcquire!(cwd);
+              const sessionId = await this.poolAcquire!(cwd);
               return send(200, { sessionId });
             } catch {
               return send(400, { error: "invalid json" });
