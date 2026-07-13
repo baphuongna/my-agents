@@ -54,6 +54,7 @@ import { makeDebugTool } from "@my-agent/dap";
 import { PackageHost } from "@my-agent/pkg";
 import { speak } from "@my-agent/tts";
 import type { ToolHookSink } from "@my-agent/core";
+import { PiAiProviderBridge } from "@my-agent/ai";
 
 export interface AgentConfig {
   /** Explicit provider list. If absent: OpenAI (if key) + mock fallback. */
@@ -207,6 +208,10 @@ export function createAgent(config: AgentConfig = {}): Agent {
           id: "openai",
         }),
       );
+    }
+    // ── Auto-detect pi-ai providers from env vars ──
+    for (const bridge of autoDetectPiAiProviders(tryResolve)) {
+      providers.register(bridge);
     }
     // Always register a mock fallback so the agent runs without a key.
     providers.register(textMock("(no provider configured — mock echo)", "mock-fallback"));
@@ -713,3 +718,46 @@ export * from "./sdk.js";
 
 // AgentPool — manages multiple pi AgentSession instances (used by gateway)
 export { AgentPool, type AgentPoolOptions, type AgentSessionEntry, type AgentSession, type SessionFactory } from "./pool.js";
+
+// ── pi-ai auto-detection ──
+
+/** Known pi-ai provider configs: env var → provider module + default model. */
+const PI_AI_PROVIDERS: Array<{ envKey: string; providerId: string; defaultModel: string }> = [
+  { envKey: "ANTHROPIC_API_KEY", providerId: "anthropic", defaultModel: "claude-sonnet-4-20250514" },
+  { envKey: "GOOGLE_API_KEY", providerId: "google", defaultModel: "gemini-2.0-flash" },
+  { envKey: "DEEPSEEK_API_KEY", providerId: "deepseek", defaultModel: "deepseek-chat" },
+  { envKey: "GROQ_API_KEY", providerId: "groq", defaultModel: "llama-3.3-70b-versatile" },
+  { envKey: "MISTRAL_API_KEY", providerId: "mistral", defaultModel: "mistral-large-latest" },
+  { envKey: "XAI_API_KEY", providerId: "xai", defaultModel: "grok-3" },
+  { envKey: "TOGETHER_API_KEY", providerId: "together", defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
+  { envKey: "FIREWORKS_API_KEY", providerId: "fireworks", defaultModel: "accounts/fireworks/models/llama-v3p1-70b-instruct" },
+  { envKey: "MOONSHOT_API_KEY", providerId: "moonshotai", defaultModel: "moonshot-v1-auto" },
+  { envKey: "OPENROUTER_API_KEY", providerId: "openrouter", defaultModel: "anthropic/claude-3.5-sonnet" },
+];
+
+/** Auto-detect pi-ai providers from env vars and return bridge adapters. */
+function autoDetectPiAiProviders(
+  tryResolve: (ref: string) => string | undefined,
+): PiAiProviderBridge[] {
+  const bridges: PiAiProviderBridge[] = [];
+  // Synchronous require in ESM via createRequire.
+  let requireFn: NodeRequire;
+  try { requireFn = require("module").createRequire(import.meta.url); }
+  catch { return bridges; }
+  for (const cfg of PI_AI_PROVIDERS) {
+    const apiKey = tryResolve(cfg.envKey);
+    if (!apiKey) continue;
+    try {
+      const mod = requireFn(`../../vendored/pi-ai/dist/providers/${cfg.providerId}.js`);
+      const ProviderClass = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
+      if (typeof ProviderClass !== "function") continue;
+      const provider = new ProviderClass({ apiKey });
+      const modelId = process.env[`${cfg.envKey.replace("_API_KEY", "_MODEL")}`] ?? cfg.defaultModel;
+      const model = { id: modelId, api: "messages" };
+      bridges.push(new PiAiProviderBridge({ provider, model, apiKey, id: cfg.providerId }));
+    } catch {
+      // Provider module not found or init failed — skip silently.
+    }
+  }
+  return bridges;
+}
