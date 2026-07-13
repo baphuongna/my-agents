@@ -85,16 +85,15 @@ export class AcpSubagentRunner implements SubagentRunner {
     //    external agent eventually calls bridge.respond(requestId, result).
     try {
       // The request promise itself + transport.send
-      const requestPromise = this.bridge.request<{
-        ok: boolean;
-        result?: unknown;
-        error?: string;
-      }>(node.id, "spawn", {
-        prompt: s.prompt,
-        toolSurface: s.toolSurface,
-        topology: s.topology,
-        parentWorkspace: s.parentWorkspace,
-      });
+      // The response is a discriminated union: ok=true → data, ok=false → error
+      const requestPromise = this.bridge.request<{ ok: true; data: unknown } | { ok: false; error: string }>(
+        node.id, "spawn", {
+          prompt: s.prompt,
+          toolSurface: s.toolSurface,
+          topology: s.topology,
+          parentWorkspace: s.parentWorkspace,
+        },
+      );
 
       // Fire-and-forget the transport send (it doesn't return the result).
       // The result comes back via bridge.respond().
@@ -112,11 +111,11 @@ export class AcpSubagentRunner implements SubagentRunner {
 
       if (!response.ok) {
         this.bridge.terminate(node.id, "failed");
-        return { ok: false, error: response.error ?? "EXTERNAL_AGENT_DENIED" };
+        return { ok: false, error: response.error };
       }
 
       this.bridge.terminate(node.id, "terminated");
-      return { ok: true, data: response.result };
+      return { ok: true, data: response.data };
     } catch (e) {
       this.bridge.terminate(node.id, "failed");
       return {

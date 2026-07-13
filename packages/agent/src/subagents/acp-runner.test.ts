@@ -17,7 +17,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const runner = new AcpSubagentRunner({ bridge });
     const result = await runner.spawn(makeSpawn("test"));
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("no transport");
+    expect(String(result.error)).toContain("no transport");
   });
 
   it("succeeds when transport delivers + bridge.respond called", async () => {
@@ -65,7 +65,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const runner = new AcpSubagentRunner({ bridge, transport });
     const result = await runner.spawn(makeSpawn("x"));
     expect(result.ok).toBe(false);
-    expect(result.error).toBe("external rejected");
+    expect(String(result.error)).toBe("external rejected");
   });
 
   it("returns error on bridge.respond timeout", async () => {
@@ -74,7 +74,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const runner = new AcpSubagentRunner({ bridge, transport, timeoutMs: 100 });
     const result = await runner.spawn(makeSpawn("x"));
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("timeout");
+    expect(String(result.error)).toContain("timeout");
   });
 
   it("creates lineage node + terminates on success", async () => {
@@ -84,7 +84,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
         setTimeout(() => {
           if (bridge.pendingCount > 0) {
             const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
-            const [requestId] = [...pendings.keys()] as string[];
+            const [requestId] = [...pendings.keys()][0]!;
             bridge.respond(requestId, { ok: true, data: "ok" });
           }
         }, 5);
