@@ -362,7 +362,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile })),
     poolKill: (id: string) => pool.release(id),
     poolAcquire: async (cwd: string) => {
-      const sessionId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const sessionId = `s-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       await pool.createForCwd(sessionId, cwd);
       return sessionId;
     },

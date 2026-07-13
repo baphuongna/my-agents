@@ -12,6 +12,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { nowWallclock } from "@my-agent/core";
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
 
@@ -111,7 +112,7 @@ export async function cronAdd(name?: string, schedule?: string, prompt?: string)
     return;
   }
   const { trigger, schedule: schedValue } = parseSchedule(schedule);
-  const id = `cron-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const id = `cron-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
   // Persist to cron.json
   const cronFile = join(homedir(), ".mya", "agent", "cron.json");
