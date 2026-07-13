@@ -319,7 +319,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
       const entry = e as { role?: string; content?: string };
       return { role: entry.role ?? "user", content: entry.content ?? "" };
     });
-    await safe("backfill", () => brain.conversationFactsBackfill(conversation));
+    await safe("backfill", () => { brain.conversationFactsBackfill(conversation); });
     await safe("consolidate", () => { brain.consolidate(); });
     await safe("ingest-backlinks", () => { knowledgeGraph.ingestBacklinks(brain.backlinks()); });
     await safe("sync-memory", async () => {
