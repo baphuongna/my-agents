@@ -223,13 +223,14 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const pool = new AgentPool({
     maxSessions: 8,
     idleTtlMs: 3_600_000,
-    createSession: async (sessionId) => {
+    createSession: async (sessionId, _cwd, agentDir) => {
       // Create pi AgentSession — same code as InteractiveMode uses.
+      // Phase 2: respect per-agent agentDir (multi-agent isolation).
       // @ts-expect-error — resolved by esbuild from project source
       const { createAgentSession } = await import("@my-agent/coding-agent");
       const result = await createAgentSession({
-        cwd: process.cwd(),
-        agentDir: join(homedir(), ".mya", "agent"),
+        cwd: _cwd ?? process.cwd(),
+        agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
       });
       return result.session as unknown as AgentSession;
     },
