@@ -83,6 +83,60 @@ export class AcpBridge {
   readonly ledger = new AcpEventLedger();
   private readonly nodes = new Map<string, LineageNode>();
   private readonly children = new Map<string | null, string[]>();
+  /** Issue #2: pending requests awaiting external agent response. */
+  private readonly pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  /** Default request timeout in ms. */
+  readonly requestTimeoutMs: number;
+
+  constructor(opts: { requestTimeoutMs?: number } = {}) {
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? 60_000;
+  }
+
+  /**
+   * Issue #2: blocking request to external agent. Returns a Promise that
+   * resolves when the external agent calls `respond(requestId, result)`.
+   *
+   * This is the missing piece for AcpSubagentRunner — gives the bridge a
+   * transport-style send/recv API (the lineage tracker had no blocking recv).
+   */
+  request<T = unknown>(nodeId: string, method: string, params: unknown): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const requestId = randomUUID();
+      const timer = setTimeout(() => {
+        if (this.pending.has(requestId)) {
+          this.pending.delete(requestId);
+          reject(new Error(`AcpBridge: request ${requestId} timed out after ${this.requestTimeoutMs}ms`));
+        }
+      }, this.requestTimeoutMs);
+      this.pending.set(requestId, { resolve: resolve as (v: unknown) => void, reject, timer });
+      this.ledger.append(nodeId, "message", { requestId, method, params });
+    });
+  }
+
+  /** Issue #2: external agent responds to a pending request. */
+  respond(requestId: string, result: unknown): boolean {
+    const p = this.pending.get(requestId);
+    if (!p) return false;
+    clearTimeout(p.timer);
+    this.pending.delete(requestId);
+    p.resolve(result);
+    return true;
+  }
+
+  /** Issue #2: external agent fails a pending request. */
+  fail(requestId: string, error: string): boolean {
+    const p = this.pending.get(requestId);
+    if (!p) return false;
+    clearTimeout(p.timer);
+    this.pending.delete(requestId);
+    p.reject(new Error(error));
+    return true;
+  }
+
+  /** Number of pending requests (for observability/tests). */
+  get pendingCount(): number {
+    return this.pending.size;
+  }
 
   spawn(parentId: string | null, externalAgent: string): LineageNode {
     const node: LineageNode = {
