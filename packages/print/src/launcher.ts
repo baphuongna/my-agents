@@ -47,9 +47,8 @@ function launchForegroundPi(sessionPath?: string): Promise<void> {
     child.on("error", () => resolve());
   });
 }
-import { listBgSessions, killBgSession, spawnBgSession, type BgManifest } from "./bg-runner.js";
 
-// ── ANSI ───────────────────────────────────────────────────────────────────
+// ── ANSI ────────────────────────────────────────────────────────────────────
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
   accent: (s: string) => `\x1b[38;2;138;190;183m${s}\x1b[39m`,
