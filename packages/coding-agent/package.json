@@ -1,0 +1,11 @@
+{
+  "name": "@my-agent/coding-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/main.ts",
+  "dependencies": {
+    "@my-agent/ai": "*",
+    "@my-agent/agent-core": "*",
+    "@my-agent/tui": "*"
+  }
+}

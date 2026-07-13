@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Bundle mya CLI — uses vendored/ code EXCLUSIVELY (not npm).
+ * Bundle mya CLI — builds from PROJECT SOURCE (not npm, not vendored JS dist).
  *
- * esbuild plugin intercepts ALL @earendil-works/* imports
- * and redirects to vendored/ — ensuring 100% clone, not library.
+ * Pi TypeScript source is IN packages/ (coding-agent, pi-ai-src, pi-agent-src).
+ * esbuild resolves @my-agent/* from these source packages directly.
+ * No external pi dependency. No vendored JS. Source is owned by mya.
  */
 
 import { build } from "esbuild";
@@ -13,53 +14,49 @@ import fs from "node:fs";
 const cjsShim = `import { createRequire as __myaCreateRequire } from "node:module";
 const require = __myaCreateRequire(import.meta.url);`;
 
-// ── Plugin: redirect @earendil-works/* → vendored/ ────────────────
-const vendoredResolve = {
-  name: "vendored-resolve",
+// ── Plugin: resolve @my-agent/* from project packages/ source ──────
+const sourceResolve = {
+  name: "source-resolve",
   setup(b) {
-    // Pi packages → vendored/ (NOT node_modules)
-    const piMap = {
-      "@earendil-works/pi-coding-agent": "vendored/pi/dist/index.js",
-      "@earendil-works/pi-tui": "packages/tui/dist/index.js",
-      "@earendil-works/pi-ai": "vendored/pi-ai/dist/index.js",
-      "@earendil-works/pi-agent-core": "vendored/pi-agent-core/dist/index.js",
+    // Map @my-agent/* to packages/ source (.ts files, not .js dist)
+    const srcMap = {
+      "@my-agent/coding-agent": "packages/coding-agent/src/main.ts",
+      "@my-agent/pi-ai": "packages/pi-ai-src/src/index.ts",
+      "@my-agent/pi-agent-core": "packages/pi-agent-src/src/index.ts",
+      "@my-agent/tui": "packages/tui/src/index.ts",
     };
 
-    // Subpath imports: @earendil-works/pi-ai/oauth, /compat
-    const piSubpaths = {
-      "@earendil-works/pi-ai/compat": "vendored/pi-ai/dist/compat.js",
-      "@earendil-works/pi-ai/oauth": "vendored/pi-ai/dist/oauth.js",
+    // Subpath imports
+    const srcSubpaths = {
+      "@my-agent/pi-ai/compat": "packages/pi-ai-src/src/compat.ts",
+      "@my-agent/pi-ai/oauth": "packages/pi-ai-src/src/oauth.ts",
     };
 
-    // All @earendil-works/* — pi-coding-agent is EXTERNAL (lazy-loaded at runtime)
-    // pi-ai + pi-agent-core are still bundled (they're needed by mya packages)
-    b.onResolve({ filter: /^@earendil-works\/pi-coding-agent$/ }, (args) => {
-      // Mark as external → dynamic import() at runtime → keeps bundle small
-      return { path: args.path, external: true };
-    });
-    b.onResolve({ filter: /^@earendil-works\// }, (args) => {
+    // Resolve @my-agent/* from source packages
+    // coding-agent is bundled (not external) — builds from project source
+    b.onResolve({ filter: /^@my-agent\/(coding-agent|pi-ai|pi-agent-core|tui)/ }, (args) => {
       // Exact match
-      if (piMap[args.path]) {
-        return { path: path.resolve(piMap[args.path]) };
+      if (srcMap[args.path]) {
+        return { path: path.resolve(srcMap[args.path]) };
       }
       // Subpath match
-      if (piSubpaths[args.path]) {
-        return { path: path.resolve(piSubpaths[args.path]) };
+      if (srcSubpaths[args.path]) {
+        return { path: path.resolve(srcSubpaths[args.path]) };
       }
-      // Try as directory + subpath
-      for (const [pkg, dir] of Object.entries(piMap)) {
+      // Try as package + subpath (e.g. @my-agent/ai/oauth)
+      for (const [pkg, src] of Object.entries(srcMap)) {
         if (args.path.startsWith(pkg + "/")) {
           const sub = args.path.slice(pkg.length + 1);
-          return { path: path.resolve(dir.replace("/index.js", "/" + sub + ".js")) };
+          const resolved = src.replace("/index.ts", "/" + sub + ".ts").replace("/main.ts", "/" + sub + ".ts");
+          return { path: path.resolve(resolved) };
         }
       }
-      // Fallback: let esbuild resolve normally (returning undefined continues
-      // to the next resolver; do NOT return null — that's a hard denial).
     });
 
-    // Stub only react-devtools + highlight.js (path mismatch)
-    b.onResolve({ filter: new RegExp("^react-devtools-core") }, () => ({ path: "stub-dep", namespace: "stub-dep" }));
-    b.onResolve({ filter: new RegExp("^highlight\\.js/lib") }, (args) => ({ path: "highlight.js", external: true }));
+    // Stub react-devtools-core (not needed)
+    b.onResolve({ filter: /^react-devtools-core/ }, () => ({ path: "stub-dep", namespace: "stub-dep" }));
+    // highlight.js subpaths → external (tree-shaken to main package)
+    b.onResolve({ filter: /^highlight\.js\/lib/ }, () => ({ path: "highlight.js", external: true }));
     b.onLoad({ filter: /.*/, namespace: "stub-dep" }, () => ({ contents: "export default undefined;", loader: "js" }));
   },
 };
@@ -79,16 +76,17 @@ await build({
     "node:https", "node:net", "node:tls", "node:zlib", "node:buffer",
     "node:events", "node:string_decoder", "node:readline", "node:worker_threads",
     "node:async_hooks", "node:perf_hooks", "node:assert", "node:querystring",
+    "@my-agent/coding-agent", // dynamic import resolves at runtime via source plugin above
   ],
-  plugins: [vendoredResolve],
+  plugins: [sourceResolve],
   legalComments: "none",
   minify: false,
   sourcemap: false,
   logLevel: "error",
 });
 
-// Copy pi theme JSONs to dist/
-const themeSrc = path.resolve("vendored/pi/dist/modes/interactive/theme");
+// Copy theme JSONs from source
+const themeSrc = path.resolve("packages/coding-agent/src/modes/interactive/theme");
 const themeDst = path.resolve("dist/modes/interactive/theme");
 if (fs.existsSync(themeSrc)) {
   fs.mkdirSync(themeDst, { recursive: true });
@@ -98,4 +96,4 @@ if (fs.existsSync(themeSrc)) {
   console.log(`✓ copied ${fs.readdirSync(themeDst).length} theme files`);
 }
 
-console.log("✓ bundled: dist/mya.js (100% from vendored/)");
+console.log("✓ bundled: dist/mya.js (from project source)");
