@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const rpc = args.includes("--rpc");
   const debug = args.includes("--debug");
   // Flags that consume the next argument as their value
-  const FLAGS_WITH_VALUE = new Set(["--model", "--session", "--session-id", "--fork", "--session-dir", "--port", "--bg-id"]);
+  const FLAGS_WITH_VALUE = new Set(["--model", "--session", "--session-id", "--fork", "--session-dir", "--port", "--bg-id", "--gateway-session", "--gateway-url"]);
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
   const positional = args.filter((a, i) => {
