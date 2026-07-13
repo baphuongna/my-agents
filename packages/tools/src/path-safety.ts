@@ -47,17 +47,20 @@ export function resolveInsideWorkspace(path: string, workspace: string): Resolve
   // F5 (security review): a pre-existing symlinked DIRECTORY inside the
   // workspace (e.g. ws/evil -> /etc) would let a write escape via the lexical
   // check above. Canonicalize the parent dir (which must exist) + re-bound.
-  try {
-    const parent = dirname(abs);
-    if (existsSync(parent)) {
-      const realParent = realpathSync(parent);
-      const wsReal = existsSync(ws) ? realpathSync(ws) : ws;
-      if (realParent !== wsReal && !realParent.startsWith(wsReal + sep) && !realParent.startsWith(wsReal + "/")) {
-        return { ok: false, reason: "symlink-escape", detail: `parent dir symlink escapes workspace: ${path} → ${realParent}` };
+  // Skip when abs IS the workspace root (parent is naturally outside ws).
+  if (abs !== ws) {
+    try {
+      const parent = dirname(abs);
+      if (existsSync(parent)) {
+        const realParent = realpathSync(parent);
+        const wsReal = existsSync(ws) ? realpathSync(ws) : ws;
+        if (realParent !== wsReal && !realParent.startsWith(wsReal + sep) && !realParent.startsWith(wsReal + "/")) {
+          return { ok: false, reason: "symlink-escape", detail: `parent dir symlink escapes workspace: ${path} → ${realParent}` };
+        }
       }
+    } catch {
+      // parent doesn't exist yet (new file in a new dir) — the lexical check stands.
     }
-  } catch {
-    // parent doesn't exist yet (new file in a new dir) — the lexical check stands.
   }
   return { ok: true, abs };
 }

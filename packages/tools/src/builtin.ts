@@ -385,7 +385,7 @@ export const lsTool: ToolImpl = {
         items.push({ name: entry.name, type, ...(size !== undefined ? { size } : {}) });
       }
       items.sort((a, b) => a.name.localeCompare(b.name));
-      return ok("ls", { path: targetPath, entries: items, count: items.length });
+      return ok("ls", { path: targetPath, entries: items, count: items.length, truncated: entries.length > items.length });
     } catch (e) {
       return err("ls", e instanceof Error ? e.message : String(e));
     }
@@ -438,10 +438,10 @@ export const findTool: ToolImpl = {
             typeFilter === "any" ||
             (typeFilter === "dir" && isDir) ||
             (typeFilter === "file" && !isDir);
-          if (regex.test(entry.name) && matchesType) {
+          if (regex.test(relPath) && matchesType) {
             results.push(relPath);
           }
-          if (isDir && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+          if (isDir && entry.name !== ".git" && entry.name !== "node_modules") {
             await walk(fullPath, depth + 1);
           }
         }

@@ -19,11 +19,21 @@ import { CouncilProvider } from "@my-agent/council";
 import { autoConfigureChannels } from "@my-agent/gateway";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import type { ToolHookSink } from "@my-agent/core";
 
 // ── Shared instances (created once at module load) ──
 export const secretStore = new SecretStore();
 export const auditLog = new AuditLog((_kind, payload) => makeSecretRedactor(secretStore)(payload));
 export const hooks = new HookRegistry();
+
+/** ToolHookSink adapter: bridges HookRegistry events → agent dispatch hooks.
+ * postTool fires the "post_tool" hook for audit/observability.
+ * preTool is a no-op (HookRegistry is fire-and-forget, no override semantics).
+ * This satisfies the ToolHookSink interface so dispatch.ts can call it safely. */
+export const toolHooks: ToolHookSink = {
+  preTool: async () => ({}),
+  postTool: (call, result) => { void hooks.fire("post_tool" as never, { call, result } as never); },
+};
 export const skillStore = new SkillStore();
 export const cron = new CronScheduler();
 export const brain = new Brain();

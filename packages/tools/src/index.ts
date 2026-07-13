@@ -11,7 +11,7 @@ export type { PermissionResult } from "./permission.js";
 export { runTool, runToolBatch, aggregate } from "./dispatch.js";
 export { repair } from "./repair.js";
 export type { RepairResult } from "./repair.js";
-export { builtinTools, readTool, writeTool, editTool, replaceTool, bashTool, globTool, grepTool } from "./builtin.js";
+export { builtinTools, readTool, writeTool, editTool, replaceTool, bashTool, globTool, grepTool, lsTool, findTool } from "./builtin.js";
 export { lineHashes, formatHashed, replaceByHash, isValidAnchor, fileFingerprint } from "./hashline.js";
 export { resolveInsideWorkspace, resolveExistingInsideWorkspace, isInsideWorkspace } from "./path-safety.js";
 export type { ResolveMode, ResolveResult } from "./path-safety.js";
