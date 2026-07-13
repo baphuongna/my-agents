@@ -84,7 +84,7 @@ function buildLines(sessions: Sess[], sel: number, gw: boolean): string[] {
   }
   o.push("");
   o.push(`  ${A.dim2("-".repeat(50))}`);
-  o.push(`  ${A.dim2("up/down | Enter open | n new | q quit")}`);
+  o.push(`  ${A.dim2("up/down | Enter open | x kill | n new | q quit")}`);
   o.push(`  ${A.dim2("in pi: /quit or Ctrl+D or Ctrl+Q to return")}`);
   return o;
 }
@@ -227,6 +227,16 @@ function showLauncher(sessions: Sess[], gw: boolean): Promise<Choice | undefined
       else if (k === "\x1b[B") { sel = Math.min(sessions.length - 1, sel + 1); render(); }
       else if (k === "\r" || k === "\n") { cleanup(); resolve(sessions[sel] as Choice); }
       else if (k === "n") { cleanup(); resolve({ type: "new" }); }
+      else if (k === "x" && sessions[sel]?.type === "gateway") {
+        // Kill gateway session via HTTP
+        const target = sessions[sel];
+        if (target?.id) {
+          try { await fetch(`http://127.0.0.1:${GW_PORT}/pool/kill/${target.id}`, { method: "POST", signal: AbortSignal.timeout(1000) }); } catch { /* */ }
+        }
+        sessions.splice(sel, 1);
+        sel = Math.min(sel, sessions.length - 1);
+        render();
+      }
       else if (k === "q") { cleanup(); resolve(undefined); }
     };
     process.stdin.on("data", onData);

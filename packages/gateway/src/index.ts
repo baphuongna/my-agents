@@ -144,6 +144,8 @@ export interface GatewayOptions {
   channels?: ChannelRegistry;
   /** Optional: returns AgentPool status for GET /pool/sessions. */
   poolStatus?: () => unknown;
+  /** Optional: kill a pool session for POST /pool/kill/:id. */
+  poolKill?: (sessionId: string) => boolean;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
 }
@@ -182,6 +184,8 @@ export class Gateway {
   private readonly channels?: ChannelRegistry;
   /** Optional pool status callback. */
   private readonly poolStatus?: () => unknown;
+  /** Optional pool kill callback. */
+  private readonly poolKill?: (sessionId: string) => boolean;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
@@ -212,6 +216,7 @@ export class Gateway {
     this.channelRouter = opts.channelRouter;
     this.channels = opts.channels;
     this.poolStatus = opts.poolStatus;
+    this.poolKill = opts.poolKill;
     this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
@@ -421,6 +426,12 @@ export class Gateway {
         // AgentPool sessions
         if (url.pathname === "/pool/sessions" && this.poolStatus) {
           return send(200, this.poolStatus());
+        }
+        // Kill pool session
+        const poolKillMatch = url.pathname.match(/^\/pool\/kill\/(.+)$/);
+        if (poolKillMatch && req.method === "POST" && this.poolKill) {
+          const ok = this.poolKill(poolKillMatch[1]!);
+          return send(ok ? 200 : 404, { ok });
         }
         // WS connection info (for launcher to get token)
         if (url.pathname === "/ws-info" && this.wsInfo) {
