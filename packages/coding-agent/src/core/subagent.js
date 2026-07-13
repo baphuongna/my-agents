@@ -128,6 +128,9 @@ export async function spawnSubagent(parent, opts) {
                     const content = ev.message?.content;
                     if (Array.isArray(content)) {
                         for (const c of content) {
+                            // pi's message_update gives full accumulated text for current turn.
+                            // Overwrite is correct for single-turn subagents (current design).
+                            // For multi-turn: would need turn-boundary detection to accumulate properly.
                             if (c?.type === "text" && c.text)
                                 handle.output = c.text;
                         }
@@ -220,6 +223,7 @@ export function killAllSubagents(parentId) {
             n++;
         }
     }
+    subagentCountListener?.(totalActiveSubagents());
     return n;
 }
 //# sourceMappingURL=subagent.js.map

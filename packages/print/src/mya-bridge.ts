@@ -126,10 +126,8 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // Capture parent session ID from session_start event (for subagent tracking)
     let parentSessionId = "";
     pi.on("session_start", (event: unknown, ctx: unknown) => {
-      const c = ctx as { sessionManager?: { getSessionName?: () => string }; session?: { sessionId?: string } };
-      // Some pi versions expose session on context; others don't.
-      // We use a fallback to a generated ID.
-      parentSessionId = c?.session?.sessionId ?? `session-${nowWallclock().toString(36)}`;
+      const c = ctx as { sessionManager?: { getSessionId?: () => string } };
+      parentSessionId = c?.sessionManager?.getSessionId?.() ?? `session-${nowWallclock().toString(36)}`;
     });
     // ── 1. AuditLog: log every tool call + result ───────────────────────
     if (opts.auditLog) {
@@ -269,7 +267,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               goal: { type: "string", description: "Task for the subagent" },
               allowed_tools: { type: "array", items: { type: "string" } },
               cwd: { type: "string" },
-              parent_depth: { type: "number", minimum: 0, maximum: MAX_SUBAGENT_DEPTH },
+              parent_depth: { type: "number", minimum: 0, maximum: MAX_SUBAGENT_DEPTH - 1 },
               wait: { type: "boolean", default: true },
             },
             required: ["goal"],
@@ -295,16 +293,6 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               return { content: [{ type: "text", text: `[Subagent ${sub.id}]\n${output || "(no output)"}` }] };
             }
             return { content: [{ type: "text", text: `[Subagent ${sub.id} spawned fire-and-forget]` }] };
-          },
-        });
-
-        pi.registerCommand("subagents", {
-          description: "List active subagents",
-          handler: async () => {
-            const subs = listSubagents(parentSessionId);
-            return `Subagents (${subs.length})\n` +
-              subs.map((s: { id: string; status: string; goal: string; depth: number }) =>
-                `  ${s.id} [${s.status}] depth=${s.depth}: ${s.goal.slice(0, 50)}`).join("\n");
           },
         });
       }).catch(() => { /* subagent import best-effort */ });

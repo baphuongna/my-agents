@@ -111,7 +111,7 @@ export class FooterDataProvider {
 	private reftableTablesListPath: string | null = null;
 	private branchChangeCallbacks = new Set<() => void>();
 	private subagentCount = 0;
-	private subagentChangeCallbacks = new Set<() => void>();
+
 	private availableProviderCount = 0;
 	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	private gitWatcherRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -159,14 +159,7 @@ export class FooterDataProvider {
 	setSubagentCount(count: number): void {
 		if (this.subagentCount !== count) {
 			this.subagentCount = count;
-			for (const cb of this.subagentChangeCallbacks) cb();
 		}
-	}
-
-	/** Subscribe to subagent count changes. Returns unsubscribe. */
-	onSubagentChange(callback: () => void): () => void {
-		this.subagentChangeCallbacks.add(callback);
-		return () => this.subagentChangeCallbacks.delete(callback);
 	}
 
 	/** Internal: update available provider count */
@@ -393,5 +386,4 @@ export class FooterDataProvider {
 export type ReadonlyFooterDataProvider = Pick<
 	FooterDataProvider,
 	"getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange"
-	| "getSubagentCount" | "onSubagentChange"
 >;

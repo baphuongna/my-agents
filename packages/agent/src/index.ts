@@ -462,6 +462,9 @@ export function createAgent(config: AgentConfig = {}): Agent {
       throw new Error(reason);
     }
     if (signal?.aborted) throw new Error("aborted");
+    // Append assistant response to subagent history (for multi-turn support).
+    const answer = extractAssistantText(collected);
+    if (answer.trim()) subSession.history.append({ role: "assistant", content: answer });
     return collected;
   }
 

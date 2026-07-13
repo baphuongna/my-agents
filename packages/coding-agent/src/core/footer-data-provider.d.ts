@@ -16,7 +16,6 @@ export declare class FooterDataProvider {
     private reftableTablesListPath;
     private branchChangeCallbacks;
     private subagentCount;
-    private subagentChangeCallbacks;
     private availableProviderCount;
     private refreshTimer;
     private gitWatcherRetryTimer;
@@ -37,8 +36,6 @@ export declare class FooterDataProvider {
     getSubagentCount(): number;
     /** Update subagent count + notify listeners (for footer re-render) */
     setSubagentCount(count: number): void;
-    /** Subscribe to subagent count changes. Returns unsubscribe. */
-    onSubagentChange(callback: () => void): () => void;
     /** Internal: update available provider count */
     setAvailableProviderCount(count: number): void;
     setCwd(cwd: string): void;
@@ -55,5 +52,5 @@ export declare class FooterDataProvider {
     private setupGitWatcher;
 }
 /** Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose */
-export type ReadonlyFooterDataProvider = Pick<FooterDataProvider, "getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange" | "getSubagentCount" | "onSubagentChange">;
+export type ReadonlyFooterDataProvider = Pick<FooterDataProvider, "getGitBranch" | "getExtensionStatuses" | "getAvailableProviderCount" | "onBranchChange">;
 //# sourceMappingURL=footer-data-provider.d.ts.map
