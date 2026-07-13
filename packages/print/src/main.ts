@@ -51,6 +51,15 @@ async function main(): Promise<void> {
     return runLauncherLoop();
   }
 
+  // Background session mode: run agent as TCP RPC server
+  const bgIdx = args.indexOf("--bg");
+  if (bgIdx >= 0) {
+    const { runBgSession } = await import("./bg-runner.js");
+    const bgIdIdx = args.indexOf("--bg-id");
+    const bgId = bgIdIdx >= 0 ? args[bgIdIdx + 1] : undefined;
+    return runBgSession({ id: bgId, model });
+  }
+
   // ── default: launcher (if no args) OR interactive TUI ──
   // When MYA_NO_LAUNCHER=1 or --session/--resume/--continue is passed, skip launcher.
   const skipLauncher = process.env["MYA_NO_LAUNCHER"] === "1" ||

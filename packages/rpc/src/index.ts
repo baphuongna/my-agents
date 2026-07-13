@@ -157,3 +157,6 @@ export class RpcServer {
     }
   }
 }
+
+// Re-export TCP server wrapper (cross-platform background sessions)
+export { startTcpRpcServer } from "./tcp-server.js";
