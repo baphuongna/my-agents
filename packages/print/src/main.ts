@@ -189,6 +189,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     idleTtlMs: 3_600_000,
     createSession: async (sessionId) => {
       // Create pi AgentSession — same code as InteractiveMode uses.
+      // @ts-expect-error — resolved by esbuild from project source
       const { createAgentSession } = await import("@my-agent/coding-agent");
       const result = await createAgentSession({
         cwd: process.cwd(),

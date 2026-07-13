@@ -20,7 +20,7 @@ const sourceResolve = {
   setup(b) {
     // Map @my-agent/* to packages/ source (.ts files, not .js dist)
     const srcMap = {
-      "@my-agent/coding-agent": "packages/coding-agent/src/main.ts",
+      "@my-agent/coding-agent": "packages/coding-agent/src/index.ts",
       "@my-agent/pi-ai": "packages/pi-ai-src/src/index.ts",
       "@my-agent/pi-agent-core": "packages/pi-agent-src/src/index.ts",
       "@my-agent/tui": "packages/tui/src/index.ts",
