@@ -15,6 +15,7 @@
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
 import { createAgent, AgentPool } from "@my-agent/agent";
+import { nowWallclock } from "@my-agent/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -221,7 +222,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         void agent.run(prompt, (e: unknown) => {
           gw.broadcast(session, e);
         }).finally(() => {
-          if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = Date.now(); }
+          if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = nowWallclock(); }
         });
       }
     },
