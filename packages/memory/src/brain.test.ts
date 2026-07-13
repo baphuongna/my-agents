@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Brain } from "@my-agent/memory";
 import { nowWallclock } from "@my-agent/core";
-
 describe("Brain — DoS caps (F7)", () => {
   it("truncates oversized fact content", () => {
     const brain = new Brain();
@@ -212,3 +211,51 @@ describe("§8 Phase 11 — 5 more zero-LLM dream-cycle phases", () => {
     expect(n).toBeGreaterThanOrEqual(1);
   });
 });
+describe("Brain — persistence (Issue #8)", () => {
+  it("serialize/load round-trips facts", () => {
+    const a = new Brain();
+    a.recordFact({ kind: "fact", entity: "Alice", content: "Alice is a person", visibility: "private", notability: 1, source: "seed" });
+    a.recordFact({ kind: "fact", entity: "Bob", content: "Bob is a person", visibility: "private", notability: 1, source: "seed" });
+    expect(a.factCount).toBe(2);
+
+    const json = a.serialize();
+    const b = new Brain();
+    b.load(json);
+    expect(b.factCount).toBe(2);
+  });
+
+  it("survives save + load across instances", () => {
+    const a = new Brain();
+    a.recordFact({ kind: "preference", entity: "user", content: "prefers dark mode", visibility: "private", notability: 5, source: "conv" });
+    const saved = JSON.stringify(a.serialize());
+
+    // New instance (simulate restart)
+    const b = new Brain();
+    b.load(JSON.parse(saved));
+    expect(b.factCount).toBe(1);
+  });
+
+  it("load replaces state (does not merge)", () => {
+    const a = new Brain();
+    a.recordFact({ kind: "fact", entity: "A", content: "first", visibility: "private", notability: 1, source: "x" });
+    const saved = a.serialize();
+
+    const b = new Brain();
+    b.recordFact({ kind: "fact", entity: "B", content: "to-be-overwritten", visibility: "private", notability: 1, source: "y" });
+    expect(b.factCount).toBe(1);
+    b.load(saved);
+    expect(b.factCount).toBe(1);  // B replaced by A
+  });
+
+  it("handles empty state", () => {
+    const a = new Brain();
+    const json = a.serialize();
+    expect(json.facts).toEqual([]);
+    expect(json.takes).toEqual([]);
+
+    const b = new Brain();
+    b.load(json);
+    expect(b.factCount).toBe(0);
+  });
+});
+

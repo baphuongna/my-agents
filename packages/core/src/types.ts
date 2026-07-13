@@ -486,6 +486,12 @@ export interface BudgetConfig {
   spend(c: Cost): boolean;
   /** Atomically reserves min(alloc, remaining); pre-charge. */
   deriveChild(alloc: number): BudgetConfig;
+  /**
+   * Issue #6: lazy child budget — does NOT pre-charge the full alloc.
+   * Child shares parent's pool, reserves spent amounts atomically.
+   * Better for long-running subagents where full alloc is uncertain.
+   */
+  deriveChildLazy?(maxAlloc: number): BudgetConfig;
   /** Refund alloc - child.spent on ANY terminal state (incl. crash). */
   releasePrecharge(childId: string): number;
   exhausted(): boolean;

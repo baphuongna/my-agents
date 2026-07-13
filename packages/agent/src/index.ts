@@ -62,6 +62,12 @@ export interface AgentConfig {
   openaiBaseUrl?: string;
   /** Directory for durable (FileBackend) memory. If absent: in-memory only. */
   memoryDir?: string;
+  /**
+   * Issue #7: path to JSONL file for persistent session history.
+   * If set, conversation survives process restarts.
+   * Recommended: ${memoryDir}/sessions/${sessionId}.jsonl
+   */
+  historyPath?: string;
   /** Explicit tool list. If absent: the 6 builtins. */
   tools?: ToolImpl[];
   /** Budget. If absent: freeBudget (unlimited). */
@@ -229,7 +235,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // agent's lifetime (createAgent returns a fixed toolRegistry) → setting once
   // here keeps the prompt cache-stable.
   const stableTier = composeStableTier(config.stableTier ?? defaultStableTier(), toolRegistry);
-  const session = createSession({ profiles: [...providers.all()], stableTier });
+  const session = createSession({ profiles: [...providers.all()], stableTier, historyPath: config.historyPath });
   // Replace the stub memory with the real manager.
   (session as { memory: unknown }).memory = memory;
 
