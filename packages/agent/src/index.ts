@@ -17,6 +17,7 @@ import {
   createBudget,
   createSession,
   freeBudget,
+  nowWallclock,
   runTurn,
   ArrayHistory,
   type BudgetConfig,
@@ -31,6 +32,7 @@ import {
   textMock,
 } from "@my-agent/ai";
 import { assemblePrompt, defaultStableTier } from "@my-agent/prompts";
+import { randomBytes } from "node:crypto";
 import {
   ToolRegistry,
   builtinTools,
@@ -93,6 +95,38 @@ export interface AgentConfig {
   skillStore?: SkillStore;
 }
 
+/** Subagent lifecycle status. */
+export type SubagentStatus = "running" | "done" | "failed" | "aborted";
+
+/**
+ * Handle to a spawned subagent. Parent can read status, await output, abort.
+ *
+ * Subagent = a separate Session with isolated history, sharing providers/tools/brain.
+ * One level only (no grandchildren). Auto-tracked by Agent.
+ */
+export interface SubagentHandle {
+  /** Unique subagent id (random hex). */
+  readonly id: string;
+  /** The goal/prompt passed to spawnSubagent. */
+  readonly goal: string;
+  /** Unix ms when subagent was spawned. */
+  readonly startedAt: number;
+  /** Optional tool restriction. */
+  readonly allowedTools?: string[];
+  /** Current lifecycle status. */
+  status: SubagentStatus;
+  /** Collected output text (assistant response). Empty until done. */
+  output: string;
+  /** Error message if status === "failed". */
+  error?: string;
+  /** Unix ms when subagent finished (done/failed/aborted). */
+  endedAt?: number;
+  /** Mark as aborted (if running). Does NOT kill the underlying turn mid-stream. */
+  abort(): void;
+  /** Promise resolving with output when subagent finishes. */
+  wait(): Promise<string>;
+}
+
 export interface Agent {
   /** Run one turn; resolves with the full RuntimeEvent[] (collected). */
   prompt(text: string, opts?: { signal?: AbortSignal }): Promise<RuntimeEvent[]>;
@@ -102,6 +136,19 @@ export interface Agent {
     sink: (e: RuntimeEvent) => void,
     opts?: { signal?: AbortSignal },
   ): Promise<void>;
+  /**
+   * Spawn a subagent for a focused task. Returns a handle to track lifecycle
+   * (running/done/failed/aborted), read output, and abort.
+   */
+  spawnSubagent(goal: string, options?: { allowedTools?: string[]; signal?: AbortSignal }): SubagentHandle;
+  /** List all subagents (active + completed). */
+  listSubagents(): SubagentHandle[];
+  /** Get a specific subagent by id. */
+  getSubagent(id: string): SubagentHandle | undefined;
+  /** Kill a subagent (mark aborted, remove from pool). Returns true if found. */
+  killSubagent(id: string): boolean;
+  /** Kill all subagents. Returns number killed. */
+  killAllSubagents(): number;
   /** Underlying registries (for inspection / extension). */
   providers: ProviderRegistry;
   memory: MemoryManagerImpl;
@@ -346,6 +393,142 @@ export function createAgent(config: AgentConfig = {}): Agent {
     });
   }
 
+  // ─── Subagent spawning ────────────────────────────────────────────────────
+  // A subagent is a separate Session with isolated history, sharing profiles/tools/brain.
+  // Pattern: parent calls spawnSubagent(goal) → gets a handle. Subagent runs
+  // independently. Parent can list/get/kill via the handle map.
+
+  const subagents = new Map<string, SubagentHandle>();
+
+  /** Run a single turn on a subagent session. Mirrors runOnce but on a foreign session.
+   * Throws if the turn ended in Failed state (e.g. provider error). */
+  async function runSubagentTurn(
+    subSession: ReturnType<typeof createSession>,
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<RuntimeEvent[]> {
+    subSession.history.append({ role: "user", content: text });
+    const goalsBackend = memory.backends.find((b) => b.role === "goals");
+    const [, goalsBlock] = await Promise.all([
+      memory.refresh(),
+      goalsBackend ? goalsRole.systemPromptBlock(goalsBackend) : Promise.resolve(""),
+    ]);
+    subSession.goalsBlock = goalsBlock;
+    assemblePrompt(subSession);
+    const handle = await runTurn({
+      session: subSession,
+      budget,
+      tools: toolExecutor,
+      stream: (prompt, history, streamOpts) =>
+        streamWithFallback(providers, prompt, history, streamOpts).then((r) =>
+          "error" in r ? { error: r.error } : { events: r.events },
+        ),
+      toolSchemas: openAITools,
+      audit,
+      hooks: config.hooks,
+      signal,
+    });
+    const collected: RuntimeEvent[] = [];
+    handle.on((e) => collected.push(e));
+    const result = await handle.done;
+    // Check if the turn failed (stream error → Failed terminal state)
+    if (result && typeof result === "object" && "state" in result && result.state === "Failed") {
+      const err = (result as { error?: { context?: { reason?: string } } }).error;
+      const reason = err?.context?.reason ?? "subagent turn failed";
+      throw new Error(reason);
+    }
+    const answer = extractAssistantText(collected);
+    if (answer.trim()) subSession.history.append({ role: "assistant", content: answer });
+    return collected;
+  }
+
+  /**
+   * Spawn a subagent to handle a focused task. Returns a handle for tracking
+   * and controlling the subagent's lifecycle. The subagent has its own
+   * session/history, but shares providers, tools, brain, memory with the parent.
+   */
+  function spawnSubagent(
+    goal: string,
+    options?: { allowedTools?: string[]; signal?: AbortSignal },
+  ): SubagentHandle {
+    const id = `sub-${randomBytes(4).toString("hex")}`;
+    const toolLine = options?.allowedTools?.length
+      ? `\nAllowed tools: ${options.allowedTools.join(", ")}\nUse only these tools.`
+      : "";
+    const systemOverlay = `[SUBAGENT — focused task]\n${toolLine}\nGoal: ${goal}\n\nWhen done, output the final answer prefixed with "<DONE>".`;
+    const subSession = createSession({
+      profiles: [...providers.all()],
+      stableTier: systemOverlay,
+    });
+    let completionPromise: Promise<string>;
+    const handle: SubagentHandle = {
+      id,
+      goal,
+      startedAt: nowWallclock(),
+      allowedTools: options?.allowedTools,
+      status: "running",
+      output: "",
+      abort: () => {
+        if (handle.status === "running") {
+          handle.status = "aborted";
+          handle.endedAt = nowWallclock();
+        }
+      },
+      wait: () => completionPromise,
+    };
+    subagents.set(id, handle);
+
+    completionPromise = (async () => {
+      try {
+        const events = await runSubagentTurn(subSession, goal, options?.signal);
+        const answer = extractAssistantText(events);
+        handle.output = answer;
+        if (handle.status === "aborted") return answer;
+        handle.status = "done";
+        handle.endedAt = nowWallclock();
+        return answer;
+      } catch (e) {
+        handle.error = (e as Error).message;
+        handle.status = "failed";
+        handle.endedAt = nowWallclock();
+        return "";
+      }
+    })();
+    return handle;
+  }
+
+  /** List all subagents (active + completed). */
+  function listSubagents(): SubagentHandle[] {
+    return [...subagents.values()];
+  }
+
+  /** Get a specific subagent by id. */
+  function getSubagent(id: string): SubagentHandle | undefined {
+    return subagents.get(id);
+  }
+
+  /** Kill a subagent (mark aborted, remove from pool). Returns true if found. */
+  function killSubagent(id: string): boolean {
+    const h = subagents.get(id);
+    if (!h) return false;
+    h.abort();
+    subagents.delete(id);
+    return true;
+  }
+
+  /** Kill all subagents. Used on shutdown / cleanup. Returns number killed. */
+  function killAllSubagents(): number {
+    let n = 0;
+    for (const h of subagents.values()) {
+      if (h.status === "running") {
+        h.abort();
+        n++;
+      }
+    }
+    subagents.clear();
+    return n;
+  }
+
   return {
     prompt: (text, opts) => runOnce(text, opts?.signal),
     run: (text, sink, opts) => runLive(text, sink, opts?.signal),
@@ -356,6 +539,11 @@ export function createAgent(config: AgentConfig = {}): Agent {
     ragfs,
     tools: toolRegistry,
     skillStore,
+    spawnSubagent,
+    listSubagents,
+    getSubagent,
+    killSubagent,
+    killAllSubagents,
   };
 }
 
