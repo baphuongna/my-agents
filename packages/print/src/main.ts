@@ -14,7 +14,7 @@
  *
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
-import { createAgent } from "@my-agent/agent";
+import { createAgent, AgentPool } from "@my-agent/agent";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -185,13 +185,21 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const port = portIdx >= 0 ? Number(extraArgs[portIdx + 1]) : 3000;
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
-  const agent = createAgent({
-    memoryDir: join(homedir(), ".my-agent", "memory"),
-    auditLog,
-    secretStore,
-    skillStore,
-    wallet,
+
+  // AgentPool: each WS session gets its own agent (own history, own turnLock).
+  // Sessions persist in the pool even when WS clients disconnect.
+  const pool = new AgentPool({
+    maxAgents: 16,
+    idleTtlMs: 3_600_000,
+    createConfig: () => ({
+      memoryDir: join(homedir(), ".my-agent", "memory"),
+      auditLog,
+      secretStore,
+      skillStore,
+      wallet,
+    }),
   });
+
   const wsToken = cryptoRandomToken();
   const gw = new Gateway({
     port,
@@ -201,17 +209,25 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     cron,
     sync,
     collab,
+    poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy })),
     onWsMessage: (session: string, data: unknown) => {
       const msg = data as { text?: string; kind?: string; prompt?: string };
-      if (msg.kind === "cron-fire" && msg.prompt) {
-        void agent.run(msg.prompt, (e: unknown) => gw.broadcast(session, e));
-      } else if (msg.text) {
-        void agent.run(msg.text, (e: unknown) => gw.broadcast(session, e));
+      const prompt = msg.kind === "cron-fire" ? msg.prompt : msg.text;
+      if (prompt) {
+        // Route to this session's own agent (from pool).
+        const agent = pool.acquire(session);
+        const entry = pool.get(session);
+        if (entry) entry.busy = true;
+        void agent.run(prompt, (e: unknown) => {
+          gw.broadcast(session, e);
+        }).finally(() => {
+          if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = Date.now(); }
+        });
       }
     },
   });
   const { port: actualPort } = await gw.start();
-  process.stderr.write(`mya web dashboard: http://localhost:${actualPort}\n`);
+  process.stderr.write(`mya gateway: http://localhost:${actualPort} (AgentPool: ${pool.size} sessions)\n`);
 }
 
 main().catch((e) => {

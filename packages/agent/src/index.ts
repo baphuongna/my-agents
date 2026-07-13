@@ -412,3 +412,6 @@ function extractAssistantText(events: RuntimeEvent[]): string {
 }
 export * from "./sdk.js";
 export * from "./subagents/index.js";
+
+// AgentPool — manages multiple agent instances (used by gateway)
+export { AgentPool, type AgentPoolOptions, type PoolEntry } from "./pool.js";
