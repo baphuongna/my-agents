@@ -7,7 +7,7 @@ import { freeBudget, type ApprovalChannel, type SubagentSpawn } from "@my-agent/
 import { AcpSubagentRunner, type AcpTransport } from "./acp-runner.js";
 
 function makeSpawn(prompt: string): SubagentSpawn {
-  const approval: ApprovalChannel = { request: async () => ({ decision: "approve" as const }) };
+  const approval: ApprovalChannel = { request: async () => ({ decision: "Allow" as const }) };
   return { prompt, toolSurface: { allowed: [], blocked: [] }, approval, budget: freeBudget() };
 }
 
