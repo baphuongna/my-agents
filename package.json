@@ -40,7 +40,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "node -e \"import('@my-agent/eval').then(h => h.defaultHarness().grade().then(r => console.log(JSON.stringify(r, null, 2))))\"",
-    "prepublishOnly": "npm run build && npm test && npm run bundle"
+    "prepublishOnly": "npm run build && npm test && npm run bundle",
+    "postinstall": "node scripts/apply-branding.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
