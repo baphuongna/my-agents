@@ -430,6 +430,17 @@ export class AcpBridge {
       session.stderrBuf += chunk;
     });
 
+    // H2 fix: EPIPE on stdin when child exits before write → crash without handler
+    proc.stdin?.on("error", (err: Error) => {
+      if (!session.closed) {
+        session.closed = true;
+        if (session.taskActive && !session.doneReceived) {
+          session.queue.push({ type: "error", error: `stdin error: ${err.message}` });
+        }
+        this.wakeWaiters(session);
+      }
+    });
+
     proc.on("error", (err: Error) => {
       // Post-handshake runtime error (handshake errors are handled in spawnExternal).
       if (!session.closed) {

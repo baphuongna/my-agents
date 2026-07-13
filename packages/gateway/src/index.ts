@@ -13,7 +13,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { join, extname } from "node:path";
+import { join, extname, resolve as pathResolve, sep as pathSep } from "node:path";
 export { ControlPlane, HandleLruCache } from "./control.js";
 export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
 import { ControlPlane } from "./control.js";
@@ -360,7 +360,14 @@ export class Gateway {
     // §12 parametric control-plane route: /sessions/:id
     const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
     if (sessionMatch) {
-      const s = this.control.getSession(sessionMatch[1]!);
+      const sid = sessionMatch[1]!;
+      // DELETE /sessions/:id — kill session
+      if (req.method === "DELETE") {
+        this.control.killSession(sid);
+        return send(200, { ok: true, killed: sid });
+      }
+      // GET /sessions/:id — get session info
+      const s = this.control.getSession(sid);
       return s ? send(200, s) : send(404, { error: "session not found" });
     }
     // Phase 3: Sync HTTP endpoints.
@@ -434,7 +441,13 @@ export class Gateway {
         return send(p.ok ? 200 : 503, p);
       }
       // §12 control-plane: read-only management surface (sessions/cron/config/tools).
-      case "/sessions": return send(200, this.control.listSessions());
+      case "/sessions":
+        if (req.method === "POST") {
+          // Create new session
+          const sid = this.control.createSession() ?? `sess-${Date.now()}`;
+          return send(201, { ok: true, sessionId: sid });
+        }
+        return send(200, this.control.listSessions());
       case "/config": return send(200, this.control.getConfig());
       case "/tools": return send(200, this.control.listTools());
       case "/":
@@ -601,17 +614,18 @@ export class Gateway {
         }
         // Serve static files from dist/web/ if available
         if (this.staticDir && req.method === "GET") {
-          const filePath = join(this.staticDir, url.pathname);
-          // Prevent path traversal
-          if (!filePath.startsWith(this.staticDir)) {
+          const normalizedRoot = pathResolve(this.staticDir);
+          const resolved = pathResolve(this.staticDir, "." + url.pathname);
+          // Path traversal guard: boundary-aware check (not naive startsWith)
+          if (resolved !== normalizedRoot && !resolved.startsWith(normalizedRoot + pathSep)) {
             return send(403, { error: "forbidden" });
           }
           try {
-            if (existsSync(filePath) && statSync(filePath).isFile()) {
-              const content = readFileSync(filePath);
-              const ext = extname(filePath);
+            if (existsSync(resolved) && statSync(resolved).isFile()) {
+              const content = readFileSync(resolved);
+              const ext = extname(resolved);
               const contentType = this.mimeTypes[ext] ?? "application/octet-stream";
-              res.writeHead(200, { "content-type": contentType });
+              res.writeHead(200, { "content-type": contentType, "x-content-type-options": "nosniff" });
               res.end(content);
               return;
             }

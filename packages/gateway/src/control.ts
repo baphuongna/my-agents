@@ -120,6 +120,12 @@ export class ControlPlane {
   }
   getSession(id: string): ControlSession | undefined { return this.sessions.get(id); }
   listSessions(): ControlSession[] { return [...this.sessions.values()]; }
+  killSession(id: string): boolean { return this.sessions.delete(id); }
+  createSession(): string {
+    const id = `sess-${nowWallclock().toString(36)}`;
+    this.registerSession(id);
+    return id;
+  }
   setSessionStatus(id: string, status: ControlSession["status"]): void {
     const s = this.sessions.get(id);
     if (s) s.status = status;

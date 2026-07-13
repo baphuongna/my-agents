@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Invariant #20 (minimal core): adding code to `packages/core/` requires a
+ * Invariant #18 (minimal core): adding code to `packages/core/` requires a
  * "why-not-a-package" justification. This script enforces a size budget:
  *
  *   - Reads the BASELINE (committed in scripts/core-size-baseline.txt)
@@ -23,8 +23,9 @@ function countCoreLines() {
       { encoding: "utf8" },
     );
     return parseInt(out.trim().split(/\s+/)[0], 10) || 0;
-  } catch {
-    return 0;
+  } catch (e) {
+    console.error("✗ Failed to count core lines:", e instanceof Error ? e.message : String(e));
+    process.exit(1);
   }
 }
 

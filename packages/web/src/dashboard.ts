@@ -19,7 +19,9 @@ export interface DashboardOptions {
  * turn stream + an approval modal bound to {kind:"approval"}. */
 export function dashboardHtml(opts: DashboardOptions = {}): string {
   const title = opts.title ?? "agent dashboard";
-  const wsQuery = opts.wsPath ?? "/events";
+  const wsQueryRaw = opts.wsPath ?? "/events";
+  // Sanitize wsPath: only allow /, alphanumeric, ?, =, & (prevent XSS injection)
+  const wsQuery = /^[\/?\w=&-]+$/.test(wsQueryRaw) ? wsQueryRaw : "/events";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -99,7 +101,7 @@ ${approvalModalHtml()}
     m.style.display = 'block';
     m.innerHTML = '<strong>approval</strong><br>' + escapeHtml(JSON.stringify(e.call||{})) + '<br><br><button onclick="this.parentNode.style.display=\\'none\\'">allow</button> <button class="deny" onclick="this.parentNode.style.display=\\'none\\'">deny</button>';
   }
-  function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   // Phase 15: prompt input bar.
   const inputBar = document.createElement('div');
   inputBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#161b22;border-top:1px solid #30363d;padding:8px 16px;display:flex;gap:8px';

@@ -61,7 +61,7 @@ export function summarizeEvent(e: Record<string, unknown>): string {
 
 /** Escape HTML special characters. */
 export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!
   );
 }
