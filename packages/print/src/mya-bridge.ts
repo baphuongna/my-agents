@@ -174,6 +174,15 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       pi.on("tool_result", () => void hooks.fire("post_tool", {}));
     }
 
+    // ── Ctrl+Q: exit pi → return to launcher ────────────────────────────
+    pi.registerShortcut("ctrl+q", {
+      description: "Exit to launcher",
+      handler: (ctx: unknown) => {
+        const c = ctx as { shutdown: () => void };
+        if (c.shutdown) c.shutdown();
+      },
+    });
+
     // ── 3. Memory (Brain): consolidate on turn_end (fire-and-forget) ────
     if (opts.brain) {
       const brain = opts.brain;

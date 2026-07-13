@@ -119,12 +119,19 @@ function buildLines(sessions: Sess[], sel: number, filter: string, gateway: bool
   o.push("");
   o.push(`  ${A.dim2("-".repeat(50))}`);
   o.push(`  ${A.dim2("up/down nav | Enter open | n new | q quit")}`);
-  o.push(`  ${A.dim2("in pi: /exit or Ctrl+C to return to launcher")}`);
+  o.push(`  ${A.dim2("in pi: /quit or Ctrl+D or Ctrl+Q to return")}`);
   return o;
 }
 
 /** Launch pi InteractiveMode (FULL TUI) in foreground. */
 function launchPi(sessionPath?: string): Promise<void> {
+  // Show loading screen BEFORE spawning pi (pi takes ~5s to dynamic-import + init).
+  // Pi will clear this when its first render fires.
+  process.stdout.write("\x1b[2J\x1b[H");
+  process.stdout.write(`\n  ${A.bold(A.accent("mya"))}\n`);
+  process.stdout.write(`  ${A.muted("Loading pi InteractiveMode...")}\n\n`);
+  process.stdout.write(`  ${A.dim2("This takes a few seconds (lazy-loading pi).")}\n`);
+
   return new Promise((resolve) => {
     const args = ["--model", "MiniMax-M3"];
     if (sessionPath) args.push("--session", sessionPath);
