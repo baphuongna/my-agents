@@ -111,6 +111,10 @@ export function parseArgs(args: string[]): Args {
 			result.fork = args[++i];
 		} else if (arg === "--session-dir" && i + 1 < args.length) {
 			result.sessionDir = args[++i];
+		} else if (arg === "--gateway-session" && i + 1 < args.length) {
+			(result as Record<string, unknown>).gatewaySession = args[++i];
+		} else if (arg === "--gateway-url" && i + 1 < args.length) {
+			(result as Record<string, unknown>).gatewayUrl = args[++i];
 		} else if (arg === "--models" && i + 1 < args.length) {
 			result.models = args[++i].split(",").map((s) => s.trim());
 		} else if (arg === "--no-tools" || arg === "-nt") {

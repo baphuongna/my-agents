@@ -180,7 +180,24 @@ function launchPi(sessionPath?: string, cwd?: string): Promise<void> {
   });
 }
 
-interface Choice { type: "new" | "gateway"; arg?: string; }
+/** Launch pi TUI connected to a gateway session via WS (REAL background). */
+function launchGatewaySession(sessionId: string): Promise<void> {
+  process.stdout.write("\x1b[2J\x1b[H");
+  process.stdout.write(`\n  ${A.bold(A.accent("mya"))}\n  ${A.muted("Connecting to gateway session...")}\n\n`);
+
+  return new Promise((resolve) => {
+    const args = ["--model", "MiniMax-M3", "--gateway-session", sessionId];
+    const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
+    const child = spawn(process.execPath, [entry, ...args], {
+      stdio: "inherit",
+      env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" },
+    });
+    child.on("exit", () => resolve());
+    child.on("error", () => resolve());
+  });
+}
+
+interface Choice { type: "new" | "gateway"; arg?: string; id?: string; }
 
 function showLauncher(sessions: Sess[], gw: boolean): Promise<Choice | undefined> {
   return new Promise((resolve) => {
@@ -231,9 +248,9 @@ export async function runLauncherLoop(): Promise<void> {
       // Pick working directory, then launch pi TUI
       const cwd = await pickDirectory();
       if (cwd) await launchPi(undefined, cwd);
-    } else if (result.type === "gateway" && result.arg) {
-      // Gateway session → pi TUI with its JSONL
-      await launchPi(result.arg);
+    } else if (result.type === "gateway" && result.id) {
+      // Gateway session → pi TUI connected via WS (REAL background)
+      await launchGatewaySession(result.id);
     }
   }
 }

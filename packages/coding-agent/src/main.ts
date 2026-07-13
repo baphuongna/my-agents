@@ -746,6 +746,72 @@ export async function main(args: string[], options?: MainOptions) {
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
 	const { settingsManager, modelRegistry, resourceLoader } = services;
+
+	// ── Gateway session proxy: connect TUI to a running gateway AgentSession ──
+	const gatewaySession = (parsed as Record<string, unknown>).gatewaySession as string | undefined;
+	const gatewayUrl = (parsed as Record<string, unknown>).gatewayUrl as string | undefined;
+	if (gatewaySession) {
+		// Get WS token from gateway
+		const gwPort = gatewayUrl ? new URL(gatewayUrl).port : "3000";
+		const tokenRes = await fetch(`http://127.0.0.1:${gwPort}/ws-info`);
+		const tokenData = (await tokenRes.json()) as { token: string; port: number };
+		const wsUrl = `ws://127.0.0.1:${tokenData.port}/events?session=${gatewaySession}&token=${tokenData.token}`;
+
+		// Connect to gateway session via WS
+		const { default: WebSocket } = await import("ws");
+		const ws = new WebSocket(wsUrl);
+
+		await new Promise<void>((resolve, reject) => {
+			ws.on("open", resolve);
+			ws.on("error", reject);
+			setTimeout(() => reject(new Error("WS connect timeout")), 5000);
+		});
+
+		// Override session.prompt() → send to gateway instead of running locally
+		const sessionAny = session as unknown as {
+			prompt: (text: string, options?: unknown) => Promise<void>;
+			abort: () => void;
+			_emit: (event: unknown) => void;
+			_isAgentRunActive: boolean;
+			_emitQueueUpdate: () => void;
+		};
+
+		const origPrompt = sessionAny.prompt;
+		sessionAny.prompt = async (_text: string, _options?: unknown) => {
+			// Send to gateway — the gateway AgentSession runs the prompt.
+			// Events stream back via WS → _emit → TUI renders them.
+			sessionAny._isAgentRunActive = true;
+			sessionAny._emitQueueUpdate();
+			ws.send(JSON.stringify({ text: _text }));
+		};
+
+		sessionAny.abort = () => {
+			ws.send(JSON.stringify({ method: "cancel" }));
+		};
+
+		// Forward WS events to session listeners → TUI renders them
+		ws.on("message", (data: Buffer) => {
+			try {
+				const env = JSON.parse(data.toString()) as { event?: unknown; method?: string };
+				if (env.event) {
+					// Gateway event → forward to InteractiveMode
+					sessionAny._emit(env.event);
+					// Check if turn completed
+					const ev = env.event as { type?: string; kind?: string; stage?: string };
+					if (ev.type === "turn_end" || ev.kind === "turn" && ev.stage === "end") {
+						sessionAny._isAgentRunActive = false;
+						sessionAny._emitQueueUpdate();
+					}
+				}
+			} catch { /* malformed */ }
+		});
+
+		ws.on("close", () => {
+			sessionAny._isAgentRunActive = false;
+			sessionAny._emitQueueUpdate();
+		});
+	}
+
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs());
 
