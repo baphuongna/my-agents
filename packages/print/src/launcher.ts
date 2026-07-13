@@ -141,7 +141,7 @@ function pickDirectory(): Promise<string | undefined> {
           let p = inputBuf.trim();
           if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
           else if (p === "~") p = homedir();
-          else p = resolve(dir, p);
+          else if (!p.startsWith("/")) p = resolve(dir, p);
           resolve(p);
         } else {
           resolve(dir); // use current dir
