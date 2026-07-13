@@ -12,7 +12,7 @@
  */
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { join, resolve, basename } from "node:path";
+import { join, resolve as pathResolve } from "node:path";
 import { nowWallclock } from "@my-agent/core";
 
 const A = {
@@ -141,7 +141,7 @@ function pickDirectory(): Promise<string | undefined> {
           let p = inputBuf.trim();
           if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
           else if (p === "~") p = homedir();
-          else if (!p.startsWith("/")) p = resolve(dir, p);
+          else if (!p.startsWith("/")) p = pathResolve(dir, p);
           resolve(p);
         } else {
           resolve(dir); // use current dir
