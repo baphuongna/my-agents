@@ -3,16 +3,19 @@
  */
 import { describe, it, expect } from "vitest";
 import { AcpBridge } from "@my-agent/acp";
+import { freeBudget, type ApprovalChannel, type SubagentSpawn } from "@my-agent/core";
 import { AcpSubagentRunner, type AcpTransport } from "./acp-runner.js";
+
+function makeSpawn(prompt: string): SubagentSpawn {
+  const approval: ApprovalChannel = { request: async () => ({ decision: "approve" as const }) };
+  return { prompt, toolSurface: { allowed: [], blocked: [] }, approval, budget: freeBudget() };
+}
 
 describe("AcpSubagentRunner (Issue #2)", () => {
   it("fails fast when no transport is provided", async () => {
     const bridge = new AcpBridge();
     const runner = new AcpSubagentRunner({ bridge });
-    const result = await runner.spawn({
-      prompt: "test",
-      toolSurface: { allowed: [], blocked: [] },
-    });
+    const result = await runner.spawn(makeSpawn("test"));
     expect(result.ok).toBe(false);
     expect(result.error).toContain("no transport");
   });
@@ -26,23 +29,20 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const transport: AcpTransport = {
       send: async (nodeId, _requestId, method, params) => {
         sent.push({ nodeId, method, params });
-        // Simulate external agent: respond to the most recent request
         setTimeout(() => {
-          const pending = [...bridge.pending.entries()];
-          if (pending.length > 0) {
-            const [requestId] = pending[0]!;
-            bridge.respond(requestId, { ok: true, result: { done: true, output: "ok" } });
+          // Use pendingCount + respond via reflection (pending is private)
+          if (bridge.pendingCount > 0) {
+            // The request promise resolves with the first pending request
+            const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
+            const [requestId] = [...pendings.keys()] as string[];
+            bridge.respond(requestId, { ok: true, data: { done: true, output: "ok" } });
           }
         }, 5);
       },
     };
 
     const runner = new AcpSubagentRunner({ bridge, transport });
-    const result = await runner.spawn({
-      prompt: "do something",
-      toolSurface: { allowed: [], blocked: [] },
-    });
-
+    const result = await runner.spawn(makeSpawn("do something"));
     expect(result.ok).toBe(true);
     expect((result as { data: { output: string } }).data.output).toBe("ok");
     expect(sent.length).toBe(1);
@@ -52,35 +52,27 @@ describe("AcpSubagentRunner (Issue #2)", () => {
   it("returns error when external agent fails", async () => {
     const bridge = new AcpBridge();
     const transport: AcpTransport = {
-      send: async (_nodeId, _reqId, _method, _params) => {
+      send: async () => {
         setTimeout(() => {
-          const pending = [...bridge.pending.entries()];
-          if (pending.length > 0) {
-            const [requestId] = pending[0]!;
+          if (bridge.pendingCount > 0) {
+            const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
+            const [requestId] = [...pendings.keys()] as string[];
             bridge.respond(requestId, { ok: false, error: "external rejected" });
           }
         }, 5);
       },
     };
     const runner = new AcpSubagentRunner({ bridge, transport });
-    const result = await runner.spawn({
-      prompt: "x",
-      toolSurface: { allowed: [], blocked: [] },
-    });
+    const result = await runner.spawn(makeSpawn("x"));
     expect(result.ok).toBe(false);
     expect(result.error).toBe("external rejected");
   });
 
   it("returns error on bridge.respond timeout", async () => {
     const bridge = new AcpBridge({ requestTimeoutMs: 50 });
-    const transport: AcpTransport = {
-      send: async () => { /* never respond */ },
-    };
+    const transport: AcpTransport = { send: async () => { /* never respond */ } };
     const runner = new AcpSubagentRunner({ bridge, transport, timeoutMs: 100 });
-    const result = await runner.spawn({
-      prompt: "x",
-      toolSurface: { allowed: [], blocked: [] },
-    });
+    const result = await runner.spawn(makeSpawn("x"));
     expect(result.ok).toBe(false);
     expect(result.error).toContain("timeout");
   });
@@ -90,16 +82,16 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const transport: AcpTransport = {
       send: async () => {
         setTimeout(() => {
-          const pending = [...bridge.pending.entries()];
-          if (pending.length > 0) {
-            const [requestId] = pending[0]!;
-            bridge.respond(requestId, { ok: true, result: "ok" });
+          if (bridge.pendingCount > 0) {
+            const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
+            const [requestId] = [...pendings.keys()] as string[];
+            bridge.respond(requestId, { ok: true, data: "ok" });
           }
         }, 5);
       },
     };
     const runner = new AcpSubagentRunner({ bridge, transport, parentId: "parent-1" });
-    await runner.spawn({ prompt: "x", toolSurface: { allowed: [], blocked: [] } });
+    await runner.spawn(makeSpawn("x"));
     const lineage = bridge.lineage("parent-1");
     expect(lineage.length).toBe(1);
     expect(lineage[0]!.status).toBe("terminated");
