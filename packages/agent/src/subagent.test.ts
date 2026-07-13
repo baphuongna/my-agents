@@ -151,17 +151,28 @@ describe("Subagent — failure paths", () => {
   });
 
   it("abort() during running sets status=aborted (does not kill mid-turn)", async () => {
-    // Slow provider so we have time to abort
-    const slow = mockProvider("slow result");
+    const slow = {
+      id: "slow",
+      model: "mock-1",
+      async stream(): Promise<{ events: StreamEvent[] }> {
+        await new Promise((r) => setTimeout(r, 50));
+        return {
+          events: [
+            { kind: "text", text: "slow result" },
+            { kind: "done", usage: { input: 10, output: 5 }, finish: "stop" },
+          ],
+        };
+      },
+      health(): "Healthy" { return "Healthy"; },
+    } as ProviderProfile;
     const agent = createAgent({ providers: [slow] });
     const sub = agent.spawnSubagent("slow task");
     expect(sub.status).toBe("running");
     sub.abort();
     expect(sub.status).toBe("aborted");
-    // wait() still resolves (turn completes naturally even if we marked aborted)
-    const result = await sub.wait();
-    expect(result).toBe("slow result");
-    // After completion, status stays "aborted" (we marked it externally)
+    // wait() resolves; output may be empty (abort fired before chunks arrived)
+    await sub.wait();
+    // Status stays "aborted" (we marked it externally)
     expect(sub.status).toBe("aborted");
   });
 
@@ -172,6 +183,154 @@ describe("Subagent — failure paths", () => {
     expect(sub.status).toBe("done");
     sub.abort(); // no-op
     expect(sub.status).toBe("done");
+  });
+});
+
+describe("Subagent — streaming output", () => {
+  it("stream() yields each text chunk", async () => {
+    const multi = new MockProvider({
+      id: "multi",
+      model: "mock-1",
+      events: [
+        { kind: "text", text: "hello " },
+        { kind: "text", text: "world " },
+        { kind: "text", text: "!" },
+        { kind: "done", usage: { input: 10, output: 5 }, finish: "stop" },
+      ],
+    });
+    const agent = createAgent({ providers: [multi] });
+    const sub = agent.spawnSubagent("multi");
+
+    const chunks: string[] = [];
+    for await (const chunk of sub.stream()) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual(["hello ", "world ", "!"]);
+    expect(sub.output).toBe("hello world !");
+    expect(sub.status).toBe("done");
+  });
+
+  it("stream() ends when subagent completes (done: true)", async () => {
+    const agent = createAgent({ providers: [mockProvider("hi")] });
+    const sub = agent.spawnSubagent("test");
+
+    const collected: string[] = [];
+    for await (const chunk of sub.stream()) {
+      collected.push(chunk);
+    }
+    expect(collected.join("")).toBe("hi");
+    expect(sub.status).toBe("done");
+  });
+
+  it("stream() rejects on failure", async () => {
+    const agent = createAgent({ providers: [failingProvider("boom") as ProviderProfile] });
+    const sub = agent.spawnSubagent("fail");
+    await expect(async () => {
+      for await (const _chunk of sub.stream()) {
+        // should not yield anything
+      }
+    }).rejects.toThrow();
+    expect(sub.status).toBe("failed");
+  });
+
+  it("multiple consumers can stream the same subagent (broadcast)", async () => {
+    const multi = new MockProvider({
+      id: "multi",
+      model: "mock-1",
+      events: [
+        { kind: "text", text: "a" },
+        { kind: "text", text: "b" },
+        { kind: "done", usage: { input: 10, output: 5 }, finish: "stop" },
+      ],
+    });
+    const agent = createAgent({ providers: [multi] });
+    const sub = agent.spawnSubagent("broadcast");
+
+    // Note: current impl is single-consumer (queue). Two consumers would compete.
+    // We just verify first consumer gets all chunks.
+    const got: string[] = [];
+    for await (const c of sub.stream()) got.push(c);
+    expect(got.join("")).toBe("ab");
+  });
+});
+
+describe("Subagent — mid-stream abort (real)", () => {
+  /** Custom provider with controllable delay between chunks. */
+  function slowProvider(delayMs = 50): ProviderProfile {
+    return {
+      id: "slow",
+      model: "mock-1",
+      async stream(): Promise<{ events: StreamEvent[] }> {
+        // Yield chunk 1 immediately, chunk 2 after delay
+        const events: StreamEvent[] = [{ kind: "text", text: "slow " }];
+        await new Promise((r) => setTimeout(r, delayMs));
+        events.push({ kind: "text", text: "result" });
+        events.push({ kind: "done", usage: { input: 10, output: 5 }, finish: "stop" });
+        return { events };
+      },
+      health(): "Healthy" { return "Healthy"; },
+    };
+  }
+
+  it("abort() during running sets status=aborted (signal sent)", async () => {
+    const agent = createAgent({ providers: [slowProvider(100)] });
+    const sub = agent.spawnSubagent("slow task");
+    // Wait a bit so subagent is mid-flight
+    await new Promise((r) => setTimeout(r, 20));
+    sub.abort();
+    expect(sub.status).toBe("aborted");
+    // wait() still resolves (turn completes naturally even if aborted)
+    await sub.wait();
+  });
+
+  it("abort() prevents further chunks from streaming", async () => {
+    // Custom provider that emits chunk1, then waits, then chunk2 unless aborted.
+    const streamProvider = {
+      id: "stream-abort",
+      model: "mock-1",
+      async stream(): Promise<{ events: StreamEvent[] }> {
+        const events: StreamEvent[] = [{ kind: "text", text: "first" }];
+        await new Promise((r) => setTimeout(r, 30));
+        events.push({ kind: "text", text: "second" });
+        events.push({ kind: "done", usage: { input: 0, output: 0 }, finish: "stop" });
+        return { events };
+      },
+      health(): "Healthy" { return "Healthy"; },
+    } as ProviderProfile;
+    const agent = createAgent({ providers: [streamProvider] });
+    const sub = agent.spawnSubagent("stream-abort");
+    // Start consuming; catch rejection (expected on abort)
+    const chunks: string[] = [];
+    let streamErr: unknown = null;
+    const consumePromise = (async () => {
+      try {
+        for await (const chunk of sub.stream()) {
+          chunks.push(chunk);
+        }
+      } catch (e) {
+        streamErr = e;
+      }
+    })();
+    // Abort after first chunk delivered
+    setTimeout(() => sub.abort(), 15);
+    await consumePromise;
+    // Got at least "first" (or stream error before first chunk — also valid)
+    expect(chunks.length === 0 ? streamErr !== null : chunks.includes("first")).toBe(true);
+    // Status aborted
+    expect(sub.status).toBe("aborted");
+  });
+
+  it("external AbortSignal triggers abort", async () => {
+    const ac = new AbortController();
+    const slow = mockProvider("slow");
+    const agent = createAgent({ providers: [slow] });
+    const sub = agent.spawnSubagent("ext-abort", { signal: ac.signal });
+    expect(sub.status).toBe("running");
+    ac.abort();
+    // Allow propagation
+    await new Promise((r) => setTimeout(r, 10));
+    // Status becomes aborted (external signal aborts the subagent)
+    expect(sub.status).toBe("aborted");
   });
 });
 

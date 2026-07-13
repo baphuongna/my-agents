@@ -121,10 +121,18 @@ export interface SubagentHandle {
   error?: string;
   /** Unix ms when subagent finished (done/failed/aborted). */
   endedAt?: number;
-  /** Mark as aborted (if running). Does NOT kill the underlying turn mid-stream. */
+  /**
+   * Mark as aborted AND cancel the underlying turn (via AbortSignal).
+   * Status becomes "aborted"; output collected so far is preserved.
+   */
   abort(): void;
   /** Promise resolving with output when subagent finishes. */
   wait(): Promise<string>;
+  /**
+   * Async iterator over assistant text chunks as they stream in.
+   * Yields each chunk; iteration ends when subagent finishes.
+   */
+  stream(): AsyncIterable<string>;
 }
 
 export interface Agent {
@@ -401,11 +409,14 @@ export function createAgent(config: AgentConfig = {}): Agent {
   const subagents = new Map<string, SubagentHandle>();
 
   /** Run a single turn on a subagent session. Mirrors runOnce but on a foreign session.
-   * Throws if the turn ended in Failed state (e.g. provider error). */
+   * Throws if the turn ended in Failed state (e.g. provider error) or signal aborted.
+   * Output is captured into `collectedOutput` (live, by chunks). */
   async function runSubagentTurn(
     subSession: ReturnType<typeof createSession>,
     text: string,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    onChunk: (chunk: string) => void,
+    collectedOutput: { text: string },
   ): Promise<RuntimeEvent[]> {
     subSession.history.append({ role: "user", content: text });
     const goalsBackend = memory.backends.find((b) => b.role === "goals");
@@ -429,16 +440,28 @@ export function createAgent(config: AgentConfig = {}): Agent {
       signal,
     });
     const collected: RuntimeEvent[] = [];
-    handle.on((e) => collected.push(e));
+    handle.on((e) => {
+      collected.push(e);
+      // Stream + accumulate text chunks
+      const ev = e as { kind?: string; turnEvent?: { state?: string; chunk?: { kind?: string; text?: string } } };
+      if (
+        ev.kind === "turn" &&
+        ev.turnEvent?.state === "Streaming" &&
+        ev.turnEvent.chunk?.kind === "text" &&
+        ev.turnEvent.chunk.text
+      ) {
+        const chunk = ev.turnEvent.chunk.text;
+        collectedOutput.text += chunk;
+        onChunk(chunk);
+      }
+    });
     const result = await handle.done;
-    // Check if the turn failed (stream error → Failed terminal state)
     if (result && typeof result === "object" && "state" in result && result.state === "Failed") {
       const err = (result as { error?: { context?: { reason?: string } } }).error;
       const reason = err?.context?.reason ?? "subagent turn failed";
       throw new Error(reason);
     }
-    const answer = extractAssistantText(collected);
-    if (answer.trim()) subSession.history.append({ role: "assistant", content: answer });
+    if (signal?.aborted) throw new Error("aborted");
     return collected;
   }
 
@@ -460,6 +483,41 @@ export function createAgent(config: AgentConfig = {}): Agent {
       profiles: [...providers.all()],
       stableTier: systemOverlay,
     });
+
+    // Combine external signal with our internal abort signal.
+    const ac = new AbortController();
+    // (handle + signal wiring done below after handle is created)
+
+    // Streaming queue: chunks arrive asynchronously; stream() reads them.
+    const chunkQueue: string[] = [];
+    const streamWaiters: Array<(v: IteratorResult<string>) => void> = [];
+    let streamDone = false;
+    let streamError: Error | null = null;
+    function pushChunk(chunk: string): void {
+      if (streamWaiters.length > 0) {
+        streamWaiters.shift()!({ value: chunk, done: false });
+      } else {
+        chunkQueue.push(chunk);
+      }
+    }
+    function signalStreamEnd(err?: Error): void {
+      streamDone = true;
+      streamError = err ?? null;
+      // If error, reject any waiting consumers. Otherwise end gracefully.
+      if (err) {
+        while (streamWaiters.length > 0) {
+          streamWaiters.shift()!(Promise.reject(err) as unknown as IteratorResult<string>);
+        }
+      } else {
+        while (streamWaiters.length > 0) {
+          streamWaiters.shift()!({ value: undefined as unknown as string, done: true });
+        }
+      }
+    }
+
+    // Live output collector — captures partial output even on abort/fail
+    const collectedOutput = { text: "" };
+
     let completionPromise: Promise<string>;
     const handle: SubagentHandle = {
       id,
@@ -470,28 +528,65 @@ export function createAgent(config: AgentConfig = {}): Agent {
       output: "",
       abort: () => {
         if (handle.status === "running") {
+          // Real mid-stream abort via AbortController (signals to runTurn).
+          ac.abort();
           handle.status = "aborted";
           handle.endedAt = nowWallclock();
         }
       },
       wait: () => completionPromise,
+      stream: () => ({
+        [Symbol.asyncIterator]() {
+          return {
+            next(): Promise<IteratorResult<string>> {
+              if (streamError) return Promise.reject(streamError);
+              if (chunkQueue.length > 0) {
+                return Promise.resolve({ value: chunkQueue.shift()!, done: false });
+              }
+              if (streamDone) return Promise.resolve({ value: undefined as unknown as string, done: true });
+              return new Promise((resolve) => streamWaiters.push(resolve));
+            },
+          };
+        },
+      }),
     };
+
+    // Now wire external signal to update handle status
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        ac.abort();
+        handle.status = "aborted";
+        handle.endedAt = nowWallclock();
+      } else {
+        options.signal.addEventListener("abort", () => {
+          ac.abort();
+          if (handle.status === "running") {
+            handle.status = "aborted";
+            handle.endedAt = nowWallclock();
+          }
+        }, { once: true });
+      }
+    }
     subagents.set(id, handle);
 
     completionPromise = (async () => {
       try {
-        const events = await runSubagentTurn(subSession, goal, options?.signal);
-        const answer = extractAssistantText(events);
-        handle.output = answer;
-        if (handle.status === "aborted") return answer;
+        await runSubagentTurn(subSession, goal, ac.signal, pushChunk, collectedOutput);
+        handle.output = collectedOutput.text;
+        signalStreamEnd();
+        if (handle.status === "aborted") return handle.output;
         handle.status = "done";
         handle.endedAt = nowWallclock();
-        return answer;
+        return handle.output;
       } catch (e) {
-        handle.error = (e as Error).message;
-        handle.status = "failed";
+        const err = e as Error;
+        handle.error = err.message;
+        handle.output = collectedOutput.text; // preserve partial output
+        signalStreamEnd(err);
+        // Status was set by abort() (external) OR stays "running" (internal error)
+        if (handle.status === "running") handle.status = "failed";
         handle.endedAt = nowWallclock();
-        return "";
+        return handle.output;
       }
     })();
     return handle;
