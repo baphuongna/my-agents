@@ -248,7 +248,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // ── 6.5. Subagent tool (spawn focused sub-tasks from TUI) ────────────
     try {
       // @ts-ignore - cross-package dynamic import
-      void import("../../coding-agent/dist/core/subagent.js").then((mod) => {
+      void import("../../coding-agent/src/core/subagent.ts").then((mod) => {
         const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } = mod;
 
         pi.registerTool({
