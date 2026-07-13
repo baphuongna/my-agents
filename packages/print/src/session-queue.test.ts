@@ -32,7 +32,8 @@ describe("SessionPromptQueue — depth tracking", () => {
   it("reports depth for active session", async () => {
     const q = new SessionPromptQueue();
     expect(q.depth("s1")).toBe(0);
-    const p1 = q.run("s1", async () => { expect(q.depth("s1")).toBe(1); await sleep(30); });
+    // Both p1 and p2 are reserved at queue time, so depth=2 immediately
+    const p1 = q.run("s1", async () => { expect(q.depth("s1")).toBe(2); await sleep(30); });
     const p2 = q.run("s1", async () => { expect(q.depth("s1")).toBe(2); await sleep(10); });
     expect(q.depth("s1")).toBe(2);
     await Promise.all([p1, p2]);

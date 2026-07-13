@@ -98,11 +98,14 @@ export class SessionPromptQueue {
    * failing call never breaks the queue for subsequent calls.
    */
   run<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
-    // Backpressure: check depth BEFORE queueing.
+    // Backpressure: check depth BEFORE queueing. Includes the call about to be added.
     const current = this.depths.get(sessionId) ?? 0;
     if (current >= this.maxQueueDepth) {
       return Promise.reject(new QueueFullError(sessionId, current, this.maxQueueDepth));
     }
+
+    // Reserve a depth slot up-front so concurrent callers see consistent depth.
+    this.depths.set(sessionId, current + 1);
 
     const prev = this.chains.get(sessionId) ?? Promise.resolve();
 
@@ -119,27 +122,28 @@ export class SessionPromptQueue {
       });
     };
 
-    // Track depth
-    const trackDepth = (op: () => Promise<T>): Promise<T> => {
-      this.depths.set(sessionId, (this.depths.get(sessionId) ?? 0) + 1);
-      return op().finally(() => {
-        const d = (this.depths.get(sessionId) ?? 1) - 1;
-        if (d <= 0) this.depths.delete(sessionId);
-        else this.depths.set(sessionId, d);
-      });
-    };
-
     // Swallow prev's rejection so one failure doesn't poison the chain.
     // The caller still sees the rejection of its own `fn`.
     const next: Promise<T> = prev.then(
-      () => trackDepth(withTimeout),
-      () => trackDepth(withTimeout),
+      () => withTimeout(),
+      () => withTimeout(),
     );
     this.chains.set(sessionId, next);
+
+    // Release depth slot on completion (success or failure)
+    const release = () => {
+      const d = (this.depths.get(sessionId) ?? 1) - 1;
+      if (d <= 0) this.depths.delete(sessionId);
+      else this.depths.set(sessionId, d);
+    };
+    next.then(release, release);
+
+    // Clear chain entry if still pointing at us
     const cleanup = () => {
       if (this.chains.get(sessionId) === next) this.chains.delete(sessionId);
     };
     next.then(cleanup, cleanup);
+
     return next;
   }
 }
