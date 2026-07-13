@@ -404,34 +404,6 @@ export const DELEGATE_BLOCKED_TOOLS = new Set([
   "bash",
 ]);
 
-export interface SubagentSpawn {
-  prompt: string;
-  toolSurface: ToolSet;
-  approval: ApprovalChannel;
-  budget: BudgetConfig;
-  topology?: TeamTopology;
-  /** §10 GAP-10.1: JSON-Schema the child's yield is validated against before the
-   * parent accepts it (fail-closed on mismatch). */
-  resultSchema?: Record<string, unknown>;
-  /** §10.2: the GreenContract the child MUST satisfy before yield. If set,
-   * spawn() runs verifyGreen() and fail-closes on a violation. */
-  greenContract?: { required: string; evidence: { ran: string; passed: boolean; summary?: string } };
-  /** §10 R27-9/O4: hierarchical approval depth. The root spawn is 0; each child
-   * increments. At MAX_APPROVAL_CHAIN_DEPTH spawn fail-closes (DoS guard). */
-  chainDepth?: number;
-  /** §10.2 CoW isolation: the PARENT workspace root. If set, spawn creates an
-   * IsolatedWorkspace (file-copy sandbox), runs the child against it, then
-   * 3-way mergeBacks the child's changes (conflicts → SubagentResult{ok:false}). */
-  parentWorkspace?: string;
-}
-export type SubagentResult =
-  | { ok: true; data: unknown; changedPaths?: string[] }
-  | { ok: false; error: ConflictError | string };
-
-export interface SubagentRunner {
-  spawn(s: SubagentSpawn): Promise<SubagentResult>;
-}
-
 export interface ConflictError {
   path: string;
   baseHash: string;
@@ -517,10 +489,6 @@ export interface ShellResult {
 
 // ─── Tier-0 constants ───────────────────────────────────────────────────────
 export const MAX_ATTEMPTS = 3;
-export const MAX_APPROVAL_CHAIN_DEPTH = 3;
-export const SUBAGENT_SCHEMA_REPAIR_RETRIES = 1;
-export const MAX_CONCURRENT_SUBAGENTS = 8;
-export const MAX_DEPTH = 4;
 export const MAX_TREE_NODES = 64;
 export const MAX_SIZE = 128;
 export const IDLE_TTL_SECS = 3600;
