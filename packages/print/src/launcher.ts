@@ -19,18 +19,31 @@ function hasTmux(): boolean {
   try { execSync("tmux -V", { stdio: "ignore" }); return true; } catch { return false; }
 }
 
-/** Launch pi in a tmux session (full InteractiveMode, survives detach). */
+/** Check if we're already inside a tmux session. */
+function isInsideTmux(): boolean {
+  return !!process.env["TMUX"];
+}
+
+/** Launch pi in a tmux session or window (full InteractiveMode, survives detach). */
 function tmuxNewAndAttach(sessionPath?: string): void {
   const name = `mya-${nowWallclock().toString(36)}`;
   const piArgs = ["--model", "MiniMax-M3"];
   if (sessionPath) piArgs.push("--session", sessionPath);
   const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
   const cmd = `${process.execPath} ${entry} ${piArgs.join(" ")}`;
-  execSync(`tmux new-session -d -s ${name} "${cmd}"`, {
-    env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" },
-  });
-  // Attach (blocks until user detaches with Ctrl+B D)
-  spawn("tmux", ["attach-session", "-t", name], { stdio: "inherit" });
+  const env = { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" };
+
+  if (isInsideTmux()) {
+    // Already inside tmux → create a new WINDOW (not session — avoids nesting warning)
+    // new-window auto-switches to it; when command exits, window closes + returns.
+    execSync(`tmux new-window -n "${name}" "${cmd}"`, { env });
+    // new-window blocks until the command (pi) exits — then returns to launcher.
+  } else {
+    // Not inside tmux → create a new detached session, then attach.
+    execSync(`tmux new-session -d -s ${name} "${cmd}"`, { env });
+    // Attach (blocks until user detaches with Ctrl+B D or pi exits).
+    spawn("tmux", ["attach-session", "-t", name], { stdio: "inherit", env });
+  }
 }
 
 /** Launch pi in foreground (full InteractiveMode, /exit to return). */
