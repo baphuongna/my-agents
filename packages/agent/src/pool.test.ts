@@ -52,7 +52,7 @@ describe("AgentPool — multi-agent (Phase 2)", () => {
 
   it("factory receives per-agent agentDir", async () => {
     const seen: Array<string | undefined> = [];
-    const factory = async (_id, _cwd?, dir?) => {
+    const factory = async (_id: string, _cwd?: string, dir?: string) => {
       seen.push(dir);
       return { prompt: async () => {}, subscribe: () => () => {}, abort: () => {} };
     };
