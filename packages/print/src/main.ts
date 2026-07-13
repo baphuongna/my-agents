@@ -211,6 +211,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     sync,
     collab,
     poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy })),
+    wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {
       const msg = data as { text?: string; kind?: string; prompt?: string };
       const prompt = msg.kind === "cron-fire" ? msg.prompt : msg.text;

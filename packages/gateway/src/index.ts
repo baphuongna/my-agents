@@ -144,6 +144,8 @@ export interface GatewayOptions {
   channels?: ChannelRegistry;
   /** Optional: returns AgentPool status for GET /pool/sessions. */
   poolStatus?: () => unknown;
+  /** Optional: returns WS connection info (token) for GET /ws-info. */
+  wsInfo?: () => unknown;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -180,6 +182,8 @@ export class Gateway {
   private readonly channels?: ChannelRegistry;
   /** Optional pool status callback. */
   private readonly poolStatus?: () => unknown;
+  /** Optional WS info callback. */
+  private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
 
@@ -208,6 +212,7 @@ export class Gateway {
     this.channelRouter = opts.channelRouter;
     this.channels = opts.channels;
     this.poolStatus = opts.poolStatus;
+    this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
       console.warn("[gateway] cron is configured but no onWsMessage channel exists; due jobs will be claimed + completed but not delivered.");
@@ -416,6 +421,10 @@ export class Gateway {
         // AgentPool sessions
         if (url.pathname === "/pool/sessions" && this.poolStatus) {
           return send(200, this.poolStatus());
+        }
+        // WS connection info (for launcher to get token)
+        if (url.pathname === "/ws-info" && this.wsInfo) {
+          return send(200, this.wsInfo());
         }
         return send(404, { error: "not found" });
       }
