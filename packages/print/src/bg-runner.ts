@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { nowWallclock } from "@my-agent/core";
-import { secretStore, auditLog, skillStore, wallet } from "./pi-main.js";
+import { secretStore, auditLog, skillStore, wallet } from "./shared-instances.js";
 
 const BG_DIR = join(homedir(), ".mya", "sessions", "bg");
 

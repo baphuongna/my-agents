@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks } from "./pi-main.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks } from "./shared-instances.js";
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {

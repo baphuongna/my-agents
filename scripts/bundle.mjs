@@ -31,7 +31,12 @@ const vendoredResolve = {
       "@earendil-works/pi-ai/oauth": "vendored/pi-ai/dist/oauth.js",
     };
 
-    // All @earendil-works/* — check exact match first, then subpath
+    // All @earendil-works/* — pi-coding-agent is EXTERNAL (lazy-loaded at runtime)
+    // pi-ai + pi-agent-core are still bundled (they're needed by mya packages)
+    b.onResolve({ filter: /^@earendil-works\/pi-coding-agent$/ }, (args) => {
+      // Mark as external → dynamic import() at runtime → keeps bundle small
+      return { path: args.path, external: true };
+    });
     b.onResolve({ filter: /^@earendil-works\// }, (args) => {
       // Exact match
       if (piMap[args.path]) {
