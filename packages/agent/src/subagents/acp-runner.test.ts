@@ -16,7 +16,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const bridge = new AcpBridge();
     const runner = new AcpSubagentRunner({ bridge });
     const result = await runner.spawn(makeSpawn("test"));
-    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected fail");
     expect(String(result.error)).toContain("no transport");
   });
 
@@ -34,7 +34,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
           if (bridge.pendingCount > 0) {
             // The request promise resolves with the first pending request
             const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
-            const [requestId] = [...pendings.keys()] as string[];
+            const requestId = [...pendings.keys()][0]! as string;
             bridge.respond(requestId, { ok: true, data: { done: true, output: "ok" } });
           }
         }, 5);
@@ -56,7 +56,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
         setTimeout(() => {
           if (bridge.pendingCount > 0) {
             const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
-            const [requestId] = [...pendings.keys()] as string[];
+            const requestId = [...pendings.keys()][0]! as string;
             bridge.respond(requestId, { ok: false, error: "external rejected" });
           }
         }, 5);
@@ -64,7 +64,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     };
     const runner = new AcpSubagentRunner({ bridge, transport });
     const result = await runner.spawn(makeSpawn("x"));
-    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected fail");
     expect(String(result.error)).toBe("external rejected");
   });
 
@@ -73,7 +73,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
     const transport: AcpTransport = { send: async () => { /* never respond */ } };
     const runner = new AcpSubagentRunner({ bridge, transport, timeoutMs: 100 });
     const result = await runner.spawn(makeSpawn("x"));
-    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected fail");
     expect(String(result.error)).toContain("timeout");
   });
 
@@ -84,7 +84,7 @@ describe("AcpSubagentRunner (Issue #2)", () => {
         setTimeout(() => {
           if (bridge.pendingCount > 0) {
             const pendings = (bridge as unknown as { pending: Map<string, unknown> }).pending;
-            const [requestId] = [...pendings.keys()][0]!;
+            const requestId = [...pendings.keys()][0]! as string;
             bridge.respond(requestId, { ok: true, data: "ok" });
           }
         }, 5);
