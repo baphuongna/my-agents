@@ -415,3 +415,5 @@ export * from "./subagents/index.js";
 
 // AgentPool — manages multiple agent instances (used by gateway)
 export { AgentPool, type AgentPoolOptions, type PoolEntry } from "./pool.js";
+
+export { PiSessionPool, type PiAgentSession, type PiSessionEntry } from "./pi-pool.js";

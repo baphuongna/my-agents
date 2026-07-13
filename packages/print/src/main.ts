@@ -14,7 +14,7 @@
  *
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
-import { createAgent, AgentPool } from "@my-agent/agent";
+import { createAgent, AgentPool, PiSessionPool, type PiAgentSession } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -182,33 +182,56 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const { Gateway } = await import("@my-agent/gateway");
   const { dashboardHtml } = await import("@my-agent/web");
 
-  // AgentPool: each WS session gets its own agent (own history, own turnLock).
-  // Sessions persist in the pool even when WS clients disconnect.
-  const pool = new AgentPool({
-    maxAgents: 16,
+  // PiSessionPool: each session uses pi's FULL AgentSession (same as TUI).
+  // Background sessions have the same providers, tools, and features as interactive TUI.
+  const pool = new PiSessionPool({
+    maxSessions: 8,
     idleTtlMs: 3_600_000,
-    createConfig: () => ({
-      memoryDir: join(homedir(), ".my-agent", "memory"),
-      auditLog,
-      secretStore,
-      skillStore,
-      wallet,
-    }),
+    createSession: async (sessionId) => {
+      // Create pi AgentSession — same code as InteractiveMode uses.
+      const { createAgentSession } = await import("@my-agent/coding-agent");
+      const result = await createAgentSession({
+        cwd: process.cwd(),
+        agentDir: join(homedir(), ".mya", "agent"),
+      });
+      return result.session as unknown as PiAgentSession;
+    },
   });
 
-  // Wire channel router → AgentPool: when a channel message arrives
-  // (Telegram/Discord/Slack webhook), the router routes it to a pool agent.
-  channelRouter.onPrompt(async (session, prompt) => {
-    const agent = pool.acquire(session.sessionId);
-    let response = "";
-    const entry = pool.get(session.sessionId);
+  /** Run a prompt on a pi session, collect streaming text for response. */
+  async function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
+    const session = await pool.acquire(sessionId);
+    const entry = pool.get(sessionId);
     if (entry) entry.busy = true;
-    await agent.run(prompt, (e: unknown) => {
-      const ev = e as { kind?: string; text?: string };
-      if (ev?.text) response += ev.text;
+
+    let responseText = "";
+    const unsub = session.addEventListener((event: unknown) => {
+      const ev = event as { type?: string; message?: { content?: Array<{ type?: string; text?: string }> } };
+      // Forward to caller (WS broadcast)
+      if (onEvent) onEvent(event);
+      // Collect assistant text for channel response
+      if (ev?.type === "message_update" || ev?.type === "message_end") {
+        const content = ev.message?.content;
+        if (Array.isArray(content)) {
+          for (const c of content) {
+            if (c?.type === "text" && c.text) responseText += c.text;
+          }
+        }
+      }
     });
-    if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = nowWallclock(); }
-    return response;
+
+    try {
+      await session.prompt(prompt);
+    } finally {
+      unsub();
+      if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = nowWallclock(); }
+    }
+    return responseText;
+  }
+
+  // Wire channel router → PiSessionPool: channel messages use pi AgentSession.
+  channelRouter.onPrompt(async (session, prompt) => {
+    return runOnSession(session.sessionId, prompt);
   });
 
   // Wire command checker: channel users can run /audit, /skills, etc.
@@ -239,15 +262,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       const msg = data as { text?: string; kind?: string; prompt?: string };
       const prompt = msg.kind === "cron-fire" ? msg.prompt : msg.text;
       if (prompt) {
-        // Route to this session's own agent (from pool).
-        const agent = pool.acquire(session);
-        const entry = pool.get(session);
-        if (entry) entry.busy = true;
-        void agent.run(prompt, (e: unknown) => {
-          gw.broadcast(session, e);
-        }).finally(() => {
-          if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = nowWallclock(); }
-        });
+        // Route to pi AgentSession (same as TUI).
+        void runOnSession(session, prompt, (e: unknown) => gw.broadcast(session, e));
       }
     },
   });
