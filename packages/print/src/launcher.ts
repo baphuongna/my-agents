@@ -2,29 +2,18 @@
  * mya Session Launcher — Phase 1+2+3.
  *
  * Features:
- *  - Gateway pool sessions (real AgentSession, /quit doesn't lose state)
- *  - Acquire new session (always via gateway)
- *  - Real-time refresh (polling 2s while visible)
+ *  - 4 tabs: Sessions, Channels, Cron, Status
  *  - Search/filter input
- *  - Tabs: [Sessions] [Channels] [Cron] [Status]
- *  - Status bar (connection, session count, model, time)
- *  - Mouse support (alternate screen)
- *  - Fullscreen TUI using pi TUI framework
- *  - Directory picker for new sessions
- *  - Kill session (x), Open (Enter), New (n), Quit (q/Ctrl+C)
+ *  - Real-time refresh (poll 2s)
+ *  - Status bar (connection, session count)
+ *  - Fullscreen TUI (alt screen + mouse via ANSI)
+ *  - New session → gateway acquire (always)
+ *  - x kill, n new, q quit, Tab switch, r refresh
  */
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join, resolve as pathResolve } from "node:path";
 import { nowWallclock } from "@my-agent/core";
-import {
-  Container,
-  Input,
-  Text,
-  TUI,
-  ProcessTerminal,
-  type Component,
-} from "@my-agent/tui";
 
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
@@ -37,8 +26,13 @@ const A = {
   blue: (s: string) => `\x1b[38;2;120;170;220m${s}\x1b[39m`,
   selBg: (s: string) => `\x1b[48;2;58;58;74m${s}\x1b[49m`,
   clrEol: "\x1b[K",
+  altScreenOn: "\x1b[?1049h",
+  altScreenOff: "\x1b[?1049l",
+  mouseOn: "\x1b[?1003h\x1b[?1006h",
+  mouseOff: "\x1b[?1003l\x1b[?1006l",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
+  clear: "\x1b[2J\x1b[H",
 };
 
 interface Sess {
@@ -141,19 +135,29 @@ async function killGatewaySession(id: string): Promise<boolean> {
   } catch { return false; }
 }
 
+type Tab = "sessions" | "channels" | "cron" | "status";
+
+interface LauncherState {
+  tab: Tab;
+  sel: number;
+  filter: string;
+  sessions: Sess[];
+  info: GatewayInfo;
+  refreshing: boolean;
+  lastRefresh: number;
+}
+
 /** Directory picker — user types path or picks current dir. */
-async function pickDirectory(initial: string): Promise<string | undefined> {
+function pickDirectory(initial: string): Promise<string | undefined> {
   return new Promise((resolve) => {
-    const ui = new TUI(new ProcessTerminal());
     let dir = initial;
     let inputMode = false;
     let inputBuf = "";
     let resolved = false;
-
-    const container = new Container();
-    const dirLine = new Text("");
-    const inputLine = new Input();
-    inputLine.setValue("");
+    const isTTY = !!process.stdin.isTTY;
+    if (isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdout.write(A.altScreenOn + A.mouseOn + A.hideCursor);
 
     const render = () => {
       const lines: string[] = [];
@@ -173,27 +177,28 @@ async function pickDirectory(initial: string): Promise<string | undefined> {
       }
       lines.push(`  ${A.dim2("─".repeat(60))}`);
       lines.push(`  ${A.dim2("Enter confirm | Esc back | q cancel")}`);
-      const out = lines.join("\n") + "\n";
-      process.stdout.write("\x1b[2J\x1b[H" + out);
+      process.stdout.write(A.clear + lines.join("\n") + "\n");
     };
 
     const cleanup = (result?: string) => {
       if (resolved) return;
       resolved = true;
-      try { ui.stop(); } catch { /* */ }
-      process.stdout.write("\x1b[2J\x1b[H" + A.showCursor);
+      process.stdin.pause();
+      process.stdin.removeListener("data", onData);
+      if (isTTY) process.stdin.setRawMode(false);
+      process.stdout.write(A.altScreenOff + A.mouseOff + A.clear + A.showCursor);
       resolve(result);
     };
 
-    ui.addInputListener((data: string) => {
-      if (resolved) return;
-      if (data === "\x03" || data === "\x04") { cleanup(); return; }
-      if (data === "\x1b") {
+    const onData = (data: Buffer) => {
+      const k = data.toString();
+      if (k === "\x03" || k === "\x04") { cleanup(); return; }
+      if (k === "\x1b") {
         if (inputMode) { inputMode = false; inputBuf = ""; render(); return; }
         cleanup();
         return;
       }
-      if (data === "\r" || data === "\n") {
+      if (k === "\r" || k === "\n") {
         if (inputMode && inputBuf.trim()) {
           let p = inputBuf.trim();
           if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
@@ -205,23 +210,24 @@ async function pickDirectory(initial: string): Promise<string | undefined> {
         }
         return;
       }
-      if (data === "q" && !inputMode) { cleanup(); return; }
+      if (k === "q" && !inputMode) { cleanup(); return; }
       if (!inputMode) {
-        if (data.length === 1 && data >= " ") { inputMode = true; inputBuf = data; render(); return; }
+        if (k.length === 1 && k >= " ") { inputMode = true; inputBuf = k; render(); return; }
       } else {
-        if (data === "\x7f" || data === "\b") { inputBuf = inputBuf.slice(0, -1); render(); return; }
-        if (data.length === 1 && data >= " ") { inputBuf += data; render(); return; }
+        if (k === "\x7f" || k === "\b") { inputBuf = inputBuf.slice(0, -1); render(); return; }
+        if (k.length === 1 && k >= " ") { inputBuf += k; render(); return; }
       }
-    });
+    };
 
     render();
-    ui.start();
+    process.stdin.on("data", onData);
   });
 }
 
 /** Launch pi TUI connected to a gateway session via WS. */
 async function launchGatewaySession(sessionId: string): Promise<void> {
-  process.stdout.write("\x1b[2J\x1b[H\n  " + A.muted("Connecting to gateway session " + sessionId + "...") + "\n\n");
+  process.stdout.write(A.altScreenOff + A.mouseOff + A.clear);
+  process.stdout.write("\n  " + A.muted("Connecting to gateway session " + sessionId + "...") + "\n\n");
   await new Promise<void>((resolve) => {
     const args = ["--model", "MiniMax-M3", "--gateway-session", sessionId];
     const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
@@ -234,22 +240,9 @@ async function launchGatewaySession(sessionId: string): Promise<void> {
   });
 }
 
-type Tab = "sessions" | "channels" | "cron" | "status";
-
-interface LauncherState {
-  tab: Tab;
-  sel: number;
-  filter: string;
-  sessions: Sess[];
-  info: GatewayInfo;
-  refreshing: boolean;
-  lastRefresh: number;
-}
-
 /** Main launcher UI — fullscreen TUI with tabs, search, status bar, real-time refresh. */
-async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new" } | undefined> {
+function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new" } | undefined> {
   return new Promise((resolve) => {
-    const ui = new TUI(new ProcessTerminal());
     const state: LauncherState = {
       tab: "sessions",
       sel: 0,
@@ -261,15 +254,10 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
     };
     let resolved = false;
     let refreshTimer: NodeJS.Timeout | undefined;
-
-    const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" }) => {
-      if (resolved) return;
-      resolved = true;
-      if (refreshTimer) clearInterval(refreshTimer);
-      try { ui.stop(); } catch { /* */ }
-      process.stdout.write("\x1b[2J\x1b[H" + A.showCursor);
-      resolve(result);
-    };
+    const isTTY = !!process.stdin.isTTY;
+    if (isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdout.write(A.altScreenOn + A.mouseOn + A.hideCursor);
 
     const refresh = async () => {
       if (state.refreshing) return;
@@ -295,7 +283,7 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
     const render = () => {
       const lines: string[] = [];
       const w = process.stdout.columns || 100;
-      lines.push("");
+      const h = process.stdout.rows || 30;
 
       // Header
       const connIcon = state.info.connected ? A.green("●") : A.red("○");
@@ -320,8 +308,7 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
 
       // Tab content
       if (state.tab === "sessions") {
-        // Search bar
-        lines.push(`  ${A.dim2("search:")} ${A.accent(state.filter || "_")}  ${A.dim2("(type to filter, /- to clear)")}`);
+        lines.push(`  ${A.dim2("search:")} ${A.accent(state.filter || "_")}  ${A.dim2("(type to filter, Esc to clear)")}`);
         lines.push("");
 
         const items = filteredSessions();
@@ -329,7 +316,7 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
           lines.push(`  ${A.muted("No active gateway sessions.")}`);
           lines.push(`  ${A.muted("Press ")} ${A.accent("n")} ${A.muted("to start a new one.")}`);
         } else {
-          const max = Math.max(0, (process.stdout.rows || 30) - 12);
+          const max = Math.max(0, h - 12);
           const visible = items.slice(0, max);
           for (let i = 0; i < visible.length; i++) {
             const s = visible[i]!;
@@ -350,7 +337,6 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
       } else if (state.tab === "channels") {
         if (!state.info.channels?.length) {
           lines.push(`  ${A.muted("No channels configured.")}`);
-          lines.push(`  ${A.muted("Run ")} ${A.accent("mya channels add")} ${A.muted("to add one.")}`);
         } else {
           for (const ch of state.info.channels) {
             const icon = ch.enabled ? A.green("●") : A.dim2("○");
@@ -373,9 +359,9 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
         lines.push(`  ${A.dim2("Model:")}       ${state.info.model ?? A.dim2("unknown")}`);
         if (state.info.uptime !== undefined) {
           const up = state.info.uptime;
-          const h = Math.floor(up / 3600);
-          const m = Math.floor((up % 3600) / 60);
-          lines.push(`  ${A.dim2("Uptime:")}      ${h}h ${m}m`);
+          const hh = Math.floor(up / 3600);
+          const mm = Math.floor((up % 3600) / 60);
+          lines.push(`  ${A.dim2("Uptime:")}      ${hh}h ${mm}m`);
         }
         lines.push(`  ${A.dim2("Last refresh:")} ${fmt(state.lastRefresh)}`);
         lines.push("");
@@ -385,27 +371,39 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
       }
 
       // Footer / status bar
-      const remaining = Math.max(0, (process.stdout.rows || 30) - lines.length - 4);
+      const remaining = Math.max(0, h - lines.length - 4);
       for (let i = 0; i < remaining; i++) lines.push("");
 
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
       const help = state.tab === "sessions"
-        ? "↑/↓ | Enter open | /search | x kill | n new | Tab switch | q quit"
+        ? "↑/↓ | Enter open | type search | x kill | n new | Tab switch | r refresh | q quit"
         : "Tab switch | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
-      const out = "\x1b[2J\x1b[H" + lines.join("\n") + "\n";
-      process.stdout.write(out);
+      process.stdout.write(A.clear + lines.join("\n") + "\n");
     };
 
-    ui.addInputListener(async (data: string) => {
+    const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" }) => {
       if (resolved) return;
-      if (data === "\x03" || data === "\x04") { cleanup(); return; }
-      if (data === "q") { cleanup(); return; }
-      if (data === "r") { void refresh(); return; }
+      resolved = true;
+      if (refreshTimer) clearInterval(refreshTimer);
+      process.stdin.pause();
+      process.stdin.removeListener("data", onData);
+      if (isTTY) process.stdin.setRawMode(false);
+      process.stdout.write(A.altScreenOff + A.mouseOff + A.clear + A.showCursor);
+      resolve(result);
+    };
 
-      // Tab switch (Tab or 1/2/3/4)
-      if (data === "\t" || data === "\x1b[Z") {
+    const onData = (data: Buffer) => {
+      if (resolved) return;
+      const k = data.toString();
+
+      if (k === "\x03" || k === "\x04") { cleanup(); return; }
+      if (k === "q") { cleanup(); return; }
+      if (k === "r") { void refresh(); return; }
+
+      // Tab switch
+      if (k === "\t" || k === "\x1b[Z") {
         const tabs: Tab[] = ["sessions", "channels", "cron", "status"];
         const idx = tabs.indexOf(state.tab);
         state.tab = tabs[(idx + 1) % tabs.length]!;
@@ -413,14 +411,14 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
         void refresh();
         return;
       }
-      if (data === "1") { state.tab = "sessions"; state.sel = 0; return; }
-      if (data === "2") { state.tab = "channels"; state.sel = 0; return; }
-      if (data === "3") { state.tab = "cron"; state.sel = 0; return; }
-      if (data === "4") { state.tab = "status"; state.sel = 0; return; }
+      if (k === "1") { state.tab = "sessions"; state.sel = 0; void refresh(); return; }
+      if (k === "2") { state.tab = "channels"; state.sel = 0; void refresh(); return; }
+      if (k === "3") { state.tab = "cron"; state.sel = 0; void refresh(); return; }
+      if (k === "4") { state.tab = "status"; state.sel = 0; void refresh(); return; }
 
       if (state.tab === "sessions") {
-        if (data === "n") { cleanup({ kind: "new" }); return; }
-        if (data === "x") {
+        if (k === "n") { cleanup({ kind: "new" }); return; }
+        if (k === "x") {
           const items = filteredSessions();
           const target = items[state.sel];
           if (target && target.type === "gateway") {
@@ -428,18 +426,18 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
           }
           return;
         }
-        if (data === "\x1b[A") {
+        if (k === "\x1b[A") {
           state.sel = Math.max(0, state.sel - 1);
           render();
           return;
         }
-        if (data === "\x1b[B") {
+        if (k === "\x1b[B") {
           const items = filteredSessions();
           state.sel = Math.min(items.length - 1, state.sel + 1);
           render();
           return;
         }
-        if (data === "\r" || data === "\n") {
+        if (k === "\r" || k === "\n") {
           const items = filteredSessions();
           const target = items[state.sel];
           if (!target) return;
@@ -447,26 +445,26 @@ async function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind
           cleanup({ kind: "session", id: target.id });
           return;
         }
-        if (data === "/") { state.filter = ""; render(); return; }
-        if (data === "\x7f" || data === "\b") {
+        if (k === "\x1b") { state.filter = ""; state.sel = 0; render(); return; }
+        if (k === "\x7f" || k === "\b") {
           state.filter = state.filter.slice(0, -1);
           state.sel = 0;
           render();
           return;
         }
-        if (data.length === 1 && data >= " " && data <= "~") {
-          state.filter += data;
+        if (k.length === 1 && k >= " " && k <= "~") {
+          state.filter += k;
           state.sel = 0;
           render();
           return;
         }
       }
-    });
+    };
 
     void refresh();
     refreshTimer = setInterval(() => void refresh(), REFRESH_MS);
     render();
-    ui.start();
+    process.stdin.on("data", onData);
   });
 }
 

@@ -368,6 +368,14 @@ export class Gateway {
         const p = this.readiness.readiness();
         return send(p.ok ? 200 : 503, p, p.ok ? {} : { "retry-after": String(p.retryAfterS ?? 2) });
       }
+      case "/status": {
+        return send(200, {
+          model: process.env["MYA_MODEL"] ?? "MiniMax-M3",
+          uptime: Math.floor(process.uptime()),
+          pid: process.pid,
+          version: process.env["MYA_VERSION"] ?? "0.1.0",
+        });
+      }
       case "/functional": {
         const p = this.readiness.functional(this.healthyTurns);
         return send(p.ok ? 200 : 503, p);
