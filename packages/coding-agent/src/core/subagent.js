@@ -21,12 +21,13 @@
  * to use. (For strict enforcement, layer ToolPolicy.)
  */
 import { createAgentSession } from "./sdk.js";
+import { nowWallclock } from "@my-agent/core";
 /** Max recursion depth for subagent tree (parent → sub → sub). Default 3. */
 export const MAX_SUBAGENT_DEPTH = 3;
 let counter = 0;
 function nextSubagentId() {
     counter = (counter + 1) & 0xffff;
-    return `sub-${Date.now().toString(36)}-${counter.toString(36)}`;
+    return `sub-${nowWallclock().toString(36)}-${counter.toString(36)}`;
 }
 /**
  * Spawn a subagent. Creates a new AgentSession with custom cwd + system overlay.
@@ -39,6 +40,7 @@ export async function spawnSubagent(parent, opts) {
     }
     const id = nextSubagentId();
     const cwd = opts.cwd ?? process.cwd();
+    const parentSessionId = typeof parent === "string" ? parent : (parent.sessionId ?? "");
     const depthLine = depth > 0 ? `\nYou are a sub-subagent (depth ${depth + 1}).` : "";
     const toolLine = opts.allowedTools?.length
         ? `\nAllowed tools: ${opts.allowedTools.join(", ")}\nUse only these tools.`
@@ -56,7 +58,8 @@ export async function spawnSubagent(parent, opts) {
     };
     if (opts.model)
         sessionOpts.model = opts.model;
-    const session = await createAgentSession(sessionOpts);
+    const created = await createAgentSession(sessionOpts);
+    const session = created.session;
     const chunks = [];
     const streamWaiters = [];
     let streamDone = false;
@@ -84,9 +87,9 @@ export async function spawnSubagent(parent, opts) {
     const handle = {
         id,
         goal: opts.goal,
-        startedAt: Date.now(),
+        startedAt: nowWallclock(),
         allowedTools: opts.allowedTools,
-        parentSessionId: parent.sessionId ?? "",
+        parentSessionId,
         depth,
         status: "running",
         output: "",
@@ -95,7 +98,7 @@ export async function spawnSubagent(parent, opts) {
             if (handle.status === "running") {
                 session.abort();
                 handle.status = "aborted";
-                handle.endedAt = Date.now();
+                handle.endedAt = nowWallclock();
             }
         },
         wait: () => completionPromise,
@@ -120,18 +123,19 @@ export async function spawnSubagent(parent, opts) {
             // Inject subagent identity + tool restriction into the goal.
             const effectivePrompt = `[SUBAGENT — focused task${depth > 0 ? ` (depth ${depth + 1})` : ""}]${depthLine}${toolLine}\nGoal: ${opts.goal}\n\nWhen done, output the final answer prefixed with "<DONE>".`;
             const unsub = session.subscribe((event) => {
-                // Stream + accumulate text chunks from session events
                 const ev = event;
-                if (ev.type === "message_update" || ev.type === "message_end") {
+                if (ev.type === "message_update") {
                     const content = ev.message?.content;
                     if (Array.isArray(content)) {
                         for (const c of content) {
-                            if (c?.type === "text" && c.text) {
-                                handle.output += c.text;
-                                pushChunk(c.text);
-                            }
+                            if (c?.type === "text" && c.text)
+                                handle.output = c.text;
                         }
                     }
+                }
+                else if (ev.type === "message_end") {
+                    if (handle.output)
+                        pushChunk(handle.output);
                 }
             });
             try {
@@ -143,7 +147,7 @@ export async function spawnSubagent(parent, opts) {
             signalEnd();
             if (handle.status === "running") {
                 handle.status = "done";
-                handle.endedAt = Date.now();
+                handle.endedAt = nowWallclock();
             }
             return handle.output;
         }
@@ -153,7 +157,7 @@ export async function spawnSubagent(parent, opts) {
             signalEnd(err);
             if (handle.status === "running")
                 handle.status = "failed";
-            handle.endedAt = Date.now();
+            handle.endedAt = nowWallclock();
             return handle.output;
         }
     })();
@@ -184,9 +188,10 @@ export function trackSubagent(parentId, sub) {
     }
     set.add(sub);
     subagentCountListener?.(totalActiveSubagents());
-    // Auto-untrack when finished
+    // Auto-untrack when finished (with 10min hard cap to prevent permanent leak)
+    const startTime = nowWallclock();
     const interval = setInterval(() => {
-        if (sub.status !== "running") {
+        if (sub.status !== "running" || nowWallclock() - startTime > 600_000) {
             set?.delete(sub);
             clearInterval(interval);
             if (set && set.size === 0)
@@ -194,6 +199,7 @@ export function trackSubagent(parentId, sub) {
             subagentCountListener?.(totalActiveSubagents());
         }
     }, 500);
+    interval.unref?.();
 }
 /** List active subagents for a parent session. */
 export function listSubagents(parentId) {

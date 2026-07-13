@@ -56,7 +56,9 @@ export interface SubagentHandle {
  * Spawn a subagent. Creates a new AgentSession with custom cwd + system overlay.
  * Returns handle for tracking.
  */
-export declare function spawnSubagent(parent: AgentSession, opts: {
+export declare function spawnSubagent(parent: {
+    sessionId?: string;
+} | AgentSession | string, opts: {
     goal: string;
     cwd?: string;
     allowedTools?: string[];

@@ -5058,6 +5058,7 @@ export class InteractiveMode {
         this.clearExtensionTerminalInputListeners();
         this.footer.dispose();
         this.footerDataProvider.dispose();
+        setSubagentCountListener(null);
         if (this.unsubscribe) {
             this.unsubscribe();
         }

@@ -123,6 +123,14 @@ function registerSharedCommand(
  */
 export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void {
   return (pi: MyaPiApi) => {
+    // Capture parent session ID from session_start event (for subagent tracking)
+    let parentSessionId = "";
+    pi.on("session_start", (event: unknown, ctx: unknown) => {
+      const c = ctx as { sessionManager?: { getSessionName?: () => string }; session?: { sessionId?: string } };
+      // Some pi versions expose session on context; others don't.
+      // We use a fallback to a generated ID.
+      parentSessionId = c?.session?.sessionId ?? `session-${nowWallclock().toString(36)}`;
+    });
     // ── 1. AuditLog: log every tool call + result ───────────────────────
     if (opts.auditLog) {
       const audit = opts.auditLog;
@@ -271,15 +279,17 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
             params: { goal: string; allowed_tools?: string[]; cwd?: string; parent_depth?: number; wait?: boolean },
             _signal: AbortSignal | undefined,
             _onUpdate: unknown,
-            ctx: { session: { sessionId?: string } },
+            _ctx: unknown,
           ) {
-            const sub = await spawnSubagent(ctx.session as never, {
+            // ExtensionContext doesn't expose the AgentSession directly.
+            // Use the parent session captured from the bridge closure.
+            const sub = await spawnSubagent(parentSessionId, {
               goal: params.goal,
               cwd: params.cwd,
               allowedTools: params.allowed_tools,
               parentDepth: params.parent_depth ?? 0,
             });
-            trackSubagent(ctx.session.sessionId ?? "", sub);
+            trackSubagent(parentSessionId, sub);
             if (params.wait !== false) {
               const output = await sub.wait();
               return { content: [{ type: "text", text: `[Subagent ${sub.id}]\n${output || "(no output)"}` }] };
@@ -291,13 +301,13 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         pi.registerCommand("subagents", {
           description: "List active subagents",
           handler: async () => {
-            const subs = listSubagents("");
+            const subs = listSubagents(parentSessionId);
             return `Subagents (${subs.length})\n` +
               subs.map((s: { id: string; status: string; goal: string; depth: number }) =>
                 `  ${s.id} [${s.status}] depth=${s.depth}: ${s.goal.slice(0, 50)}`).join("\n");
           },
         });
-      });
+      }).catch(() => { /* subagent import best-effort */ });
     } catch {
       /* subagent tool is best-effort */
     }

@@ -589,6 +589,13 @@ export function createAgent(config: AgentConfig = {}): Agent {
         return handle.output;
       }
     })();
+    // Auto-cleanup: remove completed subagents after 60s (prevents memory leak)
+    // while keeping them visible long enough for listSubagents()/getSubagent().
+    void completionPromise.finally(() => {
+      setTimeout(() => {
+        if (subagents.get(id) === handle) subagents.delete(id);
+      }, 60_000).unref?.();
+    });
     return handle;
   }
 
