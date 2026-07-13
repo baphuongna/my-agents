@@ -53,7 +53,7 @@ interface GatewayInfo {
   running: number;
   model?: string;
   uptime?: number;
-  channels?: Array<{ name: string; type: string; enabled: boolean }>;
+  channels?: Array<{ id: string; type: string; alias?: string; label: string; enabled: boolean; configured: boolean; health: string }>;
   cronJobs?: Array<{ id: string; schedule: string; lastRun?: string; enabled: boolean }>;
 }
 
@@ -340,7 +340,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         } else {
           for (const ch of state.info.channels) {
             const icon = ch.enabled ? A.green("●") : A.dim2("○");
-            lines.push(`  ${icon}  ${ch.name.padEnd(20)}  ${A.dim2(ch.type)}  ${ch.enabled ? A.green("enabled") : A.dim2("disabled")}`);
+            lines.push(`  ${icon}  ${ch.label.padEnd(24)}  ${A.dim2(ch.type)}  ${ch.enabled ? A.green("enabled") : A.dim2("disabled")}`);
           }
         }
       } else if (state.tab === "cron") {
