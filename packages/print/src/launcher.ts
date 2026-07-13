@@ -37,8 +37,11 @@ interface Sess {
 }
 
 function fmt(ts: number): string {
-  if (!ts) return "-";
-  const d = nowWallclock() - ts;
+  if (!ts || isNaN(ts)) return "-";
+  // Pi stores timestamps in MILLISECONDS (ISO-based). Handle both ms and s.
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  const d = nowWallclock() - ms;
+  if (d < 0) return "now";
   if (d < 60_000) return "now";
   if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;

@@ -133,14 +133,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── launcher (default when no prompt/flags) ──
-  if (!skipLauncher && !print && !prompt && !rpc && !debug) {
-    const { runLauncherLoop } = await import("./launcher.js");
-    return runLauncherLoop();
-  }
-
-  // ── interactive TUI (when launcher skipped) ──
-  if (!print && !prompt && !rpc) {
+  // ── default: pi InteractiveMode directly ──
+  // `mya` → pi TUI (as expected). `mya launcher` → session picker.
+  if (!print && !prompt && !rpc && !debug) {
     return runPiInteractive();
   }
 }
