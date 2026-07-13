@@ -1,8 +1,13 @@
 /**
- * mya Session Launcher — gateway-based multi-session TUI.
+ * mya Session Launcher — simple, full pi TUI.
  *
- * If gateway is running (mya serve): connect via WS, sessions persist in gateway.
- * If no gateway: fallback to foreground pi.
+ * Launcher → select → pi InteractiveMode (FULL TUI, foreground) → exit → launcher.
+ * Gateway sessions shown for visibility (if running).
+ * No WS chat, no tmux, no complexity. Just pi's beautiful InteractiveMode.
+ *
+ * Hotkeys (inside pi):
+ *   /exit or Ctrl+C → exit pi → return to launcher
+ *   Ctrl+D → exit pi → return to launcher
  */
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
@@ -42,14 +47,6 @@ async function checkGateway(): Promise<boolean> {
   } catch { return false; }
 }
 
-async function getWsToken(): Promise<{ port: number; token: string } | null> {
-  try {
-    const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT}/ws-info`, { signal: AbortSignal.timeout(500) });
-    if (!res.ok) return null;
-    return (await res.json()) as { port: number; token: string };
-  } catch { return null; }
-}
-
 async function loadGatewaySessions(): Promise<Sess[]> {
   try {
     const res = await fetch(`http://127.0.0.1:${GATEWAY_PORT}/pool/sessions`, { signal: AbortSignal.timeout(500) });
@@ -61,7 +58,6 @@ async function loadGatewaySessions(): Promise<Sess[]> {
       detail: `${s.messages} msgs | ${s.busy ? "busy" : "idle"} | ${fmt(s.lastActivity)}`,
       icon: s.busy ? "*" : "o",
       type: "gateway" as const,
-      arg: s.sessionId,
     }));
   } catch { return []; }
 }
@@ -106,7 +102,7 @@ function loadSaved(): Sess[] {
 function buildLines(sessions: Sess[], sel: number, filter: string, gateway: boolean): string[] {
   const o: string[] = [];
   o.push("");
-  const status = gateway ? A.green("[gateway connected]") : A.muted("[no gateway - foreground mode]");
+  const status = gateway ? A.green("[gateway]") : A.muted("[standalone]");
   o.push(`  ${A.bold(A.accent("mya"))} ${A.muted("- Session Launcher")}  ${status}`);
   o.push(`  ${A.dim2("-".repeat(50))}`);
   o.push("");
@@ -123,81 +119,11 @@ function buildLines(sessions: Sess[], sel: number, filter: string, gateway: bool
   o.push("");
   o.push(`  ${A.dim2("-".repeat(50))}`);
   o.push(`  ${A.dim2("up/down nav | Enter open | n new | q quit")}`);
+  o.push(`  ${A.dim2("in pi: /exit or Ctrl+C to return to launcher")}`);
   return o;
 }
 
-async function wsChat(sessionId: string): Promise<void> {
-  const wsInfo = await getWsToken();
-  if (!wsInfo) {
-    process.stdout.write(A.clear + A.muted("  Cannot connect to gateway\n"));
-    await new Promise((r) => setTimeout(r, 1000));
-    return;
-  }
-
-  return new Promise((resolve) => {
-    process.stdout.write(A.clear + A.showCursor);
-    process.stdout.write(`  ${A.bold(A.accent("mya"))} ${A.muted("- session: " + sessionId + " (Ctrl+Q to leave)")}\n\n`);
-
-    const isTTY = process.stdin.isTTY;
-    if (isTTY) process.stdin.setRawMode(true);
-    process.stdin.resume();
-
-    const wsUrl = `ws://127.0.0.1:${wsInfo.port}/events?session=${sessionId}&token=${wsInfo.token}`;
-    let inputBuf = "";
-
-    import("ws").then(({ default: WebSocket }) => {
-      const ws = new WebSocket(wsUrl);
-      let connected = false;
-
-      ws.on("open", () => {
-        connected = true;
-        process.stdout.write(A.green("  connected\n\n  > "));
-      });
-
-      ws.on("message", (data: Buffer) => {
-        try {
-          const env = JSON.parse(data.toString()) as { event?: { kind?: string; text?: string; stage?: string } };
-          const ev = env.event;
-          if (ev?.text) process.stdout.write(ev.text);
-          if (ev?.kind === "Completed" || ev?.stage === "completed") process.stdout.write("\n\n  > ");
-        } catch { /* */ }
-      });
-
-      ws.on("error", () => { process.stdout.write(A.muted("\n  connection lost\n")); cleanup(); });
-      ws.on("close", () => cleanup());
-
-      const onData = (data: Buffer) => {
-        const k = data.toString();
-        if (k === "\x11" || k === "\x03") { cleanup(); return; }
-        if (k === "\r" || k === "\n") {
-          if (inputBuf.trim() && connected) {
-            ws.send(JSON.stringify({ text: inputBuf }));
-            process.stdout.write("\n  ... \n");
-          }
-          inputBuf = "";
-          return;
-        }
-        if (k === "\x7f" || k === "\b") {
-          if (inputBuf.length > 0) { inputBuf = inputBuf.slice(0, -1); process.stdout.write("\b \b"); }
-          return;
-        }
-        if (k.length === 1 && k >= " ") { inputBuf += k; process.stdout.write(k); }
-      };
-
-      function cleanup() {
-        process.stdin.pause();
-        process.stdin.removeListener("data", onData);
-        if (isTTY) process.stdin.setRawMode(false);
-        try { ws.close(); } catch { /* */ }
-        process.stdout.write(A.clear);
-        resolve();
-      }
-
-      process.stdin.on("data", onData);
-    });
-  });
-}
-
+/** Launch pi InteractiveMode (FULL TUI) in foreground. */
 function launchPi(sessionPath?: string): Promise<void> {
   return new Promise((resolve) => {
     const args = ["--model", "MiniMax-M3"];
@@ -269,7 +195,7 @@ export async function runLauncherLoop(): Promise<void> {
   while (true) {
     const gateway = await checkGateway();
     const sessions: Sess[] = [
-      { id: "new", label: "New session", detail: gateway ? "Gateway-managed" : "Foreground pi", icon: "+", type: "new" },
+      { id: "new", label: "New session", detail: "Open pi InteractiveMode", icon: "+", type: "new" },
       ...(gateway ? await loadGatewaySessions() : []),
       ...loadSaved(),
     ];
@@ -277,16 +203,12 @@ export async function runLauncherLoop(): Promise<void> {
     const result = await showLauncher(sessions, gateway);
     if (result === undefined) return;
 
-    if (gateway) {
-      if (result.type === "new") {
-        const sid = `s_${nowWallclock().toString(36)}`;
-        await wsChat(sid);
-      } else if (result.arg) {
-        await wsChat(result.arg);
-      }
+    // ALL session types → launch pi InteractiveMode (FULL TUI)
+    if (result.type === "saved" && result.arg) {
+      await launchPi(result.arg);
     } else {
-      if (result.type === "saved" && result.arg) await launchPi(result.arg);
-      else await launchPi();
+      await launchPi();
     }
+    // pi exited → loop back to launcher
   }
 }
