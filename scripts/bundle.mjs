@@ -76,7 +76,6 @@ await build({
     "node:https", "node:net", "node:tls", "node:zlib", "node:buffer",
     "node:events", "node:string_decoder", "node:readline", "node:worker_threads",
     "node:async_hooks", "node:perf_hooks", "node:assert", "node:querystring",
-    "@my-agent/coding-agent", // dynamic import resolves at runtime via source plugin above
   ],
   plugins: [sourceResolve],
   legalComments: "none",
