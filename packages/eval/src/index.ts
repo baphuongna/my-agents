@@ -8,3 +8,18 @@ export { ParityHarness, defaultHarness } from "./harness.js";
 export type { ParityScenario, ScenarioResult } from "./harness.js";
 export { identicalPassthrough, keyFactPreserved } from "./harness.js";
 export { installEgressGuard, restoreEgress, checkGoldenAge, EgressViolationError } from "./egress.js";
+export {
+  IntegrationTier,
+  CredentialedTier,
+  toolCallConversation,
+  warnFixtureFreshness,
+  FRESHNESS_WARN_DAYS,
+} from "./tiers.js";
+export type {
+  IntegrationTurn,
+  IntegrationScenario,
+  IntegrationResult,
+  CredentialedScenario,
+  CredentialedResult,
+  FreshnessWarning,
+} from "./tiers.js";
