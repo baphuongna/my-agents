@@ -62,6 +62,32 @@ async function main(): Promise<void> {
     return runBgSession({ id: bgId, model: bgModel });
   }
 
+  // Background session management: list / kill / kill-all
+  if (args.includes("--bg-list")) {
+    const { listBgSessions } = await import("./bg-runner.js");
+    const sessions = listBgSessions();
+    if (sessions.length === 0) { console.log("No background sessions."); return; }
+    for (const s of sessions) {
+      console.log(`${s.status === "running" ? "🟢" : "🔴"} ${s.id}  pid:${s.pid}  :${s.port}  ${s.model}`);
+    }
+    return;
+  }
+  const bgKillIdx = args.indexOf("--bg-kill");
+  if (bgKillIdx >= 0 && args[bgKillIdx + 1]) {
+    const { killBgSession } = await import("./bg-runner.js");
+    const ok = killBgSession(args[bgKillIdx + 1]!);
+    console.log(ok ? `Killed ${args[bgKillIdx + 1]}` : `Session not found: ${args[bgKillIdx + 1]}`);
+    return;
+  }
+  if (args.includes("--bg-kill-all")) {
+    const { listBgSessions, killBgSession } = await import("./bg-runner.js");
+    const sessions = listBgSessions();
+    let killed = 0;
+    for (const s of sessions) { if (killBgSession(s.id)) killed++; }
+    console.log(`Killed ${killed}/${sessions.length} background sessions.`);
+    return;
+  }
+
   // ── default: launcher (if no args) OR interactive TUI ──
   // When MYA_NO_LAUNCHER=1 or --session/--resume/--continue is passed, skip launcher.
   const skipLauncher = process.env["MYA_NO_LAUNCHER"] === "1" ||
