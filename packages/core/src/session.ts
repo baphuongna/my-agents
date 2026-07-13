@@ -1,10 +1,9 @@
 /**
  * Session + History — minimal Tier-0 implementations.
  *
- * History is an append-only log (JSONL tree in Tier 1; in-memory array here).
+ * History is an in-memory array. For persistent sessions, AgentPool uses
+ * pi's JSONL session files (see packages/coding-agent).
  */
-import { appendFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import type { History, MemorySnapshot, ProviderProfile, Session } from "./types.js";
 
 export class ArrayHistory implements History {
@@ -13,60 +12,6 @@ export class ArrayHistory implements History {
     this._entries.push(entry);
   }
   entries(): readonly unknown[] {
-    return this._entries;
-  }
-}
-
-/**
- * Issue #7: FileHistory — JSONL-backed history. Each `append` writes one line.
- * `entries()` reads all lines (for session resume / startup).
- *
- * Use case: agent sessions that should survive process restarts.
- * Pattern: same as pi's JSONL session files (one file per session).
- */
-export class FileHistory implements History {
-  private _entries: unknown[] = [];
-  private readonly path: string;
-  private loaded = false;
-
-  constructor(path: string) {
-    this.path = path;
-  }
-
-  /** Eagerly load from disk. Called on first append or explicit load(). */
-  private load(): void {
-    if (this.loaded) return;
-    this.loaded = true;
-    if (!existsSync(this.path)) return;
-    try {
-      const text = readFileSync(this.path, "utf8");
-      for (const line of text.split("\n")) {
-        if (!line.trim()) continue;
-        try {
-          this._entries.push(JSON.parse(line));
-        } catch {
-          // skip malformed line
-        }
-      }
-    } catch {
-      // ignore read errors
-    }
-  }
-
-  append(entry: unknown): void {
-    this.load();
-    this._entries.push(entry);
-    // Persist to disk
-    try {
-      mkdirSync(dirname(this.path), { recursive: true });
-      appendFileSync(this.path, JSON.stringify(entry) + "\n", "utf8");
-    } catch {
-      // best-effort; in-memory still works
-    }
-  }
-
-  entries(): readonly unknown[] {
-    this.load();
     return this._entries;
   }
 }
@@ -84,12 +29,6 @@ export function createSession(opts: {
   profiles: ProviderProfile[];
   stableTier?: string;
   userMd?: string;
-  /**
-   * Issue #7: optional file path for JSONL-backed history.
-   * If provided, uses FileHistory (auto-loads on first access).
-   * Otherwise falls back to in-memory ArrayHistory.
-   */
-  historyPath?: string;
 }): Session {
   return {
     profiles: opts.profiles,
@@ -97,7 +36,7 @@ export function createSession(opts: {
     ctxFiles: [],
     memory: stubMemory(),
     userMd: opts.userMd ?? "",
-    history: opts.historyPath ? new FileHistory(opts.historyPath) : new ArrayHistory(),
+    history: new ArrayHistory(),
     skillSetDirty: false,
   };
 }

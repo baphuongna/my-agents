@@ -464,31 +464,6 @@ export class Brain {
     }
     return n;
   }
-
-  // ── Issue #8: persistence (save/load) ───────────────────────
-
-  /** Serialize brain state to a plain object (JSON-safe). */
-  serialize(): { facts: Fact[]; takes: Take[]; pages: BrainPage[]; tombstones: Array<{ id: string; fact: Fact; deletedAt: number }> } {
-    return {
-      facts: [...this.facts.values()],
-      takes: [...this.takes.values()],
-      pages: [...this.pages.values()],
-      tombstones: [...this.tombstones.entries()].map(([id, t]) => ({ id, ...t })),
-    };
-  }
-
-  /** Restore brain state from a serialized object. Replaces current state. */
-  load(state: { facts?: Fact[]; takes?: Take[]; pages?: BrainPage[]; tombstones?: Array<{ id: string; fact: Fact; deletedAt: number }> }): void {
-    this.facts.clear();
-    this.takes.clear();
-    this.pages.clear();
-    this.tombstones.clear();
-    for (const f of state.facts ?? []) this.facts.set(f.id, f);
-    for (const t of state.takes ?? []) this.takes.set(t.id, t);
-    for (const p of state.pages ?? []) this.pages.set(p.id, p);
-    for (const t of state.tombstones ?? []) this.tombstones.set(t.id, { fact: t.fact, deletedAt: t.deletedAt });
-    this.backlinksCache = null;  // invalidate
-  }
 }
 
 /** Bag-of-words vector (term → count). */

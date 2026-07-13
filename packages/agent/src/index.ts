@@ -62,12 +62,6 @@ export interface AgentConfig {
   openaiBaseUrl?: string;
   /** Directory for durable (FileBackend) memory. If absent: in-memory only. */
   memoryDir?: string;
-  /**
-   * Issue #7: path to JSONL file for persistent session history.
-   * If set, conversation survives process restarts.
-   * Recommended: ${memoryDir}/sessions/${sessionId}.jsonl
-   */
-  historyPath?: string;
   /** Explicit tool list. If absent: the 6 builtins. */
   tools?: ToolImpl[];
   /** Budget. If absent: freeBudget (unlimited). */
@@ -159,27 +153,6 @@ export function createAgent(config: AgentConfig = {}): Agent {
         }),
       );
     }
-    // Phase 3: OpenAI-compatible APIs (Together, Groq, OpenRouter, local Ollama)
-    // Each uses its own baseUrl; auto-detect when API key is set.
-    const compatProviders: Array<{ envKey: string; envUrl: string; defaultUrl: string; model: string; id: string }> = [
-      { envKey: "TOGETHER_API_KEY", envUrl: "TOGETHER_BASE_URL", defaultUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3-70b-chat-hf", id: "together" },
-      { envKey: "GROQ_API_KEY", envUrl: "GROQ_BASE_URL", defaultUrl: "https://api.groq.com/openai/v1", model: "llama-3.1-70b-versatile", id: "groq" },
-      { envKey: "OPENROUTER_API_KEY", envUrl: "OPENROUTER_BASE_URL", defaultUrl: "https://openrouter.ai/api/v1", model: "anthropic/claude-3.5-sonnet", id: "openrouter" },
-      { envKey: "OLLAMA_HOST", envUrl: "OLLAMA_BASE_URL", defaultUrl: "http://127.0.0.1:11434/v1", model: "llama3.1", id: "ollama" },
-    ];
-    for (const cp of compatProviders) {
-      const key = tryResolve(cp.envKey);
-      if (key) {
-        providers.register(
-          new OpenAIAdapter({
-            model: process.env[`${cp.id.toUpperCase()}_MODEL`] ?? cp.model,
-            baseUrl: process.env[cp.envUrl] ?? cp.defaultUrl,
-            apiKey: key,
-            id: cp.id,
-          }),
-        );
-      }
-    }
     // Always register a mock fallback so the agent runs without a key.
     providers.register(textMock("(no provider configured — mock echo)", "mock-fallback"));
   }
@@ -235,7 +208,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // agent's lifetime (createAgent returns a fixed toolRegistry) → setting once
   // here keeps the prompt cache-stable.
   const stableTier = composeStableTier(config.stableTier ?? defaultStableTier(), toolRegistry);
-  const session = createSession({ profiles: [...providers.all()], stableTier, historyPath: config.historyPath });
+  const session = createSession({ profiles: [...providers.all()], stableTier });
   // Replace the stub memory with the real manager.
   (session as { memory: unknown }).memory = memory;
 

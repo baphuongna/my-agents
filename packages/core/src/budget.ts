@@ -80,29 +80,6 @@ function makeBudget(node: BudgetNode): BudgetConfig {
         parent: makeBudget(node),
       });
     },
-    /**
-     * Issue #6: deriveChildLazy — does NOT pre-charge the full alloc upfront.
-     * Instead, the child shares the parent's pool and atomically reserves
-     * spent amounts via spend(). On terminal state, call releasePrecharge()
-     * (with spent amount) to refund any unused capacity.
-     *
-     * Use case: long-running subagent where the full alloc is uncertain.
-     * Tradeoff: parent budget can be exhausted mid-spawn (vs upfront lock).
-     */
-    deriveChildLazy: (maxAlloc: number): BudgetConfig => {
-      const cap = Math.max(0, Math.min(maxAlloc, node.root.total - node.root.reserved));
-      const childId = `lazy-${node.root.children.size + 1}-${nowMonotonic().toString(36)}`;
-      node.root.children.set(childId, { alloc: cap, ownSpent: 0 });
-      return makeBudget({
-        alloc: cap,
-        abortThreshold: cap,  // child can't exceed its max
-        unlimited: false,
-        isRoot: false,
-        id: childId,
-        root: node.root,
-        parent: makeBudget(node),
-      });
-    },
     releasePrecharge: (childId: string): number => {
       // CC2: refund alloc - child.ownSpent to the pool on ANY terminal state.
       const rec = node.root.children.get(childId);
