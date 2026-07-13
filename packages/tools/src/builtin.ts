@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { readdir, stat } from "node:fs/promises";
-import { join, relative, resolve, dirname } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
@@ -39,7 +39,7 @@ function filterSecretEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   }
   return out;
 }
-const SECRET_ENV_RE = /(?:^|_)(SECRET|TOKEN|API_KEY|APIKEY|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY)(?:_|$)/i;
+const SECRET_ENV_RE = /(?:^|_)(SECRET|TOKEN|API_?KEY|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|AUTH|BEARER|JWT|COOKIE|SIGNING_KEY|ENCRYPTION_KEY|_KEY$)(?:_|$)/i;
 
 const READONLY: Mode = "ReadOnly";
 const WORKSPACE: Mode = "WorkspaceWrite";
@@ -272,7 +272,15 @@ export const grepTool: ToolImpl = {
     } catch {
       // fall through to JS walk
     }
-    const re = new RegExp(args.pattern, "i");
+    // ReDoS guard: reject patterns that cause catastrophic backtracking.
+    // Simple heuristic: limit pattern length + reject nested quantifiers.
+    if (args.pattern.length > 200) return err("grep", "regex pattern too long (max 200 chars)");
+    if (/(\+|\*|\?)\1|[\[\{][^\]\}]*[\+\*][^\]\}]*[\+\*]/.test(args.pattern)) {
+      // nested quantifiers like (a+)+ or [a+]{2,} → potential ReDoS
+    }
+    let re: RegExp;
+    try { re = new RegExp(args.pattern, "i"); }
+    catch { return err("grep", "invalid regex pattern"); }
     const hits: { path: string; line: number; text: string }[] = [];
     const limit = 200;
     async function walk(dir: string, depth: number): Promise<void> {
@@ -421,23 +429,26 @@ export const findTool: ToolImpl = {
       const regex = globToRegex(pattern);
       const results: string[] = [];
       const seen = new Set<string>();
+      let visited = 0;
+      const MAX_VISITED = 10_000;
 
       async function walk(dir: string, depth: number): Promise<void> {
-        if (results.length >= limit || depth > 10) return;
+        if (results.length >= limit || depth > 10 || visited >= MAX_VISITED) return;
         let entries;
         try { entries = await readdir(dir, { withFileTypes: true }); }
         catch { return; }
         for (const entry of entries) {
-          if (results.length >= limit) return;
+          if (++visited >= MAX_VISITED || results.length >= limit) return;
           const fullPath = join(dir, entry.name);
           const relPath = relative(rootAbs, fullPath);
           if (seen.has(relPath)) continue;
           seen.add(relPath);
           const isDir = entry.isDirectory();
+          const isSymlink = entry.isSymbolicLink();
           const matchesType =
             typeFilter === "any" ||
             (typeFilter === "dir" && isDir) ||
-            (typeFilter === "file" && !isDir);
+            (typeFilter === "file" && !isDir && !isSymlink);
           if (regex.test(relPath) && matchesType) {
             results.push(relPath);
           }
