@@ -235,17 +235,36 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   });
 
   /** Run a prompt on a pi session, collect streaming text for response. */
+  /** Per-session prompt queue: serializes prompts to the same session. */
+  const sessionQueues = new Map<string, Promise<string>>();
+
   async function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
+    // Serialize per-session: chain this prompt after the previous one.
+    const prev = sessionQueues.get(sessionId) ?? Promise.resolve("");
+    const next = prev.catch(() => "").then(() => doRunOnSession(sessionId, prompt, onEvent));
+    sessionQueues.set(sessionId, next);
+    // Clean up queue when empty
+    next.finally(() => {
+      if (sessionQueues.get(sessionId) === next) sessionQueues.delete(sessionId);
+    });
+    return next;
+  }
+
+  async function doRunOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
     const session = await pool.acquire(sessionId);
     const entry = pool.get(sessionId);
-    if (entry) entry.busy = true;
+    if (!entry) return "";
+    if (entry.busy) {
+      // Should not happen because we serialize per session, but guard anyway
+      console.warn(`[gateway] session ${sessionId} unexpectedly busy, skipping prompt`);
+      return "";
+    }
+    entry.busy = true;
 
     let responseText = "";
     const unsub = session.subscribe((event: unknown) => {
       const ev = event as { type?: string; message?: { content?: Array<{ type?: string; text?: string }> } };
-      // Forward to caller (WS broadcast)
       if (onEvent) onEvent(event);
-      // Collect assistant text for channel response
       if (ev?.type === "message_update" || ev?.type === "message_end") {
         const content = ev.message?.content;
         if (Array.isArray(content)) {
@@ -258,9 +277,17 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
 
     try {
       await session.prompt(prompt);
+    } catch (e) {
+      // AgentSession throws if a prompt is already running. With our per-session
+      // queue this should be impossible, but guard so a single bad call can't
+      // crash the gateway.
+      console.warn(`[gateway] session.prompt failed for ${sessionId}: ${(e as Error).message}`);
+      return responseText || `[error: ${(e as Error).message}]`;
     } finally {
       unsub();
-      if (entry) { entry.busy = false; entry.messageCount++; entry.lastActivity = nowWallclock(); }
+      entry.busy = false;
+      entry.messageCount++;
+      entry.lastActivity = nowWallclock();
     }
     return responseText;
   }
@@ -356,7 +383,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       const prompt = msg.kind === "cron-fire" ? msg.prompt : msg.text;
       if (prompt) {
         // Route to pi AgentSession (same as TUI).
-        void runOnSession(session, prompt, (e: unknown) => gw.broadcast(session, e));
+        runOnSession(session, prompt, (e: unknown) => gw.broadcast(session, e))
+          .catch((e) => console.warn(`[gateway] WS message handler failed: ${(e as Error).message}`));
       }
     },
   });
@@ -372,6 +400,14 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
 main().catch((e) => {
   console.error(e);
   process.exit(1);
+});
+
+// Catch-all: never let the gateway die from an unhandled async error.
+process.on("unhandledRejection", (reason) => {
+  console.warn("[gateway] unhandledRejection:", reason instanceof Error ? reason.message : String(reason));
+});
+process.on("uncaughtException", (err) => {
+  console.warn("[gateway] uncaughtException:", err.message);
 });
 
 function cryptoRandomToken(): string {
