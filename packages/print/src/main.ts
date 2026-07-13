@@ -57,7 +57,9 @@ async function main(): Promise<void> {
     const { runBgSession } = await import("./bg-runner.js");
     const bgIdIdx = args.indexOf("--bg-id");
     const bgId = bgIdIdx >= 0 ? args[bgIdIdx + 1] : undefined;
-    return runBgSession({ id: bgId, model });
+    const bgModelIdx = args.indexOf("--model");
+    const bgModel = bgModelIdx >= 0 ? args[bgModelIdx + 1] : undefined;
+    return runBgSession({ id: bgId, model: bgModel });
   }
 
   // ── default: launcher (if no args) OR interactive TUI ──

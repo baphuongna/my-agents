@@ -23,7 +23,7 @@ import { secretStore, auditLog, skillStore, wallet } from "./pi-main.js";
 
 const BG_DIR = join(homedir(), ".mya", "sessions", "bg");
 
-interface BgManifest {
+export interface BgManifest {
   id: string;
   pid: number;
   port: number;
