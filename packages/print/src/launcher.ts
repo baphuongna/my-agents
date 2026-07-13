@@ -282,7 +282,18 @@ export async function runLauncherLoop(): Promise<void> {
       }
     } else if (result.action === "open" && result.session) {
       const s = result.session;
-      if (s.type === "bg" && s.port) {
+      if (s.type === "new") {
+        // Enter on "New session" → spawn bg + attach
+        process.stdout.write(A.clear + A.hideCursor);
+        process.stdout.write(`\n  ${A.muted("Starting background session...")}\n`);
+        const m = await spawnBgSession({});
+        if (m?.port && m.port > 0) {
+          await attachTcp(m.port);
+        } else {
+          process.stdout.write(`\n  ${A.muted("Failed to start. Press any key.")}\n`);
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      } else if (s.type === "bg" && s.port) {
         await attachTcp(s.port);
       } else if (s.type === "saved" && s.arg) {
         process.stdout.write(A.clear + A.hideCursor);
