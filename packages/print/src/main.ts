@@ -206,7 +206,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     if (entry) entry.busy = true;
 
     let responseText = "";
-    const unsub = session.addEventListener((event: unknown) => {
+    const unsub = session.subscribe((event: unknown) => {
       const ev = event as { type?: string; message?: { content?: Array<{ type?: string; text?: string }> } };
       // Forward to caller (WS broadcast)
       if (onEvent) onEvent(event);

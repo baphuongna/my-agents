@@ -24,7 +24,7 @@ export interface PiSessionEntry {
 /** Minimal interface for pi AgentSession (duck-typed to avoid tight coupling). */
 export interface PiAgentSession {
   prompt(text: string, options?: unknown): Promise<void>;
-  addEventListener(listener: (event: unknown) => void): () => void;
+  subscribe(listener: (event: unknown) => void): () => void;
   abort(): void;
 }
 
