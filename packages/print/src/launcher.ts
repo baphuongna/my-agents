@@ -271,31 +271,23 @@ export async function runLauncherLoop(): Promise<void> {
 
     if (result.action === "new") {
       // Spawn background session, then attach
-      const m = spawnBgSession({});
+      process.stdout.write(A.clear + A.hideCursor);
+      process.stdout.write(`\n  ${A.muted("Starting background session...")}\n`);
+      const m = await spawnBgSession({});
       if (m?.port && m.port > 0) {
         await attachTcp(m.port);
-      } else if (m?.port === 0) {
-        // Manifest not ready yet — wait and retry
-        process.stderr.write("[mya] waiting for session to start...\n");
-        // Read manifest again after delay
-        const { readFileSync } = await import("node:fs");
-        const { homedir } = await import("node:os");
-        const { join } = await import("node:path");
-        for (let i = 0; i < 10; i++) {
-          await new Promise((r) => setTimeout(r, 500));
-          try {
-            const updated = JSON.parse(readFileSync(join(homedir(), ".mya", "sessions", "bg", `${m.id}.json`), "utf8")) as BgManifest;
-            if (updated.port > 0) { await attachTcp(updated.port); break; }
-          } catch { /* */ }
-        }
+      } else {
+        process.stdout.write(`\n  ${A.muted("Failed to start session.")}\n`);
+        await new Promise((r) => setTimeout(r, 1500));
       }
     } else if (result.action === "open" && result.session) {
       const s = result.session;
       if (s.type === "bg" && s.port) {
         await attachTcp(s.port);
       } else if (s.type === "saved" && s.arg) {
-        // Start a new bg session from saved JSONL context (future: load history)
-        const m = spawnBgSession({});
+        process.stdout.write(A.clear + A.hideCursor);
+        process.stdout.write(`\n  ${A.muted("Starting background session...")}\n`);
+        const m = await spawnBgSession({});
         if (m?.port && m.port > 0) await attachTcp(m.port);
       }
     }

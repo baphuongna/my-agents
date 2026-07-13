@@ -121,7 +121,7 @@ export async function runBgSession(opts: { id?: string; model?: string } = {}): 
 }
 
 /** Spawn a background session as a detached child process. Returns the manifest. */
-export function spawnBgSession(opts: { model?: string; sessionPath?: string } = {}): BgManifest | null {
+export async function spawnBgSession(opts: { model?: string; sessionPath?: string } = {}): Promise<BgManifest | null> {
   const id = `bg_${nowWallclock().toString(36)}`;
   const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
   const args = ["--bg", "--bg-id", id];
@@ -129,30 +129,26 @@ export function spawnBgSession(opts: { model?: string; sessionPath?: string } = 
 
   const child = spawn(process.execPath, [entry, ...args], {
     detached: true,
-    stdio: "ignore", // fully detached — no terminal connection
+    stdio: "ignore",
     env: { ...process.env, MYA_FROM_LAUNCHER: "1", PI_SKIP_VERSION_CHECK: "1" },
   });
   child.unref();
 
-  // Wait for manifest to appear (child writes it on startup)
-  const manifest = waitForManifest(id, 5000);
-  if (manifest) return manifest;
-
-  // Fallback: construct from PID (port unknown yet)
-  return { id, pid: child.pid ?? -1, port: 0, startedAt: nowWallclock(), model: opts.model ?? "MiniMax-M3", status: "running" };
+  // Wait for manifest (async — yields to event loop)
+  const manifest = await waitForManifest(id, 10_000);
+  return manifest;
 }
 
-/** Wait for a manifest file to appear (poll). */
-function waitForManifest(id: string, timeoutMs: number): BgManifest | null {
+/** Wait for a manifest file to appear (async — does NOT block event loop). */
+async function waitForManifest(id: string, timeoutMs: number): Promise<BgManifest | null> {
   const deadline = nowWallclock() + timeoutMs;
   while (nowWallclock() < deadline) {
     try {
       const m = JSON.parse(readFileSync(manifestPath(id), "utf8")) as BgManifest;
       if (m.port > 0) return m;
     } catch { /* not ready yet */ }
-    // Busy-wait 100ms (simple, no async complexity)
-    const end = nowWallclock() + 100;
-    while (nowWallclock() < end) { /* spin */ }
+    // Yield to event loop (NOT busy-wait — that would freeze the UI)
+    await new Promise<void>((r) => setTimeout(r, 100));
   }
   return null;
 }
