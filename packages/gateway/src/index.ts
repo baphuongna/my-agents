@@ -219,6 +219,14 @@ export class Gateway {
     this.collab = opts.collab;
     this.channelRouter = opts.channelRouter;
     this.channels = opts.channels;
+    // Forward channel events to WS subscribers (real-time TUI visibility)
+    if (this.channelRouter) {
+      this.channelRouter.onEvent((event) => {
+        if ("sessionId" in event) {
+          this.broadcast(event.sessionId, { kind: "channel", ...event });
+        }
+      });
+    }
     this.poolStatus = opts.poolStatus;
     this.poolKill = opts.poolKill;
     this.poolAcquire = opts.poolAcquire;
@@ -369,11 +377,21 @@ export class Gateway {
         return send(p.ok ? 200 : 503, p, p.ok ? {} : { "retry-after": String(p.retryAfterS ?? 2) });
       }
       case "/status": {
+        const channels = this.channels?.list().map((c) => ({
+          id: c.id,
+          type: c.type,
+          alias: c.alias,
+          label: c.label,
+          enabled: this.channels!.getConfig(c.id)?.enabled ?? c.isConfigured(),
+          configured: c.isConfigured(),
+          health: c.health(),
+        })) ?? [];
         return send(200, {
           model: process.env["MYA_MODEL"] ?? "MiniMax-M3",
           uptime: Math.floor(process.uptime()),
           pid: process.pid,
           version: process.env["MYA_VERSION"] ?? "0.1.0",
+          channels,
         });
       }
       case "/functional": {

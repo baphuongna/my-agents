@@ -10,10 +10,14 @@
  */
 import type { RuntimeEvent } from "@my-agent/core";
 
-/** A channel adapter — one per platform (Telegram, Discord, Slack, ...). */
+/** A channel adapter — one per platform instance (e.g. "telegram:bot1", "discord:main"). */
 export interface Channel {
-  /** Unique channel id (e.g. "telegram", "discord"). */
+  /** Unique channel id with optional alias (e.g. "telegram", "telegram:bot2", "discord"). */
   readonly id: string;
+  /** Platform type (e.g. "telegram", "discord"). */
+  readonly type: string;
+  /** Optional alias for multi-bot per platform (e.g. "bot1", "main"). */
+  readonly alias?: string;
   /** Human-readable label. */
   readonly label: string;
   /** Check if this channel is configured (has credentials/env vars). */

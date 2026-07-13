@@ -51,6 +51,22 @@ async function main(): Promise<void> {
     const { runLauncherLoop } = await import("./launcher.js");
     return runLauncherLoop();
   }
+  if (args[0] === "channels") {
+    const { channelsList, channelsTest, channelsAdd } = await import("./channels-cli.js");
+    const sub = args[1];
+    if (sub === "list") return channelsList();
+    if (sub === "test") {
+      const id = args[2];
+      return channelsTest(id);
+    }
+    if (sub === "add") {
+      const type = args[2];
+      const alias = args[3];
+      return channelsAdd(type, alias);
+    }
+    console.log("Usage: mya channels {list|test <id>|add <type> [alias]}");
+    return;
+  }
 
   // Background session mode: run agent as TCP RPC server
   const bgIdx = args.indexOf("--bg");

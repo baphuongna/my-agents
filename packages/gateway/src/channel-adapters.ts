@@ -1,5 +1,10 @@
 /**
- * Built-in channel adapters: Telegram, Discord, Slack, Email (SMTP), Webhook.
+ * Built-in channel adapters: Telegram, Discord, Slack, Email, Webhook.
+ *
+ * Multi-bot per platform: Set env vars with alias suffix:
+ *   TELEGRAM_BOT_TOKEN_BOT1=xxx  → channel id "telegram:bot1"
+ *   TELEGRAM_BOT_TOKEN_BOT2=yyy  → channel id "telegram:bot2"
+ *   TELEGRAM_BOT_TOKEN=xxx       → channel id "telegram" (default alias)
  *
  * Each adapter reads credentials from env vars or ~/.mya/agent/channels.json.
  * Sending uses fetch() (HTTP API) — no SDK dependencies.
@@ -7,14 +12,38 @@
 import type { Channel, ChannelMessage } from "./channels.js";
 import { nowWallclock } from "@my-agent/core";
 
+// ── Helper: discover all env vars for a credential ────────────────────────
+function discoverCredentials(prefix: string, defaultVar: string): Array<{ alias?: string; value: string }> {
+  const found: Array<{ alias?: string; value: string }> = [];
+  // Default: env without suffix
+  const def = process.env[defaultVar];
+  if (def) found.push({ alias: undefined, value: def });
+  // Aliased: env vars with _<ALIAS> suffix (uppercased)
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith(prefix + "_") || !value) continue;
+    const alias = key.slice(prefix.length + 1).toLowerCase();
+    if (!alias) continue;
+    if (key === defaultVar) continue;
+    found.push({ alias, value });
+  }
+  return found;
+}
+
 // ── Telegram ──────────────────────────────────────────────────────────────
 export class TelegramChannel implements Channel {
-  readonly id = "telegram";
-  readonly label = "Telegram";
+  readonly type = "telegram";
+  readonly alias?: string;
+  readonly label: string;
   private token: string | undefined;
 
-  constructor(token?: string) {
-    this.token = token ?? process.env["TELEGRAM_BOT_TOKEN"];
+  constructor(token?: string, alias?: string) {
+    this.token = token ?? (alias ? process.env[`TELEGRAM_BOT_TOKEN_${alias.toUpperCase()}`] : process.env["TELEGRAM_BOT_TOKEN"]);
+    this.alias = alias;
+    this.label = alias ? `Telegram (${alias})` : "Telegram";
+  }
+
+  get id(): string {
+    return this.alias ? `telegram:${this.alias}` : "telegram";
   }
 
   isConfigured(): boolean {
@@ -44,7 +73,6 @@ export class TelegramChannel implements Channel {
   }
 
   async receive(): Promise<ChannelMessage[]> {
-    // Telegram uses long-polling getUpdates; in production, use a webhook.
     return [];
   }
 
@@ -55,12 +83,19 @@ export class TelegramChannel implements Channel {
 
 // ── Discord ───────────────────────────────────────────────────────────────
 export class DiscordChannel implements Channel {
-  readonly id = "discord";
-  readonly label = "Discord";
+  readonly type = "discord";
+  readonly alias?: string;
+  readonly label: string;
   private token: string | undefined;
 
-  constructor(token?: string) {
-    this.token = token ?? process.env["DISCORD_BOT_TOKEN"];
+  constructor(token?: string, alias?: string) {
+    this.token = token ?? (alias ? process.env[`DISCORD_BOT_TOKEN_${alias.toUpperCase()}`] : process.env["DISCORD_BOT_TOKEN"]);
+    this.alias = alias;
+    this.label = alias ? `Discord (${alias})` : "Discord";
+  }
+
+  get id(): string {
+    return this.alias ? `discord:${this.alias}` : "discord";
   }
 
   isConfigured(): boolean {
@@ -99,12 +134,19 @@ export class DiscordChannel implements Channel {
 
 // ── Slack ─────────────────────────────────────────────────────────────────
 export class SlackChannel implements Channel {
-  readonly id = "slack";
-  readonly label = "Slack";
+  readonly type = "slack";
+  readonly alias?: string;
+  readonly label: string;
   private token: string | undefined;
 
-  constructor(token?: string) {
-    this.token = token ?? process.env["SLACK_BOT_TOKEN"];
+  constructor(token?: string, alias?: string) {
+    this.token = token ?? (alias ? process.env[`SLACK_BOT_TOKEN_${alias.toUpperCase()}`] : process.env["SLACK_BOT_TOKEN"]);
+    this.alias = alias;
+    this.label = alias ? `Slack (${alias})` : "Slack";
+  }
+
+  get id(): string {
+    return this.alias ? `slack:${this.alias}` : "slack";
   }
 
   isConfigured(): boolean {
@@ -139,15 +181,21 @@ export class SlackChannel implements Channel {
   }
 }
 
-// ── Email (SMTP via API) ──────────────────────────────────────────────────
+// ── Email ─────────────────────────────────────────────────────────────────
 export class EmailChannel implements Channel {
-  readonly id = "email";
-  readonly label = "Email";
+  readonly type = "email";
+  readonly alias?: string;
+  readonly label: string;
   private apiKey: string | undefined;
 
-  constructor(apiKey?: string) {
-    // Uses Resend/SendGrid-style API (set EMAIL_API_KEY + EMAIL_PROVIDER)
-    this.apiKey = apiKey ?? process.env["EMAIL_API_KEY"];
+  constructor(apiKey?: string, alias?: string) {
+    this.apiKey = apiKey ?? (alias ? process.env[`EMAIL_API_KEY_${alias.toUpperCase()}`] : process.env["EMAIL_API_KEY"]);
+    this.alias = alias;
+    this.label = alias ? `Email (${alias})` : "Email";
+  }
+
+  get id(): string {
+    return this.alias ? `email:${this.alias}` : "email";
   }
 
   isConfigured(): boolean {
@@ -187,14 +235,21 @@ export class EmailChannel implements Channel {
   }
 }
 
-// ── Webhook (generic HTTP POST) ───────────────────────────────────────────
+// ── Webhook ───────────────────────────────────────────────────────────────
 export class WebhookChannel implements Channel {
-  readonly id = "webhook";
-  readonly label = "Webhook";
+  readonly type = "webhook";
+  readonly alias?: string;
+  readonly label: string;
   private url: string | undefined;
 
-  constructor(url?: string) {
-    this.url = url ?? process.env["WEBHOOK_URL"];
+  constructor(url?: string, alias?: string) {
+    this.url = url ?? (alias ? process.env[`WEBHOOK_URL_${alias.toUpperCase()}`] : process.env["WEBHOOK_URL"]);
+    this.alias = alias;
+    this.label = alias ? `Webhook (${alias})` : "Webhook";
+  }
+
+  get id(): string {
+    return this.alias ? `webhook:${this.alias}` : "webhook";
   }
 
   isConfigured(): boolean {
@@ -225,11 +280,22 @@ export class WebhookChannel implements Channel {
   }
 }
 
-/** Register all built-in channel adapters with a registry. */
+/** Register all built-in channel adapters, including aliased instances. */
 export function registerBuiltinChannels(registry: { register: (c: Channel) => void }): void {
-  registry.register(new TelegramChannel());
-  registry.register(new DiscordChannel());
-  registry.register(new SlackChannel());
-  registry.register(new EmailChannel());
-  registry.register(new WebhookChannel());
+  // Default (no alias) + auto-discover aliased variants
+  for (const { alias, value } of discoverCredentials("TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")) {
+    registry.register(new TelegramChannel(value, alias));
+  }
+  for (const { alias, value } of discoverCredentials("DISCORD_BOT_TOKEN", "DISCORD_BOT_TOKEN")) {
+    registry.register(new DiscordChannel(value, alias));
+  }
+  for (const { alias, value } of discoverCredentials("SLACK_BOT_TOKEN", "SLACK_BOT_TOKEN")) {
+    registry.register(new SlackChannel(value, alias));
+  }
+  for (const { alias, value } of discoverCredentials("EMAIL_API_KEY", "EMAIL_API_KEY")) {
+    registry.register(new EmailChannel(value, alias));
+  }
+  for (const { alias, value } of discoverCredentials("WEBHOOK_URL", "WEBHOOK_URL")) {
+    registry.register(new WebhookChannel(value, alias));
+  }
 }

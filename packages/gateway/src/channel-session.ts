@@ -37,6 +37,12 @@ export interface ChannelSessionRouterOptions {
   idleTtlSec?: number;
 }
 
+/** Event emitted by the channel session router (for TUI visibility). */
+export type ChannelEvent =
+  | { type: "channel_message"; sessionId: string; channelId: string; from: string; text: string; ts: number }
+  | { type: "agent_response"; sessionId: string; channelId: string; from: string; text: string; ts: number }
+  | { type: "session_created"; sessionId: string; channelId: string; userId: string };
+
 /**
  * Routes inbound channel messages to sessions. Each (channel, user) pair
  * gets a continuous conversation. The router does NOT run the agent itself —
@@ -52,6 +58,12 @@ export class ChannelSessionRouter {
   private agentHandler?: (session: ChannelSession, prompt: string) => Promise<string>;
 
   /**
+   * Event listener: called when a message is received from a channel.
+   * Used to forward channel events to the TUI for real-time visibility.
+   */
+  private eventListeners = new Set<(event: ChannelEvent) => void>();
+
+  /**
    * Optional command checker: if set, messages starting with "/" are checked
    * against the shared command registry FIRST. If it returns a string, that's
    * the command output (agent is NOT invoked). If null, falls through to agent.
@@ -61,6 +73,18 @@ export class ChannelSessionRouter {
   constructor(opts: ChannelSessionRouterOptions = {}) {
     this.maxHistory = opts.maxHistory ?? 50;
     this.idleTtlSec = opts.idleTtlSec ?? 3600;
+  }
+
+  /** Subscribe to channel events (incoming messages, agent responses). */
+  onEvent(listener: (event: ChannelEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  private emit(event: ChannelEvent): void {
+    for (const l of this.eventListeners) {
+      try { l(event); } catch { /* */ }
+    }
   }
 
   /** Set the agent handler (called when a message arrives). */
@@ -82,6 +106,7 @@ export class ChannelSessionRouter {
         history: [],
       };
       this.sessions.set(key, session);
+      this.emit({ type: "session_created", sessionId: session.sessionId, channelId, userId });
     }
     session.lastActivity = nowWallclock();
     return session;
@@ -103,6 +128,7 @@ export class ChannelSessionRouter {
    */
   async route(msg: ChannelMessage): Promise<{ session: ChannelSession; response: string } | { error: string }> {
     const session = this.getOrCreateSession(msg.channelId, msg.from);
+    this.emit({ type: "channel_message", sessionId: session.sessionId, channelId: msg.channelId, from: msg.from, text: msg.text, ts: msg.ts });
 
     // ── Check for slash commands FIRST (before agent) ──
     // This lets channel users run /audit, /skills, /mcp, etc. — same as TUI.
@@ -142,6 +168,7 @@ export class ChannelSessionRouter {
       if (session.history.length > this.maxHistory * 2) {
         session.history = session.history.slice(-this.maxHistory);
       }
+      this.emit({ type: "agent_response", sessionId: session.sessionId, channelId: msg.channelId, from: msg.from, text: response, ts: msg.ts });
 
       return { session, response };
     } catch (e) {
