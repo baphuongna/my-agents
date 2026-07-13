@@ -22,7 +22,7 @@ import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
 import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, channelRouter, channels } from "./shared-instances.js";
-import { SessionPromptQueue } from "./session-queue.js";
+
 
 // ── auth.json loader ──
 function loadAuthConfig(): void {
@@ -222,7 +222,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // Phase 2 wired: multi-agent via MYA_AGENTS env (JSON array of {name, agentDir, maxSessions}).
   const agents = parseAgentsEnv();
   const pool = new AgentPool({
-    maxSessions: 8,
+    maxSessions: 1000, // effectively no cap (personal use); override via MYA_MAX_SESSIONS env
     idleTtlMs: 3_600_000,
     agents: agents.length > 0 ? agents : undefined,
     createSession: async (sessionId, _cwd, agentDir) => {
@@ -239,23 +239,16 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   });
 
   /** Per-session prompt queue: serializes prompts to the same session. */
-  // Backpressure: maxQueueDepth=8, queueTimeoutMs=30s (Phase 1)
-  const promptQueue = new SessionPromptQueue({ maxQueueDepth: 8, queueTimeoutMs: 30_000 });
-
-  /** Run a prompt on a pi session, collect streaming text for response. */
+  /** Run a prompt on a pi session. Concurrency delegated to pi's own
+   * queue via streamingBehavior='followUp' (pi queues prompts internally). */
   function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
-    return promptQueue.run(sessionId, () => doRunOnSession(sessionId, prompt, onEvent));
+    return doRunOnSession(sessionId, prompt, onEvent);
   }
 
   async function doRunOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
     const session = await pool.acquire(sessionId);
     const entry = pool.get(sessionId);
     if (!entry) return "";
-    if (entry.busy) {
-      // Should not happen because we serialize per session, but guard anyway
-      console.warn(`[gateway] session ${sessionId} unexpectedly busy, skipping prompt`);
-      return "";
-    }
     entry.busy = true;
 
     let responseText = "";
@@ -273,7 +266,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     });
 
     try {
-      await session.prompt(prompt);
+      await session.prompt(prompt, { streamingBehavior: "followUp" });
     } catch (e) {
       // AgentSession throws if a prompt is already running. With our per-session
       // queue this should be impossible, but guard so a single bad call can't
@@ -370,7 +363,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       await pool.createForCwd(sessionId, cwd);
       return sessionId;
     },
-    poolQueueDepth: (sessionId: string) => promptQueue.depth(sessionId),
+    // Pi tracks its own queue depth via session.isIdle + queue internals.
+    // We expose busy=1/0 as a simple proxy (since pi's queue isn't directly observable).
+    poolQueueDepth: (sessionId: string) => {
+      const e = pool.get(sessionId);
+      return e?.busy ? 1 : 0;
+    },
     cronRunNow: async (jobId: string) => {
       const job = cron.getJob(jobId);
       if (!job) return;

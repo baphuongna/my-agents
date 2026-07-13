@@ -262,13 +262,16 @@ export function createAgent(config: AgentConfig = {}): Agent {
 
   async function startTurn(text: string, signal?: AbortSignal) {
     session.history.append({ role: "user", content: text });
-    // Refresh memory snapshot, then assemble the cache-stable prompt (§5) BEFORE the turn.
-    await memory.refresh();
-    // Phase 14c: populate the goals block from the GoalsRole before assembly.
+    // P0-perf: refresh memory snapshot + fetch the goals block IN PARALLEL.
+    // Previously these were serial: 6 backend reads followed by a 7th (goals).
+    // Promise.all collapses them into a single round-trip of work.
     const goalsBackend = memory.backends.find((b) => b.role === "goals");
-    if (goalsBackend) {
-      session.goalsBlock = await goalsRole.systemPromptBlock(goalsBackend);
-    }
+    const [, goalsBlock] = await Promise.all([
+      memory.refresh(),
+      goalsBackend ? goalsRole.systemPromptBlock(goalsBackend) : Promise.resolve(""),
+    ]);
+    session.goalsBlock = goalsBlock;
+    // assemblePrompt is memoized — first call only. (§5)
     assemblePrompt(session);
     return runTurn({
       session,

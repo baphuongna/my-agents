@@ -105,12 +105,15 @@ export class MemoryManagerImpl implements MemoryManager {
     return this.cached;
   }
 
-  /** Refresh the cached snapshot from all backends. Call when memory changes. */
+  /** Refresh the cached snapshot from all backends. Call when memory changes.
+   * Backends are read in parallel (P0-perf: serial was 6 round-trips per turn
+   * for the default 6-role setup). */
   async refresh(): Promise<void> {
+    const all = await Promise.all(
+      [...this.byRole.values()].map((b) => b.read({ text: "", topK: 5 })),
+    );
     const entries: MemoryHit[] = [];
-    for (const backend of this.byRole.values()) {
-      entries.push(...(await backend.read({ text: "", topK: 5 })));
-    }
+    for (const hits of all) entries.push(...hits);
     this.cached = { entries, generatedDay: today() };
   }
 

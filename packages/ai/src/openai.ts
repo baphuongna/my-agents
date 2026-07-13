@@ -111,15 +111,18 @@ export class OpenAIAdapter implements ProviderProfile {
 /** Convert SystemPrompt + History → OpenAI chat messages. */
 function toMessages(prompt: SystemPrompt, history: History): unknown[] {
   const msgs: unknown[] = [];
-  // System block: stable + context.
-  const systemText = [prompt.stable, prompt.context].filter(Boolean).join("\n\n");
+  // P0-perf: merge all 3 tiers into a SINGLE system message so the provider's
+  // prompt-cache prefix hashes once (stable+context+volatile are all unchanged
+  // across turns within a tier-boundary). Splitting volatile into a trailing
+  // system message split the cache window and forced a miss on most providers.
+  const systemText = [prompt.stable, prompt.context, prompt.volatile]
+    .filter(Boolean)
+    .join("\n\n");
   if (systemText) msgs.push({ role: "system", content: systemText });
   // History turns.
   for (const entry of history.entries()) {
     if (isMsg(entry)) msgs.push(entry);
   }
-  // Volatile (env/day/memory) as a trailing system block.
-  if (prompt.volatile) msgs.push({ role: "system", content: prompt.volatile });
   return msgs;
 }
 

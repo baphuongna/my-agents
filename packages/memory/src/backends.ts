@@ -7,7 +7,7 @@
  *
  * Source: §8 Memory, openhuman #6, R27-18 (WriteResult/Durability/DrainReport).
  */
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type {
   Durability,
@@ -95,11 +95,12 @@ export class FileBackend implements MemoryBackend {
   }
 
   async write(entry: MemoryEntry): Promise<WriteResult> {
+    // P0-perf: the file is an append-only markdown bullet log. Use appendFile
+    // (O(1) per write) instead of read-then-write of the whole growing file.
     const line = `- [${entry.role}] ${entry.content.replace(/\n/g, " ")}\n`;
     try {
       await mkdir(dirname(this.path()), { recursive: true });
-      const existing = await this.safeRead();
-      await writeFile(this.path(), existing + line, "utf8");
+      await appendFile(this.path(), line, "utf8");
       return { Durable: true };
     } catch {
       // Spill: keep going in-memory equivalent (Tier 1 stub — full spill lands Tier 2).
