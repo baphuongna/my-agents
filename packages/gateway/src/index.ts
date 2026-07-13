@@ -146,6 +146,8 @@ export interface GatewayOptions {
   poolStatus?: () => unknown;
   /** Optional: kill a pool session for POST /pool/kill/:id. */
   poolKill?: (sessionId: string) => boolean;
+  /** Optional: acquire a new pool session for POST /pool/acquire. */
+  poolAcquire?: (cwd: string) => string;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
 }
@@ -186,6 +188,8 @@ export class Gateway {
   private readonly poolStatus?: () => unknown;
   /** Optional pool kill callback. */
   private readonly poolKill?: (sessionId: string) => boolean;
+  /** Optional pool acquire callback. */
+  private readonly poolAcquire?: (cwd: string) => string;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
@@ -217,6 +221,7 @@ export class Gateway {
     this.channels = opts.channels;
     this.poolStatus = opts.poolStatus;
     this.poolKill = opts.poolKill;
+    this.poolAcquire = opts.poolAcquire;
     this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
@@ -432,6 +437,22 @@ export class Gateway {
         if (poolKillMatch && req.method === "POST" && this.poolKill) {
           const ok = this.poolKill(poolKillMatch[1]!);
           return send(ok ? 200 : 404, { ok });
+        }
+        // Acquire new pool session
+        if (url.pathname === "/pool/acquire" && req.method === "POST" && this.poolAcquire) {
+          let body = "";
+          req.on("data", (c: Buffer) => (body += c.toString()));
+          req.on("end", () => {
+            try {
+              const { cwd } = JSON.parse(body || "{}") as { cwd?: string };
+              if (!cwd) return send(400, { error: "cwd required" });
+              const sessionId = this.poolAcquire!(cwd);
+              return send(200, { sessionId });
+            } catch {
+              return send(400, { error: "invalid json" });
+            }
+          });
+          return;
         }
         // WS connection info (for launcher to get token)
         if (url.pathname === "/ws-info" && this.wsInfo) {

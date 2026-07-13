@@ -31,7 +31,7 @@ export interface PiAgentSession {
   readonly sessionFile?: string;
 }
 
-export type SessionFactory = (sessionId: string) => Promise<PiAgentSession>;
+export type SessionFactory = (sessionId: string, cwd?: string) => Promise<PiAgentSession>;
 
 export interface PiSessionPoolOptions {
   maxSessions?: number;
@@ -66,11 +66,27 @@ export class PiSessionPool {
         messageCount: 0,
         busy: false,
         sessionFile: (session as { sessionFile?: string }).sessionFile,
-      };
       this.pool.set(sessionId, entry);
     }
     entry.lastActivity = nowWallclock();
     return entry.session;
+  }
+
+  /** Create a new pool session for a given cwd (used by launcher). */
+  async createForCwd(sessionId: string, cwd: string): Promise<PiAgentSession> {
+    if (this.pool.size >= this.maxSessions) this.evictOldest();
+    const session = await this.createSession(sessionId, cwd);
+    const entry: PiSessionEntry = {
+      sessionId,
+      session,
+      createdAt: nowWallclock(),
+      lastActivity: nowWallclock(),
+      messageCount: 0,
+      busy: false,
+      sessionFile: (session as { sessionFile?: string }).sessionFile,
+    };
+    this.pool.set(sessionId, entry);
+    return session;
   }
 
   get(sessionId: string): PiSessionEntry | undefined {

@@ -180,6 +180,21 @@ function launchPi(sessionPath?: string, cwd?: string): Promise<void> {
   });
 }
 
+/** Acquire a new gateway session for a cwd (used by launcher 'new'). */
+async function acquireGatewaySession(cwd: string): Promise<string | undefined> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/pool/acquire`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!r.ok) return undefined;
+    const data = (await r.json()) as { sessionId?: string };
+    return data.sessionId;
+  } catch { return undefined; }
+}
+
 /** Launch pi TUI connected to a gateway session via WS (REAL background). */
 function launchGatewaySession(sessionId: string): Promise<void> {
   process.stdout.write("\x1b[2J\x1b[H");
@@ -247,7 +262,7 @@ export async function runLauncherLoop(): Promise<void> {
   while (true) {
     const gw = await checkGateway();
     const sessions: Sess[] = [
-      { id: "new", label: "New session", detail: "Choose directory + open pi TUI", type: "new" },
+      { id: "new", label: "New session", detail: "Choose directory + open pi TUI (gateway)", type: "new" },
       ...(gw ? await loadGatewaySessions() : []),
     ];
 
@@ -255,11 +270,14 @@ export async function runLauncherLoop(): Promise<void> {
     if (result === undefined) return;
 
     if (result.type === "new") {
-      // Pick working directory, then launch pi TUI
+      // New session → gateway creates AgentSession → pi TUI connects via WS
+      // All sessions are gateway sessions. /quit → session persists in pool.
       const cwd = await pickDirectory();
-      if (cwd) await launchPi(undefined, cwd);
+      if (!cwd) continue;
+      const sessionId = await acquireGatewaySession(cwd);
+      if (sessionId) await launchGatewaySession(sessionId);
     } else if (result.type === "gateway" && result.id) {
-      // Gateway session → pi TUI connected via WS (REAL background)
+      // Existing gateway session → pi TUI connected via WS
       await launchGatewaySession(result.id);
     }
   }
