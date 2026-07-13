@@ -90,6 +90,7 @@ import type { ResourceDiagnostic } from "../../core/resource-loader.ts";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.ts";
 import { type SessionEntry, SessionManager, sessionEntryToContextMessages } from "../../core/session-manager.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
+import { listSubagents } from "../../core/subagent.ts";
 import type { SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
@@ -2742,6 +2743,11 @@ export class InteractiveMode {
 			}
 			if (text === "/debug") {
 				this.handleDebugCommand();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/subagents") {
+				this.handleSubagentsCommand();
 				this.editor.setText("");
 				return;
 			}
@@ -5843,6 +5849,37 @@ export class InteractiveMode {
 		} catch (error: unknown) {
 			await this.handleFatalRuntimeError("Failed to create session", error);
 		}
+	}
+
+	private handleSubagentsCommand(): void {
+		const subs = listSubagents(this.session.sessionId ?? "");
+		const running = subs.filter((s) => s.status === "running").length;
+		const done = subs.filter((s) => s.status === "done").length;
+		const failed = subs.filter((s) => s.status === "failed").length;
+		const aborted = subs.filter((s) => s.status === "aborted").length;
+
+		let out = `${theme.bold("Subagents")} (${subs.length})\n\n`;
+		out += `${theme.fg("dim", "Running:")} ${running}  ${theme.fg("dim", "Done:")} ${done}  ${theme.fg("dim", "Failed:")} ${failed}  ${theme.fg("dim", "Aborted:")} ${aborted}\n\n`;
+		if (subs.length === 0) {
+			out += `${theme.fg("dim", "(no subagents yet)")}\n`;
+		} else {
+			for (const s of subs) {
+				const statusColor = s.status === "running" ? "yellow" : s.status === "done" ? "green" : s.status === "failed" ? "red" : "dim";
+				out += `${theme.fg(statusColor, "●")} ${s.id} ${theme.fg("dim", `(${s.status})`)}\n`;
+				out += `   ${theme.fg("dim", "Goal:")} ${s.goal.slice(0, 60)}${s.goal.length > 60 ? "..." : ""}\n`;
+				if (s.allowedTools?.length) out += `   ${theme.fg("dim", "Tools:")} ${s.allowedTools.join(", ")}\n`;
+				if (s.output) out += `   ${theme.fg("dim", "Output:")} ${s.output.slice(0, 80).replace(/\n/g, " ")}${s.output.length > 80 ? "..." : ""}\n`;
+				if (s.error) out += `   ${theme.fg("red", "Error:")} ${s.error}\n`;
+				out += "\n";
+			}
+		}
+		out += `${theme.fg("dim", "Tip: use spawnSubagent() in your session to delegate tasks.")}\n`;
+		// Print to chat as a multi-line Text block.
+		for (const line of out.split("\n")) {
+			this.chatContainer.addChild(new Text(line, 1, 0));
+		}
+		this.chatContainer.addChild(new Text("", 1, 0));
+		this.ui.requestRender();
 	}
 
 	private handleDebugCommand(): void {
