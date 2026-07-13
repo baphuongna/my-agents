@@ -1,15 +1,13 @@
 /**
- * mya Session Launcher.
+ * mya Session Launcher — gateway live sessions + saved sessions.
  *
- * mya launcher → shows:
- *   🟢 Gateway pool sessions (pi AgentSession running in background)
- *   💬 Saved JSONL sessions (from disk)
- *   ✨ New session
+ * Gateway pool sessions (pi AgentSession) can be viewed LIVE:
+ *   - Select gateway session → WS connect → see all events real-time
+ *   - Channel messages (Telegram/Discord) arrive → visible in viewer
+ *   - User can also type prompts directly
+ *   - Ctrl+Q to disconnect → back to launcher
  *
- * Select saved → pi InteractiveMode (full TUI, loads conversation)
- * Select gateway pool → shows status (background pi AgentSession)
- *
- * mya → pi InteractiveMode directly (no launcher)
+ * Saved JSONL sessions → pi InteractiveMode (full TUI).
  */
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
@@ -23,9 +21,10 @@ const A = {
   muted: (s: string) => `\x1b[38;2;130;130;140m${s}\x1b[39m`,
   dim2: (s: string) => `\x1b[38;2;100;100;110m${s}\x1b[39m`,
   green: (s: string) => `\x1b[38;2;143;187;122m${s}\x1b[39m`,
+  yellow: (s: string) => `\x1b[38;2;210;153;34m${s}\x1b[39m`,
+  blue: (s: string) => `\x1b[38;2;95;153;207m${s}\x1b[39m`,
   selBg: (s: string) => `\x1b[48;2;58;58;74m${s}\x1b[49m`,
   clear: "\x1b[2J\x1b[H",
-  home: "\x1b[H",
   clrEol: "\x1b[K",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
@@ -42,22 +41,29 @@ interface Sess {
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
 
 async function checkGateway(): Promise<boolean> {
+  try { return (await fetch(`http://127.0.0.1:${GW_PORT}/health/live`, { signal: AbortSignal.timeout(500) })).ok; }
+  catch { return false; }
+}
+
+async function getWsToken(): Promise<string | null> {
   try {
-    const res = await fetch(`http://127.0.0.1:${GW_PORT}/health/live`, { signal: AbortSignal.timeout(500) });
-    return res.ok;
-  } catch { return false; }
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/ws-info`, { signal: AbortSignal.timeout(500) });
+    if (!r.ok) return null;
+    return ((await r.json()) as { token: string }).token;
+  } catch { return null; }
 }
 
 async function loadGatewaySessions(): Promise<Sess[]> {
   try {
-    const res = await fetch(`http://127.0.0.1:${GW_PORT}/pool/sessions`, { signal: AbortSignal.timeout(500) });
-    if (!res.ok) return [];
-    const arr = (await res.json()) as Array<{ sessionId: string; messages: number; lastActivity: number; busy: boolean }>;
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/pool/sessions`, { signal: AbortSignal.timeout(500) });
+    if (!r.ok) return [];
+    const arr = (await r.json()) as Array<{ sessionId: string; messages: number; lastActivity: number; busy: boolean }>;
     return arr.map((s) => ({
       id: s.sessionId,
       label: s.sessionId.replace(/^ch-/, "").replace(/-/g, " "),
       detail: `${s.messages} msgs | ${s.busy ? "running" : "idle"} | ${fmt(s.lastActivity)}`,
       type: "gateway" as const,
+      arg: (s as { sessionFile?: string }).sessionFile ?? s.sessionId,
     }));
   } catch { return []; }
 }
@@ -89,11 +95,7 @@ function loadSaved(): Sess[] {
           for (const l of lines) {
             try {
               const e = JSON.parse(l) as { type?: string; message?: { role?: string; content?: Array<{ text?: string }> }; timestamp?: number };
-              if (e.type === "message") {
-                n++;
-                if (e.message?.role === "user" && !first) first = (e.message.content?.[0]?.text ?? "").slice(0, 50);
-                if (e.timestamp) ts = e.timestamp;
-              }
+              if (e.type === "message") { n++; if (e.message?.role === "user" && !first) first = (e.message.content?.[0]?.text ?? "").slice(0, 50); if (e.timestamp) ts = e.timestamp; }
             } catch { /* */ }
           }
           out.push({ id: hdr.id ?? f, label: hdr.name ?? first ?? f.slice(11, 30), detail: `${n} msgs | ${fmt(ts)}`, type: "saved", arg: fp });
@@ -118,15 +120,140 @@ function buildLines(sessions: Sess[], sel: number, filter: string, gw: boolean):
   for (let i = 0; i < f.length; i++) {
     const s = f[i]!;
     const is = i === sel;
-    const icon = s.type === "gateway" ? (s.detail.includes("running") ? "*" : "o") : s.type === "new" ? "+" : "+";
+    const icon = s.type === "gateway" ? (s.detail.includes("running") ? "*" : "o") : "+";
     const txt = `${icon} ${is ? A.bold(A.accent(s.label)) : s.label}  ${A.dim2(s.detail)}`;
     o.push(is ? `  ${A.selBg(txt)}` : `  ${txt}`);
   }
   o.push("");
   o.push(`  ${A.dim2("-".repeat(50))}`);
-  o.push(`  ${A.dim2("up/down nav | Enter open | n new | q quit")}`);
-  o.push(`  ${A.dim2("in pi: /quit or Ctrl+D or Ctrl+Q to return")}`);
+  o.push(`  ${A.dim2("up/down | Enter open | n new | q quit")}`);
+  o.push(`  ${A.dim2("gateway session = live view | saved = pi TUI")}`);
   return o;
+}
+
+/**
+ * Live session viewer: WS connect to gateway pool session.
+ * Shows real-time events (channel messages, agent responses, tool calls).
+ * User can also type prompts.
+ */
+async function liveSession(sessionId: string): Promise<void> {
+  const token = await getWsToken();
+  if (!token) { process.stderr.write("Cannot get WS token\n"); return; }
+
+  return new Promise((resolve) => {
+    process.stdout.write(A.clear + A.showCursor);
+    process.stdout.write(`  ${A.bold(A.accent("mya"))} ${A.muted("- live: " + sessionId)}\n`);
+    process.stdout.write(`  ${A.dim2("Live session viewer (Ctrl+Q to leave)")}\n`);
+    process.stdout.write(`  ${A.dim2("Channel messages + agent responses shown real-time")}\n`);
+    process.stdout.write(`  ${A.dim2("Type to send a prompt to this session")}\n\n`);
+
+    const isTTY = process.stdin.isTTY;
+    if (isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    let inputBuf = "";
+    const wsUrl = `ws://127.0.0.1:${GW_PORT}/events?session=${sessionId}&token=${token}`;
+
+    import("ws").then(({ default: WebSocket }) => {
+      const ws = new WebSocket(wsUrl);
+      let connected = false;
+      let lineCount = 0;
+
+      const print = (text: string, color?: (s: string) => string) => {
+        const line = color ? color(text) : text;
+        process.stdout.write(line + "\n");
+        lineCount++;
+      };
+
+      ws.on("open", () => {
+        connected = true;
+        print("  [connected]", A.green);
+        print("  > ", A.accent);
+      });
+
+      ws.on("message", (data: Buffer) => {
+        try {
+          const env = JSON.parse(data.toString()) as {
+            event?: {
+              type?: string;
+              kind?: string;
+              stage?: string;
+              message?: { role?: string; content?: Array<{ type?: string; text?: string }> };
+              text?: string;
+              toolName?: string;
+              args?: unknown;
+              result?: unknown;
+              isError?: boolean;
+            };
+          };
+          const ev = env.event;
+          if (!ev) return;
+
+          // Render based on event type
+          if (ev.type === "message_start" || ev.kind === "message_start") {
+            const role = ev.message?.role;
+            if (role === "user") print("\n  [user] ", A.blue);
+            else if (role === "assistant") print("\n  [agent] ", A.green);
+          } else if (ev.type === "message_update" || ev.kind === "message_update" || ev.kind === "Streaming") {
+            // Streaming text
+            const content = ev.message?.content;
+            if (Array.isArray(content)) {
+              for (const c of content) {
+                if (c?.type === "text" && c.text) process.stdout.write(c.text);
+              }
+            }
+            if (ev.text) process.stdout.write(ev.text);
+          } else if (ev.type === "message_end" || ev.kind === "message_end" || ev.stage === "completed") {
+            print("");
+            print("  > ", A.accent);
+          } else if (ev.type === "tool_start" || ev.kind === "ToolCalls") {
+            print(`  [tool] ${ev.toolName || "unknown"} ${ev.args ? JSON.stringify(ev.args).slice(0, 80) : ""}`, A.yellow);
+          } else if (ev.type === "tool_end" || ev.kind === "ToolExec") {
+            const status = ev.isError ? "error" : "done";
+            print(`  [tool ${status}]`, ev.isError ? A.yellow : A.green);
+          } else if (ev.type === "turn_start" || ev.kind === "turn" && ev.stage === "start") {
+            print(`  --- turn start ---`, A.dim2);
+          } else if (ev.type === "turn_end" || ev.kind === "turn" && ev.stage === "end") {
+            print(`  --- turn end ---`, A.dim2);
+            print("  > ", A.accent);
+          }
+        } catch { /* malformed */ }
+      });
+
+      ws.on("error", () => { print("\n  [connection lost]", A.muted); cleanup(); });
+      ws.on("close", () => cleanup());
+
+      const onData = (data: Buffer) => {
+        const k = data.toString();
+        if (k === "\x11" || k === "\x03") { cleanup(); return; } // Ctrl+Q / Ctrl+C
+        if (k === "\r" || k === "\n") {
+          if (inputBuf.trim() && connected) {
+            print(`  [you] ${inputBuf}`, A.blue);
+            ws.send(JSON.stringify({ text: inputBuf }));
+            print("  [waiting...]", A.dim2);
+          }
+          inputBuf = "";
+          return;
+        }
+        if (k === "\x7f" || k === "\b") {
+          if (inputBuf.length > 0) { inputBuf = inputBuf.slice(0, -1); process.stdout.write("\b \b"); }
+          return;
+        }
+        if (k.length === 1 && k >= " ") { inputBuf += k; process.stdout.write(k); }
+      };
+
+      function cleanup() {
+        process.stdin.pause();
+        process.stdin.removeListener("data", onData);
+        if (isTTY) process.stdin.setRawMode(false);
+        try { ws.close(); } catch { /* */ }
+        process.stdout.write(A.clear);
+        resolve();
+      }
+
+      process.stdin.on("data", onData);
+    });
+  });
 }
 
 function launchPi(sessionPath?: string): Promise<void> {
@@ -145,7 +272,7 @@ function launchPi(sessionPath?: string): Promise<void> {
   });
 }
 
-interface Choice { type: "new" | "saved"; arg?: string; }
+interface Choice { type: "new" | "gateway" | "saved"; arg?: string; }
 
 function showLauncher(sessions: Sess[], gw: boolean): Promise<Choice | undefined> {
   return new Promise((resolve) => {
@@ -202,7 +329,18 @@ export async function runLauncherLoop(): Promise<void> {
     ];
     const result = await showLauncher(sessions, gw);
     if (result === undefined) return;
-    if (result.type === "saved" && result.arg) await launchPi(result.arg);
-    else await launchPi();
+
+    if (result.type === "gateway" && result.arg) {
+      // Gateway session → open pi InteractiveMode with session's JSONL (FULL TUI)
+      // Loads conversation history. User can type normally.
+      // Channel messages processed by gateway separately.
+      await launchPi(result.arg);
+    } else if (result.type === "saved" && result.arg) {
+      // Saved JSONL → pi InteractiveMode (full TUI)
+      await launchPi(result.arg);
+    } else {
+      // New → pi InteractiveMode
+      await launchPi();
+    }
   }
 }

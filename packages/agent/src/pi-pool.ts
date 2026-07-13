@@ -19,6 +19,8 @@ export interface PiSessionEntry {
   lastActivity: number;
   messageCount: number;
   busy: boolean;
+  /** JSONL file path for this session (for pi --session resume). */
+  sessionFile?: string;
 }
 
 /** Minimal interface for pi AgentSession (duck-typed to avoid tight coupling). */
@@ -26,6 +28,7 @@ export interface PiAgentSession {
   prompt(text: string, options?: unknown): Promise<void>;
   subscribe(listener: (event: unknown) => void): () => void;
   abort(): void;
+  readonly sessionFile?: string;
 }
 
 export type SessionFactory = (sessionId: string) => Promise<PiAgentSession>;
@@ -62,6 +65,7 @@ export class PiSessionPool {
         lastActivity: nowWallclock(),
         messageCount: 0,
         busy: false,
+        sessionFile: (session as { sessionFile?: string }).sessionFile,
       };
       this.pool.set(sessionId, entry);
     }

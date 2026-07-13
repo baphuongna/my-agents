@@ -257,7 +257,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     collab,
     channels,
     channelRouter,
-    poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy })),
+    poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile })),
     wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {
       const msg = data as { text?: string; kind?: string; prompt?: string };
