@@ -189,7 +189,7 @@ export class Gateway {
   /** Optional pool kill callback. */
   private readonly poolKill?: (sessionId: string) => boolean;
   /** Optional pool acquire callback. */
-  private readonly poolAcquire?: (cwd: string) => string;
+  private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
   /** One-shot delivery-channel warning flag. */
