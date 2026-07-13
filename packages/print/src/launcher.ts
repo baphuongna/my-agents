@@ -141,6 +141,7 @@ type Tab = "sessions" | "channels" | "cron" | "status";
 interface LauncherState {
   tab: Tab;
   sel: number;
+  cronSel: number;
   filter: string;
   sessions: Sess[];
   info: GatewayInfo;
@@ -247,6 +248,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
     const state: LauncherState = {
       tab: "sessions",
       sel: 0,
+      cronSel: 0,
       filter: "",
       sessions: [],
       info: { connected: false, port: GW_PORT, sessions: 0, running: 0 },
@@ -349,7 +351,9 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           lines.push(`  ${A.muted("No cron jobs.")}`);
           lines.push(`  ${A.muted("Add: ")}${A.accent("mya cron add <name> <schedule> <prompt>")}`);
         } else {
-          for (const job of state.info.cronJobs) {
+          for (let i = 0; i < state.info.cronJobs.length; i++) {
+            const job = state.info.cronJobs[i]!;
+            const is = i === state.cronSel;
             const icon = job.enabled ? A.green("●") : A.dim2("○");
             const sched = job.trigger === "on-interval" ? `every ${(job.schedule as number) / 1000}s` : String(job.schedule);
             const lastStatus = job.lastStatus
@@ -357,8 +361,13 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
               : job.lastStatus === "failed" ? A.red("✗")
               : A.yellow("?")
               : A.dim2("-");
-            lines.push(`  ${icon}  ${job.name.padEnd(20)}  ${A.dim2(sched)}  ${A.dim2(job.trigger)}  ${lastStatus} ${A.dim2(fmt(job.lastRunAt ?? 0))}`);
-            if (job.prompt) lines.push(`      ${A.dim2("\"" + job.prompt.slice(0, 60) + (job.prompt.length > 60 ? "..." : "") + "\"")}`);
+            const line1 = `${icon}  ${job.name.padEnd(20)}  ${A.dim2(sched.padEnd(16))}  ${A.dim2(job.trigger.padEnd(12))}  ${lastStatus} ${A.dim2(fmt(job.lastRunAt ?? 0))}`;
+            if (is) lines.push(`  ${A.selBg(line1 + A.clrEol)}`);
+            else lines.push(`  ${line1}`);
+            if (job.prompt) {
+              const promptLine = `      ${A.dim2("\"" + job.prompt.slice(0, 60) + (job.prompt.length > 60 ? "..." : "") + "\"")}`;
+              lines.push(is ? `  ${A.selBg(promptLine + A.clrEol)}` : `  ${promptLine}`);
+            }
           }
         }
       } else if (state.tab === "status") {
@@ -386,7 +395,9 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
       const help = state.tab === "sessions"
         ? "↑/↓ | Enter open | type search | x kill | n new | Tab switch | r refresh | q quit"
-        : "Tab switch | r refresh | q quit";
+        : state.tab === "cron"
+          ? "↑/↓ | Space toggle | r run now | d delete | a add | Tab switch | q quit"
+          : "Tab switch | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -417,12 +428,13 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         const idx = tabs.indexOf(state.tab);
         state.tab = tabs[(idx + 1) % tabs.length]!;
         state.sel = 0;
+        state.cronSel = 0;
         void refresh();
         return;
       }
       if (k === "1") { state.tab = "sessions"; state.sel = 0; void refresh(); return; }
       if (k === "2") { state.tab = "channels"; state.sel = 0; void refresh(); return; }
-      if (k === "3") { state.tab = "cron"; state.sel = 0; void refresh(); return; }
+      if (k === "3") { state.tab = "cron"; state.cronSel = 0; void refresh(); return; }
       if (k === "4") { state.tab = "status"; state.sel = 0; void refresh(); return; }
 
       if (state.tab === "sessions") {
@@ -465,6 +477,48 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           state.filter += k;
           state.sel = 0;
           render();
+          return;
+        }
+      } else if (state.tab === "cron") {
+        const jobs = state.info.cronJobs ?? [];
+        if (k === "\x1b[A") {
+          state.cronSel = Math.max(0, state.cronSel - 1);
+          render();
+          return;
+        }
+        if (k === "\x1b[B") {
+          state.cronSel = Math.min(Math.max(0, jobs.length - 1), state.cronSel + 1);
+          render();
+          return;
+        }
+        if (k === " ") {
+          const job = jobs[state.cronSel];
+          if (job) {
+            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}/patch`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ enabled: !job.enabled }),
+            }).then(() => refresh());
+          }
+          return;
+        }
+        if (k === "r" || k === "\r" || k === "\n") {
+          const job = jobs[state.cronSel];
+          if (job) {
+            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}/run`, { method: "POST" });
+          }
+          return;
+        }
+        if (k === "d") {
+          const job = jobs[state.cronSel];
+          if (job) {
+            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}`, { method: "DELETE" })
+              .then(() => refresh());
+          }
+          return;
+        }
+        if (k === "a") {
+          process.stdout.write("\x1b[2J\x1b[H\n  " + A.muted("Use CLI to add: mya cron add <name> <schedule> <prompt>") + "\n\n");
           return;
         }
       }
