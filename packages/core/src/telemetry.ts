@@ -9,7 +9,7 @@
  *
  * Source: §13 (prose-level); the spec notes "opt-in sampled projection".
  */
-import { nowWallclock } from "./time.js";
+import { nowWallclock, nowMonotonic } from "./time.js";
 
 /** A projected, bounded view of one RuntimeEvent — no payload, no args. */
 export interface TelemetryProjection {
@@ -107,4 +107,36 @@ export class TelemetrySink {
   get droppedCount(): number { return this.dropped; }
   /** Current ring-buffer write index (test/debug). */
   get writeIndexCurrent(): number { return this.writeIndex; }
+}
+
+// ─── §13 Telemetry exporter (OTel/Langfuse) ──────────────────────────────
+
+/** A trace span for structured observability export. */
+export interface Span {
+  readonly name: string;
+  readonly startTime: number;
+  endTime?: number;
+  readonly attrs: Record<string, unknown>;
+  end(attrs?: Record<string, unknown>): void;
+}
+
+/** Exporter interface for OTel/Langfuse backends.
+ * Implementations (OtelExporter, LangfuseExporter) live outside core (§18). */
+export interface TelemetryExporter {
+  startSpan(name: string, attrs?: Record<string, unknown>): Span;
+  flush(): Promise<void>;
+}
+
+/** No-op exporter — used when no backend is configured. */
+export class NoopExporter implements TelemetryExporter {
+  startSpan(name: string, attrs?: Record<string, unknown>): Span {
+    let endTime: number | undefined;
+    return {
+      name, startTime: nowMonotonic(),
+      get endTime() { return endTime; },
+      attrs: attrs ?? {},
+      end() { if (endTime === undefined) endTime = nowMonotonic(); },
+    };
+  }
+  async flush(): Promise<void> {}
 }

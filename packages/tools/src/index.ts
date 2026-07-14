@@ -27,3 +27,5 @@ export * from "./lsp-client.js";
 export * from "./approval.js";
 export * from "./tool-search.js";
 export * from "./search-index.js";
+export { ComposioClient, registerComposioTools, createComposioClient } from "./composio.js";
+export type { ComposioConfig, ComposioTool, ConnectedAccount } from "./composio.js";

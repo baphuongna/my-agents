@@ -7,3 +7,5 @@
  */
 export { runWorkflow, runWorkflowIsolated } from "./runner.js";
 export type { WorkflowContext } from "./runner.js";
+export { evalRhai } from "./rhai-runner.js";
+export type { RhaiResult, RhaiEvent, RhaiOptions } from "./rhai-runner.js";

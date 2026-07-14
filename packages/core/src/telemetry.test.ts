@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { TelemetrySink, project } from "@my-agent/core";
-import type { RuntimeEvent } from "@my-agent/core";
+import { TelemetrySink, project, NoopExporter } from "@my-agent/core";
+import type { RuntimeEvent, TelemetryExporter } from "@my-agent/core";
 
 describe("§13 telemetry — projected, bounded, sampled sink (Phase 8)", () => {
   it("projects a RuntimeEvent without payload (no secrets leak)", () => {
@@ -80,5 +80,68 @@ describe("§13 telemetry — projected, bounded, sampled sink (Phase 8)", () => 
     // events without result.ok (e.g. budget) still read top-level ok if set
     const budget = project({ kind: "budget", ts: 0, ok: true });
     expect(budget.ok).toBe(true);
+  });
+});
+
+describe("§13 telemetry exporter (Gap 12 — OTel/Langfuse interface)", () => {
+  it("NoopExporter.startSpan returns a Span with startTime + name", () => {
+    const exporter = new NoopExporter();
+    const span = exporter.startSpan("agent.turn", { model: "gpt-4" });
+    expect(span.name).toBe("agent.turn");
+    expect(typeof span.startTime).toBe("number");
+    expect(span.attrs).toEqual({ model: "gpt-4" });
+  });
+
+  it("Span.end() sets endTime and is idempotent", () => {
+    const exporter = new NoopExporter();
+    const span = exporter.startSpan("tool.call");
+    expect(span.endTime).toBeUndefined();
+    span.end({ result: "ok" });
+    expect(span.endTime).not.toBeUndefined();
+    // calling end again should be a no-op (no mutation)
+    const firstEnd = span.endTime;
+    span.end({ result: "overwrite" });
+    expect(span.endTime).toBe(firstEnd);
+  });
+
+  it("NoopExporter.flush() resolves without error", async () => {
+    const exporter = new NoopExporter();
+    await expect(exporter.flush()).resolves.toBeUndefined();
+  });
+
+  it("TelemetryExporter contract: a custom impl satisfies the interface", () => {
+    const custom: TelemetryExporter = {
+      startSpan(name: string, attrs?: Record<string, unknown>) {
+        return { name, startTime: 0, attrs: attrs ?? {}, end() {} };
+      },
+      async flush() {},
+    };
+    const span = custom.startSpan("test");
+    expect(span.name).toBe("test");
+  });
+
+  it("NoopExporter implements TelemetryExporter (structural check)", () => {
+    const exporter: TelemetryExporter = new NoopExporter();
+    expect(exporter.startSpan).toBeInstanceOf(Function);
+    expect(exporter.flush).toBeInstanceOf(Function);
+  });
+
+  it("Span.attrs are captured at startSpan time (not mutated by end)", () => {
+    const exporter = new NoopExporter();
+    const span = exporter.startSpan("provider.stream", { model: "gpt-4" });
+    span.end({ tokens: 100 });
+    // original attrs at startSpan should be preserved
+    expect(span.attrs.model).toBe("gpt-4");
+  });
+
+  it("multiple spans from one exporter are independent", () => {
+    const exporter = new NoopExporter();
+    const a = exporter.startSpan("agent.turn");
+    const b = exporter.startSpan("tool.call");
+    a.end();
+    expect(a.endTime).not.toBeUndefined();
+    expect(b.endTime).toBeUndefined();
+    b.end();
+    expect(b.endTime).not.toBeUndefined();
   });
 });

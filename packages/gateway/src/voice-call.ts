@@ -58,34 +58,33 @@ export class VoiceCallChannel implements Channel {
     return this.isConfigured() ? "Healthy" : "Failed";
   }
 
-  /** Attach a WebSocket server for Twilio Media Streams. */
-  attachMediaStreamServer(server: Server, path = "/voice/stream"): void {
-    this.wss = new WebSocketServer({ server, path: `${path}/:callSid` });
-    this.wss.on("connection", (ws, req) => {
-      const callSid = req.url?.split("/").pop() ?? "unknown";
-      const call = this.calls.get(callSid);
-      if (call) {
-        call.ws = ws;
-      } else {
-        // Track inbound media stream
-        this.calls.set(callSid, {
-          callSid,
-          from: "",
-          to: this.opts.fromNumber ?? "",
-          direction: "inbound",
-          startedAt: nowWallclock(),
-          ws,
-        });
-      }
-      ws.on("message", (data) => {
-        // Twilio Media Stream: JSON messages with {event:"media", media:{payload}}
-        // Audio is base64-encoded mulaw 8kHz. Agent processes via STT.
-        void this.handleMediaFrame(callSid, data.toString());
-      });
-      ws.on("close", () => {
-        this.calls.delete(callSid);
+  /** Attach a WebSocket server for Twilio Media Streams.
+   * E-R1-1 fix: use noServer mode with path regex (ws does exact string match). */
+  attachMediaStreamServer(server: Server, basePath = "/voice/stream"): void {
+    // Use WebSocketServer in noServer mode + handleUpgrade for path-based routing
+    this.wss = new WebSocketServer({ noServer: true });
+    server.on("upgrade", (req, socket, head) => {
+      const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
+      if (!url.pathname.startsWith(basePath + "/")) return;
+      const callSid = url.pathname.slice(basePath.length + 1) || "unknown";
+      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+        this.handleConnection(ws, callSid);
       });
     });
+  }
+
+  /** Handle a new WS connection (extracted for clarity). */
+  private handleConnection(ws: WebSocket, callSid: string): void {
+    const call = this.calls.get(callSid);
+    if (call) {
+      call.ws = ws;
+    } else {
+      this.calls.set(callSid, {
+        callSid, from: "", to: this.opts.fromNumber ?? "", direction: "inbound", startedAt: nowWallclock(), ws,
+      });
+    }
+    ws.on("message", (data) => { void this.handleMediaFrame(callSid, data.toString()); });
+    ws.on("close", () => { this.calls.delete(callSid); });
   }
 
   /** Process an incoming media frame (mulaw audio). */

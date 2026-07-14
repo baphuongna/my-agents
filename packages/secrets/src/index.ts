@@ -233,3 +233,5 @@ export function makeSecretRedactor(store: SecretStore): (payload: Record<string,
   };
   return (payload) => scrubValue(payload) as Record<string, unknown>;
 }
+
+export * from "./pairing.js";

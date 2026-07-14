@@ -28,6 +28,7 @@ import { CollabRelay } from "@my-agent/collab";
 import { ChannelSessionRouter } from "./channel-session.js";
 import type { ChannelRegistry, ChannelMessage } from "./channels.js";
 import { getVapidPublicKey, addSubscription, removeSubscription } from "./push.js";
+import { encodePairingQR, type DevicePairing, type PairingQR } from "@my-agent/secrets";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -187,6 +188,8 @@ export interface GatewayOptions {
   poolQueueDepth?: (sessionId: string) => number;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
   wsInfo?: () => unknown;
+  /** Phase G: device pairing manager (optional). */
+  devicePairing?: DevicePairing;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -243,6 +246,8 @@ export class Gateway {
   private readonly poolQueueDepth?: (sessionId: string) => number;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
+  /** Phase G: device pairing manager. */
+  private readonly devicePairing?: DevicePairing;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
   /** Static file directory (optional — Phase 25.2 build pipeline). */
@@ -317,6 +322,7 @@ export class Gateway {
     this.cronAdd = opts.cronAdd;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
+    this.devicePairing = opts.devicePairing;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
       console.warn("[gateway] cron is configured but no onWsMessage channel exists; due jobs will be claimed + completed but not delivered.");
@@ -738,6 +744,44 @@ export class Gateway {
               return send(200, { ok: true, sessionId: poolPromptMatch[1] });
             } catch {
               return send(400, { error: "invalid json" });
+            }
+          });
+          return;
+        }
+        // ── Device pairing (Phase G) ──
+        // G-R2-1 fix: require bearer token for pairing endpoints
+        const pairingToken = process.env.MYA_PAIRING_TOKEN;
+        if (pairingToken) {
+          const authHeader = req.headers["authorization"] ?? "";
+          const token = String(authHeader).replace(/^Bearer\s+/i, "");
+          if (token !== pairingToken) {
+            return send(401, { error: "unauthorized: invalid or missing pairing token" });
+          }
+        }
+        if (url.pathname === "/pair/request" && req.method === "POST" && this.devicePairing) {
+          const qr = this.devicePairing.createPairingRequest();
+          return send(200, { ok: true, qr, encoded: encodePairingQR(qr) });
+        }
+        // DELETE /pair/devices/:id must be checked before GET /pair/devices
+        const pairRevokeMatch = url.pathname.match(/^\/pair\/devices\/([^/]+)$/);
+        if (pairRevokeMatch && req.method === "DELETE" && this.devicePairing) {
+          this.devicePairing.revokeDevice(pairRevokeMatch[1]!);
+          return send(200, { ok: true });
+        }
+        if (url.pathname === "/pair/devices" && req.method === "GET" && this.devicePairing) {
+          return send(200, this.devicePairing.listDevices());
+        }
+        if (url.pathname === "/pair/accept" && req.method === "POST" && this.devicePairing) {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { qr } = JSON.parse(body || "{}") as { qr?: PairingQR };
+              if (!qr) return send(400, { error: "qr required" });
+              const device = this.devicePairing!.acceptPairing(qr);
+              return send(200, { ok: true, device });
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
             }
           });
           return;

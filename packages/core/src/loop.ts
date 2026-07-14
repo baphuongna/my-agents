@@ -21,6 +21,7 @@ import type {
   TurnEvent,
 } from "./types.js";
 import { computeCost } from "./cost.js";
+import { NoopExporter, type TelemetryExporter } from "./telemetry.js";
 
 export interface TurnHandle {
   /** Subscribe to RuntimeEvents. */
@@ -83,6 +84,8 @@ export interface RunTurnOptions {
   /** §4 current mode (Phase 2/6 wiring). Optional; downstream consumers
    *  default to ReadOnly when absent. */
   mode?: import("./types.js").Mode;
+  /** §13 telemetry exporter for span creation (OTel/Langfuse). Optional. */
+  exporter?: TelemetryExporter;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -104,6 +107,9 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
   const done = new Promise<TurnTerminal>((res) => {
     resolveDone = res;
   });
+  const exporter = opts.exporter ?? new NoopExporter();
+  const turnSpan = exporter.startSpan("agent.turn", { model: opts.model ?? opts.profile?.model ?? "unknown" });
+  const finish = (t: TurnTerminal) => { turnSpan.end({ state: t.state }); void exporter.flush(); resolveDone(t); };
   // Internal controller for turns with no caller-supplied signal.
   const internal = new AbortController();
   const signal = opts.signal ?? internal.signal;
@@ -126,7 +132,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
     internal.abort();
     emitTurn({ state: "Cancelled", reason });
     emit({ kind: "turn", stage: "end" });
-    resolveDone({ state: "Cancelled", reason });
+    finish({ state: "Cancelled", reason });
   }
   signal.addEventListener("abort", () => cancel("abort signal"));
 
@@ -150,7 +156,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
       };
       emitTurn({ state: "Failed", error: err });
       emit({ kind: "turn", stage: "end" });
-      resolveDone({ state: "Failed", error: err });
+      finish({ state: "Failed", error: err });
       return;
     }
 
@@ -171,7 +177,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         };
         emitTurn({ state: "Failed", error: err });
         emit({ kind: "turn", stage: "end" });
-        resolveDone({ state: "Failed", error: err });
+        finish({ state: "Failed", error: err });
         return;
       }
       // CC9: skillSetDirty check INSIDE the loop (before prompt memoization) so a
@@ -203,7 +209,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
               if (!r.error.recoverable || retries === MAX_ATTEMPTS - 1) {
                 emitTurn({ state: "Failed", error: { ...r.error, retries } });
                 emit({ kind: "turn", stage: "end" });
-                resolveDone({ state: "Failed", error: { ...r.error, retries } });
+                finish({ state: "Failed", error: { ...r.error, retries } });
                 return;
               }
               continue; // recoverable: bounded retry
@@ -220,7 +226,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
             const err: LifecycleError = { phase: "provider", recoverable: false, retries, context: { reason: "stream finish:error" } };
             emitTurn({ state: "Failed", error: err });
             emit({ kind: "turn", stage: "end" });
-            resolveDone({ state: "Failed", error: err });
+            finish({ state: "Failed", error: err });
             return;
           }
           if (scanned.finish === "length") {
@@ -231,7 +237,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
               const err: LifecycleError = { phase: "resource", recoverable: true, retries, context: { cause: e instanceof Error ? e.message : String(e) } };
               emitTurn({ state: "Recoverable", error: err });
               emit({ kind: "turn", stage: "end" });
-              resolveDone({ state: "Failed", error: err });
+              finish({ state: "Failed", error: err });
               return;
             }
             lengthHit = true;
@@ -246,14 +252,14 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           const err: LifecycleError = { phase: "resource", recoverable: false, retries: MAX_ATTEMPTS, context: { reason: "context window exhausted after compression retries" } };
           emitTurn({ state: "Failed", error: err });
           emit({ kind: "turn", stage: "end" });
-          resolveDone({ state: "Failed", error: err });
+          finish({ state: "Failed", error: err });
           return;
         }
         const result = consumeStream(events, emitTurn);
         if (result.kind === "error") {
           emitTurn({ state: "Failed", error: result.error });
           emit({ kind: "turn", stage: "end" });
-          resolveDone({ state: "Failed", error: result.error });
+          finish({ state: "Failed", error: result.error });
           return;
         }
         const cost = computeCost(result.usage, opts.model ?? opts.profile?.model);
@@ -267,7 +273,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
           };
           emitTurn({ state: "Failed", error: err });
           emit({ kind: "turn", stage: "end" });
-          resolveDone({ state: "Failed", error: err });
+          finish({ state: "Failed", error: err });
           return;
         }
         emit({
@@ -306,7 +312,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         // No tool calls (or no executor) → terminal.
         emitTurn({ state: "Completed", usage: result.usage, cost });
         emit({ kind: "turn", stage: "end" });
-        resolveDone({ state: "Completed", usage: result.usage, cost });
+        finish({ state: "Completed", usage: result.usage, cost });
         return;
       } catch (e) {
         const err: LifecycleError = {
@@ -317,7 +323,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
         };
         emitTurn({ state: "Failed", error: err });
         emit({ kind: "turn", stage: "end" });
-        resolveDone({ state: "Failed", error: err });
+        finish({ state: "Failed", error: err });
         return;
       }
     }
@@ -330,7 +336,7 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
     };
     emitTurn({ state: "Failed", error: err });
     emit({ kind: "turn", stage: "end" });
-    resolveDone({ state: "Failed", error: err });
+    finish({ state: "Failed", error: err });
   }
 
   return {
