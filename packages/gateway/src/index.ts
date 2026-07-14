@@ -158,6 +158,14 @@ export interface GatewayOptions {
   poolAcquire?: (cwd: string) => string | Promise<string>;
   /** Optional: send a prompt to a pool session for POST /pool/prompt/:id. */
   poolPrompt?: (sessionId: string, text: string) => void;
+  /** Optional: list subagents for a session (returns SubagentHandle[]). */
+  poolSubagents?: (sessionId: string) => Array<{ id: string; goal: string; status: string; depth: number; output?: string }>;
+  /** Optional: MCP server management callbacks. */
+  mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
+  mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
+  mcpRemove?: (id: string) => boolean;
+  mcpConnect?: (id: string) => Promise<void>;
+  mcpDiscover?: (id: string) => Promise<string[]>;
   /** Optional: trigger an immediate run of a cron job. */
   cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: remove a job from the underlying cron scheduler. */
@@ -208,6 +216,12 @@ export class Gateway {
   /** Optional pool acquire callback. */
   private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
   private readonly poolPrompt?: (sessionId: string, text: string) => void;
+  private readonly poolSubagents?: (sessionId: string) => Array<{ id: string; goal: string; status: string; depth: number; output?: string }>;
+  private readonly mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
+  private readonly mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
+  private readonly mcpRemove?: (id: string) => boolean;
+  private readonly mcpConnect?: (id: string) => Promise<void>;
+  private readonly mcpDiscover?: (id: string) => Promise<string[]>;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   private readonly cronRemove?: (jobId: string) => boolean;
   private readonly cronAdd?: (job: ControlCronJob) => void;
@@ -270,6 +284,12 @@ export class Gateway {
     this.poolKill = opts.poolKill;
     this.poolAcquire = opts.poolAcquire;
     this.poolPrompt = opts.poolPrompt;
+    this.poolSubagents = opts.poolSubagents;
+    this.mcpList = opts.mcpList;
+    this.mcpAdd = opts.mcpAdd;
+    this.mcpRemove = opts.mcpRemove;
+    this.mcpConnect = opts.mcpConnect;
+    this.mcpDiscover = opts.mcpDiscover;
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
     this.cronAdd = opts.cronAdd;
@@ -699,6 +719,59 @@ export class Gateway {
             }
           });
           return;
+        }
+        // ── MCP servers ──
+        if (url.pathname === "/mcp/servers" && req.method === "GET" && this.mcpList) {
+          return send(200, this.mcpList());
+        }
+        if (url.pathname === "/mcp/servers" && req.method === "POST" && this.mcpAdd) {
+          let body = "";
+          req.on("data", (c: Buffer) => (body += c.toString()));
+          req.on("end", () => {
+            try {
+              const cfg = JSON.parse(body || "{}") as { id?: string; command?: string; args?: string[]; env?: Record<string, string> };
+              if (!cfg.id || !cfg.command) return send(400, { error: "id + command required" });
+              this.mcpAdd!({ id: cfg.id, command: cfg.command, args: cfg.args, env: cfg.env });
+              return send(201, { ok: true, id: cfg.id });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        const mcpActionMatch = url.pathname.match(/^\/mcp\/servers\/([^/]+)\/(connect|discover|test)$/);
+        if (mcpActionMatch && req.method === "POST") {
+          const id = mcpActionMatch[1]!;
+          const action = mcpActionMatch[2]!;
+          if (action === "connect" && this.mcpConnect) {
+            this.mcpConnect!(id).then(
+              () => send(200, { ok: true, id, phase: "Connected" }),
+              (e: unknown) => send(500, { ok: false, id, error: (e as Error).message }),
+            );
+            return;
+          }
+          if (action === "discover" && this.mcpDiscover) {
+            this.mcpDiscover!(id).then(
+              (tools) => send(200, { ok: true, id, tools }),
+              (e: unknown) => send(500, { ok: false, id, error: (e as Error).message }),
+            );
+            return;
+          }
+        }
+        const mcpDelMatch = url.pathname.match(/^\/mcp\/servers\/([^/]+)$/);
+        if (mcpDelMatch && req.method === "DELETE" && this.mcpRemove) {
+          const ok = this.mcpRemove!(mcpDelMatch[1]!);
+          return ok ? send(200, { ok: true }) : send(404, { error: "not found" });
+        }
+        // ── Agent tree: sessions + their subagents ──
+        if (url.pathname === "/pool/tree" && req.method === "GET" && this.poolStatus && this.poolSubagents) {
+          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number }>;
+          const tree = poolEntries.map((s) => ({
+            sessionId: s.sessionId,
+            busy: s.busy,
+            messages: s.messages,
+            lastActivity: s.lastActivity,
+            subagents: this.poolSubagents!(s.sessionId),
+          }));
+          return send(200, tree);
         }
         // WS connection info (for launcher to get token)
         if (url.pathname === "/ws-info" && this.wsInfo) {

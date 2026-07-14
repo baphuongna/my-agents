@@ -57,6 +57,8 @@ interface GatewayInfo {
   cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>;
   providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>;
   subagents?: { active: number; total: number };
+  agentTree?: AgentTreeEntry[];
+  mcpServers?: Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   version?: string;
   pid?: number;
 }
@@ -98,11 +100,13 @@ async function loadGatewaySessions(): Promise<Sess[]> {
 }
 
 async function loadGatewayInfo(): Promise<GatewayInfo> {
-  const [health, sessions, status, cronJobs] = await Promise.all([
+  const [health, sessions, status, cronJobs, tree, mcpServers] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
     fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
     fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
+    fetchJson<AgentTreeEntry[]>(`http://127.0.0.1:${GW_PORT}/pool/tree`),
+    fetchJson<GatewayInfo["mcpServers"]>(`http://127.0.0.1:${GW_PORT}/mcp/servers`),
   ]);
   return {
     connected: !!health?.ok,
@@ -115,6 +119,8 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     cronJobs,
     providers: status?.providers,
     subagents: status?.subagents,
+    agentTree: tree,
+    mcpServers,
     version: status?.version,
     pid: status?.pid,
   };
@@ -202,7 +208,15 @@ async function killSubagent(sessionId: string): Promise<boolean> {
   } catch { return false; }
 }
 
-type Tab = "sessions" | "channels" | "cron" | "providers" | "subagents" | "status";
+type Tab = "agents" | "channels" | "cron" | "providers" | "mcp" | "status";
+
+interface AgentTreeEntry {
+  sessionId: string;
+  busy: boolean;
+  messages: number;
+  lastActivity: number;
+  subagents?: Array<{ id: string; goal: string; status: string; depth: number; output?: string }>;
+}
 
 interface LauncherState {
   tab: Tab;
@@ -347,7 +361,7 @@ async function launchGatewaySession(sessionId: string): Promise<void> {
 function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new" } | undefined> {
   return new Promise((resolve) => {
     const state: LauncherState = {
-      tab: "sessions",
+      tab: "agents",
       sel: 0,
       cronSel: 0,
       filter: "",
@@ -396,13 +410,13 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
 
       // Tabs
-      const tabs: Tab[] = ["sessions", "channels", "cron", "providers", "subagents", "status"];
+      const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "status"];
       const tabLabels: Record<Tab, string> = {
-        sessions: `Sessions (${state.info.sessions})`,
+        agents: `Agents (${state.info.sessions})`,
         channels: `Channels (${state.info.channels?.length ?? "?"})`,
         cron: `Cron (${state.info.cronJobs?.length ?? "?"})`,
         providers: `Providers (${state.info.providers?.length ?? "?"})`,
-        subagents: `Subagents (${state.info.subagents?.active ?? 0}/${state.info.subagents?.total ?? 0})`,
+        mcp: `MCP (${state.info.mcpServers?.length ?? "?"})`,
         status: "Status",
       };
       const tabLine = tabs.map((t) => {
@@ -413,33 +427,40 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push("");
 
       // Tab content
-      if (state.tab === "sessions") {
-        lines.push(`  ${A.dim2("search:")} ${A.accent(state.filter || "_")}  ${A.dim2("(type to filter, Esc to clear)")}`);
+      if (state.tab === "agents") {
+        const tree = state.info.agentTree ?? [];
+        const sa = state.info.subagents;
+        lines.push(`  ${A.green(String(state.info.running))} active ${A.dim2("/ " + state.info.sessions + " sessions")} ${A.dim2("· " + (sa?.active ?? 0) + " subagents")}`);
         lines.push("");
-
-        const items = filteredSessions();
-        if (state.info.connected && items.length === 1) {
-          lines.push(`  ${A.muted("No active gateway sessions.")}`);
-          lines.push(`  ${A.muted("Press ")} ${A.accent("n")} ${A.muted("to start a new one.")}`);
-        } else {
-          const max = Math.max(0, h - 12);
-          const visible = items.slice(0, max);
-          for (let i = 0; i < visible.length; i++) {
-            const s = visible[i]!;
-            const is = i === state.sel;
-            const icon = s.type === "new" ? A.blue("+") : s.busy ? A.yellow("●") : A.green("○");
-            const id = s.id.length > 30 ? s.id.slice(0, 27) + "..." : s.id;
-            const line1 = `${icon}  ${is ? A.bold(A.accent(s.label)) : s.label}`;
-            const line2 = `   ${A.dim2(id)}  ${A.dim2(s.detail)}`;
-            if (is) {
-              lines.push(`  ${A.selBg(line1 + A.clrEol)}`);
-              lines.push(`  ${A.selBg(line2 + A.clrEol)}`);
-            } else {
-              lines.push(`  ${line1}`);
-              lines.push(`  ${line2}`);
+        // Build flat display list: main sessions + nested subagents
+        const items: Array<{ kind: "main" | "sub"; id: string; label: string; status: string; detail: string }> = [];
+        items.push({ kind: "main" as const, id: "new", label: "New agent session", status: "", detail: "Choose directory + open" });
+        for (const entry of tree) {
+          const label = entry.sessionId.replace(/^(ch-|s-)/, "").replace(/-/g, " ").slice(0, 28);
+          items.push({ kind: "main", id: entry.sessionId, label, status: entry.busy ? "running" : "idle", detail: `${entry.messages} msgs ${A.dim2(fmt(entry.lastActivity))}` });
+          if (entry.subagents) {
+            for (const sub of entry.subagents) {
+              items.push({ kind: "sub", id: sub.id, label: sub.goal.slice(0, 40), status: sub.status, detail: sub.output ? sub.output.slice(0, 50) : "" });
             }
           }
         }
+        const maxRows = Math.max(3, h - 10);
+        const half = Math.floor(maxRows / 2);
+        const start = Math.max(0, Math.min(state.sel - half, Math.max(0, items.length - maxRows)));
+        const end = Math.min(items.length, start + maxRows);
+        if (start > 0) lines.push(`  ${A.dim2("  ↑ " + start + " above")}`);
+        for (let i = start; i < end; i++) {
+          const item = items[i]!;
+          const is = i === state.sel;
+          const indent = item.kind === "sub" ? "    └─ " : "";
+          const icon = item.id === "new" ? A.blue("+") : item.kind === "sub"
+            ? (item.status === "running" ? A.blue("●") : A.dim2("○"))
+            : (item.status === "running" ? A.yellow("●") : A.green("○"));
+          const statusStr = item.status ? (item.status === "running" ? A.yellow("running") : A.dim2(item.status)).padEnd(10) : "".padEnd(10);
+          const baseLine = `${icon}  ${indent}${item.label.slice(0, 30).padEnd(32)} ${statusStr} ${A.dim2(item.detail)}`;
+          lines.push(is ? `  ${A.selBg(baseLine + A.clrEol)}` : `  ${baseLine}`);
+        }
+        if (end < items.length) lines.push(`  ${A.dim2("  ↓ " + (items.length - end) + " more")}`);
       } else if (state.tab === "channels") {
         if (!state.info.channels?.length) {
           lines.push(`  ${A.muted("No channels configured.")}`);
@@ -510,65 +531,75 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         if (end < providers.length) {
           lines.push(`  ${A.dim2("  ↓ " + (providers.length - end) + " more — ↓ to scroll")}`);
         }
-      } else if (state.tab === "subagents") {
-        const sa = state.info.subagents;
-        const sessions = state.sessions;
-        lines.push(`  ${A.dim2("Pool:")}  ${A.green(String(sa?.active ?? 0))} active ${A.dim2("/ " + (sa?.total ?? 0) + " total")}  ${A.dim2("· max depth 3")}`);
+      } else if (state.tab === "mcp") {
+        const servers = state.info.mcpServers ?? [];
+        const connected = servers.filter((s) => s.phase === "Connected" || s.phase === "Validated");
+        lines.push(`  ${A.green(connected.length + " connected")} ${A.dim2("· " + servers.length + " total")}`);
         lines.push("");
-        if (sessions.length > 0) {
-          lines.push(`  ${A.bold("Sessions:")}`);
-          const maxRows = Math.max(3, h - 12);
+        if (servers.length === 0) {
+          lines.push(`  ${A.muted("No MCP servers configured.")}`);
+          lines.push(`  ${A.dim2("Press " + A.accent("a") + " to add an MCP server.")}`);
+          lines.push(`  ${A.dim2("Example: npx @anthropic/mcp-server-filesystem /tmp")}`);
+        } else {
+          const maxRows = Math.max(3, h - 10);
           const half = Math.floor(maxRows / 2);
-          const start = Math.max(0, Math.min(state.sel - half, Math.max(0, sessions.length - maxRows)));
-          const end = Math.min(sessions.length, start + maxRows);
+          const start = Math.max(0, Math.min(state.sel - half, Math.max(0, servers.length - maxRows)));
+          const end = Math.min(servers.length, start + maxRows);
           if (start > 0) lines.push(`  ${A.dim2("  ↑ " + start + " above")}`);
           for (let i = start; i < end; i++) {
-            const s = sessions[i]!;
+            const s = servers[i]!;
             const is = i === state.sel;
-            const icon = s.busy ? A.yellow("●") : A.green("○");
-            const status = s.busy ? A.yellow("running") : A.dim2("idle");
-            const line = `${icon}  ${s.label.slice(0, 28).padEnd(30)} ${status.padEnd(10)} ${A.dim2(s.detail)}`;
-            lines.push(is ? `  ${A.selBg(line + A.clrEol)}` : `  ${line}`);
+            const phaseIcon = s.phase === "Connected" || s.phase === "Validated" ? A.green("●") : s.phase === "Quarantine" ? A.red("✗") : A.dim2("○");
+            const toolCount = s.tools.length;
+            const cmd = `${s.command} ${(s.args ?? []).join(" ")}`.slice(0, 40);
+            const baseLine = `${phaseIcon}  ${s.id.padEnd(18)} ${A.dim2(s.phase.padEnd(12))} ${A.dim2(String(toolCount).padStart(2) + " tools")} ${A.dim2(cmd)}`;
+            lines.push(is ? `  ${A.selBg(baseLine + A.clrEol)}` : `  ${baseLine}`);
+            if (s.lastError) {
+              lines.push(`     ${A.red("└─ " + s.lastError.slice(0, 60))}`);
+            }
           }
-          if (end < sessions.length) lines.push(`  ${A.dim2("  ↓ " + (sessions.length - end) + " more")}`);
-        } else {
-          lines.push(`  ${A.muted("No sessions in pool.")}`);
-          lines.push(`  ${A.dim2("Press " + A.accent("n") + " to spawn a new subagent.")}`);
+          if (end < servers.length) lines.push(`  ${A.dim2("  ↓ " + (servers.length - end) + " more")}`);
         }
       } else if (state.tab === "status") {
-        lines.push(`  ${A.dim2("Gateway:")}     ${state.info.connected ? A.green("online") : A.red("offline")}`);
-        lines.push(`  ${A.dim2("Port:")}        ${state.info.port}`);
-        lines.push(`  ${A.dim2("PID:")}          ${state.info.pid ?? "-"}`);
-        lines.push(`  ${A.dim2("Version:")}      ${state.info.version ?? "-"}`);
-        lines.push(`  ${A.dim2("Sessions:")}    ${state.info.sessions} ${A.dim2("(")}${state.info.running} running${A.dim2(")")}`);
-        lines.push(`  ${A.dim2("Subagents:")}   ${state.info.subagents?.active ?? 0} active / ${state.info.subagents?.total ?? 0} total`);
-        lines.push(`  ${A.dim2("Providers:")}   ${state.info.providers?.length ?? 0} configured`);
-        lines.push(`  ${A.dim2("Channels:")}    ${state.info.channels?.length ?? 0}`);
-        lines.push(`  ${A.dim2("Cron jobs:")}    ${state.info.cronJobs?.length ?? 0}`);
-        lines.push(`  ${A.dim2("Model:")}       ${state.info.model ?? A.dim2("unknown")}`);
+        const configuredProviders = (state.info.providers ?? []).filter((p) => p.configured);
+        const statusLines: string[] = [];
+        statusLines.push(`  ${A.dim2("Gateway:")}     ${state.info.connected ? A.green("online") : A.red("offline")}`);
+        statusLines.push(`  ${A.dim2("Port:")}        ${state.info.port}`);
+        statusLines.push(`  ${A.dim2("PID:")}          ${state.info.pid ?? "-"}`);
+        statusLines.push(`  ${A.dim2("Version:")}      ${state.info.version ?? "-"}`);
+        statusLines.push(`  ${A.dim2("Agents:")}       ${state.info.sessions} (${state.info.running} running)`);
+        statusLines.push(`  ${A.dim2("Providers:")}   ${configuredProviders.length} configured`);
+        statusLines.push(`  ${A.dim2("Channels:")}    ${state.info.channels?.length ?? 0}`);
+        statusLines.push(`  ${A.dim2("Cron jobs:")}    ${state.info.cronJobs?.length ?? 0}`);
+        statusLines.push(`  ${A.dim2("Model:")}       ${state.info.model ?? A.dim2("unknown")}`);
         if (state.info.uptime !== undefined) {
-          const up = state.info.uptime;
-          const hh = Math.floor(up / 3600);
-          const mm = Math.floor((up % 3600) / 60);
-          lines.push(`  ${A.dim2("Uptime:")}      ${hh}h ${mm}m`);
+          const hh = Math.floor(state.info.uptime / 3600);
+          const mm = Math.floor((state.info.uptime % 3600) / 60);
+          statusLines.push(`  ${A.dim2("Uptime:")}      ${hh}h ${mm}m`);
         }
-        lines.push(`  ${A.dim2("Last refresh:")} ${fmt(state.lastRefresh)}`);
-        lines.push("");
-        lines.push(`  ${A.bold("Paths:")}`);
-        lines.push(`  ${A.dim2("Config:")}       ~/.mya/`);
-        lines.push(`  ${A.dim2("Memory:")}       ~/.mya/agent/memory/`);
-        lines.push(`  ${A.dim2("Sessions:")}     ~/.mya/agent/sessions/`);
-        lines.push(`  ${A.dim2("Skills:")}       ~/.mya/skills/`);
-        lines.push(`  ${A.dim2("Extensions:")}   ~/.mya/extensions/`);
-        lines.push(`  ${A.dim2("Cron config:")}  ~/.mya/agent/cron.json`);
-        lines.push(`  ${A.dim2("Web:")}          http://127.0.0.1:${state.info.port}/`);
-        if (state.info.providers?.length) {
-          lines.push("");
-          lines.push(`  ${A.bold("Providers:")}`);
-          for (const p of state.info.providers) {
-            lines.push(`  ${A.green("●")}  ${p.id.padEnd(14)} ${A.dim2(p.model)}`);
+        statusLines.push(`  ${A.dim2("Last refresh:")} ${fmt(state.lastRefresh)}`);
+        if (configuredProviders.length > 0) {
+          statusLines.push("");
+          statusLines.push(`  ${A.bold("Providers (" + configuredProviders.length + "):")}`);
+          for (const p of configuredProviders) {
+            statusLines.push(`  ${A.green("●")}  ${p.id.padEnd(14)} ${A.dim2(p.model)}`);
           }
         }
+        statusLines.push("");
+        statusLines.push(`  ${A.bold("Paths:")}`);
+        statusLines.push(`  ${A.dim2("Config:")}       ~/.mya/`);
+        statusLines.push(`  ${A.dim2("Memory:")}       ~/.mya/agent/memory/`);
+        statusLines.push(`  ${A.dim2("Sessions:")}     ~/.mya/agent/sessions/`);
+        statusLines.push(`  ${A.dim2("Skills:")}       ~/.mya/skills/`);
+        statusLines.push(`  ${A.dim2("Cron:")}         ~/.mya/agent/cron.json`);
+        statusLines.push(`  ${A.dim2("Web:")}          http://127.0.0.1:${state.info.port}/`);
+        // Viewport scroll for status
+        const maxRows = Math.max(3, h - 8);
+        const start = Math.max(0, Math.min(state.sel, Math.max(0, statusLines.length - maxRows)));
+        const end = Math.min(statusLines.length, start + maxRows);
+        if (start > 0) lines.push(`  ${A.dim2("↑ " + start + " above")}`);
+        for (let i = start; i < end; i++) lines.push(statusLines[i]!);
+        if (end < statusLines.length) lines.push(`  ${A.dim2("↓ " + (statusLines.length - end) + " more")}`);
       }
 
       // Footer / status bar
@@ -576,17 +607,17 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       for (let i = 0; i < remaining; i++) lines.push("");
 
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
-      const help = state.tab === "sessions"
-        ? "1-6 tabs | ↑/↓ select | Enter open | type search | x kill | n new | r refresh | q quit"
+      const help = state.tab === "agents"
+        ? "1-6 tabs | ↑/↓ select | Enter open | x kill | n new | r refresh | q quit"
         : state.tab === "channels"
           ? "1-6 tabs | ↑/↓ | Space toggle | t test | a add | q quit"
           : state.tab === "cron"
             ? "1-6 tabs | ↑/↓ | Space toggle | r run | d delete | a add | q quit"
             : state.tab === "providers"
               ? "1-6 tabs | ↑/↓ | a/Enter = add/edit key | d = remove | q quit"
-              : state.tab === "subagents"
-                ? "1-6 tabs | ↑/↓ | n spawn | x kill | Enter open | q quit"
-                : "1-6 tabs | Tab switch | r refresh | q quit";
+              : state.tab === "mcp"
+                ? "1-6 tabs | ↑/↓ | Enter/c = connect | d delete | a add | q quit"
+                : "1-6 tabs | ↑/↓ scroll | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -613,7 +644,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 
       // Tab switch
       if (k === "\t" || k === "\x1b[Z") {
-        const tabs: Tab[] = ["sessions", "channels", "cron", "providers", "subagents", "status"];
+        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "status"];
         const idx = tabs.indexOf(state.tab);
         state.tab = tabs[(idx + 1) % tabs.length]!;
         state.sel = 0;
@@ -621,14 +652,14 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         void refresh();
         return;
       }
-      if (k === "1") { state.tab = "sessions"; state.sel = 0; void refresh(); return; }
+      if (k === "1") { state.tab = "agents"; state.sel = 0; void refresh(); return; }
       if (k === "2") { state.tab = "channels"; state.sel = 0; void refresh(); return; }
       if (k === "3") { state.tab = "cron"; state.cronSel = 0; void refresh(); return; }
       if (k === "4") { state.tab = "providers"; state.sel = 0; void refresh(); return; }
-      if (k === "5") { state.tab = "subagents"; state.sel = 0; void refresh(); return; }
+      if (k === "5") { state.tab = "mcp"; state.sel = 0; void refresh(); return; }
       if (k === "6") { state.tab = "status"; state.sel = 0; void refresh(); return; }
 
-      if (state.tab === "sessions") {
+      if (state.tab === "agents") {
         if (k === "n") { cleanup({ kind: "new" }); return; }
         if (k === "x") {
           const items = filteredSessions();
@@ -811,42 +842,46 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           }
           return;
         }
-      } else if (state.tab === "subagents") {
-        const sessions = state.sessions;
+      } else if (state.tab === "mcp") {
+        const servers = state.info.mcpServers ?? [];
         if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
-        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, sessions.length - 1), state.sel + 1); render(); return; }
-        if (k === "x") {
-          const s = sessions[state.sel];
-          if (s) { void killSubagent(s.id).then(() => refresh()); }
+        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, servers.length - 1), state.sel + 1); render(); return; }
+        if (k === "\r" || k === "\n" || k === "c") {
+          const s = servers[state.sel];
+          if (s) {
+            void fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}/connect`, { method: "POST" })
+              .then(() => fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}/discover`, { method: "POST" }))
+              .then(() => refresh());
+          }
           return;
         }
-        if (k === "\r" || k === "\n") {
-          const s = sessions[state.sel];
-          if (s) { cleanup({ kind: "session", id: s.id }); return; }
+        if (k === "d") {
+          const s = servers[state.sel];
+          if (s) { void fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}`, { method: "DELETE" }).then(() => refresh()); }
+          return;
         }
-        if (k === "n") {
+        if (k === "a") {
           process.stdin.pause();
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
           process.stdout.write(A.altScreenOff + A.showCursor);
-          const goal = await inlinePrompt("Spawn Subagent", "What should this agent do?", "");
-          if (goal) {
-            const sessionId = await acquireGatewaySession(process.cwd());
-            if (sessionId) {
-              // Send the goal as a prompt to the new session
+          const id = await inlinePrompt("MCP Server ID", "e.g. filesystem, github, slack");
+          if (id) {
+            const command = await inlinePrompt("Command", "e.g. npx, node, python3", "npx");
+            if (command) {
+              const argsStr = await inlinePrompt("Args", "e.g. @anthropic/mcp-server-filesystem /tmp");
+              const args = argsStr ? argsStr.split(/\s+/).filter(Boolean) : [];
               try {
-                await fetch(`http://127.0.0.1:${GW_PORT}/pool/prompt/${sessionId}`, {
+                await fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers`, {
                   method: "POST",
                   headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ text: goal }),
+                  body: JSON.stringify({ id, command, args }),
                   signal: AbortSignal.timeout(2000),
                 });
-                process.stdout.write(`\n  ${A.green("✓ Subagent spawned")} ${A.dim2(sessionId)}\n  ${A.dim2("Goal: " + goal.slice(0, 60))}\n  ${A.dim2("Press any key...")}`);
+                process.stdout.write(`\n  ${A.green("✓ Added")} ${A.dim2(id)}\n  ${A.dim2("Press Enter to connect")}`);
               } catch {
-                process.stdout.write(`\n  ${A.red("✗ Failed to send prompt")}\n  ${A.dim2("Session created: " + sessionId)}`);
+                process.stdout.write(`\n  ${A.red("✗ Failed")}`);
               }
-            } else {
-              process.stdout.write(`\n  ${A.red("✗ Failed to acquire session")}\n  ${A.dim2("Is gateway running?")}`);
             }
           }
           if (isTTY) process.stdin.setRawMode(true);
@@ -856,6 +891,10 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           void refresh();
           return;
         }
+      } else if (state.tab === "status") {
+        // ↑/↓ scrolls the status viewport
+        if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
+        if (k === "\x1b[B") { state.sel = state.sel + 1; render(); return; }
       }
     };
 

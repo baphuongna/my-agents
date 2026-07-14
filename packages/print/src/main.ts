@@ -18,10 +18,11 @@ import { createAgent, AgentPool, type AgentSession } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs } from "./shared-instances.js";
 
 
 // ── auth.json loader ──
@@ -377,6 +378,38 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       void runOnSession(sessionId, text, (e: unknown) => gw.broadcast(sessionId, e))
         .catch((e) => console.warn(`[gateway] poolPrompt failed: ${(e as Error).message}`));
     },
+    poolSubagents: (sessionId: string) => {
+      try {
+        const subagentMod = createRequire(import.meta.url)("../../coding-agent/src/core/subagent.ts");
+        return subagentMod.listSubagents(sessionId).map((s: { id: string; goal: string; status: string; depth: number; output: string }) => ({
+          id: s.id, goal: s.goal, status: s.status, depth: s.depth, output: s.output,
+        }));
+      } catch { return []; }
+    },
+    mcpList: () => mcp.listServers().map((s) => ({
+      id: s.id, command: s.command, args: s.args, phase: s.phase, health: s.health, tools: s.tools, lastError: s.lastError,
+    })),
+    mcpAdd: (cfg) => {
+      mcp.register(cfg);
+      // Persist to mcp.json
+      try {
+        const mcpFile = join(homedir(), ".mya", "agent", "mcp.json");
+        const existing = JSON.parse(readFileSync(mcpFile, "utf8")) as { servers?: typeof mcpConfigs };
+        existing.servers = [...(existing.servers ?? []), cfg];
+        writeFileSync(mcpFile, JSON.stringify(existing, null, 2), "utf8");
+      } catch { /* best-effort persist */ }
+    },
+    mcpRemove: (id: string) => {
+      try {
+        const mcpFile = join(homedir(), ".mya", "agent", "mcp.json");
+        const existing = JSON.parse(readFileSync(mcpFile, "utf8")) as { servers?: Array<{ id: string }> };
+        existing.servers = (existing.servers ?? []).filter((s) => s.id !== id);
+        writeFileSync(mcpFile, JSON.stringify(existing, null, 2), "utf8");
+        return true;
+      } catch { return false; }
+    },
+    mcpConnect: async (id: string) => { await mcp.start(id); },
+    mcpDiscover: async (id: string) => { return mcp.listServers().find((s) => s.id === id)?.tools ?? []; },
     // Pi tracks its own queue depth via session.isIdle + queue internals.
     // We expose busy=1/0 as a simple proxy (since pi's queue isn't directly observable).
     poolQueueDepth: (sessionId: string) => {
