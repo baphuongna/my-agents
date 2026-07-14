@@ -1,8 +1,8 @@
 /**
- * mya Session Launcher — Phase 1+2+3.
+ * mya Session Launcher — Phase 1+2+3+4.
  *
  * Features:
- *  - 4 tabs: Sessions, Channels, Cron, Status
+ *  - 6 tabs: Sessions, Channels, Cron, Providers, Subagents, Status
  *  - Search/filter input
  *  - Real-time refresh (poll 2s)
  *  - Status bar (connection, session count)
@@ -55,6 +55,10 @@ interface GatewayInfo {
   uptime?: number;
   channels?: Array<{ id: string; type: string; alias?: string; label: string; enabled: boolean; configured: boolean; health: string }>;
   cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>;
+  providers?: Array<{ id: string; model: string; configured: boolean }>;
+  subagents?: { active: number; total: number };
+  version?: string;
+  pid?: number;
 }
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
@@ -97,7 +101,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
   const [health, sessions, status, cronJobs] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
-    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"] }>(`http://127.0.0.1:${GW_PORT}/status`),
+    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: GatewayInfo["providers"]; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
     fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
   ]);
   return {
@@ -109,6 +113,10 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     uptime: status?.uptime,
     channels: status?.channels,
     cronJobs,
+    providers: status?.providers,
+    subagents: status?.subagents,
+    version: status?.version,
+    pid: status?.pid,
   };
 }
 
@@ -136,7 +144,7 @@ async function killGatewaySession(id: string): Promise<boolean> {
   } catch { return false; }
 }
 
-type Tab = "sessions" | "channels" | "cron" | "status";
+type Tab = "sessions" | "channels" | "cron" | "providers" | "subagents" | "status";
 
 interface LauncherState {
   tab: Tab;
@@ -295,11 +303,13 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
 
       // Tabs
-      const tabs: Tab[] = ["sessions", "channels", "cron", "status"];
+      const tabs: Tab[] = ["sessions", "channels", "cron", "providers", "subagents", "status"];
       const tabLabels: Record<Tab, string> = {
         sessions: `Sessions (${state.info.sessions})`,
         channels: `Channels (${state.info.channels?.length ?? "?"})`,
         cron: `Cron (${state.info.cronJobs?.length ?? "?"})`,
+        providers: `Providers (${state.info.providers?.length ?? "?"})`,
+        subagents: `Subagents (${state.info.subagents?.active ?? 0}/${state.info.subagents?.total ?? 0})`,
         status: "Status",
       };
       const tabLine = tabs.map((t) => {
@@ -370,10 +380,44 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
             }
           }
         }
+      } else if (state.tab === "providers") {
+        if (!state.info.providers?.length) {
+          lines.push(`  ${A.muted("No providers configured.")}`);
+          lines.push(`  ${A.dim2("Set env vars: MINIMAX_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.")}`);
+        } else {
+          lines.push(`  ${A.dim2("Configured LLM providers (auto-detected from env):")}`);
+          lines.push("");
+          for (const p of state.info.providers) {
+            const icon = p.configured ? A.green("●") : A.red("○");
+            lines.push(`  ${icon}  ${A.bold(p.id.padEnd(14))}  ${A.dim2(p.model)}`);
+          }
+          lines.push("");
+          lines.push(`  ${A.dim2("Active model: " + (state.info.model ?? "unknown"))}`);
+        }
+      } else if (state.tab === "subagents") {
+        const sa = state.info.subagents;
+        if (!sa || sa.total === 0) {
+          lines.push(`  ${A.muted("No subagent activity.")}`);
+          lines.push(`  ${A.dim2("Subagents spawn when the agent delegates tasks.")}`);
+        } else {
+          lines.push(`  ${A.dim2("Subagent pool status:")}`);
+          lines.push("");
+          lines.push(`  ${A.green("●")}  Active:  ${A.bold(String(sa.active))}`);
+          lines.push(`  ${A.dim2("○")}  Total:   ${sa.total}`);
+          lines.push("");
+          lines.push(`  ${A.dim2("Max depth: 3 (parent → child → grandchild)")}`);
+          lines.push(`  ${A.dim2("Use /subagents in TUI to inspect active subagents")}`);
+        }
       } else if (state.tab === "status") {
         lines.push(`  ${A.dim2("Gateway:")}     ${state.info.connected ? A.green("online") : A.red("offline")}`);
         lines.push(`  ${A.dim2("Port:")}        ${state.info.port}`);
+        lines.push(`  ${A.dim2("PID:")}          ${state.info.pid ?? "-"}`);
+        lines.push(`  ${A.dim2("Version:")}      ${state.info.version ?? "-"}`);
         lines.push(`  ${A.dim2("Sessions:")}    ${state.info.sessions} ${A.dim2("(")}${state.info.running} running${A.dim2(")")}`);
+        lines.push(`  ${A.dim2("Subagents:")}   ${state.info.subagents?.active ?? 0} active / ${state.info.subagents?.total ?? 0} total`);
+        lines.push(`  ${A.dim2("Providers:")}   ${state.info.providers?.length ?? 0} configured`);
+        lines.push(`  ${A.dim2("Channels:")}    ${state.info.channels?.length ?? 0}`);
+        lines.push(`  ${A.dim2("Cron jobs:")}    ${state.info.cronJobs?.length ?? 0}`);
         lines.push(`  ${A.dim2("Model:")}       ${state.info.model ?? A.dim2("unknown")}`);
         if (state.info.uptime !== undefined) {
           const up = state.info.uptime;
@@ -383,9 +427,21 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         }
         lines.push(`  ${A.dim2("Last refresh:")} ${fmt(state.lastRefresh)}`);
         lines.push("");
+        lines.push(`  ${A.bold("Paths:")}`);
         lines.push(`  ${A.dim2("Config:")}       ~/.mya/`);
+        lines.push(`  ${A.dim2("Memory:")}       ~/.mya/agent/memory/`);
         lines.push(`  ${A.dim2("Sessions:")}     ~/.mya/agent/sessions/`);
+        lines.push(`  ${A.dim2("Skills:")}       ~/.mya/skills/`);
+        lines.push(`  ${A.dim2("Extensions:")}   ~/.mya/extensions/`);
+        lines.push(`  ${A.dim2("Cron config:")}  ~/.mya/agent/cron.json`);
         lines.push(`  ${A.dim2("Web:")}          http://127.0.0.1:${state.info.port}/`);
+        if (state.info.providers?.length) {
+          lines.push("");
+          lines.push(`  ${A.bold("Providers:")}`);
+          for (const p of state.info.providers) {
+            lines.push(`  ${A.green("●")}  ${p.id.padEnd(14)} ${A.dim2(p.model)}`);
+          }
+        }
       }
 
       // Footer / status bar
@@ -394,10 +450,10 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
       const help = state.tab === "sessions"
-        ? "↑/↓ | Enter open | type search | x kill | n new | Tab switch | r refresh | q quit"
+        ? "1-6 tabs | ↑/↓ select | Enter open | type search | x kill | n new | r refresh | q quit"
         : state.tab === "cron"
-          ? "↑/↓ | Space toggle | r run now | d delete | a add | Tab switch | q quit"
-          : "Tab switch | r refresh | q quit";
+          ? "1-6 tabs | ↑/↓ | Space toggle | r run now | d delete | a add | q quit"
+          : "1-6 tabs | Tab switch | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -435,7 +491,9 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       if (k === "1") { state.tab = "sessions"; state.sel = 0; void refresh(); return; }
       if (k === "2") { state.tab = "channels"; state.sel = 0; void refresh(); return; }
       if (k === "3") { state.tab = "cron"; state.cronSel = 0; void refresh(); return; }
-      if (k === "4") { state.tab = "status"; state.sel = 0; void refresh(); return; }
+      if (k === "4") { state.tab = "providers"; state.sel = 0; void refresh(); return; }
+      if (k === "5") { state.tab = "subagents"; state.sel = 0; void refresh(); return; }
+      if (k === "6") { state.tab = "status"; state.sel = 0; void refresh(); return; }
 
       if (state.tab === "sessions") {
         if (k === "n") { cleanup({ kind: "new" }); return; }

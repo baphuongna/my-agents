@@ -428,12 +428,23 @@ export class Gateway {
           configured: c.isConfigured(),
           health: c.health(),
         })) ?? [];
+        // Detect configured providers from env
+        const providers = detectProviderSummary();
+        // Subagent info from pool
+        const poolEntries = (this.poolStatus ? this.poolStatus() : []) as Array<{ sessionId: string; busy: boolean; messages: number }>;
+        const subagents = poolEntries.map((s: { sessionId: string; busy: boolean; messages: number }) => ({
+          sessionId: s.sessionId,
+          busy: s.busy,
+          messages: s.messages,
+        }));
         return send(200, {
           model: process.env["MYA_MODEL"] ?? "MiniMax-M3",
           uptime: Math.floor(process.uptime()),
           pid: process.pid,
           version: process.env["MYA_VERSION"] ?? "0.1.0",
           channels,
+          providers,
+          subagents: { active: subagents.filter((s: { busy: boolean }) => s.busy).length, total: subagents.length },
         });
       }
       case "/functional": {
@@ -826,4 +837,27 @@ function parseChannelWebhook(channelId: string, body: string): ChannelMessage | 
   } catch {
     return null;
   }
+}
+
+/** Detect configured LLM providers from environment variables (for /status display). */
+function detectProviderSummary(): Array<{ id: string; model: string; configured: boolean }> {
+  const entries: Array<{ envKey: string; id: string; model: string }> = [
+    { envKey: "MINIMAX_API_KEY", id: "minimax", model: "MiniMax-M3" },
+    { envKey: "OPENAI_API_KEY", id: "openai", model: "gpt-4o-mini" },
+    { envKey: "ANTHROPIC_API_KEY", id: "anthropic", model: "claude-sonnet-4" },
+    { envKey: "GOOGLE_API_KEY", id: "google", model: "gemini-2.0-flash" },
+    { envKey: "DEEPSEEK_API_KEY", id: "deepseek", model: "deepseek-chat" },
+    { envKey: "GROQ_API_KEY", id: "groq", model: "llama-3.3-70b" },
+    { envKey: "MISTRAL_API_KEY", id: "mistral", model: "mistral-large" },
+    { envKey: "XAI_API_KEY", id: "xai", model: "grok-3" },
+    { envKey: "TOGETHER_API_KEY", id: "together", model: "llama-3.3-70b" },
+    { envKey: "OPENROUTER_API_KEY", id: "openrouter", model: "claude-3.5-sonnet" },
+  ];
+  return entries
+    .filter((e) => !!process.env[e.envKey])
+    .map((e) => ({
+      id: e.id,
+      model: process.env[`${e.envKey.replace("_API_KEY", "_MODEL")}`] ?? e.model,
+      configured: true,
+    }));
 }
