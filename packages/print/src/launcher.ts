@@ -644,7 +644,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 
       // Tab switch
       if (k === "\t" || k === "\x1b[Z") {
-        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "status"];
+        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "status"];
         const idx = tabs.indexOf(state.tab);
         state.tab = tabs[(idx + 1) % tabs.length]!;
         state.sel = 0;
