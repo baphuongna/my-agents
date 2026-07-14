@@ -3,15 +3,15 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lsTool, findTool } from "./builtin.js";
-import type { ToolCallContext } from "./registry.js";
+import type { TurnContext } from "@my-agent/core";
 
-function makeCtx(cwd: string): ToolCallContext {
+function makeCtx(cwd: string): TurnContext {
   return {
     cwd,
     workspace: cwd,
     mode: "Prompt" as never,
     hooks: undefined,
-  } as unknown as ToolCallContext;
+  } as unknown as TurnContext;
 }
 
 describe("lsTool", () => {

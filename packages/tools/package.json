@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@my-agent/core": "*",
-    "@my-agent/natives": "*"
+    "@my-agent/natives": "*",
+    "tesseract.js": "^5",
+    "chrome-remote-interface": "^0.3"
   }
 }

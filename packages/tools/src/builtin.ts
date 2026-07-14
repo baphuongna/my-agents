@@ -18,6 +18,8 @@ import { ok, err, isRecord, type ToolImpl } from "./registry.js";
 import { resolveInsideWorkspace, resolveExistingInsideWorkspace } from "./path-safety.js";
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
 import { nowWallclock } from "@my-agent/core";
+import { screenCaptureTool, screenFindTool } from "./screen.js";
+import { browserNavigateTool, browserClickTool, browserTypeTool, browserScreenshotTool, browserExtractTool, browserEvalTool, browserCloseTool } from "./browser.js";
 
 /** F1 fix: contain a tool's path inside the ctx workspace. Returns the safe
  * absolute path, or an error result on escape. `mode:"write"` is lexical-only;
@@ -476,6 +478,15 @@ export const builtinTools: ToolImpl[] = [
   grepTool,
   lsTool,
   findTool,
+  screenCaptureTool,
+  screenFindTool,
+  browserNavigateTool,
+  browserClickTool,
+  browserTypeTool,
+  browserScreenshotTool,
+  browserExtractTool,
+  browserEvalTool,
+  browserCloseTool,
 ];
 
 function globToRegex(pattern: string): RegExp {
