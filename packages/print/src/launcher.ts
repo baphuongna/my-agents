@@ -477,27 +477,38 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         const providers = state.info.providers ?? [];
         const configured = providers.filter((p) => p.configured);
         const available = providers.filter((p) => !p.configured);
-        lines.push(`  ${A.green(configured.length + " configured")} ${A.dim2("· " + available.length + " available")}`);
+        const scrollUp = state.sel > 0 ? A.dim2("↑") : " ";
+        const scrollDn = state.sel < providers.length - 1 ? A.dim2("↓") : " ";
+        lines.push(`  ${A.green(configured.length + " configured")} ${A.dim2("· " + available.length + " available")}  ${scrollUp}${scrollDn}`);
         lines.push("");
-        if (configured.length > 0) {
-          lines.push(`  ${A.bold("Configured:")}`);
-          for (let i = 0; i < configured.length; i++) {
-            const p = configured[i]!;
-            const idx = providers.indexOf(p);
-            const is = idx === state.sel;
-            const line = `${A.green("●")}  ${p.id.padEnd(22)} ${A.dim2(p.model.padEnd(30))} ${A.dim2(p.envKey)}`;
-            lines.push(is ? `  ${A.selBg(line + A.clrEol)}` : `  ${line}`);
+        // Viewport: center selection, show a window
+        const maxRows = Math.max(3, h - 12);
+        const half = Math.floor(maxRows / 2);
+        const start = Math.max(0, Math.min(state.sel - half, Math.max(0, providers.length - maxRows)));
+        const end = Math.min(providers.length, start + maxRows);
+        let showedConfigHdr = false;
+        let showedAvailHdr = false;
+        for (let i = start; i < end; i++) {
+          const p = providers[i]!;
+          if (p.configured && !showedConfigHdr) {
+            lines.push(`  ${A.bold("Configured:")}`);
+            showedConfigHdr = true;
           }
-          lines.push("");
+          if (!p.configured && !showedAvailHdr) {
+            lines.push("");
+            lines.push(`  ${A.bold("Available (" + available.length + "):")}`);
+            showedAvailHdr = true;
+          }
+          const is = i === state.sel;
+          const icon = p.configured ? A.green("●") : A.dim2("○");
+          const name = p.configured ? p.id.padEnd(22) : A.dim2(p.id.padEnd(22));
+          const model = A.dim2((p.model || "").slice(0, 28).padEnd(30));
+          const baseLine = `${icon}  ${name} ${model} ${A.dim2(p.envKey)}`;
+          const cleanLine = p.configured ? baseLine : baseLine.replace(/\x1b\[[\d;]+m/g, "");
+          lines.push(is ? `  ${A.selBg(cleanLine + A.clrEol)}` : `  ${baseLine}`);
         }
-        if (available.length > 0) {
-          lines.push(`  ${A.bold("Available (" + available.length + "):")}`);
-          for (const p of available) {
-            const idx = providers.indexOf(p);
-            const is = idx === state.sel;
-            const line = `${A.dim2("○")}  ${A.dim2(p.id.padEnd(22))} ${A.dim2(p.model.padEnd(30))} ${A.dim2(p.envKey)}`;
-            lines.push(is ? `  ${A.selBg(line.replace(/\x1b\[[\d;]+m/g, "") + A.clrEol)}` : `  ${line}`);
-          }
+        if (end < providers.length) {
+          lines.push(`  ${A.dim2("  ↓ " + (providers.length - end) + " more — ↓ to scroll")}`);
         }
       } else if (state.tab === "subagents") {
         const sa = state.info.subagents;
