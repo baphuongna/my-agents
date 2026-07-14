@@ -16,6 +16,9 @@ export { lineHashes, formatHashed, replaceByHash, isValidAnchor, fileFingerprint
 export { resolveInsideWorkspace, resolveExistingInsideWorkspace, isInsideWorkspace } from "./path-safety.js";
 export type { ResolveMode, ResolveResult } from "./path-safety.js";
 export * from "./codegraph.js";
+export * from "./symbol-extractor.js";
+export * from "./graph-store.js";
+export * from "./reference-graph.js";
 export * from "./codeexec.js";
 export * from "./lsp-client.js";
 export * from "./approval.js";

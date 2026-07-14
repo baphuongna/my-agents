@@ -16,6 +16,17 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, extname, dirname, normalize } from "node:path";
 import { err, isRecord, ok, type ToolImpl } from "@my-agent/tools";
 import type { ToolResult } from "@my-agent/core";
+import { extractSymbols } from "./symbol-extractor.js";
+import type { Symbol } from "./symbol-extractor.js";
+import { GraphStore } from "./graph-store.js";
+import {
+  buildReferencesForStore,
+  findDefinitions,
+  findReferences,
+  getCallGraph,
+  getRelatedFiles as getRelatedFilesBySymbols,
+} from "./reference-graph.js";
+import type { Reference } from "./reference-graph.js";
 
 /** Per-language import-statement matchers (capture the target specifier). */
 const IMPORT_MATCHERS: Record<string, RegExp[]> = {
@@ -179,4 +190,46 @@ export function makeCodegraphTool(): ToolImpl & { graphFor(root: string): Promis
       return p;
     },
   };
+}
+
+// ─── Phase B / Gap 5: symbol-level queries (additive surface) ──────────────
+//
+// The functions below are exported alongside the existing file-relevance API.
+// `makeCodegraphTool` is intentionally unchanged (AGENTS.md: "never
+// stub-then-replace"); callers wire the symbol surface in directly.
+
+/** Build a populated GraphStore (Symbols + References) for a root. Cached per
+ * root so repeated symbol queries share the parse cost. */
+export async function buildSymbolGraph(root: string): Promise<GraphStore> {
+  const { extractSymbolsForRoot } = await import("./symbol-extractor.js");
+  const store = await extractSymbolsForRoot(root);
+  await buildReferencesForStore(store, root);
+  return store;
+}
+
+/** Find Symbol definitions matching `name` in the graph. */
+export function findSymbols(graph: GraphStore, name: string): Symbol[] {
+  return findDefinitions(graph, name);
+}
+
+/** Find all References that target `id`. */
+export function findReferencesForId(graph: GraphStore, id: string): Reference[] {
+  return findReferences(graph, id);
+}
+
+/** Build the call graph for a function/method symbol. */
+export function callGraphFor(graph: GraphStore, functionId: string): { callers: Symbol[]; callees: Symbol[] } {
+  return getCallGraph(graph, functionId);
+}
+
+/** Files related to a file via shared symbols (definitions + incoming refs). */
+export function relatedFilesBySymbols(graph: GraphStore, filePath: string): string[] {
+  return getRelatedFilesBySymbols(graph, filePath);
+}
+
+/** Run symbol extraction on one file (synchronous-ish). Returns Symbol[].
+ * Provided as a convenience for callers that have a file in hand and don't
+ * need the full graph. */
+export function extractSymbolsFromFile(filePath: string): Symbol[] {
+  return extractSymbols(filePath);
 }
