@@ -26,7 +26,11 @@ export function dashboardHtml(opts: DashboardOptions = {}): string {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="/manifest.json" />
 <title>${escapeHtml(title)}</title>
 <style>
   body { font: 14px/1.45 -apple-system,system-ui,sans-serif; margin: 0; background: #0b0d10; color: #e6edf3; }
@@ -120,6 +124,10 @@ ${approvalModalHtml()}
   let ws_ready = false;
   let wsObj = null;
   connect();
+  // Phase C: PWA service worker registration
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 </script>
 </body>
 </html>`;
