@@ -59,6 +59,30 @@ export const CHANNEL_SETUP: Record<string, { name: string; credentials: Credenti
       { envVar: "WEBHOOK_URL", label: "Webhook URL" },
     ],
   },
+  whatsapp: {
+    name: "WhatsApp (Cloud API)",
+    helpUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api/get-started",
+    credentials: [
+      { envVar: "WHATSAPP_TOKEN", label: "Access Token", helpUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api/get-started" },
+      { envVar: "WHATSAPP_PHONE_NUMBER_ID", label: "Phone Number ID" },
+    ],
+  },
+  signal: {
+    name: "Signal (signal-cli REST API)",
+    helpUrl: "https://github.com/bbernhard/signal-cli-rest-api",
+    credentials: [
+      { envVar: "SIGNAL_CLI_URL", label: "signal-cli REST URL (default http://localhost:8080)" },
+    ],
+  },
+  matrix: {
+    name: "Matrix (Client-Server API)",
+    helpUrl: "https://matrix.org/docs/matrix-concepts/",
+    credentials: [
+      { envVar: "MATRIX_HOMESERVER", label: "Homeserver base URL (e.g. https://matrix.org)" },
+      { envVar: "MATRIX_ACCESS_TOKEN", label: "Access Token" },
+      { envVar: "MATRIX_ROOM_ID", label: "Room ID (e.g. !abc:matrix.org)" },
+    ],
+  },
 };
 
 /** Channels config file path: ~/.mya/agent/channels.json */

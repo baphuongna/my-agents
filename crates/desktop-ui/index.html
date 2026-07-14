@@ -210,6 +210,59 @@
   .ev.error    { border-left-color: #f85149; }
   .ev.budget   { border-left-color: #a371f7; }
   .ev.health   { border-left-color: #2ea043; }
+
+  /* ── aggregated streaming response block ──────────────────────── */
+  .ev.response {
+    border-left-color: #58a6ff;
+    background: #0d1117;
+    padding: 8px 10px;
+  }
+  .ev.response .meta { color: #58a6ff; }
+  .ev.response .response-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 1em;
+  }
+  .ev.response.streaming .response-text::after {
+    content: "▌";
+    animation: blink 0.8s steps(2) infinite;
+    color: #58a6ff;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── error banner ──────────────────────────────────────────────── */
+  #error-banner {
+    display: none;
+    position: fixed;
+    top: 49px;
+    left: 0;
+    right: 0;
+    padding: 8px 16px;
+    background: #2a0a0a;
+    border-bottom: 1px solid #da3633;
+    color: #ff8181;
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+    align-items: center;
+    gap: 8px;
+    z-index: 40;
+    box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  }
+  #error-banner.show { display: flex; }
+  #error-banner .dismiss {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid #da3633;
+    color: #ff8181;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  #error-banner .dismiss:hover { background: #da3633; color: #fff; }
+
   .meta {
     font-size: 11px;
     color: #8b949e;
@@ -345,6 +398,11 @@
   <span id="boot-detail"></span>
 </div>
 
+<div id="error-banner">
+  <span id="error-text"></span>
+  <button type="button" class="dismiss" id="error-dismiss" title="dismiss">×</button>
+</div>
+
 <main id="main">
   <div id="stream"></div>
   <aside id="sidebar">
@@ -401,6 +459,9 @@
   const sessionEmpty = $("session-empty");
   const refreshBtn   = $("refresh-sessions");
   const newSessBtn   = $("new-session");
+  const errorBanner  = $("error-banner");
+  const errorText    = $("error-text");
+  const errorDismiss = $("error-dismiss");
 
   // ── Tauri detection ─────────────────────────────────────────────────
   // `window.__TAURI__` is only present when `app.withGlobalTauri: true`
@@ -516,6 +577,21 @@
     }
   }
 
+  // ── Error display ───────────────────────────────────────────────────
+  let errorTimer = null;
+  function showError(msg) {
+    errorText.textContent = String(msg);
+    errorBanner.classList.add("show");
+    if (errorTimer) clearTimeout(errorTimer);
+    errorTimer = setTimeout(function () { errorBanner.classList.remove("show"); }, 10_000);
+  }
+  function clearError() {
+    errorBanner.classList.remove("show");
+    errorText.textContent = "";
+    if (errorTimer) { clearTimeout(errorTimer); errorTimer = null; }
+  }
+  errorDismiss.addEventListener("click", clearError);
+
   // ── Readiness probe ─────────────────────────────────────────────────
   async function probeReady() {
     try {
@@ -585,6 +661,7 @@
     });
     ws.addEventListener("error", function () {
       // The `close` handler will run after this; reconnect logic lives there.
+      showError("WebSocket connection error — reconnecting…");
       try { ws.close(); } catch (_e) {}
     });
     ws.addEventListener("message", function (m) {
@@ -606,18 +683,34 @@
   // ── Event rendering (mirrors packages/web/src/index.ts) ─────────────
   function summarize(e) {
     if (!e || typeof e !== "object") return "";
-    if (e.kind === "turn" && e.e) {
-      if (e.e.state === "Streaming" && e.e.chunk) return e.e.chunk.text || "";
-      if (e.e.state === "ToolExec") return "[tool results]";
-      if (e.e.state === "Completed") {
-        const u = e.e.usage || {};
-        return "[completed · in " + (u.input || 0) + "/" + (u.output || 0) + "]";
+    if (e.kind === "turn") {
+      // turnEvent is the current field name; e.e is a legacy alias.
+      const te = e.turnEvent || e.e;
+      if (te) {
+        if (te.state === "Streaming" && te.chunk) {
+          if (te.chunk.kind === "text") return te.chunk.text || "";
+          return ""; // tool_calls / done / error chunks — handled elsewhere
+        }
+        if (te.state === "ToolCalls")     return "[tool calls]";
+        if (te.state === "ToolExec")      return "[tool results]";
+        if (te.state === "AwaitingApproval") return "[awaiting approval]";
+        if (te.state === "Completed") {
+          const u = te.usage || {};
+          return "[completed · in " + (u.input || 0) + "/" + (u.output || 0) + "]";
+        }
+        if (te.state === "Failed") return "[failed: " + ((te.error && te.error.message) || "unknown") + "]";
+        if (te.state === "Recoverable") return "[recoverable: " + ((te.error && te.error.message) || "unknown") + "]";
+        if (te.state === "Cancelled") return "[cancelled: " + (te.reason || "") + "]";
+        return "[" + te.state + "]";
       }
-      return "[" + e.e.state + "]";
+      if (e.stage === "start") return "";
+      if (e.stage === "end")   return "";
+      return "";
     }
-    if (e.kind === "budget") return "budget: $" + (Number(e.spentUsd) || 0).toFixed(4);
+    if (e.kind === "budget")    return "budget: $" + (Number(e.spentUsd) || 0).toFixed(4);
     if (e.kind === "approval") return "approval: " + (e.stage || "?");
     if (e.kind === "health")   return "health: " + (e.status || "?");
+    if (e.kind === "log")      return (e.level || "info") + ": " + (e.message || "");
     try {
       return JSON.stringify(e).slice(0, 240);
     } catch (_e) {
@@ -631,11 +724,28 @@
     });
   }
 
-  function renderEvent(env) {
-    if (!env || typeof env !== "object") return;
-    const e = env.event || {};
+  // Track the current aggregated response element for streaming chunks.
+  let currentResponse = null;
+
+  function createResponseElement(seq, kind) {
     const div = document.createElement("div");
-    const kind = (typeof e.kind === "string") ? e.kind : "";
+    div.className = "ev response streaming";
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = "#" + (seq != null ? seq : "?") + " " + kind;
+    div.appendChild(meta);
+
+    const text = document.createElement("div");
+    text.className = "response-text";
+    text.textContent = "";
+    div.appendChild(text);
+
+    return div;
+  }
+
+  function renderEventTile(env, e, kind) {
+    const div = document.createElement("div");
     div.className = "ev " + kind;
 
     const meta = document.createElement("div");
@@ -649,29 +759,143 @@
 
     stream.appendChild(div);
     stream.scrollTop = stream.scrollHeight;
+  }
 
+  function renderEvent(env) {
+    if (!env || typeof env !== "object") return;
+    const e = env.event || {};
+    const kind = (typeof e.kind === "string") ? e.kind : "";
+
+    // ── Streaming text aggregation ────────────────────────────────
+    // Group consecutive text chunks for the same turn into a single
+    // response block instead of one tile per token.
+    if (kind === "turn") {
+      if (e.stage === "start") {
+        currentResponse = null; // new turn → reset
+        return;
+      }
+      if (e.stage === "end") {
+        if (currentResponse) {
+          currentResponse.classList.remove("streaming");
+          currentResponse = null;
+        }
+        eventsRendered++;
+        infoEvents.textContent = String(eventsRendered);
+        return;
+      }
+      if (e.stage === "event" && e.turnEvent) {
+        const te = e.turnEvent;
+        // Text chunk → append to current response block.
+        if (te.state === "Streaming" && te.chunk && te.chunk.kind === "text") {
+          if (!currentResponse) {
+            currentResponse = createResponseElement(env.seq, "assistant");
+            stream.appendChild(currentResponse);
+          }
+          const textEl = currentResponse.querySelector(".response-text");
+          textEl.textContent += te.chunk.text || "";
+          stream.scrollTop = stream.scrollHeight;
+          eventsRendered++;
+          infoEvents.textContent = String(eventsRendered);
+          return;
+        }
+        // Non-text chunk (tool_calls, done, error) → finalize current response.
+        if (currentResponse && (te.state === "ToolCalls" || te.state === "Completed" || te.state === "Failed" || te.state === "Cancelled")) {
+          currentResponse.classList.remove("streaming");
+          currentResponse = null;
+        }
+        // Failed / Recoverable → show as error tile.
+        if (te.state === "Failed" || te.state === "Recoverable") {
+          renderEventTile(env, e, "error");
+          if (te.error && te.error.message) showError(te.error.message);
+          eventsRendered++;
+          infoEvents.textContent = String(eventsRendered);
+          return;
+        }
+        // Other turn events → render as tile.
+        renderEventTile(env, e, kind);
+        eventsRendered++;
+        infoEvents.textContent = String(eventsRendered);
+        return;
+      }
+    }
+
+    // ── Log events with error level → error banner ────────────────
+    if (kind === "log" && e.level === "error") {
+      renderEventTile(env, e, "error");
+      if (e.message) showError(e.message);
+      eventsRendered++;
+      infoEvents.textContent = String(eventsRendered);
+      return;
+    }
+
+    // ── Default: render as event tile ─────────────────────────────
+    renderEventTile(env, e, kind);
     eventsRendered++;
     infoEvents.textContent = String(eventsRendered);
 
+    // ── Approval requests ─────────────────────────────────────────
     if (e.kind === "approval" && e.stage === "requested") showApproval(e);
   }
 
+  // ── Approval modal ───────────────────────────────────────────────
+  // The approval event arrives as {kind:"approval", stage:"requested", call:{...}}.
+  // When the user clicks allow/deny we post the decision back via WS so the
+  // gateway's onWsMessage handler can relay it to the agent's approval channel.
+  // We also try the IPC bridge for future Tauri shell support.
+  let pendingApproval = null;
+
   function showApproval(e) {
+    pendingApproval = e;
     approval.style.display = "block";
     const callJson = JSON.stringify(e.call || {}, null, 2);
+    const callName = (e.call && e.call.name) || "tool";
+    const callArgs = (e.call && e.call.args) || {};
+    const subject = callArgs.command || callArgs.path || callArgs.url || "";
     approval.innerHTML =
-      "<strong>approval</strong>" +
+      "<strong>approval required</strong>" +
+      "<div style=\"font-size:12px;margin:4px 0;color:#8b949e\">" +
+        escapeHtml(callName) + (subject ? ": " + escapeHtml(subject) : "") +
+      "</div>" +
       "<pre>" + escapeHtml(callJson) + "</pre>" +
       "<div class=\"actions\">" +
       "<button type=\"button\" id=\"approval-allow\">allow</button>" +
       "<button type=\"button\" class=\"deny\" id=\"approval-deny\">deny</button>" +
       "</div>";
-    $("approval-allow").addEventListener("click", function () {
-      approval.style.display = "none";
-      // Wire to a future IPC channel once the shell exposes approval submission.
-    });
-    $("approval-deny").addEventListener("click", function () {
-      approval.style.display = "none";
+    $("approval-allow").addEventListener("click", function () { submitApproval("allow"); });
+    $("approval-deny").addEventListener("click",  function () { submitApproval("deny");  });
+  }
+
+  function submitApproval(decision) {
+    approval.style.display = "none";
+    const callId   = (pendingApproval && pendingApproval.call && pendingApproval.call.id) || null;
+    const callName = (pendingApproval && pendingApproval.call && pendingApproval.call.name) || null;
+    pendingApproval = null;
+
+    const payload = {
+      kind: "approval_decision",
+      decision: decision,
+      callId: callId,
+      tool: callName,
+      reason: decision === "deny" ? "user denied via desktop UI" : "",
+    };
+
+    let sent = false;
+
+    // Primary path: WS (same channel the gateway uses for prompts).
+    if (ws && wsReady) {
+      try {
+        ws.send(JSON.stringify(payload));
+        sent = true;
+      } catch (e) {
+        showError("Failed to send approval decision: " + (e && e.message ? e.message : String(e)));
+      }
+    }
+
+    // Secondary path: IPC bridge (Tauri shell, if the command is registered).
+    void safeInvoke("approval_decision", payload).then(function (result) {
+      if (!sent && result === undefined && !inTauri) {
+        showError("Cannot send approval decision: WebSocket not connected and IPC unavailable.");
+      }
     });
   }
 
@@ -777,14 +1001,15 @@
     const text = promptInput.value.trim();
     if (!text) return;
     if (!ws || !wsReady) {
-      console.warn("[send] ws not ready; message dropped");
+      showError("Cannot send message: WebSocket not connected. Waiting for reconnect…");
       return;
     }
     try {
       ws.send(JSON.stringify({ text: text }));
       promptInput.value = "";
+      clearError();
     } catch (e) {
-      console.warn("[send] failed:", e);
+      showError("Failed to send message: " + (e && e.message ? e.message : String(e)));
     }
   }
   sendBtn.addEventListener("click", sendPrompt);

@@ -55,7 +55,8 @@ describe("verifyUpdate", () => {
       version: "1.0.0",
       url: "https://example.com/update",
       contentHash: "abc123",
-    
+    } as unknown as UpdateDeclaration;
+
     const result = verifyUpdate(decl);
     expect(result.ok).toBe(false);
   });

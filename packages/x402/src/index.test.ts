@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { Wallet, X402Client } from "@my-agent/x402";
+import { Wallet, X402Client, verifyEcdsaSignature } from "@my-agent/x402";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -66,24 +66,31 @@ describe("x402 — double-pay guard (X1 / R44: pay AT MOST ONCE per fetch)", () 
   });
 });
 
-describe("Wallet — HMAC-SHA256 + HKDF + rotation (Phase 6)", () => {
-  // Pin a deterministic master secret so signature comparison is stable.
+describe("Wallet — ECDSA secp256k1 + HKDF key derivation + rotation", () => {
+  // Pin a deterministic master secret so key derivation is stable across wallets.
   const secretA = Buffer.alloc(32, 0x42);
   const secretB = Buffer.alloc(32, 0x99);
 
-  it("signs with HMAC-SHA256 under the derived key (new format)", () => {
+  it("signs with ECDSA-secp256k1 (new envelope format)", () => {
     const w = new Wallet({ address: "addr-A", initial: { USDC: 10 }, masterSecret: secretA });
     const r = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
-    expect(r.signature).toMatch(/^x402v1:hmac-sha256:[0-9a-f]{64}$/);
-    // Address is the IKM, NOT in the payload — signing key absorbs it.
+    // ECDSA DER signatures are variable length (~70-72 bytes → ~140-144 hex).
+    expect(r.signature).toMatch(/^x402v1:ecdsa-secp256k1:[0-9a-fA-F]+$/);
+    // Address is the HKDF IKM, NOT in the signed payload.
     expect(r.signature).not.toContain("addr-A");
+    // Signature must verify under the wallet's public key.
+    expect(w.verifySignature({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" }, r.signature)).toBe(true);
   });
 
-  it("is deterministic per (wallet, challenge)", () => {
+  it("stays verifiable per (wallet, challenge) across repeated signs", () => {
+    // ECDSA uses a random nonce, so signatures are NOT byte-identical — but
+    // every signature verifies under the wallet's (stable) public key.
     const w = new Wallet({ address: "addr-A", initial: { USDC: 10 }, masterSecret: secretA });
-    const r1 = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
-    const r2 = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
-    expect(r1.signature).toBe(r2.signature);
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "n1" } as const;
+    const r1 = w.pay({ ...challenge });
+    const r2 = w.pay({ ...challenge });
+    expect(w.verifySignature({ ...challenge }, r1.signature)).toBe(true);
+    expect(w.verifySignature({ ...challenge }, r2.signature)).toBe(true);
   });
 
   it("two wallets with the same address produce DIFFERENT signatures (per-wallet secret)", () => {
@@ -96,22 +103,30 @@ describe("Wallet — HMAC-SHA256 + HKDF + rotation (Phase 6)", () => {
 
   it("rotateKey() invalidates the prior signing key (1-based counter)", () => {
     const w = new Wallet({ address: "a", initial: { USDC: 10 }, masterSecret: secretA });
-    const before = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "n1" };
+    const before = w.pay({ ...challenge });
+    const pubBefore = w.getPublicKey();
     expect(w.rotateKey()).toBe(1);
-    const after1 = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
-    expect(after1.signature).not.toBe(before.signature);
+    const after1 = w.pay({ ...challenge });
+    // New key pair → prior signature does NOT verify under the new public key.
+    expect(verifyEcdsaSignature(w.getPublicKey(), { ...challenge }, before.signature)).toBe(false);
+    // New signature verifies under the new (current) public key.
+    expect(verifyEcdsaSignature(w.getPublicKey(), { ...challenge }, after1.signature)).toBe(true);
+    // Public key changed.
+    expect(w.getPublicKey()).not.toBe(pubBefore);
     expect(w.rotateKey()).toBe(2);
-    // After 2 rotations, signatures continue to be deterministic per current key.
-    const after2a = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
-    const after2b = w.pay({ amount: 1, currency: "USDC", payee: "p", nonce: "n1" });
-    expect(after2a.signature).toBe(after2b.signature);
+    // After 2 rotations, new signatures continue to verify under the current key.
+    const after2a = w.pay({ ...challenge });
+    const after2b = w.pay({ ...challenge });
+    expect(verifyEcdsaSignature(w.getPublicKey(), { ...challenge }, after2a.signature)).toBe(true);
+    expect(verifyEcdsaSignature(w.getPublicKey(), { ...challenge }, after2b.signature)).toBe(true);
   });
 
   it("keyStatus() reports fingerprints + rotation count + age (safe to log)", () => {
     const w = new Wallet({ address: "a", initial: { USDC: 10 }, masterSecret: secretA });
     const s = w.keyStatus();
     expect(s.address).toBe("a");
-    expect(s.algorithm).toBe("hmac-sha256+HKDF-SHA256");
+    expect(s.algorithm).toBe("secp256k1");
     expect(s.masterSecretFingerprint).toMatch(/^[0-9a-f]{12}$/);
     expect(s.signingKeyFingerprint).toMatch(/^[0-9a-f]{12}$/);
     expect(s.rotationCount).toBe(0);
