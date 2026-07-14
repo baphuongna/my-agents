@@ -200,13 +200,13 @@ describe("SyncDomain", () => {
     d.init(new Brain());
     expect(d.recall("")).toEqual([]);
   });
-  it("onRecord + onConsolidate are pure no-ops (stub)", () => {
+  it("onRecord tracks pending sync; onConsolidate flushes (Tier-2 M-1)", () => {
     const brain = new Brain();
     const d = new SyncDomain();
     d.init(brain);
     const f = brain.recordFact({ kind: "fact", entity: "e", content: "c", visibility: "private", notability: 1, source: "s" });
     expect(() => d.onRecord(f)).not.toThrow();
-    expect(d.onConsolidate(nowWallclock())).toEqual({ promoted: 0, consumed: 0 });
+    expect(d.onConsolidate(nowWallclock())).toEqual({ promoted: 0, consumed: 1 });
   });
 });
 

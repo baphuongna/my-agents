@@ -8,6 +8,16 @@
  */
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import type { Server } from "node:http";
+import webpush from "web-push";
+
+// Configure VAPID once at import time (guarded — no-op without keys).
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    `mailto:${process.env.VAPID_SUBJECT ?? "noreply@mya.local"}`,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY,
+  );
+}
 
 export interface PushSubscription {
   endpoint: string;
@@ -50,22 +60,32 @@ export function listSubscriptions(): PushSubscription[] {
   return [...subscriptions.values()];
 }
 
-/** Send a push notification to all subscribers.
- * Returns { sent, failed } counts. */
+/** Send a push notification to all subscribers via RFC 8291 (C-3).
+ * Returns { sent, failed } counts. Requires VAPID keys in env. */
 export async function sendPushAll(
   payload: { title: string; body: string; url?: string },
 ): Promise<{ sent: number; failed: number }> {
+  if (!process.env.VAPID_PUBLIC_KEY) return { sent: 0, failed: 0 };
   const body = JSON.stringify(payload);
   let sent = 0;
+  let failed = 0;
   for (const sub of subscriptions.values()) {
     try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: sub.keys },
+        body,
+        { TTL: 86_400 }, // 24h
+      );
       sent++;
-    } catch {
-      // C-3: Web Push RFC 8291 delivery deferred to Tier-2
+    } catch (e) {
+      // 410 Gone = subscription expired → remove
+      if ((e as { statusCode?: number }).statusCode === 410) {
+        subscriptions.delete(sub.endpoint);
+      }
+      failed++;
     }
   }
-  void body;
-  return { sent, failed: 0 };
+  return { sent, failed };
 }
 
 /** Broadcast a notification when a gateway event occurs. */

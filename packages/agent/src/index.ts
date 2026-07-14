@@ -38,7 +38,6 @@ import {
   builtinTools,
   createComposioClient,
   registerComposioTools,
-} from "@my-agent/tools";
   runToolBatch,
   type ToolImpl,
 } from "@my-agent/tools";
@@ -274,7 +273,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
   {
     const composioClient = createComposioClient();
     if (composioClient) {
-      registerComposioTools(toolRegistry, composioClient).catch(() => { /* best-effort */ });
+      registerComposioTools(toolRegistry, composioClient, process.env.COMPOSIO_ACCOUNT_ID ?? "").catch(() => { /* best-effort */ });
     }
   }
   // Phase 1: tamper-evident audit log (identity-redacted unless a secretStore is wired).

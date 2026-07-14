@@ -19,6 +19,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
+mod rhai;
+pub use rhai::eval_rhai;
+
 /// Convert a panic payload into a readable error string.
 fn panic_msg(p: Box<dyn std::any::Any + Send>) -> String {
   if let Some(s) = p.downcast_ref::<&'static str>() {

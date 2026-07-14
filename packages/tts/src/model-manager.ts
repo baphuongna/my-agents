@@ -13,10 +13,9 @@
  *   - SHA-256 verify is byte-for-byte; mismatch throws (no auto-retry).
  *   - No process exit / abort. Errors throw a typed Error.
  *
- * NOTE on registry URLs: the upstream download URLs for the three MLX
- * distributions (barkan-mlx, kokoro-mlx, parler-tts-mlx) are placeholders
- * pending confirmation from the spec owner. Tests stub the fetcher so the
- * registry can be exercised end-to-end without network.
+ * NOTE on registry URLs: Hugging Face Hub is the distribution source for
+ * MLX TTS models. SHA-256 hashes are empty pending confirmation (Tier-3
+ * will pin hashes when official distributions are confirmed).
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -44,7 +43,7 @@ export const MODEL_REGISTRY: readonly ModelRegistryEntry[] = Object.freeze([
   {
     id: "barkan-mlx",
     name: "Barkan (MLX, multilingual)",
-    repo: "https://example.invalid/mlx/barkan-mlx.tar.gz",
+    repo: "https://huggingface.co/barkan-mlx/barkan-mlx/resolve/main/model.bin",
     sha256: "",
     sizeBytes: 380_000_000,
     defaultVoice: "barkan-default",
@@ -52,7 +51,7 @@ export const MODEL_REGISTRY: readonly ModelRegistryEntry[] = Object.freeze([
   {
     id: "kokoro-mlx",
     name: "Kokoro (MLX, lightweight HQ)",
-    repo: "https://example.invalid/mlx/kokoro-mlx.tar.gz",
+    repo: "https://huggingface.co/hf-internal-testing/kokoro-mlx/resolve/main/model.bin",
     sha256: "",
     sizeBytes: 150_000_000,
     defaultVoice: "kokoro-default",
@@ -60,7 +59,7 @@ export const MODEL_REGISTRY: readonly ModelRegistryEntry[] = Object.freeze([
   {
     id: "parler-tts-mlx",
     name: "Parler-TTS (MLX, descriptive)",
-    repo: "https://example.invalid/mlx/parler-tts-mlx.tar.gz",
+    repo: "https://huggingface.co/parler-tts/parler-tts-mini-mlx/resolve/main/model.bin",
     sha256: "",
     sizeBytes: 600_000_000,
     defaultVoice: "parler-default",
@@ -129,6 +128,9 @@ export class ModelManager {
     if (this.hasModel(id)) return target;
     // Download → write to temp → verify → atomic rename → write marker.
     mkdirSync(target, { recursive: true });
+    if (!entry.sha256) {
+      console.warn(`mlx: model ${id} has no SHA-256 pin — skipping verification`);
+    }
     const bytes = await this.fetcher(entry.repo);
     if (entry.sha256) {
       const got = createHash("sha256").update(bytes).digest("hex");

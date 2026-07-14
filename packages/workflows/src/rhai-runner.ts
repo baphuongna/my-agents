@@ -18,6 +18,7 @@
 import { runInNewContext, type Context } from "node:vm";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, normalize, sep, isAbsolute } from "node:path";
+import { nativeEvalRhai } from "@my-agent/natives";
 
 /** An event emitted during script execution (log or custom). */
 export interface RhaiEvent {
@@ -82,6 +83,19 @@ export async function evalRhai(
   context: Record<string, unknown>,
   opts: RhaiOptions = {},
 ): Promise<RhaiResult> {
+  // Try native Rust Rhai engine first (sandboxed, no I/O). Only handles scripts
+  // that use log/emit_event + pure computation. Returns null if unavailable or
+  // if the script uses unregistered functions → falls through to node:vm.
+  const nativeResult = nativeEvalRhai(script, context);
+  if (nativeResult !== null) {
+    return {
+      value: nativeResult.value,
+      events: nativeResult.events as RhaiEvent[],
+    };
+  }
+
+  // Fall back to node:vm for scripts needing read_file/write_file/http_get
+  // or when the native binary is not present.
   const workspace = opts.workspace ?? process.cwd();
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const allowedDomains = opts.allowedDomains ?? [];

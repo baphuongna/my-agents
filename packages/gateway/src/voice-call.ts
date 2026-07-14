@@ -10,6 +10,7 @@ import type { Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { nowWallclock } from "@my-agent/core";
 import type { Channel } from "./channels.js";
+import { VoiceStt } from "./voice-stt.js";
 
 export interface VoiceCallOpts {
   timeout?: number;
@@ -41,8 +42,23 @@ export class VoiceCallChannel implements Channel {
       accountSid?: string;
       authToken?: string;
       fromNumber?: string;
+      onTranscription?: (callSid: string, text: string) => void;
+      sttBackend?: "whisper" | "deepgram";
     } = {},
   ) {}
+
+  /** Lazy STT instance (created on first media frame). */
+  private stt?: VoiceStt;
+
+  private getStt(): VoiceStt {
+    if (!this.stt) {
+      this.stt = new VoiceStt({
+        backend: this.opts.sttBackend ?? (process.env.STT_BACKEND === "deepgram" ? "deepgram" : "whisper"),
+        deepgramKey: process.env.DEEPGRAM_API_KEY,
+      });
+    }
+    return this.stt;
+  }
 
   isConfigured(): boolean {
     return !!(this.opts.accountSid && this.opts.authToken && this.opts.fromNumber);
@@ -87,16 +103,23 @@ export class VoiceCallChannel implements Channel {
     ws.on("close", () => { this.calls.delete(callSid); });
   }
 
-  /** Process an incoming media frame (mulaw audio). */
+  /** Process an incoming media frame (mulaw audio) — M-5 STT integration. */
   private async handleMediaFrame(callSid: string, frame: string): Promise<void> {
     try {
       const msg = JSON.parse(frame) as { event: string; media?: { payload?: string } };
       if (msg.event === "media" && msg.media?.payload) {
-        // STT would process the mulaw audio here (Phase E Tier-2)
-        void msg.media.payload;
+        const audio = Buffer.from(msg.media.payload, "base64");
+        const stt = this.getStt();
+        for await (const result of stt.transcribe((async function* () {
+          yield audio;
+        })())) {
+          if (result.isFinal) {
+            this.opts.onTranscription?.(callSid, result.text);
+          }
+        }
       }
     } catch {
-      // Non-JSON frame — ignore
+      // Non-JSON frame or STT error — ignore
     }
   }
 

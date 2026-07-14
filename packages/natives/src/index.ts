@@ -58,6 +58,8 @@ type NativeModule = {
   nowMonotonicNanos: () => number;
   nowWallclockNanos: () => number;
   nativesVersion: () => string;
+  /** Rhai script eval via Rust (may be absent in older binaries). */
+  evalRhai?: (script: string, context: unknown) => { value: unknown; events: unknown[] };
 };
 
 function resolveNative(): NativeModule | null {
@@ -252,6 +254,23 @@ export function nativeParseTsSymbols(src: string): AstSymbol[] {
     }
   }
   return jsParseTsSymbols(src);
+}
+
+/** Rhai script evaluation via Rust (sandboxed, §25/Gap 4). Returns
+ * `{ value, events }` or `null` when the native binary is unavailable
+ * or doesn't include `evalRhai` (older builds). */
+export function nativeEvalRhai(
+  script: string,
+  context: Record<string, unknown>,
+): { value: unknown; events: unknown[] } | null {
+  if (NATIVE && typeof NATIVE.evalRhai === "function") {
+    try {
+      return NATIVE.evalRhai(script, context);
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 // ─── third-party native verification (§14b / §17 / invariant #6-resolution) ────
