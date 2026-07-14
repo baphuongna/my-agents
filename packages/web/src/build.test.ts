@@ -63,8 +63,9 @@ describe("web build pipeline", () => {
     
     expect(jsFiles.length).toBeGreaterThan(0);
     
-    // Check that the file contains expected exports
-    const content = execSync(`cat ${jsFiles[0]}`, {
+    // Check that the file contains expected exports — use web.js (entry point),
+    // not sw.js (service worker copied from public/ by Vite).
+    const content = execSync(`cat dist/web/web.js`, {
       cwd: WEB_DIR,
       encoding: "utf-8",
     });

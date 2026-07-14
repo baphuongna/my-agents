@@ -27,6 +27,7 @@ import { SyncServer } from "@my-agent/sync";
 import { CollabRelay } from "@my-agent/collab";
 import { ChannelSessionRouter } from "./channel-session.js";
 import type { ChannelRegistry, ChannelMessage } from "./channels.js";
+import { getVapidPublicKey, addSubscription, removeSubscription } from "./push.js";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -41,6 +42,11 @@ export interface WireEnvelope {
 }
 
 /** Frame a RuntimeEvent into the wire envelope. */
+
+/** Phase C: CSP for PWA — widened for service workers + push subscriptions. */
+const GATEWAY_CSP =
+  "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*; script-src 'self'; worker-src 'self';";
+
 export function frame(opts: {
   sessionId: string;
   seq: number;
@@ -245,10 +251,14 @@ export class Gateway {
   private readonly mimeTypes: Record<string, string> = {
     ".html": "text/html; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
+    ".mjs": "application/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    ".webmanifest": "application/manifest+json",
+    ".txt": "text/plain; charset=utf-8",
     ".png": "image/png",
     ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
     ".gif": "image/gif",
     ".svg": "image/svg+xml",
     ".ico": "image/x-icon",
@@ -514,7 +524,7 @@ export class Gateway {
                 "content-type": "text/html; charset=utf-8",
                 "x-frame-options": "DENY",
                 "x-content-type-options": "nosniff",
-                "content-security-policy": "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
+                "content-security-policy": GATEWAY_CSP,
               });
               res.end(content);
               return;
@@ -532,7 +542,7 @@ export class Gateway {
             "content-type": "text/html; charset=utf-8",
             "x-frame-options": "DENY",
             "x-content-type-options": "nosniff",
-            "content-security-policy": "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*",
+            "content-security-policy": GATEWAY_CSP,
           });
           res.end(this.rootHtml);
           return;
@@ -729,6 +739,34 @@ export class Gateway {
             } catch {
               return send(400, { error: "invalid json" });
             }
+          });
+          return;
+        }
+        // ── Push (PWA) ──
+        if (url.pathname === "/push/vapid-key" && req.method === "GET") {
+          return send(200, { publicKey: getVapidPublicKey() });
+        }
+        if (url.pathname === "/push/subscribe" && req.method === "POST") {
+          let pushBody = "";
+          req.on("data", (c) => (pushBody += c));
+          req.on("end", () => {
+            try {
+              const sub = JSON.parse(pushBody || "{}") as { endpoint: string; keys: { p256dh: string; auth: string } };
+              addSubscription(sub);
+              return send(200, { ok: true });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        if (url.pathname === "/push/unsubscribe" && req.method === "POST") {
+          let pushBody = "";
+          req.on("data", (c) => (pushBody += c));
+          req.on("end", () => {
+            try {
+              const { endpoint } = JSON.parse(pushBody || "{}") as { endpoint: string };
+              removeSubscription(endpoint);
+              return send(200, { ok: true });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
           });
           return;
         }

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>mya — offline</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font: 14px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e6edf3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    main {
+      max-width: 360px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 12px 0;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    p {
+      color: #8b949e;
+      margin: 0 0 24px 0;
+    }
+    a {
+      display: inline-block;
+      background: #238636;
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 18px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    a:active { background: #2ea043; }
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #d29922;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1><span class="dot" aria-hidden="true"></span>mya is offline</h1>
+    <p>You appear to be offline. Reconnect to load the latest dashboard. Cached pages will return when you are back online.</p>
+    <a href="/">Retry</a>
+  </main>
+</body>
+</html>
