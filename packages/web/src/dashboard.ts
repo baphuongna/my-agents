@@ -143,19 +143,18 @@ export function dashboardHtml(opts: DashboardOptions = {}): string {
   function showError(msg){errorText.textContent=msg;errorBanner.classList.add('show');setTimeout(function(){errorBanner.classList.remove('show')},8000)}
 
   function wsUrl(){
-    var q='';
-    if(cursor>0)q+=(q?'&':'?')+'since='+cursor;
-    if(wsQuery.indexOf('token=')<0){
-      // Extract token from wsQuery if present
-      var m=wsQuery.match(/token=([^&]+)/);
-      if(m){}
-    }
     var base=wsQuery.split('?')[0];
     var existing=wsQuery.indexOf('?')>=0?wsQuery.split('?')[1]:'';
     var parts=[];
     if(existing)parts.push(existing);
+    if(currentSession)parts.push('session='+encodeURIComponent(currentSession));
     if(cursor>0)parts.push('since='+cursor);
     return base+(parts.length?'?'+parts.join('&'):'');
+  }
+
+  function reconnectWs(){
+    if(ws){try{ws.close()}catch(e){}ws=null;wsReady=false}
+    connect();
   }
 
   function connect(){
@@ -267,18 +266,28 @@ export function dashboardHtml(opts: DashboardOptions = {}): string {
     }
   };
 
-  window.selectSession=function(id){currentSession=id;window.refreshSessions()};
-
-  async function killSession(id){
+(id){
     await fetch('/sessions/'+encodeURIComponent(id),{method:'DELETE'});
     window.refreshSessions();
   }
 
   window.newSession=async function(){
-    // Acquire a new session via the pool
-    var data=await fetchJSON('/pool/acquire',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({})});
-    if(data&&data.id){currentSession=data.id;window.refreshSessions()}
-    else{window.refreshSessions()}
+    try{
+      var r=await fetch('/sessions',{method:'POST'});
+      var data=await r.json();
+      if(data&&data.sessionId){
+        currentSession=data.sessionId;
+        window.refreshSessions();
+        reconnectWs(); // reconnect WS with new session param
+      }
+    }catch(e){showError('Failed to create session: '+e.message)}
+  };
+
+  window.selectSession=function(id){
+    if(id===currentSession)return;
+    currentSession=id;
+    window.refreshSessions();
+    reconnectWs(); // reconnect WS for selected session
   };
 
   // ── Status ──
@@ -305,12 +314,22 @@ export function dashboardHtml(opts: DashboardOptions = {}): string {
   };
   promptInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();window.sendPrompt()}});
 
-  // ── Boot ──
-  connect();
-  window.refreshSessions();
-  fetchStatus();
-  setInterval(fetchStatus,30000); // refresh status every 30s
-  setInterval(window.refreshSessions,5000); // refresh sessions every 5s
+  // ── Boot: auto-create or reuse first session ──
+  async function boot(){
+    var sessions=await fetchJSON('/sessions');
+    if(sessions&&sessions.length>0){
+      currentSession=sessions[0].id; // reuse first session
+    }else{
+      // Auto-create a default session
+      try{var r=await fetch('/sessions',{method:'POST'});var d=await r.json();if(d&&d.sessionId)currentSession=d.sessionId}catch(e){}
+    }
+    window.refreshSessions();
+    fetchStatus();
+    connect(); // connect WS after session is resolved
+    setInterval(fetchStatus,30000);
+    setInterval(window.refreshSessions,5000);
+  }
+  boot();
 
   // PWA: register service worker (inlined for browser scope)
   if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){})}

@@ -32,7 +32,7 @@ describe("dashboardHtml()", () => {
 
   it("uses a default title when none is provided", () => {
     const html = dashboardHtml();
-    expect(html).toContain("<title>agent dashboard</title>");
+    expect(html).toContain("<title>mya</title>");
   });
 
   it("embeds the WS path for event streaming", () => {

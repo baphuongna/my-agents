@@ -85,6 +85,6 @@ describe("web build pipeline", () => {
     const html = builtModule.dashboardHtml();
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("<html");
-    expect(html).toContain("agent dashboard");
+    expect(html).toContain("mya");
   });
 });

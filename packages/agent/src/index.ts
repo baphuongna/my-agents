@@ -57,7 +57,7 @@ import { makePaidFetchTool, Wallet } from "@my-agent/x402";
 import { makeDebugTool } from "@my-agent/dap";
 import { PackageHost } from "@my-agent/pkg";
 import { speak } from "@my-agent/tts";
-import type { ToolHookSink } from "@my-agent/core";
+import { type ToolHookSink, type TelemetryExporter } from "@my-agent/core";
 import { PiAiProviderBridge } from "@my-agent/ai";
 import { createRequire } from "node:module";
 import { createExporter } from "./exporters.js";
@@ -176,6 +176,8 @@ export interface Agent {
   tools: ToolRegistry;
   /** Phase 31: skill store (for /skill-selector + /skills). */
   skillStore: SkillStore;
+  /** Telemetry exporter (OTel / Langfuse / Noop). */
+  telemetryExporter: TelemetryExporter;
 }
 
 /** Build a fully-wired Agent. */
