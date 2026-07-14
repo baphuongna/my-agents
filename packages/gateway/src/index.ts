@@ -17,6 +17,7 @@ import { join, extname, resolve as pathResolve, sep as pathSep } from "node:path
 export { ControlPlane, HandleLruCache } from "./control.js";
 export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
 import { ControlPlane } from "./control.js";
+import type { ControlCronJob } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
 import { HookRegistry } from "./hooks.js";
@@ -158,6 +159,7 @@ export interface GatewayOptions {
   cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: remove a job from the underlying cron scheduler. */
   cronRemove?: (jobId: string) => boolean;
+  cronAdd?: (job: ControlCronJob) => void;
   /** Optional: returns current queue depth for a session. */
   poolQueueDepth?: (sessionId: string) => number;
   /** Optional: returns WS connection info (token) for GET /ws-info. */
@@ -204,6 +206,7 @@ export class Gateway {
   private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   private readonly cronRemove?: (jobId: string) => boolean;
+  private readonly cronAdd?: (job: ControlCronJob) => void;
   private readonly poolQueueDepth?: (sessionId: string) => number;
   /** Optional WS info callback. */
   private readonly wsInfo?: () => unknown;
@@ -264,6 +267,7 @@ export class Gateway {
     this.poolAcquire = opts.poolAcquire;
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
+    this.cronAdd = opts.cronAdd;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
@@ -528,6 +532,36 @@ export class Gateway {
           return;
         }
         // Channel sessions listing
+        // ── Channel config + test ──
+        const channelConfigMatch = url.pathname.match(/^\/channels\/([^/]+)\/config$/);
+        if (channelConfigMatch && req.method === "POST" && this.channels) {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const patch = JSON.parse(body || "{}") as { enabled?: boolean };
+              const id = channelConfigMatch[1]!;
+              const ch = this.channels!.list().find((c) => c.id === id);
+              if (!ch) return send(404, { error: "channel not found" });
+              const cfg = this.channels!.getConfig(id) ?? { id, enabled: ch.isConfigured(), credentials: {}, targets: {} };
+              if (patch.enabled !== undefined) cfg.enabled = patch.enabled;
+              this.channels!.configure(id, cfg);
+              return send(200, { ok: true, id, config: cfg });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        const channelTestMatch = url.pathname.match(/^\/channels\/([^/]+)\/test$/);
+        if (channelTestMatch && req.method === "POST" && this.channels) {
+          const id = channelTestMatch[1]!;
+          const ch = this.channels!.list().find((c) => c.id === id);
+          if (!ch) return send(404, { error: "channel not found" });
+          ch.send(id, "✅ mya channel test — connection OK").then(
+            () => send(200, { ok: true, id, message: "test sent" }),
+            (e: unknown) => send(500, { ok: false, id, error: (e as Error).message }),
+          );
+          return;
+        }
         if (url.pathname === "/channel/sessions" && this.channelRouter) {
           return send(200, this.channelRouter.listSessions());
         }
@@ -539,17 +573,20 @@ export class Gateway {
             req.on("data", (c) => (body += c));
             req.on("end", () => {
               try {
-                const job = JSON.parse(body || "{}") as { id?: string; name?: string };
-                if (!job.id || !job.name) return send(400, { error: "id and name required" });
-                const created = this.control.registerCronJob({
-                  id: job.id,
+                const job = JSON.parse(body || "{}") as { id?: string; name?: string; schedule?: string; prompt?: string; trigger?: string };
+                if (!job.name) return send(400, { error: "name required" });
+                const id = job.id ?? `job-${nowWallclock().toString(36)}`;
+                const created: ControlCronJob = {
+                  id,
                   name: job.name,
-                  trigger: "cron",
-                  schedule: "* * * * *",
-                  prompt: "",
+                  trigger: (job.trigger as "cron" | "on-interval" | "once") ?? "cron",
+                  schedule: job.schedule ?? "* * * * *",
+                  prompt: job.prompt ?? "",
                   deliveryTarget: "_cron",
                   enabled: true,
-                });
+                };
+                this.control.registerCronJob(created);
+                if (this.cronAdd) this.cronAdd(created);
                 return send(201, created);
               } catch (e) { return send(400, { error: (e as Error).message }); }
             });

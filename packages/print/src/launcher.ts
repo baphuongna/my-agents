@@ -144,6 +144,41 @@ async function killGatewaySession(id: string): Promise<boolean> {
   } catch { return false; }
 }
 
+async function toggleChannel(id: string, enabled: boolean): Promise<boolean> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/channels/${id}/config`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+      signal: AbortSignal.timeout(2000),
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
+async function testChannel(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/channels/${id}/test`, {
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
+    });
+    const data = await r.json() as { ok: boolean; error?: string };
+    return data;
+  } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+}
+
+async function addCronJob(name: string, schedule: string, prompt: string): Promise<boolean> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, schedule, prompt, trigger: "cron" }),
+      signal: AbortSignal.timeout(2000),
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
 type Tab = "sessions" | "channels" | "cron" | "providers" | "subagents" | "status";
 
 interface LauncherState {
@@ -155,6 +190,41 @@ interface LauncherState {
   info: GatewayInfo;
   refreshing: boolean;
   lastRefresh: number;
+}
+
+/** Inline prompt — user types a single value. Returns undefined on Esc. */
+function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let buf = defaultValue;
+    let resolved = false;
+    const isTTY = !!process.stdin.isTTY;
+    if (isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const render = () => {
+      process.stdout.write(A.clear);
+      process.stdout.write(`\n  ${A.bold(A.accent("mya"))} ${A.muted(label)}\n`);
+      process.stdout.write(`  ${A.dim2("─".repeat(50))}\n\n`);
+      process.stdout.write(`  ${A.accent(buf + "_")}\n\n`);
+      process.stdout.write(`  ${A.dim2(hint)}\n`);
+    };
+    const cleanup = (result?: string) => {
+      if (resolved) return;
+      resolved = true;
+      process.stdin.pause();
+      process.stdin.removeListener("data", onData);
+      resolve(result);
+    };
+    const onData = (data: Buffer) => {
+      const k = data.toString();
+      if (k === "\x03" || k === "\x04") { cleanup(); return; }
+      if (k === "\x1b") { cleanup(); return; }
+      if (k === "\r" || k === "\n") { cleanup(buf.trim() || undefined); return; }
+      if (k === "\x7f" || k === "\b") { buf = buf.slice(0, -1); render(); return; }
+      if (k.length === 1 && k >= " ") { buf += k; render(); return; }
+    };
+    render();
+    process.stdin.on("data", onData);
+  });
 }
 
 /** Directory picker — user types path or picks current dir. */
@@ -451,9 +521,13 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
       const help = state.tab === "sessions"
         ? "1-6 tabs | ↑/↓ select | Enter open | type search | x kill | n new | r refresh | q quit"
-        : state.tab === "cron"
-          ? "1-6 tabs | ↑/↓ | Space toggle | r run now | d delete | a add | q quit"
-          : "1-6 tabs | Tab switch | r refresh | q quit";
+        : state.tab === "channels"
+          ? "1-6 tabs | ↑/↓ | Space toggle | t test | a add | q quit"
+          : state.tab === "cron"
+            ? "1-6 tabs | ↑/↓ | Space toggle | r run | d delete | a add | q quit"
+            : state.tab === "providers"
+              ? "1-6 tabs | ↑/↓ | Enter = show setup instructions | q quit"
+              : "1-6 tabs | Tab switch | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -470,7 +544,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       resolve(result);
     };
 
-    const onData = (data: Buffer) => {
+    const onData = async (data: Buffer) => {
       if (resolved) return;
       const k = data.toString();
 
@@ -537,6 +611,44 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           render();
           return;
         }
+      } else if (state.tab === "channels") {
+        const channels = state.info.channels ?? [];
+        if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
+        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, channels.length - 1), state.sel + 1); render(); return; }
+        if (k === " ") {
+          const ch = channels[state.sel];
+          if (ch) { void toggleChannel(ch.id, !ch.enabled).then(() => refresh()); }
+          return;
+        }
+        if (k === "t") {
+          const ch = channels[state.sel];
+          if (ch) {
+            void testChannel(ch.id).then((result) => {
+              const msg = result.ok ? A.green("✓ test sent") : A.red(`✗ ${result.error ?? "failed"}`);
+              process.stdout.write(`\n  ${msg}\n  ${A.dim2("Press any key...")}`);
+            });
+          }
+          return;
+        }
+        if (k === "a") {
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          if (isTTY) process.stdin.setRawMode(false);
+          process.stdout.write(A.altScreenOff + A.showCursor);
+          const type = await inlinePrompt("Add Channel", "Type: telegram|discord|slack|whatsapp|signal|matrix|email|webhook", "telegram");
+          if (type) {
+            const token = await inlinePrompt("Channel Token", `Env var name for ${type} (e.g. TELEGRAM_BOT_TOKEN)`);
+            if (token) {
+              process.stdout.write(`\n  ${A.muted("Set in shell:")} ${A.accent(token)}=xxx && mya serve\n`);
+            }
+          }
+          if (isTTY) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdout.write(A.altScreenOn + A.hideCursor);
+          process.stdin.on("data", onData);
+          void refresh();
+          return;
+        }
       } else if (state.tab === "cron") {
         const jobs = state.info.cronJobs ?? [];
         if (k === "\x1b[A") {
@@ -576,8 +688,49 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           return;
         }
         if (k === "a") {
-          process.stdout.write("\x1b[2J\x1b[H\n  " + A.muted("Use CLI to add: mya cron add <name> <schedule> <prompt>") + "\n\n");
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          if (isTTY) process.stdin.setRawMode(false);
+          process.stdout.write(A.altScreenOff + A.showCursor);
+          const name = await inlinePrompt("Cron Job Name", "e.g. daily-standup");
+          if (name) {
+            const schedule = await inlinePrompt("Schedule", "cron: '0 9 * * MON' or interval-ms: '3600000'", "0 9 * * *");
+            if (schedule) {
+              const prompt = await inlinePrompt("Prompt", "What should the agent do?");
+              if (prompt) {
+                const ok = await addCronJob(name, schedule, prompt);
+                process.stdout.write(`\n  ${ok ? A.green("✓ Job added") : A.red("✗ Failed")}\n  ${A.dim2("Press any key...")}`);
+              }
+            }
+          }
+          if (isTTY) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdout.write(A.altScreenOn + A.hideCursor);
+          process.stdin.on("data", onData);
+          void refresh();
           return;
+        }
+      } else if (state.tab === "providers") {
+        const providers = state.info.providers ?? [];
+        if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
+        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, providers.length - 1), state.sel + 1); render(); return; }
+        if (k === "\r" || k === "\n") {
+          const p = providers[state.sel];
+          if (p) {
+            process.stdin.pause();
+            process.stdin.removeListener("data", onData);
+            if (isTTY) process.stdin.setRawMode(false);
+            process.stdout.write(A.altScreenOff + A.showCursor);
+            process.stdout.write(`\n  ${A.muted("To use")} ${A.accent(p.id)} ${A.muted("as default:")}\n`);
+            process.stdout.write(`  ${A.muted("  export MYA_MODEL=")}${A.accent(p.model)}\n`);
+            process.stdout.write(`  ${A.muted("  export")} ${p.id.toUpperCase().replace(/-/g, "_")}_API_KEY=xxx\n\n`);
+            process.stdout.write(`  ${A.dim2("Then restart: mya serve")}\n  ${A.dim2("Press any key...")}`);
+            if (isTTY) process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdout.write(A.altScreenOn + A.hideCursor);
+            process.stdin.on("data", onData);
+            return;
+          }
         }
       }
     };
