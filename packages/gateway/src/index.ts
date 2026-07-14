@@ -166,6 +166,12 @@ export interface GatewayOptions {
   mcpRemove?: (id: string) => boolean;
   mcpConnect?: (id: string) => Promise<void>;
   mcpDiscover?: (id: string) => Promise<string[]>;
+  /** Skills list. */
+  skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
+  /** Memory/brain stats. */
+  memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
+  /** Trigger a dream cycle manually. */
+  dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
   /** Optional: trigger an immediate run of a cron job. */
   cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: remove a job from the underlying cron scheduler. */
@@ -222,6 +228,9 @@ export class Gateway {
   private readonly mcpRemove?: (id: string) => boolean;
   private readonly mcpConnect?: (id: string) => Promise<void>;
   private readonly mcpDiscover?: (id: string) => Promise<string[]>;
+  private readonly skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
+  private readonly memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
+  private readonly dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   private readonly cronRemove?: (jobId: string) => boolean;
   private readonly cronAdd?: (job: ControlCronJob) => void;
@@ -290,6 +299,9 @@ export class Gateway {
     this.mcpRemove = opts.mcpRemove;
     this.mcpConnect = opts.mcpConnect;
     this.mcpDiscover = opts.mcpDiscover;
+    this.skillsList = opts.skillsList;
+    this.memoryStats = opts.memoryStats;
+    this.dreamTrigger = opts.dreamTrigger;
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
     this.cronAdd = opts.cronAdd;
@@ -718,6 +730,21 @@ export class Gateway {
               return send(400, { error: "invalid json" });
             }
           });
+          return;
+        }
+        // ── Skills ──
+        if (url.pathname === "/skills" && req.method === "GET" && this.skillsList) {
+          return send(200, this.skillsList());
+        }
+        // ── Memory + Dream ──
+        if (url.pathname === "/memory/stats" && req.method === "GET" && this.memoryStats) {
+          return send(200, this.memoryStats());
+        }
+        if (url.pathname === "/memory/dream" && req.method === "POST" && this.dreamTrigger) {
+          this.dreamTrigger().then(
+            (result) => send(200, result),
+            (e: unknown) => send(500, { error: (e as Error).message }),
+          );
           return;
         }
         // ── MCP servers ──

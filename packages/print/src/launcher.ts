@@ -59,6 +59,8 @@ interface GatewayInfo {
   subagents?: { active: number; total: number };
   agentTree?: AgentTreeEntry[];
   mcpServers?: Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
+  skills?: Array<{ name: string; description: string; triggers: string[] }>;
+  memoryStats?: { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   version?: string;
   pid?: number;
 }
@@ -100,13 +102,15 @@ async function loadGatewaySessions(): Promise<Sess[]> {
 }
 
 async function loadGatewayInfo(): Promise<GatewayInfo> {
-  const [health, sessions, status, cronJobs, tree, mcpServers] = await Promise.all([
+  const [health, sessions, status, cronJobs, tree, mcpServers, skills, memoryStats] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
     fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
     fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
     fetchJson<AgentTreeEntry[]>(`http://127.0.0.1:${GW_PORT}/pool/tree`),
     fetchJson<GatewayInfo["mcpServers"]>(`http://127.0.0.1:${GW_PORT}/mcp/servers`),
+    fetchJson<GatewayInfo["skills"]>(`http://127.0.0.1:${GW_PORT}/skills`),
+    fetchJson<GatewayInfo["memoryStats"]>(`http://127.0.0.1:${GW_PORT}/memory/stats`),
   ]);
   return {
     connected: !!health?.ok,
@@ -121,6 +125,8 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     subagents: status?.subagents,
     agentTree: tree,
     mcpServers,
+    skills,
+    memoryStats,
     version: status?.version,
     pid: status?.pid,
   };
@@ -208,7 +214,7 @@ async function killSubagent(sessionId: string): Promise<boolean> {
   } catch { return false; }
 }
 
-type Tab = "agents" | "channels" | "cron" | "providers" | "mcp" | "status";
+type Tab = "agents" | "channels" | "cron" | "providers" | "mcp" | "skills" | "memory" | "status";
 
 interface AgentTreeEntry {
   sessionId: string;
@@ -410,13 +416,15 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
 
       // Tabs
-      const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "status"];
+      const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "skills", "memory", "status"];
       const tabLabels: Record<Tab, string> = {
         agents: `Agents (${state.info.sessions})`,
         channels: `Channels (${state.info.channels?.length ?? "?"})`,
         cron: `Cron (${state.info.cronJobs?.length ?? "?"})`,
         providers: `Providers (${state.info.providers?.length ?? "?"})`,
         mcp: `MCP (${state.info.mcpServers?.length ?? "?"})`,
+        skills: `Skills (${state.info.skills?.length ?? "?"})`,
+        memory: `Memory`,
         status: "Status",
       };
       const tabLine = tabs.map((t) => {
@@ -560,6 +568,41 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           }
           if (end < servers.length) lines.push(`  ${A.dim2("  ↓ " + (servers.length - end) + " more")}`);
         }
+      } else if (state.tab === "skills") {
+        const skills = state.info.skills ?? [];
+        lines.push(`  ${A.green(String(skills.length))} skills loaded ${A.dim2("from ~/.mya/skills/")}`);
+        lines.push("");
+        if (skills.length === 0) {
+          lines.push(`  ${A.muted("No skills installed.")}`);
+          lines.push(`  ${A.dim2("Install to ~/.mya/skills/<name>/SKILL.md")}`);
+        } else {
+          const maxRows = Math.max(3, h - 8);
+          const half = Math.floor(maxRows / 2);
+          const start = Math.max(0, Math.min(state.sel - half, Math.max(0, skills.length - maxRows)));
+          const end = Math.min(skills.length, start + maxRows);
+          if (start > 0) lines.push(`  ${A.dim2("  ↑ " + start + " above")}`);
+          for (let i = start; i < end; i++) {
+            const s = skills[i]!;
+            const is = i === state.sel;
+            const triggers = s.triggers?.length ? A.dim2("  ← " + s.triggers.slice(0, 3).join(", ")) : "";
+            const baseLine = `${A.green("●")}  ${A.bold(s.name.padEnd(24))} ${A.dim2(s.description.slice(0, 50))}${triggers}`;
+            lines.push(is ? `  ${A.selBg(baseLine + A.clrEol)}` : `  ${baseLine}`);
+          }
+          if (end < skills.length) lines.push(`  ${A.dim2("  ↓ " + (skills.length - end) + " more")}`);
+        }
+      } else if (state.tab === "memory") {
+        const m = state.info.memoryStats;
+        lines.push(`  ${A.bold("Brain Stats")}`);
+        lines.push(`  ${A.dim2("─".repeat(40))}`);
+        lines.push(`  ${A.green("●")}  Facts:        ${A.bold(String(m?.facts ?? 0))}`);
+        lines.push(`  ${A.blue("●")}  Takes:        ${A.bold(String(m?.takes ?? 0))} ${A.dim2("(consolidated)")}`);
+        lines.push(`  ${A.dim2("○")}  Tombstones:   ${m?.tombstones ?? 0} ${A.dim2("(72h TTL)")}`);
+        lines.push("");
+        lines.push(`  ${A.bold("Dream Cycle")}`);
+        lines.push(`  ${A.dim2("─".repeat(40))}`);
+        lines.push(`  ${m?.dreamRunning ? A.yellow("● running") : A.green("○ idle")}  Status:     ${m?.dreamRunning ? "consolidating..." : "waiting (30min)"}`);
+        lines.push("");
+        lines.push(`  ${A.dim2("Enter/d = trigger dream now | r refresh")}`);
       } else if (state.tab === "status") {
         const configuredProviders = (state.info.providers ?? []).filter((p) => p.configured);
         const statusLines: string[] = [];
@@ -608,16 +651,20 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
       const help = state.tab === "agents"
-        ? "1-6 tabs | ↑/↓ select | Enter open | x kill | n new | r refresh | q quit"
+        ? "1-8 tabs | ↑/↓ select | Enter open | x kill | n new | r refresh | q quit"
         : state.tab === "channels"
-          ? "1-6 tabs | ↑/↓ | Space toggle | t test | a add | q quit"
+          ? "1-8 tabs | ↑/↓ | Space toggle | t test | a add | q quit"
           : state.tab === "cron"
-            ? "1-6 tabs | ↑/↓ | Space toggle | r run | d delete | a add | q quit"
+            ? "1-8 tabs | ↑/↓ | Space toggle | r run | d delete | a add | q quit"
             : state.tab === "providers"
-              ? "1-6 tabs | ↑/↓ | a/Enter = add/edit key | d = remove | q quit"
+              ? "1-8 tabs | ↑/↓ | a/Enter = add/edit key | d = remove | q quit"
               : state.tab === "mcp"
-                ? "1-6 tabs | ↑/↓ | Enter/c = connect | d delete | a add | q quit"
-                : "1-6 tabs | ↑/↓ scroll | r refresh | q quit";
+                ? "1-8 tabs | ↑/↓ | Enter/c = connect | d delete | a add | q quit"
+                : state.tab === "skills"
+                  ? "1-8 tabs | ↑/↓ scroll | q quit"
+                  : state.tab === "memory"
+                    ? "1-8 tabs | Enter/d = dream now | r refresh | q quit"
+                    : "1-8 tabs | ↑/↓ scroll | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -644,7 +691,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 
       // Tab switch
       if (k === "\t" || k === "\x1b[Z") {
-        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "status"];
+        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "skills", "memory", "status"];
         const idx = tabs.indexOf(state.tab);
         state.tab = tabs[(idx + 1) % tabs.length]!;
         state.sel = 0;
@@ -657,7 +704,9 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       if (k === "3") { state.tab = "cron"; state.cronSel = 0; void refresh(); return; }
       if (k === "4") { state.tab = "providers"; state.sel = 0; void refresh(); return; }
       if (k === "5") { state.tab = "mcp"; state.sel = 0; void refresh(); return; }
-      if (k === "6") { state.tab = "status"; state.sel = 0; void refresh(); return; }
+      if (k === "6") { state.tab = "skills"; state.sel = 0; void refresh(); return; }
+      if (k === "7") { state.tab = "memory"; state.sel = 0; void refresh(); return; }
+      if (k === "8") { state.tab = "status"; state.sel = 0; void refresh(); return; }
 
       if (state.tab === "agents") {
         if (k === "n") { cleanup({ kind: "new" }); return; }
@@ -888,6 +937,21 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           process.stdin.resume();
           process.stdout.write(A.altScreenOn + A.hideCursor);
           process.stdin.on("data", onData);
+          void refresh();
+          return;
+        }
+      } else if (state.tab === "skills") {
+        const skills = state.info.skills ?? [];
+        if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
+        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, skills.length - 1), state.sel + 1); render(); return; }
+      } else if (state.tab === "memory") {
+        if (k === "\r" || k === "\n" || k === "d") {
+          void fetch(`http://127.0.0.1:${GW_PORT}/memory/dream`, { method: "POST" })
+            .then((r) => r.json())
+            .then((result: unknown) => {
+              const consolidated = String((result as { memoriesConsolidated?: number })?.memoriesConsolidated ?? 0);
+              process.stdout.write(`\n  ${A.green("✓ Dream complete")} ${A.dim2(consolidated + " consolidated")}`);
+            });
           void refresh();
           return;
         }
