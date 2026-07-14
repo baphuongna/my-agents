@@ -158,6 +158,43 @@ export async function speakMlx(text: string, opts: TtsOptions): Promise<TtsResul
   return { backend: "none", spokenDirectly: false };
 }
 
+/**
+ * Phase E (Gap 8b): auto-install the production MLX backend on macOS hosts.
+ *
+ * The backend is registered the first time `speakMlx()` / `speak({backend:"mlx"})`
+ * is called. On non-macOS hosts, this is a no-op — the existing detectBackend()
+ * chain (`say` / `espeak` / `pico2wave` / `none`) handles graceful fallback.
+ *
+ * Explicit `registerMlxBackend(...)` calls from the host still take precedence
+ * (we only register if no hook is already installed).
+ */
+let mlxWired = false;
+export async function ensureMlxBackendWired(): Promise<void> {
+  if (mlxWired) return;
+  mlxWired = true;
+  if (process.platform !== "darwin") return;
+  if (mlxHook) return; // host already supplied a hook — respect it
+  try {
+    // Lazy import: keeps the production MLX path off the critical edge for
+    // non-macOS consumers (avoids pulling model-manager into a headless box).
+    const mod = await import("./mlx.js");
+    const backend = new mod.MlxTtsBackend();
+    registerMlxBackend(backend.asHook() as (text: string, opts: TtsOptions) => Promise<TtsResult>);
+  } catch {
+    // Import or construction failure: leave the no-op hook in place.
+  }
+}
+
+/**
+ * Test hook: reset the one-shot MLX wiring flag + the registered hook.
+ * Production code MUST NOT call this; it's used by the mlx.test.ts suite to
+ * exercise the wiring path repeatedly without leaking state between tests.
+ */
+export function __resetMlxBackendForTests(): void {
+  mlxWired = false;
+  mlxHook = null;
+}
+
 /** A TTS event the agent emits (for the desktop companion FSM §25.5). */
 export interface TtsEvent {
   kind: "speak-start" | "speak-end";
