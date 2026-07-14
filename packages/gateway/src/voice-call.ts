@@ -101,13 +101,14 @@ export class VoiceCallChannel implements Channel {
   }
 
   /** Place an outbound call via Twilio REST API. */
-  async placeCall(to: string, opts: VoiceCallOpts = {}): Promise<string> {
+  async placeCall(to: string, opts: VoiceCallOpts & { twimlUrl?: string } = {}): Promise<string> {
     if (!this.isConfigured()) throw new Error("voice-call: not configured");
+    if (!opts.twimlUrl) throw new Error("voice-call: twimlUrl required (valid HTTPS TwiML webhook URL)");
     const url = `https://api.twilio.com/2010-04-01/Accounts/${this.opts.accountSid}/Calls.json`;
     const body = new URLSearchParams({
       To: to,
       From: this.opts.fromNumber!,
-      Url: `${opts.record ? "record" : ""}`,  // TwiML webhook URL (Tier-2)
+      Url: opts.twimlUrl,
     });
     const resp = await fetch(url, {
       method: "POST",

@@ -778,8 +778,8 @@ export class Gateway {
             try {
               const { qr } = JSON.parse(body || "{}") as { qr?: PairingQR };
               if (!qr) return send(400, { error: "qr required" });
-              const device = this.devicePairing!.acceptPairing(qr);
-              return send(200, { ok: true, device });
+              const { device, ourPubkey } = this.devicePairing!.acceptPairing(qr);
+              return send(200, { ok: true, device, ourPubkey });
             } catch (e) {
               return send(400, { error: (e as Error).message });
             }

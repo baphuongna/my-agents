@@ -22,3 +22,10 @@ export type { ApprovalModalOptions } from "./components/approval-modal.js";
 
 export { createPromptBar } from "./components/prompt-bar.js";
 export type { PromptBarOptions } from "./components/prompt-bar.js";
+
+// H-5 fix: PWA modules (Phase C / Gap 7)
+export { registerServiceWorker } from "./pwa-register.js";
+export { subscribeToPush, unsubscribeFromPush, getPushState, getVapidKey } from "./push-subscription.js";
+export type { PushSubscriptionState } from "./push-subscription.js";
+export { renderMobileNav, initMobileNav, isMobile } from "./mobile-nav.js";
+export type { MobileNavOptions } from "./mobile-nav.js";

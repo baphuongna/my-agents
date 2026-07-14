@@ -222,3 +222,20 @@ export async function runWorkflowIsolated(
   try { worker.terminate(); } catch { /* already exited */ }
   return events;
 }
+/**
+ * C-7 fix: Run a Rhai-script workflow file (Gap 4 inline scripting).
+ * Reads the .rhai file and evaluates it via evalRhai() with the workflow context.
+ */
+export async function runRhaiWorkflow(
+  filePath: string,
+  context: WorkflowContext,
+  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<import("./rhai-runner.js").RhaiResult> {
+  const { evalRhai } = await import("./rhai-runner.js");
+  const source = await readFile(filePath, "utf8");
+  return evalRhai(source, {
+    input: context.input,
+    tools: context.tools as Record<string, unknown>,
+    session: context.session as Record<string, unknown>,
+  }, { timeoutMs: opts.timeoutMs, signal: opts.signal });
+}

@@ -36,10 +36,15 @@ import { randomBytes } from "node:crypto";
 import {
   ToolRegistry,
   builtinTools,
+  createComposioClient,
+  registerComposioTools,
+} from "@my-agent/tools";
   runToolBatch,
   type ToolImpl,
 } from "@my-agent/tools";
-import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter, DreamCycle } from "@my-agent/memory";
+import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter, DreamCycle,
+  archivistDomain, treeDomain, diffDomain, goalsDomain, syncDomain, graphDomain, conversationsDomain, searchDomain, sourcesDomain, entitiesDomain, storeDomain, toolsDomain, queueDomain,
+} from "@my-agent/memory";
 import { scan as scanContent } from "@my-agent/prompts";
 import { HindsightReviewer, type HindsightResult } from "@my-agent/council";
 import { SkillStore } from "@my-agent/skills";
@@ -56,6 +61,7 @@ import { speak } from "@my-agent/tts";
 import type { ToolHookSink } from "@my-agent/core";
 import { PiAiProviderBridge } from "@my-agent/ai";
 import { createRequire } from "node:module";
+import { createExporter } from "./exporters.js";
 
 export interface AgentConfig {
   /** Explicit provider list. If absent: OpenAI (if key) + mock fallback. */
@@ -219,20 +225,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
   }
 
   // ── memory ──
-  const memory = new MemoryManagerImpl();
-  if (config.memoryDir) {
-    // Register durable FileBackends FIRST so ensureDefault fills the rest in-memory.
-    memory.register(new FileBackend("archivist", config.memoryDir));
-    memory.register(new FileBackend("goals", config.memoryDir));
-  }
-  memory.ensureDefault(["working", "archivist", "tree", "diff", "goals", "sync"]);
-  memory.addRole(new ArchivistRole());
-  const goalsRole = new GoalsRole();
-  memory.addRole(goalsRole);
-
   // §8 Brain (facts/takes/pages + dream-cycle phases).
   const brain = new Brain();
-  // DreamCycle: periodic offline consolidation (30min when idle).
   let activeTurns = 0;
   const dreamCycle = new DreamCycle({
     brain,
@@ -240,6 +234,23 @@ export function createAgent(config: AgentConfig = {}): Agent {
     isIdle: () => activeTurns === 0,
   });
   dreamCycle.start();
+  // C-8 fix: wire Brain + DreamCycle + 13 domains into MemoryManager via withBrain()
+  const memory = MemoryManagerImpl.withBrain({
+    brain,
+    dreamCycle,
+    domains: [
+      archivistDomain, treeDomain, diffDomain, goalsDomain, syncDomain,
+      graphDomain, conversationsDomain, searchDomain, sourcesDomain,
+      entitiesDomain, storeDomain, toolsDomain, queueDomain,
+    ],
+  });
+  if (config.memoryDir) {
+    memory.register(new FileBackend("archivist", config.memoryDir));
+    memory.register(new FileBackend("goals", config.memoryDir));
+  }
+  memory.addRole(new ArchivistRole());
+  const goalsRole = new GoalsRole();
+  memory.addRole(goalsRole);
   // Phase 31: skill store (for /skill-selector + /skills).
   // Use shared store from config if provided (enables cross-agent skill sharing).
   const skillStore = config.skillStore ?? new SkillStore();
@@ -258,6 +269,13 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // Phase 4: debug tool (DAP) — narrow-cast via Parameters<...>[0] so we never use `as any`.
   if (config.dapConnect) {
     toolRegistry.register(makeDebugTool(config.dapConnect as unknown as Parameters<typeof makeDebugTool>[0]));
+  }
+  // C-6 fix: auto-register Composio tools when COMPOSIO_API_KEY is set
+  {
+    const composioClient = createComposioClient();
+    if (composioClient) {
+      registerComposioTools(toolRegistry, composioClient).catch(() => { /* best-effort */ });
+    }
   }
   // Phase 1: tamper-evident audit log (identity-redacted unless a secretStore is wired).
   // Resolved BEFORE the toolExecutor so it can be forwarded into runTurn (E).
@@ -648,6 +666,9 @@ export function createAgent(config: AgentConfig = {}): Agent {
     return n;
   }
 
+  // C-9 fix: instantiate telemetry exporter (OTel/Langfuse) at agent init
+  const telemetryExporter = createExporter();
+
   return {
     prompt: (text, opts) => { activeTurns++; return runOnce(text, opts?.signal).finally(() => activeTurns--); },
     run: (text, sink, opts) => { activeTurns++; return runLive(text, sink, opts?.signal).finally(() => activeTurns--); },
@@ -658,6 +679,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     ragfs,
     tools: toolRegistry,
     skillStore,
+    telemetryExporter,
     spawnSubagent,
     listSubagents,
     getSubagent,

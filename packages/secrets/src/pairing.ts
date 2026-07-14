@@ -165,6 +165,7 @@ export class DevicePairing {
     const signature = cryptoSign(null, payload, this.signKey);
     // Store the ephemeral private key for the requesting device's side of the ECDH
     this.pendingEphemeral = ephemeral.privateKey;
+    this.pendingNonce = nonce; // C-1 fix: store nonce for completePairing
     return {
       deviceId: this.deviceId,
       pubkey: ephemeralPub.toString("base64url"),
@@ -176,6 +177,8 @@ export class DevicePairing {
 
   /** Pending ephemeral X25519 private key (from the last createPairingRequest). */
   private pendingEphemeral?: KeyObject;
+  /** C-1 fix: store nonce from createPairingRequest for completePairing. */
+  private pendingNonce?: Buffer;
 
   /**
    * Accept a pairing QR from another device.
@@ -230,8 +233,9 @@ export class DevicePairing {
     if (!this.pendingEphemeral) throw new Error("pairing: no pending request — call createPairingRequest first");
     const peerPubkey = importX25519Pub(peerResponsePubkey);
     const sharedSecret = diffieHellman({ privateKey: this.pendingEphemeral, publicKey: peerPubkey });
-    // Use a deterministic nonce for the completion side (the peer already used their nonce)
-    const sessionKey = deriveSessionKey(Buffer.from(sharedSecret), randomBytes(32));
+    // C-1 fix: use the SAME nonce from createPairingRequest (not randomBytes)
+    const nonce = this.pendingNonce ?? randomBytes(32);
+    const sessionKey = deriveSessionKey(Buffer.from(sharedSecret), nonce);
     const device: PairedDevice = {
       deviceId,
       pubkey: peerResponsePubkey,
