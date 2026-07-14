@@ -1,0 +1,40 @@
+[Unit]
+Description=mya gateway daemon — AI agent HTTP/WS server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ── Executable ──
+ExecStart=/home/bom/.nvm/versions/node/v22.23.1/bin/node /home/bom/source/my-agent/dist/mya.js serve --port 3000
+
+# ── Environment ──
+Environment=NODE_ENV=production
+Environment=MYA_PORT=3000
+Environment=MYA_MODEL=MiniMax-M3
+Environment=HOME=/home/bom
+Environment=PATH=/home/bom/.nvm/versions/node/v22.23.1/bin:/usr/local/bin:/usr/bin:/bin
+
+# Provider keys (load from env file if exists):
+EnvironmentFile=-/home/bom/.mya/gateway.env
+
+# ── Working directory ──
+WorkingDirectory=/home/bom/source/my-agent
+
+# ── Restart policy ──
+Restart=on-failure
+RestartSec=3
+StartLimitInterval=60
+StartLimitBurst=5
+
+# ── Logging ──
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mya-gateway
+
+# ── Resource limits ──
+LimitNOFILE=4096
+
+[Install]
+WantedBy=default.target

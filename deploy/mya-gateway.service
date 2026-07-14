@@ -1,0 +1,56 @@
+[Unit]
+Description=mya gateway daemon — AI agent HTTP/WS server
+Documentation=https://github.com/earendil-works/my-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ── Executable ──
+ExecStart=/home/bom/.nvm/versions/node/v22.23.1/bin/node \
+  /home/bom/source/my-agent/dist/mya.js serve --port 3000
+
+# ── Environment ──
+Environment=NODE_ENV=production
+Environment=MYA_PORT=3000
+Environment=MYA_MODEL=MiniMax-M3
+
+# Provider keys (uncomment the ones you have):
+#Environment=MINIMAX_API_KEY=your-key-here
+#Environment=OPENAI_API_KEY=your-key-here
+#Environment=ANTHROPIC_API_KEY=your-key-here
+#Environment=GOOGLE_API_KEY=your-key-here
+
+# Channel tokens (uncomment to enable):
+#Environment=TELEGRAM_BOT_TOKEN=your-bot-token
+#Environment=DISCORD_BOT_TOKEN=your-discord-token
+#Environment=SLACK_BOT_TOKEN=your-slack-token
+
+# ── Working directory ──
+WorkingDirectory=/home/bom/source/my-agent
+
+# ── Restart policy ──
+Restart=on-failure
+RestartSec=3
+StartLimitInterval=60
+StartLimitBurst=5
+
+# ── Logging ──
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mya-gateway
+
+# ── Security hardening ──
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/bom/.mya
+
+# ── Resource limits ──
+LimitNOFILE=4096
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target
