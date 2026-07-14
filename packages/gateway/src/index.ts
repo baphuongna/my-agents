@@ -12,9 +12,9 @@
  * Source: §12 Channels & Gateway, §13 Observability readiness, §25.6 contract.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, extname, resolve as pathResolve, sep as pathSep } from "node:path";
+import { join, extname, resolve as pathResolve, sep as pathSep, dirname } from "node:path";
 export { ControlPlane, HandleLruCache } from "./control.js";
 export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
 import { ControlPlane } from "./control.js";
@@ -200,7 +200,11 @@ export interface GatewayOptions {
 export class Gateway {
   private http: Server | null = null;
   private wss: WebSocketServer | null = null;
-  private readonly subscribers = new Map<WebSocket, { session: string; since: number; room?: string }>(); // ws → subscribed session + cursor
+  private readonly subscribers = new Map<WebSocket, { session: string; since: number; room?: string; clientId: string }>(); // ws → subscribed session + cursor
+  /** SSE subscribers: ServerResponse → { session, since, clientId } */
+  private readonly sseSubscribers = new Map<ServerResponse, { session: string; since: number; clientId: string }>();
+  /** Session takeover: sessionId → controllerClientId */
+  private readonly sessionController = new Map<string, string>();
   private seq = 0;
   /** HIGH-2 fix: per-session retained-event buffers (was a single global buffer →
    * cross-session leak). Keyed by sessionId. */
@@ -525,6 +529,36 @@ export class Gateway {
         return send(200, this.control.listSessions());
       case "/config": return send(200, this.control.getConfig());
       case "/tools": return send(200, this.control.listTools());
+      case "/models": {
+        const providers = detectProviderSummary();
+        const models = providers.map((p) => ({
+          provider: p.id,
+          id: p.model,
+          name: p.model,
+          reasoning: undefined as boolean | undefined,
+          contextWindow: undefined as number | undefined,
+          maxTokens: undefined as number | undefined,
+        }));
+        return send(200, models);
+      }
+      case "/repos": {
+        if (req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { cwd } = JSON.parse(body || "{}") as { cwd?: string };
+              if (!cwd) return send(400, { error: "cwd required" });
+              const normalized = this.addRepo(cwd);
+              return send(201, { ok: true, cwd: normalized });
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
+        return send(200, this.listRepos());
+      }
       case "/":
       case "/index.html": {
         // Serve static files from dist/web/ if available
@@ -565,6 +599,65 @@ export class Gateway {
       // ── Channel webhooks: POST /channel/:id/webhook ───────────────────
       // Each channel adapter parses its own webhook payload format.
       default: {
+        // ── SSE: GET /sessions/:id/events ──
+        const sseMatch = url.pathname.match(/^\/sessions\/([^/]+)\/events$/);
+        if (sseMatch && req.method === "GET") {
+          return this.handleSse(req, res, sseMatch[1]!);
+        }
+        // ── Session takeover: POST /sessions/:id/takeover ──
+        const takeoverMatch = url.pathname.match(/^\/sessions\/([^/]+)\/takeover$/);
+        if (takeoverMatch && req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { clientId } = JSON.parse(body || "{}") as { clientId?: string };
+              if (!clientId) return send(400, { error: "clientId required" });
+              const sid = takeoverMatch[1]!;
+              this.sessionController.set(sid, clientId);
+              this.broadcast(sid, { kind: "controller_changed", controllerClientId: clientId });
+              return send(200, { ok: true, sessionId: sid, controllerClientId: clientId });
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
+        // ── Session release: POST /sessions/:id/release ──
+        const releaseMatch = url.pathname.match(/^\/sessions\/([^/]+)\/release$/);
+        if (releaseMatch && req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { clientId } = JSON.parse(body || "{}") as { clientId?: string };
+              if (!clientId) return send(400, { error: "clientId required" });
+              const sid = releaseMatch[1]!;
+              const controller = this.sessionController.get(sid);
+              if (controller && controller !== clientId) {
+                return send(403, { error: "not_controller" });
+              }
+              this.broadcast(sid, { kind: "released", byClientId: clientId });
+              // Close WS subscribers for this session
+              for (const [ws, sub] of this.subscribers) {
+                if (sub.session === sid) {
+                  try { ws.close(); } catch { /* best-effort */ }
+                }
+              }
+              // Close SSE subscribers for this session
+              for (const [res2, sub] of this.sseSubscribers) {
+                if (sub.session === sid) {
+                  try { res2.end(); } catch { /* best-effort */ }
+                }
+              }
+              this.sessionController.delete(sid);
+              return send(200, { ok: true, sessionId: sid });
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
         const webhookMatch = url.pathname.match(/^\/channel\/([^/]+)\/webhook$/);
         if (webhookMatch && req.method === "POST" && this.channelRouter) {
           const channelId = webhookMatch[1]!;
@@ -936,7 +1029,7 @@ export class Gateway {
     const session = url.searchParams.get("session") ?? "default";
     const room = url.searchParams.get("room") ?? undefined;
     const clientId = `ws-${++this.clientSeq}`;
-    this.subscribers.set(ws, { session, since, room });
+    this.subscribers.set(ws, { session, since, room, clientId });
     const retained = this.retainedBySession.get(session) ?? [];
     // §25.6 replay-from-cursor: deliver this session's retained events > since.
     for (const env of retained) {
@@ -975,10 +1068,57 @@ export class Gateway {
           return;
         }
         /* Phase 15: forward to onWsMessage (default text prompt). */
+        // Controller enforcement: only controller can send prompts; abort is controller-free
+        if (msg.kind === "prompt") {
+          const controller = this.sessionController.get(session);
+          if (controller && controller !== clientId) {
+            ws.send(JSON.stringify({ error: "not_controller" }));
+            return;
+          }
+        }
         if (this.onWsMessage) {
           this.onWsMessage(session, msg);
         }
       } catch { /* malformed — ignore */ }
+    });
+  }
+
+  /** SSE endpoint: GET /sessions/:id/events — Server-Sent Events stream for
+   * mobile clients. One-way (no CSRF risk), no Origin check needed. */
+  private handleSse(req: IncomingMessage, res: ServerResponse, sessionId: string): void {
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store",
+      "connection": "keep-alive",
+    });
+
+    const clientId = `sse-${++this.clientSeq}`;
+    const since = 0; // SSE clients get live events from connection point
+    this.sseSubscribers.set(res, { session: sessionId, since, clientId });
+
+    // Send init event with client ID + current controller
+    const controller = this.sessionController.get(sessionId) ?? null;
+    const initEvent = { kind: "init", yourClientId: clientId, controllerClientId: controller };
+    res.write(`data: ${JSON.stringify(initEvent)}\n\n`);
+
+    // Replay retained events for this session
+    const retained = this.retainedBySession.get(sessionId) ?? [];
+    for (const env of retained) {
+      if (env.seq > since) {
+        res.write(`data: ${JSON.stringify(env)}\n\n`);
+      }
+    }
+
+    // Keep-alive ping every 5s
+    const ping = setInterval(() => {
+      try { res.write(": ping\n\n"); } catch { /* connection closed */ }
+    }, 5_000);
+    ping.unref?.();
+
+    // Cleanup on close
+    res.on("close", () => {
+      clearInterval(ping);
+      this.sseSubscribers.delete(res);
     });
   }
 
@@ -1003,11 +1143,51 @@ export class Gateway {
         ws.send(JSON.stringify(envelope));
       }
     }
+    // SSE subscribers
+    for (const [res, sub] of this.sseSubscribers) {
+      if (sub.session === sessionId && envelope.seq > sub.since) {
+        try { res.write(`data: ${JSON.stringify(envelope)}\n\n`); } catch { /* closed */ }
+      }
+    }
     return envelope;
   }
 
   get subscriberCount(): number {
     return this.subscribers.size;
+  }
+
+  /** Path to the repos registry file (~/.mya/repos.json). */
+  private get reposPath(): string {
+    return join(homedir(), ".mya", "repos.json");
+  }
+
+  /** List known repo directories from ~/.mya/repos.json. */
+  private listRepos(): string[] {
+    const repos = new Set<string>();
+    try {
+      const raw = readFileSync(this.reposPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const r of parsed) {
+          if (typeof r === "string" && r.trim()) repos.add(r.trim());
+        }
+      }
+    } catch { /* file doesn't exist or invalid */ }
+    return [...repos].sort();
+  }
+
+  /** Add a repo directory — validate exists, normalize to absolute, persist. */
+  private addRepo(cwd: string): string {
+    const normalized = pathResolve(cwd.trim());
+    if (!existsSync(normalized) || !statSync(normalized).isDirectory()) {
+      throw new Error(`cwd does not exist or is not a directory: ${normalized}`);
+    }
+    const repos = new Set(this.listRepos());
+    repos.add(normalized);
+    const dir = dirname(this.reposPath);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(this.reposPath, JSON.stringify([...repos].sort(), null, 2), "utf-8");
+    return normalized;
   }
 
   /** §12 hook registry getter (Phase 2). The Agent wiring should pass this
@@ -1050,6 +1230,11 @@ export class Gateway {
         }
       }
       this.subscribers.clear();
+      // SSE cleanup
+      for (const res of this.sseSubscribers.keys()) {
+        try { res.end(); } catch { /* best-effort */ }
+      }
+      this.sseSubscribers.clear();
       this.wss?.close();
       this.http?.close(() => resolve());
     });
