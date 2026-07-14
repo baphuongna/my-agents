@@ -156,6 +156,8 @@ export interface GatewayOptions {
   poolKill?: (sessionId: string) => boolean;
   /** Optional: acquire a new pool session for POST /pool/acquire. */
   poolAcquire?: (cwd: string) => string | Promise<string>;
+  /** Optional: send a prompt to a pool session for POST /pool/prompt/:id. */
+  poolPrompt?: (sessionId: string, text: string) => void;
   /** Optional: trigger an immediate run of a cron job. */
   cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: remove a job from the underlying cron scheduler. */
@@ -205,6 +207,7 @@ export class Gateway {
   private readonly poolKill?: (sessionId: string) => boolean;
   /** Optional pool acquire callback. */
   private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
+  private readonly poolPrompt?: (sessionId: string, text: string) => void;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   private readonly cronRemove?: (jobId: string) => boolean;
   private readonly cronAdd?: (job: ControlCronJob) => void;
@@ -266,6 +269,7 @@ export class Gateway {
     this.poolStatus = opts.poolStatus;
     this.poolKill = opts.poolKill;
     this.poolAcquire = opts.poolAcquire;
+    this.poolPrompt = opts.poolPrompt;
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
     this.cronAdd = opts.cronAdd;
@@ -673,6 +677,23 @@ export class Gateway {
               if (!cwd) return send(400, { error: "cwd required" });
               const sessionId = await this.poolAcquire!(cwd);
               return send(200, { sessionId });
+            } catch {
+              return send(400, { error: "invalid json" });
+            }
+          });
+          return;
+        }
+        // Prompt an existing session
+        const poolPromptMatch = url.pathname.match(/^\/pool\/prompt\/([^/]+)$/);
+        if (poolPromptMatch && req.method === "POST" && this.poolPrompt) {
+          let body = "";
+          req.on("data", (c: Buffer) => (body += c.toString()));
+          req.on("end", () => {
+            try {
+              const { text } = JSON.parse(body || "{}") as { text?: string };
+              if (!text) return send(400, { error: "text required" });
+              this.poolPrompt!(poolPromptMatch[1]!, text);
+              return send(200, { ok: true, sessionId: poolPromptMatch[1] });
             } catch {
               return send(400, { error: "invalid json" });
             }

@@ -373,6 +373,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       await pool.createForCwd(sessionId, cwd);
       return sessionId;
     },
+    poolPrompt: (sessionId: string, text: string) => {
+      void runOnSession(sessionId, text, (e: unknown) => gw.broadcast(sessionId, e))
+        .catch((e) => console.warn(`[gateway] poolPrompt failed: ${(e as Error).message}`));
+    },
     // Pi tracks its own queue depth via session.isIdle + queue internals.
     // We expose busy=1/0 as a simple proxy (since pi's queue isn't directly observable).
     poolQueueDepth: (sessionId: string) => {

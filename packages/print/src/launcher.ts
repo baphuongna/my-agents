@@ -512,27 +512,28 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         }
       } else if (state.tab === "subagents") {
         const sa = state.info.subagents;
-        const sessions = state.sessions.filter((s) => s.busy);
-        lines.push(`  ${A.dim2("Pool status:")}`);
-        lines.push(`  ${A.green("●")}  Active:    ${A.bold(String(sa?.active ?? 0))}`);
-        lines.push(`  ${A.dim2("○")}  Total:     ${sa?.total ?? 0}`);
-        lines.push(`  ${A.dim2("│")}  Max depth: 3 (parent → child → grandchild)`);
+        const sessions = state.sessions;
+        lines.push(`  ${A.dim2("Pool:")}  ${A.green(String(sa?.active ?? 0))} active ${A.dim2("/ " + (sa?.total ?? 0) + " total")}  ${A.dim2("· max depth 3")}`);
         lines.push("");
         if (sessions.length > 0) {
-          lines.push(`  ${A.bold("Active sessions:")}`);
-          for (let i = 0; i < Math.min(sessions.length, 10); i++) {
+          lines.push(`  ${A.bold("Sessions:")}`);
+          const maxRows = Math.max(3, h - 12);
+          const half = Math.floor(maxRows / 2);
+          const start = Math.max(0, Math.min(state.sel - half, Math.max(0, sessions.length - maxRows)));
+          const end = Math.min(sessions.length, start + maxRows);
+          if (start > 0) lines.push(`  ${A.dim2("  ↑ " + start + " above")}`);
+          for (let i = start; i < end; i++) {
             const s = sessions[i]!;
             const is = i === state.sel;
-            const icon = A.yellow("●");
-            const line = `${icon}  ${s.label.slice(0, 28).padEnd(30)} ${A.dim2(s.detail)}`;
+            const icon = s.busy ? A.yellow("●") : A.green("○");
+            const status = s.busy ? A.yellow("running") : A.dim2("idle");
+            const line = `${icon}  ${s.label.slice(0, 28).padEnd(30)} ${status.padEnd(10)} ${A.dim2(s.detail)}`;
             lines.push(is ? `  ${A.selBg(line + A.clrEol)}` : `  ${line}`);
           }
-          lines.push("");
-          lines.push(`  ${A.dim2("x = kill selected | Enter = open session")}`);
+          if (end < sessions.length) lines.push(`  ${A.dim2("  ↓ " + (sessions.length - end) + " more")}`);
         } else {
-          lines.push(`  ${A.muted("No active subagent sessions.")}`);
-          lines.push(`  ${A.dim2("Subagents spawn when the agent delegates tasks.")}`);
-          lines.push(`  ${A.dim2("Use /subagents in TUI or delegate_task tool.")}`);
+          lines.push(`  ${A.muted("No sessions in pool.")}`);
+          lines.push(`  ${A.dim2("Press " + A.accent("n") + " to spawn a new subagent.")}`);
         }
       } else if (state.tab === "status") {
         lines.push(`  ${A.dim2("Gateway:")}     ${state.info.connected ? A.green("online") : A.red("offline")}`);
@@ -584,7 +585,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
             : state.tab === "providers"
               ? "1-6 tabs | ↑/↓ | a/Enter = add/edit key | d = remove | q quit"
               : state.tab === "subagents"
-                ? "1-6 tabs | ↑/↓ | x kill | Enter open | q quit"
+                ? "1-6 tabs | ↑/↓ | n spawn | x kill | Enter open | q quit"
                 : "1-6 tabs | Tab switch | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
@@ -811,7 +812,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           return;
         }
       } else if (state.tab === "subagents") {
-        const sessions = state.sessions.filter((s) => s.busy);
+        const sessions = state.sessions;
         if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
         if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, sessions.length - 1), state.sel + 1); render(); return; }
         if (k === "x") {
@@ -822,6 +823,38 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         if (k === "\r" || k === "\n") {
           const s = sessions[state.sel];
           if (s) { cleanup({ kind: "session", id: s.id }); return; }
+        }
+        if (k === "n") {
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          if (isTTY) process.stdin.setRawMode(false);
+          process.stdout.write(A.altScreenOff + A.showCursor);
+          const goal = await inlinePrompt("Spawn Subagent", "What should this agent do?", "");
+          if (goal) {
+            const sessionId = await acquireGatewaySession(process.cwd());
+            if (sessionId) {
+              // Send the goal as a prompt to the new session
+              try {
+                await fetch(`http://127.0.0.1:${GW_PORT}/pool/prompt/${sessionId}`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ text: goal }),
+                  signal: AbortSignal.timeout(2000),
+                });
+                process.stdout.write(`\n  ${A.green("✓ Subagent spawned")} ${A.dim2(sessionId)}\n  ${A.dim2("Goal: " + goal.slice(0, 60))}\n  ${A.dim2("Press any key...")}`);
+              } catch {
+                process.stdout.write(`\n  ${A.red("✗ Failed to send prompt")}\n  ${A.dim2("Session created: " + sessionId)}`);
+              }
+            } else {
+              process.stdout.write(`\n  ${A.red("✗ Failed to acquire session")}\n  ${A.dim2("Is gateway running?")}`);
+            }
+          }
+          if (isTTY) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdout.write(A.altScreenOn + A.hideCursor);
+          process.stdin.on("data", onData);
+          void refresh();
+          return;
         }
       }
     };
