@@ -110,20 +110,22 @@ export async function captureScreen(opts?: { ocr?: boolean }): Promise<ScreenCap
 export async function extractText(image: Buffer): Promise<ScreenTextRegion[]> {
   const Tesseract = await import("tesseract.js");
   const worker = await Tesseract.createWorker("eng");
-  const { data } = await worker.recognize(image);
-  await worker.terminate();
-
-  // Map words to ScreenTextRegion[]
-  return data.words.map((word) => ({
-    text: word.text,
-    bbox: {
-      x: word.bbox.x0,
-      y: word.bbox.y0,
-      w: word.bbox.x1 - word.bbox.x0,
-      h: word.bbox.y1 - word.bbox.y0,
-    },
-    confidence: word.confidence / 100, // normalise to 0‑1
-  }));
+  try {
+    // L-10 fix: try/finally ensures worker.terminate() even on error
+    const { data } = await worker.recognize(image);
+    return data.words.map((word) => ({
+      text: word.text,
+      bbox: {
+        x: word.bbox.x0,
+        y: word.bbox.y0,
+        w: word.bbox.x1 - word.bbox.x0,
+        h: word.bbox.y1 - word.bbox.y0,
+      },
+      confidence: word.confidence / 100,
+    }));
+  } finally {
+    await worker.terminate();
+  }
 }
 
 /**

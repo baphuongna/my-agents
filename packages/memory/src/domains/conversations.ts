@@ -28,6 +28,11 @@ export class ConversationsDomain implements MemoryDomain {
     }
     return hits.slice(0, opts?.topK ?? 10);
   }
-  onConsolidate(_now: number): ConsolidationReport { return { promoted: 0, consumed: this.backfilledConversations }; }
+  onConsolidate(_now: number): ConsolidationReport {
+    // L-9 fix: report per-cycle count, then reset
+    const consumed = this.backfilledConversations;
+    this.backfilledConversations = 0;
+    return { promoted: 0, consumed };
+  }
 }
 export const conversationsDomain = new ConversationsDomain();

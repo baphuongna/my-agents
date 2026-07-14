@@ -482,7 +482,7 @@ export class Brain {
 }
 
 /** Bag-of-words vector (term → count). */
-function bow(text: string): Map<string, number> {
+export function bow(text: string): Map<string, number> {
   const v = new Map<string, number>();
   for (const t of text.toLowerCase().split(/\W+/)) {
     if (t.length < 2) continue;
@@ -492,7 +492,7 @@ function bow(text: string): Map<string, number> {
 }
 
 /** Cosine similarity of two bag-of-words vectors. */
-function cosine(a: Map<string, number>, b: Map<string, number>): number {
+export function cosine(a: Map<string, number>, b: Map<string, number>): number {
   let dot = 0;
   for (const [k, v] of a) {
     const w = b.get(k);

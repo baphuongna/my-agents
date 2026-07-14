@@ -14,6 +14,7 @@
  * Source: GAP-IMPLEMENTATION-PLAN.md Gap 12; §13 telemetry.
  */
 import { nowMonotonic, nowWallclock, NoopExporter, type TelemetryExporter, type Span } from "@my-agent/core";
+import { randomBytes } from "node:crypto";
 
 // ─── Shared buffered span (used by both exporters) ────────────────────────
 
@@ -203,7 +204,7 @@ function mapSpanToLangfuse(s: BufferedSpan, index: number): Record<string, unkno
 }
 
 function cryptoRandom(): string {
-  return Math.random().toString(36).slice(2) + nowWallclock().toString(36);
+  return randomBytes(8).toString("hex") + nowWallclock().toString(36);
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────
