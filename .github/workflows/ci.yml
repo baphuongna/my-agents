@@ -69,3 +69,6 @@ jobs:
       # with local `npm run lint:rust`.
       - name: Clippy (workspace)
         run: npm run lint:rust
+
+      - name: Cargo deny (license + advisory check)
+        run: cargo deny check

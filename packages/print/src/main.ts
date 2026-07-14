@@ -358,6 +358,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const gw = new Gateway({
     port,
     rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
+    staticDir: join(process.cwd(), "packages/web/dist/web"),
     wsToken,
     hooks,
     cron,
