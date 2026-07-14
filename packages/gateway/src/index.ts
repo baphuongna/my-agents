@@ -408,6 +408,8 @@ export class Gateway {
       this.http.listen(this.port, this.host, () => {
         const addr = this.http!.address();
         const port = addr && typeof addr === "object" ? addr.port : this.port;
+        // Mark the gateway as booted so /ready returns ok:true (not "booting").
+        this.readiness.markBooted();
         resolve({ port, wsPath: `ws://${this.host}:${port}/events` });
       });
     });
