@@ -54,7 +54,7 @@ const NETWORK_FIRST_PREFIXES = [
 ];
 
 function isNetworkFirst(url) {
-  if (url.pathname !== "/" && url.protocol === "http:" || url.protocol === "https:") {
+  if ((url.protocol === "http:" || url.protocol === "https:") && url.pathname !== "/") {
     for (const p of NETWORK_FIRST_PREFIXES) {
       if (url.pathname === p || url.pathname.startsWith(p)) return true;
     }

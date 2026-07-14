@@ -15,7 +15,11 @@ export class SourcesDomain implements MemoryDomain {
   private source: ContextSource | KnowledgeSource | undefined;
   /** C2 fix: cache for sync recall. */
   private cachedHits: MemoryHit[] = [];
-  init(brain: Brain): void { this.brain = brain; }
+  init(brain: Brain): void {
+    this.brain = brain;
+    // H-3 fix: pre-warm cache
+    void this.recallAsync("");
+  }
   /** Optional wiring for the backing context source (used by recall only). */
   wireSource(source: ContextSource | KnowledgeSource): void { this.source = source; }
   onRecord(_fact: Fact): void { /* sources are pull-driven */ }

@@ -191,14 +191,14 @@ function mapSpanToLangfuse(s: BufferedSpan, index: number): Record<string, unkno
       id: `gen-${index}`,
       type: "generation-create",
       timestamp: new Date(ts).toISOString(),
-      body: { name: s.name, traceId: "trace-0", metadata: s.attrs },
+      body: { name: s.name, traceId: s.attrs.traceId ?? `trace-${s.spanId}`, metadata: s.attrs },
     };
   }
   return {
     id: `event-${index}`,
     type: "event-create",
     timestamp: new Date(ts).toISOString(),
-    body: { name: s.name, traceId: "trace-0", metadata: s.attrs },
+    body: { name: s.name, traceId: s.attrs.traceId ?? `trace-${s.spanId}`, metadata: s.attrs },
   };
 }
 

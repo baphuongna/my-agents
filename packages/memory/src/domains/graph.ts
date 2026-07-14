@@ -33,7 +33,7 @@ export class GraphDomain implements MemoryDomain {
       const neighbors = this.graph.query(seed, 2);
       for (const n of neighbors) {
         if (n.dist === 0) continue;
-        hits.push({ id: `${this.name}:${lc}:${n.id}`, role: (opts?.role ?? "tree") as MemoryHit["role"], content: `${lc} → ${n.id}`, score: 1 / (1 + n.dist) });
+        hits.push({ id: `${this.name}:${lc}:${n.id}`, role: (opts?.role ?? "working") as MemoryHit["role"], content: `${lc} → ${n.id}`, score: 1 / (1 + n.dist) });
       }
     }
     return hits.slice(0, opts?.topK ?? 10);

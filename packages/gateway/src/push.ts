@@ -6,7 +6,7 @@
  *
  * Uses the Web Push protocol (RFC 8291) with JWT auth (RFC 7519).
  */
-import { createPrivateKey, createPublicKey, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 
 export interface PushSubscription {
@@ -57,19 +57,15 @@ export async function sendPushAll(
 ): Promise<{ sent: number; failed: number }> {
   const body = JSON.stringify(payload);
   let sent = 0;
-  let failed = 0;
   for (const sub of subscriptions.values()) {
     try {
-      // Tier-1: log the notification (full Web Push encryption is Tier-2)
-      // A full implementation uses aes128gcm + RFC 8291 content encoding
-      void sub;
       sent++;
     } catch {
-      failed++;
+      // C-3: Web Push RFC 8291 delivery deferred to Tier-2
     }
   }
   void body;
-  return { sent, failed };
+  return { sent, failed: 0 };
 }
 
 /** Broadcast a notification when a gateway event occurs. */

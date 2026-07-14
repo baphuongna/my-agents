@@ -203,3 +203,9 @@ export interface TtsEvent {
 }
 
 // silence unused-import lint
+
+// M-7 fix: export MLX TTS classes for external consumers
+export { MlxTtsBackend } from "./mlx.js";
+export type { MlxSynthesizeOptions, AudioStream } from "./mlx.js";
+export { ModelManager, MODEL_REGISTRY } from "./model-manager.js";
+export type { ModelRegistryEntry } from "./model-manager.js";

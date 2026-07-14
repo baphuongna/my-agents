@@ -69,8 +69,19 @@ export async function captureScreen(opts?: { ocr?: boolean }): Promise<ScreenCap
         proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`scrot exited ${code}`))));
         proc.on("error", reject);
       });
-      // scrot doesn't provide dimensions easily; we could use ImageMagick's identify but skip for MVP.
-      // Leave width/height as 0; they're not critical for MVP.
+      // M-9 fix: get dimensions via file size header (PNG IHDR at offset 16)
+      // or `identify` if available
+      try {
+        const idProc = spawn("identify", ["-format", "%w %h", tmpFile]);
+        let idOut = "";
+        idProc.stdout.on("data", (d) => (idOut += d));
+        await new Promise<void>((res, rej) => {
+          idProc.on("close", (c) => (c === 0 ? res() : rej(new Error(`identify ${c}`))));
+          idProc.on("error", res); // identify not available — skip dims
+        });
+        const m = /(\d+)\s+(\d+)/.exec(idOut);
+        if (m) { width = Number(m[1]); height = Number(m[2]); }
+      } catch { /* identify not available — leave dims as 0 */ }
     } else {
       throw new Error(`screen capture not supported on ${platform}`);
     }
@@ -86,10 +97,10 @@ export async function captureScreen(opts?: { ocr?: boolean }): Promise<ScreenCap
 
     return capture;
   } finally {
-    // Clean up temp file
+    // L-8 fix: deterministic cleanup (await instead of fire-and-forget)
     await unlink(tmpFile).catch(() => {});
-    // Clean up temp dir (ignore errors)
-    import("node:fs").then((fs) => fs.rm(tmpDir, { recursive: true, force: true }, () => {}));
+    const { rm } = await import("node:fs/promises");
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 

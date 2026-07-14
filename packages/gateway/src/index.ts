@@ -29,6 +29,7 @@ import { ChannelSessionRouter } from "./channel-session.js";
 import type { ChannelRegistry, ChannelMessage } from "./channels.js";
 import { getVapidPublicKey, addSubscription, removeSubscription } from "./push.js";
 import { encodePairingQR, type DevicePairing, type PairingQR } from "@my-agent/secrets";
+import type { VoiceCallChannel } from "./voice-call.js";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -190,6 +191,8 @@ export interface GatewayOptions {
   wsInfo?: () => unknown;
   /** Phase G: device pairing manager (optional). */
   devicePairing?: DevicePairing;
+  /** C-5 fix: optional voice call channel for Twilio integration. */
+  voiceCall?: VoiceCallChannel;
 }
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
@@ -248,6 +251,7 @@ export class Gateway {
   private readonly wsInfo?: () => unknown;
   /** Phase G: device pairing manager. */
   private readonly devicePairing?: DevicePairing;
+  private readonly voiceCall?: VoiceCallChannel;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
   /** Static file directory (optional — Phase 25.2 build pipeline). */
@@ -323,6 +327,7 @@ export class Gateway {
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
+    this.voiceCall = opts.voiceCall;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
       console.warn("[gateway] cron is configured but no onWsMessage channel exists; due jobs will be claimed + completed but not delivered.");
@@ -978,6 +983,14 @@ export class Gateway {
   /** Broadcast a RuntimeEvent to that session's WS subscribers only (HIGH-2). */
   broadcast(sessionId: string, event: unknown): WireEnvelope {
     const envelope = frame({ sessionId, seq: ++this.seq, event });
+    // H-2 fix: notify push subscribers when notable events occur
+    if (this.voiceCall) {
+      const kind = (event as { kind?: string })?.kind ?? "event";
+      const summary = JSON.stringify(event).slice(0, 100);
+      import("./push.js").then(({ notifyEvent }) =>
+        notifyEvent({ kind, sessionId, summary }),
+      ).catch(() => {});
+    }
     // retain per-session (bounded)
     const buf = this.retainedBySession.get(sessionId) ?? [];
     buf.push(envelope);

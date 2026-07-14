@@ -143,15 +143,28 @@ export class BrowserAutomation {
 
 // ─── Shared singleton (per tool call) ──────────────────────────────────────
 
-const sessions = new Map<string, BrowserAutomation>();
+// H-4 fix: TTL sweeper — close idle browser sessions after 5 minutes
+const sessions = new Map<string, { automation: BrowserAutomation; lastUsed: number }>();
+const BROWSER_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of sessions) {
+    if (now - entry.lastUsed > BROWSER_SESSION_TTL_MS) {
+      entry.automation.close().catch(() => {});
+      sessions.delete(key);
+    }
+  }
+}, 60_000).unref(); // unref so it doesn't keep process alive
 
 function getSession(id: string): BrowserAutomation {
-  let session = sessions.get(id);
-  if (!session) {
-    session = new BrowserAutomation();
-    sessions.set(id, session);
+  let entry = sessions.get(id);
+  if (!entry) {
+    entry = { automation: new BrowserAutomation(), lastUsed: Date.now() };
+    sessions.set(id, entry);
   }
-  return session;
+  entry.lastUsed = Date.now(); // H-4: update last-used timestamp
+  return entry.automation;
 }
 
 // ─── Tool implementations ───────────────────────────────────────────────────

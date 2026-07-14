@@ -19,7 +19,11 @@ export class GoalsDomain implements MemoryDomain {
   /** C2 fix: cache for sync recall (populated by recallAsync, returned by recall). */
   private cachedHits: MemoryHit[] = [];
 
-  init(brain: Brain): void { this.brain = brain; }
+  init(brain: Brain): void {
+    this.brain = brain;
+    // H-3 fix: pre-warm cache so first recall() returns data, not []
+    void this.recallAsync("");
+  }
   /** Optional wiring for the backing store (used by recall only). */
   wireStore(store: MemoryBackend): void { this.store = store; }
   onRecord(fact: Fact): void {

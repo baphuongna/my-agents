@@ -16,7 +16,11 @@ export class StoreDomain implements MemoryDomain {
   private manager: MemoryManagerImpl | undefined;
   /** C2 fix: cache for sync recall. */
   private cachedHits: MemoryHit[] = [];
-  init(brain: Brain): void { this.brain = brain; }
+  init(brain: Brain): void {
+    this.brain = brain;
+    // H-3 fix: pre-warm cache
+    void this.recallAsync("");
+  }
   /** Optional wiring for the MemoryManager (used by recall only). */
   wireManager(mgr: MemoryManagerImpl): void { this.manager = mgr; }
   onRecord(_fact: Fact): void { /* store is fanned out by MemoryManager.write */ }

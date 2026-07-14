@@ -34,13 +34,11 @@ export interface Reference {
 /** Identifier-matching regex (TS/JS/Rust/Go/Python all share this subset
  * of identifier shape — language-specific call-site syntax is handled
  * separately). */
-const IDENT_RE = /[A-Za-z_$][\w$]*/y;
 
 /** Read site (conservative — declared-without-keyword read after definition).
  * We bound the heuristic to bare identifier occurrences on lines that don't
  * start with a declaration keyword — false positives are tolerable, false
  * negatives must not be silent, hence the bounded set. */
-const READ_RE = /(?<![A-Za-z0-9_$.])([A-Za-z_$][\w$]*)\b/g;
 
 /** Write site (let/const/var/mutation by assignment). */
 const WRITE_RE = /(?<![A-Za-z0-9_$.])(?:let|const|var)\s+([A-Za-z_$][\w$]*)/g;
@@ -420,6 +418,4 @@ function lookupFileSymbols(graph: GraphStore, filePath: string): string[] {
   return graph.idsByFile(filePath.replace(/\.(ts|tsx|js|jsx|mjs|cjs|py|rs|go)$/, ""));
 }
 
-// Convenience: silence unused-import warning for IDENT_RE (kept as API for
 // future tokenization work).
-void IDENT_RE;

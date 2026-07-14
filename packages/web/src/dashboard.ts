@@ -9,6 +9,7 @@
 
 import { sessionListHtml, escapeHtml } from "./components/session-list.js";
 import { approvalModalHtml } from "./components/approval-modal.js";
+import { registerServiceWorker } from "./pwa-register.js";
 
 export interface DashboardOptions {
   title?: string;
@@ -124,10 +125,8 @@ ${approvalModalHtml()}
   let ws_ready = false;
   let wsObj = null;
   connect();
-  // Phase C: PWA service worker registration
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
+  // Phase C: PWA service worker registration (modular, with update detection)
+  registerServiceWorker();
 </script>
 </body>
 </html>`;
