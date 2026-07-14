@@ -7,6 +7,7 @@
 export { InMemoryBackend, FileBackend } from "./backends.js";
 export type { MemoryBackend } from "./backends.js";
 export { MemoryManagerImpl, stubMemoryManager } from "./manager.js";
+export type { MemoryManagerCtorOptions, MemoryFacade } from "./manager.js";
 export { ArchivistRole, GoalsRole, cleanTurnToMarkdown } from "./roles.js";
 export type { MemoryRole } from "./roles.js";
 
@@ -24,3 +25,27 @@ export type { KGEntity, KGRelation } from "./graph.js";
 
 export { DreamCycle, DEFAULT_DREAM_INTERVAL_MS, STALE_SKILL_AFTER_DAYS } from "./dream-cycle.js";
 export type { DreamResult, DreamCycleOptions, SkillCurator } from "./dream-cycle.js";
+
+// ── Phase A: MemoryTree (L0/L1/L2) + MemoryDomain system ──────────────────
+export { MemoryTree, L0_TTL_MS } from "./tree.js";
+export type { Tier } from "./tree.js";
+
+export type {
+  MemoryDomain,
+  MemoryDomainEntry,
+  MemoryDomainOpts,
+  ConsolidationReport,
+} from "./domains/types.js";
+export { ArchivistDomain, archivistDomain } from "./domains/archivist.js";
+export { TreeDomain, treeDomain } from "./domains/tree.js";
+export { DiffDomain, diffDomain } from "./domains/diff.js";
+export { GoalsDomain, goalsDomain } from "./domains/goals.js";
+export { SyncDomain, syncDomain } from "./domains/sync.js";
+export { GraphDomain, graphDomain } from "./domains/graph.js";
+export { ConversationsDomain, conversationsDomain } from "./domains/conversations.js";
+export { SearchDomain, searchDomain } from "./domains/search.js";
+export { SourcesDomain, sourcesDomain } from "./domains/sources.js";
+export { EntitiesDomain, entitiesDomain } from "./domains/entities.js";
+export { StoreDomain, storeDomain } from "./domains/store.js";
+export { ToolsDomain, toolsDomain } from "./domains/tools.js";
+export { QueueDomain, queueDomain } from "./domains/queue.js";

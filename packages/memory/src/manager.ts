@@ -6,6 +6,11 @@
  * refresh() — the loop/transport calls refresh() when memory changes, then the
  * next assemblePrompt/rebuildVolatile picks up the fresh snapshot.
  *
+ * Phase A (Gaps 1-3): MemoryManager now ALSO integrates Brain + DreamCycle and
+ * serves as the single front door (`record` / `recall` / `consolidate`). All
+ * new entry points are no-op-compatible with the existing 0-arg ctor — see
+ * D4 in source/.learned/GAP-IMPLEMENTATION-PLAN.md Stage 0.
+ *
  * Source: §8 Memory, R29-2 (buildVolatileTier), R25-15 (day-precision).
  */
 import {
@@ -20,6 +25,25 @@ import {
 } from "@my-agent/core";
 import { InMemoryBackend, type MemoryBackend } from "./backends.js";
 import type { MemoryRole } from "./roles.js";
+import type { Brain, Fact } from "./brain.js";
+import type { DreamCycle, DreamResult } from "./dream-cycle.js";
+import type { ConsolidationReport, MemoryDomain, MemoryDomainEntry, MemoryDomainOpts } from "./domains/types.js";
+
+export interface MemoryManagerCtorOptions {
+  brain?: Brain;
+  dreamCycle?: DreamCycle;
+  domains?: readonly MemoryDomain[];
+}
+
+/** Phase A facade interface for the new front-door methods. */
+export interface MemoryFacade {
+  /** Record a fact through Brain + notify every domain. */
+  record(fact: Omit<Fact, "id" | "createdAt"> & { id?: string; tier?: "L0" | "L1" | "L2"; validUntil?: number }): Fact;
+  /** Fan-out recall across every domain. */
+  recall(query: string, opts?: MemoryDomainOpts): MemoryDomainEntry[];
+  /** Drive the dream cycle. */
+  consolidate(): Promise<DreamResult | { takesPromoted: number; factsConsumed: number; consolidation: ConsolidationReport[] }>;
+}
 
 export class MemoryManagerImpl implements MemoryManager {
   private byRole = new Map<MemoryRoleId, MemoryBackend>();
@@ -29,11 +53,35 @@ export class MemoryManagerImpl implements MemoryManager {
   private drainInFlight = false;
   private externalCount = 0;
 
+  /** Phase A: Brain (fact store) — undefined unless `withBrain()` or new ctor opts were used. */
+  private brain: Brain | undefined;
+  /** Phase A: DreamCycle — undefined unless `withBrain()` was used. */
+  private dreamCycle: DreamCycle | undefined;
+  /** Phase A: List of MemoryDomains wired by `init()` then `onRecord()`/`recall`/`onConsolidate`. */
+  private readonly domains: MemoryDomain[] = [];
+  /** Phase A: When true, domains have been init()-ed with brain. Idempotent. */
+  private domainsInited = false;
+
+  constructor(opts: MemoryManagerCtorOptions = {}) {
+    this.brain = opts.brain;
+    this.dreamCycle = opts.dreamCycle;
+    if (opts.domains) {
+      for (const d of opts.domains) this.domains.push(d);
+    }
+  }
+
   /** The registered lifecycle roles (§8 R27-4). */
   get roles(): MemoryRole[] { return this.rolesList; }
 
   /** The registered backends (§8 R27-4). */
   get backends(): MemoryBackend[] { return [...this.byRole.values()]; }
+
+  /** Phase A: expose the wired Brain (read-only — undefined when not wired). */
+  get wrappedBrain(): Brain | undefined { return this.brain; }
+  /** Phase A: expose the wired DreamCycle (undefined when not wired). */
+  get wrappedDreamCycle(): DreamCycle | undefined { return this.dreamCycle; }
+  /** Phase A: list of registered MemoryDomains (snapshot — do not mutate). */
+  get registeredDomains(): readonly MemoryDomain[] { return [...this.domains]; }
 
   /** Register a backend for a role. One backend per role (SSOT). §8 one-external-
    * provider rule: refuses a 2nd EXTERNAL backend (governs MemoryBackend only). */
@@ -100,6 +148,54 @@ export class MemoryManagerImpl implements MemoryManager {
     }
   }
 
+  // ── Phase A: facade methods (Brain + DreamCycle + Domains) ─────────────────
+
+  /** Lazy-init domains against the wired Brain (idempotent). */
+  private ensureDomainsInited(): void {
+    if (this.domainsInited) return;
+    if (!this.brain) return;
+    for (const d of this.domains) d.init(this.brain);
+    this.domainsInited = true;
+  }
+
+  /** Phase A: Record a fact through Brain + notify every domain. Throws when no
+   * Brain is wired — callers must use `withBrain()` or pass `brain` via ctor
+   * opts. */
+  record(
+    fact: Omit<Fact, "id" | "createdAt"> & { id?: string; tier?: "L0" | "L1" | "L2"; validUntil?: number },
+  ): Fact {
+    if (!this.brain) throw new Error("memory.record: no Brain wired (use withBrain() or ctor opts.brain)");
+    this.ensureDomainsInited();
+    // C1 fix: preserve validUntil (Fact field for TTL), strip only tier (tree-only metadata)
+    const { tier: _tier, ...factRest } = fact;
+    const persisted = this.brain.recordFact(factRest as Omit<Fact, "id" | "createdAt"> & { id?: string });
+    for (const d of this.domains) d.onRecord(persisted);
+    return persisted;
+  }
+
+  /** Phase A: Fan-out recall across every domain. Returns one slice per domain. */
+  recall(query: string, opts?: MemoryDomainOpts): MemoryDomainEntry[] {
+    if (this.domains.length === 0) return [];
+    this.ensureDomainsInited();
+    return this.domains.map((d) => ({
+      domain: d.name,
+      hits: d.recall(query, opts),
+    }));
+  }
+
+  /** Phase A: Drive the dream cycle. Delegates to dreamCycle if wired;
+   * otherwise runs the zero-LLM `brain.consolidate()` + one onConsolidate per domain. */
+  async consolidate(): Promise<DreamResult | { takesPromoted: number; factsConsumed: number; consolidation: ConsolidationReport[] }> {
+    if (this.dreamCycle) return this.dreamCycle.dream();
+    if (!this.brain) return { takesPromoted: 0, factsConsumed: 0, consolidation: [] };
+    this.ensureDomainsInited();
+    const r = this.brain.consolidate();
+    const now = nowWallclock();
+    const consolidation: ConsolidationReport[] = [];
+    for (const d of this.domains) consolidation.push(d.onConsolidate(now));
+    return { ...r, consolidation };
+  }
+
   /** SYNC snapshot (§5 contract) — returns the cached snapshot. */
   snapshot(): MemorySnapshot {
     return this.cached;
@@ -143,6 +239,23 @@ export class MemoryManagerImpl implements MemoryManager {
   static withDefaults(): MemoryManagerImpl {
     const m = new MemoryManagerImpl();
     m.ensureDefault(["working", "archivist", "tree", "diff", "goals", "sync"]);
+    return m;
+  }
+
+  /** Phase A: factory that wires Brain + DreamCycle + Domains into the manager.
+   * Existing call sites (agent loop / print bridge) keep using `withDefaults()`;
+   * new wiring uses `withBrain()`. See D4 in
+   * source/.learned/GAP-IMPLEMENTATION-PLAN.md Stage 0. */
+  static withBrain(opts: {
+    brain: Brain;
+    dreamCycle?: DreamCycle;
+    domains?: readonly MemoryDomain[];
+    roleBackends?: readonly MemoryBackend[];
+    defaultRoles?: readonly MemoryRoleId[];
+  }): MemoryManagerImpl {
+    const m = new MemoryManagerImpl({ brain: opts.brain, dreamCycle: opts.dreamCycle, domains: opts.domains });
+    for (const b of opts.roleBackends ?? []) m.register(b);
+    m.ensureDefault(opts.defaultRoles ?? ["working", "archivist", "tree", "diff", "goals", "sync"]);
     return m;
   }
 }

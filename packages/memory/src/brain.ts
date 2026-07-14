@@ -56,8 +56,10 @@ export interface BrainPage {
  */
 export class Brain {
   private readonly facts = new Map<string, Fact>();
-  private readonly takes = new Map<string, Take>();
-  private readonly pages = new Map<string, BrainPage>();
+  /** Renamed internally to `takesMap` so the public `takes` getter doesn't
+   * collide with the storage map (Phase A additive accessor). */
+  private readonly takesMap = new Map<string, Take>();
+  private readonly pagesMap = new Map<string, BrainPage>();
   /** Review CRITICAL-1: soft-delete tombstones (review CRITICAL-1 — spec mandates
    * soft-delete + 72h TTL recovery; hard-delete breaks "consolidated facts never
    * deleted" + loses user data). */
@@ -119,7 +121,7 @@ export class Brain {
         text: cluster.map((f) => f.content).join(" / "),
         synthesizedAt: nowWallclock(),
       };
-      this.takes.set(takeId, take);
+      this.takesMap.set(takeId, take);
       for (const f of cluster) {
         f.consolidatedAt = nowWallclock();
         f.consolidatedInto = takeId;
@@ -149,7 +151,7 @@ export class Brain {
   putPage(p: Omit<BrainPage, "id" | "createdAt" | "version"> & { id?: string }): BrainPage {
     const id = p.id ?? randomUUID();
     const full: BrainPage = { ...p, id, createdAt: nowWallclock(), version: 1 };
-    this.pages.set(id, full);
+    this.pagesMap.set(id, full);
     return full;
   }
 
@@ -319,10 +321,23 @@ export class Brain {
     return n;
   }
   get takeCount(): number {
-    return this.takes.size;
+    return this.takesMap.size;
   }
   get factCount(): number {
     return this.facts.size;
+  }
+
+  /** Phase A: additive accessor for MemoryTree.compile() + domains. Returns a
+   * shallow snapshot of takes (not the live Map — values are readonly references,
+   * but DO NOT mutate them in place). */
+  get takes(): Take[] {
+    return [...this.takesMap.values()];
+  }
+
+  /** Phase A: additive accessor for MemoryTree.compile() + domains. Returns a
+   * shallow snapshot of pages. */
+  get allPages(): BrainPage[] {
+    return [...this.pagesMap.values()];
   }
 
   // ── Phase 11: 5 more zero-LLM dream-cycle phases ────────────────────────
