@@ -55,7 +55,7 @@ interface GatewayInfo {
   uptime?: number;
   channels?: Array<{ id: string; type: string; alias?: string; label: string; enabled: boolean; configured: boolean; health: string }>;
   cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>;
-  providers?: Array<{ id: string; model: string; configured: boolean }>;
+  providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>;
   subagents?: { active: number; total: number };
   version?: string;
   pid?: number;
@@ -101,7 +101,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
   const [health, sessions, status, cronJobs] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
-    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: GatewayInfo["providers"]; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
+    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
     fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
   ]);
   return {
@@ -174,6 +174,29 @@ async function addCronJob(name: string, schedule: string, prompt: string): Promi
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, schedule, prompt, trigger: "cron" }),
       signal: AbortSignal.timeout(2000),
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
+async function configureProvider(id: string, envKey: string, apiKey: string, action: "add" | "remove"): Promise<{ ok: boolean; restart?: boolean }> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/providers/config`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, envKey, apiKey, action }),
+      signal: AbortSignal.timeout(2000),
+    });
+    const data = await r.json() as { ok: boolean; restart?: boolean };
+    return data;
+  } catch { return { ok: false }; }
+}
+
+async function killSubagent(sessionId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/pool/kill/${sessionId}`, {
+      method: "POST",
+      signal: AbortSignal.timeout(1000),
     });
     return r.ok;
   } catch { return false; }
@@ -451,32 +474,54 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           }
         }
       } else if (state.tab === "providers") {
-        if (!state.info.providers?.length) {
-          lines.push(`  ${A.muted("No providers configured.")}`);
-          lines.push(`  ${A.dim2("Set env vars: MINIMAX_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.")}`);
-        } else {
-          lines.push(`  ${A.dim2("Configured LLM providers (auto-detected from env):")}`);
-          lines.push("");
-          for (const p of state.info.providers) {
-            const icon = p.configured ? A.green("●") : A.red("○");
-            lines.push(`  ${icon}  ${A.bold(p.id.padEnd(14))}  ${A.dim2(p.model)}`);
+        const providers = state.info.providers ?? [];
+        const configured = providers.filter((p) => p.configured);
+        const available = providers.filter((p) => !p.configured);
+        lines.push(`  ${A.green(configured.length + " configured")} ${A.dim2("· " + available.length + " available")}`);
+        lines.push("");
+        if (configured.length > 0) {
+          lines.push(`  ${A.bold("Configured:")}`);
+          for (let i = 0; i < configured.length; i++) {
+            const p = configured[i]!;
+            const idx = providers.indexOf(p);
+            const is = idx === state.sel;
+            const line = `${A.green("●")}  ${p.id.padEnd(22)} ${A.dim2(p.model.padEnd(30))} ${A.dim2(p.envKey)}`;
+            lines.push(is ? `  ${A.selBg(line + A.clrEol)}` : `  ${line}`);
           }
           lines.push("");
-          lines.push(`  ${A.dim2("Active model: " + (state.info.model ?? "unknown"))}`);
+        }
+        if (available.length > 0) {
+          lines.push(`  ${A.bold("Available (" + available.length + "):")}`);
+          for (const p of available) {
+            const idx = providers.indexOf(p);
+            const is = idx === state.sel;
+            const line = `${A.dim2("○")}  ${A.dim2(p.id.padEnd(22))} ${A.dim2(p.model.padEnd(30))} ${A.dim2(p.envKey)}`;
+            lines.push(is ? `  ${A.selBg(line.replace(/\x1b\[[\d;]+m/g, "") + A.clrEol)}` : `  ${line}`);
+          }
         }
       } else if (state.tab === "subagents") {
         const sa = state.info.subagents;
-        if (!sa || sa.total === 0) {
-          lines.push(`  ${A.muted("No subagent activity.")}`);
-          lines.push(`  ${A.dim2("Subagents spawn when the agent delegates tasks.")}`);
+        const sessions = state.sessions.filter((s) => s.busy);
+        lines.push(`  ${A.dim2("Pool status:")}`);
+        lines.push(`  ${A.green("●")}  Active:    ${A.bold(String(sa?.active ?? 0))}`);
+        lines.push(`  ${A.dim2("○")}  Total:     ${sa?.total ?? 0}`);
+        lines.push(`  ${A.dim2("│")}  Max depth: 3 (parent → child → grandchild)`);
+        lines.push("");
+        if (sessions.length > 0) {
+          lines.push(`  ${A.bold("Active sessions:")}`);
+          for (let i = 0; i < Math.min(sessions.length, 10); i++) {
+            const s = sessions[i]!;
+            const is = i === state.sel;
+            const icon = A.yellow("●");
+            const line = `${icon}  ${s.label.slice(0, 28).padEnd(30)} ${A.dim2(s.detail)}`;
+            lines.push(is ? `  ${A.selBg(line + A.clrEol)}` : `  ${line}`);
+          }
+          lines.push("");
+          lines.push(`  ${A.dim2("x = kill selected | Enter = open session")}`);
         } else {
-          lines.push(`  ${A.dim2("Subagent pool status:")}`);
-          lines.push("");
-          lines.push(`  ${A.green("●")}  Active:  ${A.bold(String(sa.active))}`);
-          lines.push(`  ${A.dim2("○")}  Total:   ${sa.total}`);
-          lines.push("");
-          lines.push(`  ${A.dim2("Max depth: 3 (parent → child → grandchild)")}`);
-          lines.push(`  ${A.dim2("Use /subagents in TUI to inspect active subagents")}`);
+          lines.push(`  ${A.muted("No active subagent sessions.")}`);
+          lines.push(`  ${A.dim2("Subagents spawn when the agent delegates tasks.")}`);
+          lines.push(`  ${A.dim2("Use /subagents in TUI or delegate_task tool.")}`);
         }
       } else if (state.tab === "status") {
         lines.push(`  ${A.dim2("Gateway:")}     ${state.info.connected ? A.green("online") : A.red("offline")}`);
@@ -526,8 +571,10 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           : state.tab === "cron"
             ? "1-6 tabs | ↑/↓ | Space toggle | r run | d delete | a add | q quit"
             : state.tab === "providers"
-              ? "1-6 tabs | ↑/↓ | Enter = show setup instructions | q quit"
-              : "1-6 tabs | Tab switch | r refresh | q quit";
+              ? "1-6 tabs | ↑/↓ | a/Enter = add/edit key | d = remove | q quit"
+              : state.tab === "subagents"
+                ? "1-6 tabs | ↑/↓ | x kill | Enter open | q quit"
+                : "1-6 tabs | Tab switch | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -714,23 +761,56 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         const providers = state.info.providers ?? [];
         if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
         if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, providers.length - 1), state.sel + 1); render(); return; }
-        if (k === "\r" || k === "\n") {
+        if (k === "\r" || k === "\n" || k === "a") {
           const p = providers[state.sel];
-          if (p) {
-            process.stdin.pause();
-            process.stdin.removeListener("data", onData);
-            if (isTTY) process.stdin.setRawMode(false);
-            process.stdout.write(A.altScreenOff + A.showCursor);
-            process.stdout.write(`\n  ${A.muted("To use")} ${A.accent(p.id)} ${A.muted("as default:")}\n`);
-            process.stdout.write(`  ${A.muted("  export MYA_MODEL=")}${A.accent(p.model)}\n`);
-            process.stdout.write(`  ${A.muted("  export")} ${p.id.toUpperCase().replace(/-/g, "_")}_API_KEY=xxx\n\n`);
-            process.stdout.write(`  ${A.dim2("Then restart: mya serve")}\n  ${A.dim2("Press any key...")}`);
-            if (isTTY) process.stdin.setRawMode(true);
-            process.stdin.resume();
-            process.stdout.write(A.altScreenOn + A.hideCursor);
-            process.stdin.on("data", onData);
-            return;
+          if (!p) return;
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          if (isTTY) process.stdin.setRawMode(false);
+          process.stdout.write(A.altScreenOff + A.showCursor);
+          if (p.configured && k === "\r") {
+            // Show details + offer remove
+            const action = await inlinePrompt(`Provider: ${p.id}`, `${p.envKey} is SET. Type 'remove' to delete, Enter to cancel`);
+            if (action === "remove") {
+              const result = await configureProvider(p.id, p.envKey, "", "remove");
+              process.stdout.write(`\n  ${result.ok ? A.green("✓ Removed") : A.red("✗ Failed")}\n  ${A.dim2("Restart gateway: systemctl --user restart mya-gateway")}`);
+            }
+          } else {
+            // Add API key
+            const apiKey = await inlinePrompt(`Add ${p.id}`, `Enter value for ${p.envKey}:`);
+            if (apiKey) {
+              const result = await configureProvider(p.id, p.envKey, apiKey, "add");
+              process.stdout.write(`\n  ${result.ok ? A.green("✓ Saved to ~/.mya/gateway.env") : A.red("✗ Failed")}\n  ${A.dim2("Restart gateway: systemctl --user restart mya-gateway")}`);
+            }
           }
+          if (isTTY) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdout.write(A.altScreenOn + A.hideCursor);
+          process.stdin.on("data", onData);
+          void refresh();
+          return;
+        }
+        if (k === "d") {
+          // Quick delete (configured providers only)
+          const p = providers[state.sel];
+          if (p?.configured) {
+            const result = await configureProvider(p.id, p.envKey, "", "remove");
+            void refresh();
+          }
+          return;
+        }
+      } else if (state.tab === "subagents") {
+        const sessions = state.sessions.filter((s) => s.busy);
+        if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
+        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, sessions.length - 1), state.sel + 1); render(); return; }
+        if (k === "x") {
+          const s = sessions[state.sel];
+          if (s) { void killSubagent(s.id).then(() => refresh()); }
+          return;
+        }
+        if (k === "\r" || k === "\n") {
+          const s = sessions[state.sel];
+          if (s) { cleanup({ kind: "session", id: s.id }); return; }
         }
       }
     };

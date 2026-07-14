@@ -12,7 +12,8 @@
  * Source: §12 Channels & Gateway, §13 Observability readiness, §25.6 contract.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, extname, resolve as pathResolve, sep as pathSep } from "node:path";
 export { ControlPlane, HandleLruCache } from "./control.js";
 export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js";
@@ -532,6 +533,28 @@ export class Gateway {
           return;
         }
         // Channel sessions listing
+        // ── Provider config (add/remove API key from gateway.env) ──
+        if (url.pathname === "/providers/config" && req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { id, envKey, apiKey, action } = JSON.parse(body || "{}") as { id?: string; envKey?: string; apiKey?: string; action?: "add" | "remove" };
+              if (!id || !envKey) return send(400, { error: "id + envKey required" });
+              const envFile = join(homedir(), ".mya", "gateway.env");
+              let lines: string[] = [];
+              try { lines = readFileSync(envFile, "utf8").split("\n"); } catch { /* file doesn't exist */ }
+              // Remove existing entry for this envKey
+              lines = lines.filter((l) => !l.startsWith(`${envKey}=`) && !l.startsWith(`#${envKey}=`));
+              if (action === "add" && apiKey) {
+                lines.push(`${envKey}=${apiKey}`);
+              }
+              writeFileSync(envFile, lines.join("\n"), "utf8");
+              return send(200, { ok: true, id, envKey, action: action ?? "add", restart: true });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
         // ── Channel config + test ──
         const channelConfigMatch = url.pathname.match(/^\/channels\/([^/]+)\/config$/);
         if (channelConfigMatch && req.method === "POST" && this.channels) {
@@ -876,25 +899,53 @@ function parseChannelWebhook(channelId: string, body: string): ChannelMessage | 
   }
 }
 
-/** Detect configured LLM providers from environment variables (for /status display). */
-function detectProviderSummary(): Array<{ id: string; model: string; configured: boolean }> {
-  const entries: Array<{ envKey: string; id: string; model: string }> = [
-    { envKey: "MINIMAX_API_KEY", id: "minimax", model: "MiniMax-M3" },
-    { envKey: "OPENAI_API_KEY", id: "openai", model: "gpt-4o-mini" },
-    { envKey: "ANTHROPIC_API_KEY", id: "anthropic", model: "claude-sonnet-4" },
-    { envKey: "GOOGLE_API_KEY", id: "google", model: "gemini-2.0-flash" },
-    { envKey: "DEEPSEEK_API_KEY", id: "deepseek", model: "deepseek-chat" },
-    { envKey: "GROQ_API_KEY", id: "groq", model: "llama-3.3-70b" },
-    { envKey: "MISTRAL_API_KEY", id: "mistral", model: "mistral-large" },
-    { envKey: "XAI_API_KEY", id: "xai", model: "grok-3" },
-    { envKey: "TOGETHER_API_KEY", id: "together", model: "llama-3.3-70b" },
-    { envKey: "OPENROUTER_API_KEY", id: "openrouter", model: "claude-3.5-sonnet" },
-  ];
-  return entries
-    .filter((e) => !!process.env[e.envKey])
-    .map((e) => ({
-      id: e.id,
-      model: process.env[`${e.envKey.replace("_API_KEY", "_MODEL")}`] ?? e.model,
-      configured: true,
-    }));
+/** Full provider registry: ALL 37 pi-ai providers with env var mapping. */
+const PROVIDER_REGISTRY: Array<{ id: string; envKey: string; defaultModel: string }> = [
+  { id: "minimax", envKey: "MINIMAX_API_KEY", defaultModel: "MiniMax-M3" },
+  { id: "minimax-cn", envKey: "MINIMAX_CN_API_KEY", defaultModel: "abab6.5s-chat" },
+  { id: "openai", envKey: "OPENAI_API_KEY", defaultModel: "gpt-4o-mini" },
+  { id: "openai-codex", envKey: "OPENAI_API_KEY", defaultModel: "codex-mini-latest" },
+  { id: "anthropic", envKey: "ANTHROPIC_API_KEY", defaultModel: "claude-sonnet-4-20250514" },
+  { id: "google", envKey: "GEMINI_API_KEY", defaultModel: "gemini-2.0-flash" },
+  { id: "google-vertex", envKey: "GOOGLE_CLOUD_API_KEY", defaultModel: "gemini-2.0-flash" },
+  { id: "amazon-bedrock", envKey: "AWS_SECRET_ACCESS_KEY", defaultModel: "anthropic.claude-3-sonnet" },
+  { id: "azure-openai-responses", envKey: "AZURE_OPENAI_API_KEY", defaultModel: "gpt-4o" },
+  { id: "deepseek", envKey: "DEEPSEEK_API_KEY", defaultModel: "deepseek-chat" },
+  { id: "groq", envKey: "GROQ_API_KEY", defaultModel: "llama-3.3-70b-versatile" },
+  { id: "mistral", envKey: "MISTRAL_API_KEY", defaultModel: "mistral-large-latest" },
+  { id: "xai", envKey: "XAI_API_KEY", defaultModel: "grok-3" },
+  { id: "together", envKey: "TOGETHER_API_KEY", defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
+  { id: "fireworks", envKey: "FIREWORKS_API_KEY", defaultModel: "accounts/fireworks/models/llama-v3p1-70b-instruct" },
+  { id: "moonshotai", envKey: "MOONSHOT_API_KEY", defaultModel: "moonshot-v1-auto" },
+  { id: "moonshotai-cn", envKey: "MOONSHOT_CN_API_KEY", defaultModel: "moonshot-v1-auto" },
+  { id: "openrouter", envKey: "OPENROUTER_API_KEY", defaultModel: "anthropic/claude-3.5-sonnet" },
+  { id: "openrouter-images", envKey: "OPENROUTER_API_KEY", defaultModel: "openai/dall-e-3" },
+  { id: "cerebras", envKey: "CEREBRAS_API_KEY", defaultModel: "llama3.1-70b" },
+  { id: "github-copilot", envKey: "COPILOT_GITHUB_TOKEN", defaultModel: "gpt-4o" },
+  { id: "huggingface", envKey: "HF_TOKEN", defaultModel: "meta-llama/Llama-3.1-70B-Instruct" },
+  { id: "nvidia", envKey: "NVIDIA_API_KEY", defaultModel: "meta/llama-3.1-70b-instruct" },
+  { id: "kimi-coding", envKey: "KIMI_API_KEY", defaultModel: "moonshot-v1-auto" },
+  { id: "opencode", envKey: "OPENCODE_API_KEY", defaultModel: "gpt-4o" },
+  { id: "opencode-go", envKey: "OPENCODE_API_KEY", defaultModel: "gpt-4o" },
+  { id: "cloudflare-workers-ai", envKey: "CF_API_TOKEN", defaultModel: "@cf/meta/llama-3.1-70b-instruct" },
+  { id: "cloudflare-ai-gateway", envKey: "CF_API_KEY", defaultModel: "gpt-4o-mini" },
+  { id: "cloudflare-auth", envKey: "CF_API_TOKEN", defaultModel: "gpt-4o-mini" },
+  { id: "vercel-ai-gateway", envKey: "AI_GATEWAY_API_KEY", defaultModel: "gpt-4o-mini" },
+  { id: "zai", envKey: "ZAI_API_KEY", defaultModel: "glm-4" },
+  { id: "zai-coding-cn", envKey: "ZAI_API_KEY", defaultModel: "glm-4" },
+  { id: "xiaomi", envKey: "XIAOMI_API_KEY", defaultModel: "mimo-7b" },
+  { id: "xiaomi-token-plan-cn", envKey: "XIAOMI_API_KEY", defaultModel: "mimo-7b" },
+  { id: "xiaomi-token-plan-ams", envKey: "XIAOMI_API_KEY", defaultModel: "mimo-7b" },
+  { id: "xiaomi-token-plan-sgp", envKey: "XIAOMI_API_KEY", defaultModel: "mimo-7b" },
+  { id: "ant-ling", envKey: "ANT_LING_API_KEY", defaultModel: "ant-ling-1" },
+];
+
+/** Detect ALL providers from environment (shows configured + unconfigured). */
+function detectProviderSummary(): Array<{ id: string; envKey: string; model: string; configured: boolean }> {
+  return PROVIDER_REGISTRY.map((e) => ({
+    id: e.id,
+    envKey: e.envKey,
+    model: process.env[`${e.envKey.replace(/_API_KEY$|_TOKEN$|_KEY$/, "_MODEL")}`] ?? e.defaultModel,
+    configured: !!process.env[e.envKey],
+  }));
 }
