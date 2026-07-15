@@ -83,3 +83,9 @@ export { recall, recallFacts } from "./sqlite-recall.js";
 export type { RecallOptions, MemoryHit } from "./sqlite-recall.js";
 export { weibullBoost, weibullDecayFactor, WEIBULL_PARAMS } from "./weibull.js";
 export type { MemoryType, WeibullParams } from "./weibull.js";
+
+// ── Phase 4: Consolidation + lifecycle ──
+export {
+  consolidate, degradeOldMemories, purgeWeakMemories, lifecycleTick,
+} from "./sqlite-consolidate.js";
+export type { ConsolidateResult, DegradeResult, PurgeResult } from "./sqlite-consolidate.js";

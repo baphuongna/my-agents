@@ -291,4 +291,75 @@ assert(limited.length <= 1, `topK=1 returns ≤1 hit (${limited.length})`);
 
 closeDB(db5);
 console.log(`\n═══ Phase 3 SUMMARY: pass=${pass-39}, fail=${fail} ═══`);
+// (exit moved to end)
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log("\n═══ Phase 4: Consolidation + Lifecycle ═══\n");
+const { consolidate, degradeOldMemories, purgeWeakMemories, lifecycleTick } =
+  await import("../packages/memory/dist/index.js");
+
+const db6 = openDB(":memory:");
+initSchema(db6);
+
+// Seed: 3 similar facts with old timestamps
+const oldTs = "2000-01-01T00:00:00Z";
+for (let i = 0; i < 3; i++) {
+  const id = storeWorking(db6, { content: `Alice is a senior engineer ${i}`, source: "test", memoryType: "fact" });
+  db6.prepare("UPDATE working_memory SET timestamp = ? WHERE id = ?").run(oldTs, id);
+}
+
+// 1. Consolidate groups similar items
+console.log("Test: consolidate creates episodic memory from working memories");
+const result1 = consolidate(db6, "default");
+assert(result1.consolidated >= 2, `${result1.consolidated} items consolidated`);
+assert(result1.episodicId !== null, `episodic id: ${result1.episodicId?.slice(0,8)}`);
+assert(result1.summaryPreview.length > 0, "summary preview generated");
+
+// 2. Consolidated items marked
+console.log("\nTest: consolidated items have consolidated_at set");
+const remaining = db6.prepare("SELECT COUNT(*) as n FROM working_memory WHERE consolidated_at IS NULL AND timestamp = ?").get(oldTs);
+assert(remaining.n === 0, `${remaining.n} unconsolidated old items remain`);
+
+// 3. Episodic memory has FTS5 entry
+console.log("\nTest: episodic memory is FTS5 searchable");
+const epFts = db6.prepare("SELECT rowid FROM fts_episodes WHERE fts_episodes MATCH ? ORDER BY rank").get("Alice");
+assert(epFts !== undefined, "episodic FTS5 entry exists");
+
+// 4. Consolidate with too few items
+console.log("\nTest: consolidate returns empty when too few items");
+const result2 = consolidate(db6, "default");
+assert(result2.consolidated === 0, "no consolidation when < MIN_BATCH_SIZE");
+
+// 5. Tier degradation
+console.log("\nTest: tier degradation compresses old episodic memories");
+// Create a tier 1 episodic with old timestamp + long content
+storeEpisodic(db6, { content: "x".repeat(1000), importance: 0.5, tier: 1 });
+const epId = db6.prepare("SELECT id FROM episodic_memory WHERE tier = 1 ORDER BY rowid DESC LIMIT 1").get();
+db6.prepare("UPDATE episodic_memory SET timestamp = ? WHERE id = ?").run("2000-01-01T00:00:00Z", epId.id);
+const degradeResult = degradeOldMemories(db6);
+assert(degradeResult.degraded >= 1, `${degradeResult.degraded} memories degraded`);
+const tierCheck = db6.prepare("SELECT tier, length(content) as len FROM episodic_memory WHERE id = ?").get(epId.id);
+assert(tierCheck.tier >= 2, `tier degraded to ${tierCheck.tier}`);
+assert(tierCheck.len <= 800, `content compressed to ${tierCheck.len} chars`);
+
+// 6. Weibull purge
+console.log("\nTest: Weibull purge removes very old weak memories");
+// Add an old 'event' type memory (fast decay)
+const eventId = storeWorking(db6, { content: "old event", source: "test", memoryType: "event" });
+db6.prepare("UPDATE working_memory SET timestamp = ? WHERE id = ?").run("2000-01-01T00:00:00Z", eventId);
+const purgeResult = purgeWeakMemories(db6);
+assert(purgeResult.purged >= 1, `${purgeResult.purged} memories purged`);
+const stillExists = db6.prepare("SELECT id FROM working_memory WHERE id = ?").get(eventId);
+assert(stillExists === undefined, "old event memory was purged");
+
+// 7. lifecycleTick runs all phases
+console.log("\nTest: lifecycleTick combines all lifecycle phases");
+const tickResult = lifecycleTick(db6);
+assert(typeof tickResult.consolidated.consolidated === "number", "consolidated phase ran");
+assert(typeof tickResult.degraded.degraded === "number", "degraded phase ran");
+assert(typeof tickResult.purged.purged === "number", "purged phase ran");
+
+closeDB(db6);
+const phase4Pass = pass - 50;
+console.log(`\n═══ Phase 4 SUMMARY: pass=${phase4Pass}, fail=${fail} ═══`);
 process.exit(fail > 0 ? 1 : 0);
