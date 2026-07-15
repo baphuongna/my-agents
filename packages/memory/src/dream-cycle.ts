@@ -57,6 +57,9 @@ export interface DreamCycleOptions {
   provider?: ProviderProfile;
   /** Idle check: cycle only runs when this returns true (default: always idle). */
   isIdle?: () => boolean;
+  /** Allow private facts to be sent to the LLM provider (default: false).
+   *  Tier-3 privacy: prevents private memories from leaking to external APIs. */
+  allowPrivateInPrompt?: boolean;
 }
 
 /** Default cycle interval: 30 minutes. */
@@ -81,6 +84,7 @@ export class DreamCycle {
   private readonly provider?: ProviderProfile;
   private timer: ReturnType<typeof setInterval> | null = null;
   private isIdle: () => boolean;
+  private readonly allowPrivateInPrompt: boolean;
 
   constructor(opts: DreamCycleOptions) {
     this.brain = opts.brain;
@@ -88,6 +92,7 @@ export class DreamCycle {
     this.intervalMs = opts.intervalMs ?? DEFAULT_DREAM_INTERVAL_MS;
     this.provider = opts.provider;
     this.isIdle = opts.isIdle ?? (() => true);
+    this.allowPrivateInPrompt = opts.allowPrivateInPrompt ?? false;
   }
 
   /** Whether the periodic timer is currently armed. */
@@ -156,12 +161,19 @@ export class DreamCycle {
    * Collect unconsolidated facts from the last `intervalMs` period. Dream
    * summaries (source: "dream") are excluded so they don't feed back into
    * themselves on the next cycle.
+   * Tier-3: private facts are only sent to the provider when
+   * allowPrivateInPrompt is true (default false — trust boundary).
    */
   private collectRecentFacts(now: number = nowWallclock()): Fact[] {
     const cutoff = now - this.intervalMs;
     return this.brain
       .unconsolidatedFacts()
-      .filter((f) => f.createdAt >= cutoff && f.source !== DREAM_SOURCE);
+      .filter(
+        (f) =>
+          f.createdAt >= cutoff &&
+          f.source !== DREAM_SOURCE &&
+          (this.allowPrivateInPrompt || f.visibility !== "private"),
+      );
   }
 
   /** Ask the LLM to summarize the recent facts + extract patterns. */

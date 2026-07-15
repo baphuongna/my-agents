@@ -92,7 +92,7 @@ describe("DreamCycle — dream() with a mock provider", () => {
     });
     const { profile, ref } = mockProvider("Alice is active and met Bob.");
 
-    const dc = new DreamCycle({ brain, provider: profile, intervalMs: 60_000 });
+    const dc = new DreamCycle({ brain, provider: profile, intervalMs: 60_000, allowPrivateInPrompt: true });
     const res: DreamResult = await dc.dream();
 
     expect(ref.count).toBe(1);
@@ -144,7 +144,7 @@ describe("DreamCycle — dream() without a provider (basic consolidation)", () =
       kind: "event", entity: "Bob", content: "b1",
       visibility: "private", notability: 1, source: "s",
     });
-    const dc = new DreamCycle({ brain, intervalMs: 60_000 });
+    const dc = new DreamCycle({ brain, intervalMs: 60_000, allowPrivateInPrompt: true });
     const res = await dc.dream();
     expect(res.memoriesConsolidated).toBe(3);
     expect(res.summary).toContain("Consolidated 3 memories");

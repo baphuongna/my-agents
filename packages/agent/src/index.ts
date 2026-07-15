@@ -251,8 +251,16 @@ export function createAgent(config: AgentConfig = {}): Agent {
     // ensureDefault() in withBrain already registered stubs for these roles.
     // Replace with FileBackend (persistent) — wrap in try/catch since the
     // role may already have a stub backend.
-    try { memory.register(new FileBackend("archivist", config.memoryDir)); } catch { /* stub already registered */ }
-    try { memory.register(new FileBackend("goals", config.memoryDir)); } catch { /* stub already registered */ }
+    // Tier-3: persist 4 roles now (was only 2). working + tree added.
+    for (const role of ["archivist", "goals", "working", "tree"] as const) {
+      try { memory.register(new FileBackend(role, config.memoryDir)); } catch { /* stub already registered */ }
+    }
+  }
+  // Tier-3: wire previously-dead domains (sources + store + goals).
+  storeDomain.wireManager(memory);
+  sourcesDomain.wireSource(new MemoryContextSource(memory));
+  for (const backend of memory.backends) {
+    if (backend.role === "goals") { goalsDomain.wireStore(backend); break; }
   }
   memory.addRole(new ArchivistRole());
   const goalsRole = new GoalsRole();
