@@ -77,3 +77,9 @@ export {
   getUnconsolidated, getWorkingById, countTable,
 } from "./sqlite-store.js";
 export type { WorkingMemoryInput, EpisodicMemoryInput, FactInput, MemoryRecord } from "./sqlite-store.js";
+
+// ── Phase 3: Recall pipeline + Weibull ──
+export { recall, recallFacts } from "./sqlite-recall.js";
+export type { RecallOptions, MemoryHit } from "./sqlite-recall.js";
+export { weibullBoost, weibullDecayFactor, WEIBULL_PARAMS } from "./weibull.js";
+export type { MemoryType, WeibullParams } from "./weibull.js";

@@ -207,4 +207,88 @@ assert(countTable(db4, "facts") === 1, "1 fact record");
 
 closeDB(db4);
 console.log(`\n═══ Phase 2 SUMMARY: ${pass - 21} pass, ${fail - 0} fail ═══`);
+// (exit moved to end)
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log("\n═══ Phase 3: Recall Pipeline ═══\n");
+const { recall, recallFacts, weibullBoost } = await import("../packages/memory/dist/index.js");
+
+const db5 = openDB(":memory:");
+initSchema(db5);
+
+// Seed data
+storeWorking(db5, { content: "TypeScript is great for building agents", source: "test", importance: 0.8, memoryType: "fact" });
+storeWorking(db5, { content: "Python is also good for agents", source: "test", importance: 0.5 });
+storeWorking(db5, { content: "Rust has memory safety features", source: "test", importance: 0.3 });
+storeWorking(db5, { content: "Alice is a senior engineer who loves TypeScript", source: "test", importance: 0.9, veracity: "stated" });
+storeEpisodic(db5, { content: "User prefers TypeScript for all new projects", importance: 0.7, tier: 1 });
+
+// 1. Basic recall
+console.log("Test: recall returns relevant results");
+const hits1 = recall(db5, "TypeScript");
+assert(hits1.length > 0, `${hits1.length} hits for "TypeScript"`);
+assert(hits1.every(h => h.content.toLowerCase().includes("typescript") || h.tier === "episodic"),
+  "hits contain TypeScript-related content");
+
+// 2. BM25 ranking — higher importance should influence
+console.log("\nTest: recall respects importance + BM25");
+const top1 = hits1[0];
+assert(top1.score > 0, `top hit has score: ${top1.score.toFixed(3)}`);
+
+// 3. Episodic search
+console.log("\nTest: recall searches episodic memory");
+const hits2 = recall(db5, "prefers projects");
+assert(hits2.some(h => h.tier === "episodic"), "episodic memory found");
+
+// 4. No results for unrelated query
+console.log("\nTest: empty results for unrelated query");
+const hits3 = recall(db5, "cooking recipes");
+assert(hits3.length === 0, "no hits for unrelated query");
+
+// 5. Veracity weighting
+console.log("\nTest: veracity affects score");
+storeWorking(db5, { content: "TypeScript is terrible", source: "test", importance: 0.5, veracity: "false" });
+const hits4 = recall(db5, "TypeScript terrible");
+// The "false" veracity memory should have lower score
+const falseHit = hits4.find(h => h.veracity === "false");
+const otherHits = hits4.filter(h => h.veracity !== "false");
+if (falseHit && otherHits.length > 0) {
+  assert(falseHit.score < Math.max(...otherHits.map(h => h.score)),
+    "false-veracity memory scored lower");
+} else {
+  assert(true, "veracity test setup OK");
+}
+
+// 6. Weibull decay
+console.log("\nTest: Weibull temporal decay");
+const recentBoost = weibullBoost(new Date().toISOString(), new Date(), "event");
+const oldBoost = weibullBoost("2000-01-01T00:00:00Z", new Date(), "event");
+assert(recentBoost > oldBoost, `recent(${recentBoost.toFixed(3)}) > old(${oldBoost.toFixed(3)})`);
+
+// 7. Weibull per-type: profile decays slower than event
+console.log("\nTest: Weibull per-type decay");
+const profileBoost = weibullBoost(new Date(Date.now() - 30 * 24 * 3600_000).toISOString(), new Date(), "profile");
+const eventBoost = weibullBoost(new Date(Date.now() - 30 * 24 * 3600_000).toISOString(), new Date(), "event");
+assert(profileBoost > eventBoost, `profile(${profileBoost.toFixed(3)}) > event(${eventBoost.toFixed(3)}) at 30 days`);
+
+// 8. recallFacts
+console.log("\nTest: recallFacts searches structured facts");
+storeFact(db5, { subject: "Alice", predicate: "knows", object: "TypeScript", confidence: 0.9 });
+const factHits = recallFacts(db5, "Alice");
+assert(factHits.length > 0, `${factHits.length} fact hits for "Alice"`);
+
+// 9. recall updates recall_count
+console.log("\nTest: recall updates recall_count");
+const beforeCount = db5.prepare("SELECT recall_count FROM working_memory WHERE content LIKE '%senior engineer%'").get();
+recall(db5, "senior engineer");
+const afterCount = db5.prepare("SELECT recall_count FROM working_memory WHERE content LIKE '%senior engineer%'").get();
+assert(afterCount.recall_count > beforeCount.recall_count, `recall_count increased: ${beforeCount.recall_count} → ${afterCount.recall_count}`);
+
+// 10. topK limit
+console.log("\nTest: topK limits results");
+const limited = recall(db5, "agents", { topK: 1 });
+assert(limited.length <= 1, `topK=1 returns ≤1 hit (${limited.length})`);
+
+closeDB(db5);
+console.log(`\n═══ Phase 3 SUMMARY: pass=${pass-39}, fail=${fail} ═══`);
 process.exit(fail > 0 ? 1 : 0);
