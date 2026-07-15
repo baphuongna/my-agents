@@ -246,10 +246,38 @@ function loadSkillFromFile(filePath, source) {
         return { skill: null, diagnostics };
     }
 }
+/** Max chars of skill description shipped in the system prompt. */
+const PROMPT_DESCRIPTION_MAX_CHARS = 80;
+/**
+ * Compact a skill description for the system prompt:
+ *   - take the first sentence (split on `.` or `?` or `!` followed by whitespace/end)
+ *   - trim whitespace
+ *   - if still > PROMPT_DESCRIPTION_MAX_CHARS, hard-truncate with an ellipsis
+ *
+ * Full description is still on the Skill object; the model reads SKILL.md
+ * for the long version.
+ */
+function compactDescription(description) {
+    const trimmed = description.trim();
+    // Match first sentence boundary: . ? ! followed by whitespace or end-of-string.
+    const match = trimmed.match(/^[^.!?]+[.!?]?(?=\s|$)/);
+    const first = (match ? match[0] : trimmed).trim();
+    if (first.length <= PROMPT_DESCRIPTION_MAX_CHARS)
+        return first;
+    return first.slice(0, PROMPT_DESCRIPTION_MAX_CHARS - 1).trimEnd() + "…";
+}
 /**
  * Format skills for inclusion in a system prompt.
- * Uses XML format per Agent Skills standard.
- * See: https://agentskills.io/integrate-skills
+ *
+ * Uses a slimmed variant of the Agent Skills XML format
+ * (https://agentskills.io/integrate-skills):
+ *   - <location> is elided — the model resolves paths on first use
+ *     (convention: ~/.agents/skills/<name>/SKILL.md, or project-local skills dir)
+ *   - <description> is compacted to ≤80 chars (first sentence + ellipsis)
+ *
+ * Rationale: this block ships every turn; on a session with 40+ skills the
+ * full name+description+location trio costs ~5 KB of prefill. The model only
+ * needs enough to decide whether to read SKILL.md — the rest is wasted.
  *
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).
@@ -262,15 +290,14 @@ export function formatSkillsForPrompt(skills) {
     const lines = [
         "\n\nThe following skills provide specialized instructions for specific tasks.",
         "Use the read tool to load a skill's file when the task matches its description.",
-        "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+        "Skill files live under ~/.agents/skills/<name>/SKILL.md (or the project-local skills dir); resolve any relative paths in a skill file against that skill's directory.",
         "",
         "<available_skills>",
     ];
     for (const skill of visibleSkills) {
         lines.push("  <skill>");
         lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-        lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-        lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+        lines.push(`    <description>${escapeXml(compactDescription(skill.description))}</description>`);
         lines.push("  </skill>");
     }
     lines.push("</available_skills>");

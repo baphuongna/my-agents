@@ -47,7 +47,20 @@ export async function runPiInteractive(): Promise<void> {
   });
 
   const piArgs = filterMyaFlags(process.argv.slice(2));
-  const args = ["--model", "MiniMax-M3", ...piArgs];
+
+  // Model: allow override via --model flag or MYA_MODEL env, default MiniMax-M3
+  const modelFlag = piArgs.find((_, i, arr) => arr[i - 1] === "--model");
+  const model = modelFlag ?? process.env["MYA_MODEL"] ?? "MiniMax-M3";
+  const args = ["--model", model];
+
+  // Thinking level: pass --thinking if MYA_THINKING_LEVEL is set and user
+  // didn't explicitly pass --thinking. Levels: off|minimal|low|medium|high|xhigh|max
+  const hasThinkingFlag = piArgs.includes("--thinking");
+  if (!hasThinkingFlag && process.env["MYA_THINKING_LEVEL"]) {
+    args.push("--thinking", process.env["MYA_THINKING_LEVEL"]);
+  }
+
+  args.push(...piArgs);
   await main(args, { extensionFactories: [{ name: "mya-bridge", factory: myaBridge }] });
 }
 
