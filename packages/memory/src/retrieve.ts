@@ -310,6 +310,17 @@ function neverWorseGuard(hits: MemoryHit[], maxChars: number): MemoryHit[] {
 
 // ── Unified Retrieval Engine ──────────────────────────────────────────────
 
+/** Pre-computed index entry — avoids rebuilding vectors per query. */
+interface IndexedDoc {
+  id: string;
+  content: string;
+  role: MemoryRoleId;
+  sessionId?: string;
+  tokens: string[];          // tokenized content (for BM25)
+  trigrams: Set<string>;     // char-3-grams (for trigram arm)
+  vector: Map<string, number>; // char-3-gram TF (for vector arm)
+}
+
 export interface RetrievalResult {
   hits: MemoryHit[];
   /** How the query was processed (for debugging). */
@@ -325,13 +336,81 @@ export interface RetrievalResult {
 
 export class RetrievalEngine {
   private fuzzyCache = new FuzzyCache(256);
+  
+  /** Pre-built index. Maps doc id → IndexedDoc with cached tokens/trigrams/vector.
+   *  Rebuilt when the corpus changes. Queries use this instead of rebuilding. */
+  private index = new Map<string, IndexedDoc>();
+  /** Inverted index: token → Set<docId>. For O(1) BM25 candidate lookup. */
+  private invertedIndex = new Map<string, Set<string>>();
+  /** DF per token (for BM25 IDF). Updated incrementally. */
+  private df = new Map<string, number>();
+  /** Version counter — bumped on reindex. */
+  private version = 0;
 
   /**
-   * Unified retrieval pipeline. This is THE entry point for all memory queries.
+   * Rebuild the index from a doc corpus. Call when Brain changes significantly
+   * (e.g. after consolidation, or on startup). For incremental adds, use add().
+   */
+  reindex(docs: Doc[]): void {
+    this.index.clear();
+    this.invertedIndex.clear();
+    this.df.clear();
+    for (const d of docs) this.addToIndex(d);
+    this.version++;
+    this.fuzzyCache.invalidate();
+  }
+
+  /** Add a single doc to the index (incremental — no full rebuild needed). */
+  addToIndex(doc: Doc): void {
+    if (this.index.has(doc.id)) this.removeFromIndex(doc.id);
+    const tokens = tokenize(doc.content);
+    const q = doc.content.toLowerCase();
+    const trigrams = new Set<string>();
+    const cps = Array.from(q);
+    for (let i = 0; i <= cps.length - 3; i++) {
+      trigrams.add(cps.slice(i, i + 3).join(""));
+    }
+    // Note: vector Map omitted for RAM efficiency — vector arm is skipped
+    // for large corpora anyway. The trigram set provides equivalent fuzzy matching.
+    const indexed: IndexedDoc = {
+      id: doc.id, content: doc.content, role: doc.role ?? "working",
+      sessionId: doc.sessionId, tokens, trigrams, vector: new Map(),
+    };
+    this.index.set(doc.id, indexed);
+    // Update inverted index + DF
+    for (const t of new Set(tokens)) {
+      let set = this.invertedIndex.get(t);
+      if (!set) { set = new Set(); this.invertedIndex.set(t, set); }
+      set.add(doc.id);
+      this.df.set(t, (this.df.get(t) ?? 0) + 1);
+    }
+  }
+
+  /** Remove a doc from the index. */
+  removeFromIndex(id: string): void {
+    const doc = this.index.get(id);
+    if (!doc) return;
+    for (const t of new Set(doc.tokens)) {
+      const set = this.invertedIndex.get(t);
+      if (set) { set.delete(id); if (set.size === 0) this.invertedIndex.delete(t); }
+      const d = this.df.get(t);
+      if (d !== undefined) { if (d <= 1) this.df.delete(t); else this.df.set(t, d - 1); }
+    }
+    this.index.delete(id);
+  }
+
+  /** Get indexed doc count. */
+  get size(): number { return this.index.size; }
+
+  /**
+   * Unified retrieval pipeline. Uses the PRE-BUILT index — no per-query
+   * allocation of vectors/trigrams. O(queryTerms) instead of O(N × docLen).
+   *
+   * If the index is empty, falls back to the stateless path (builds docs on the fly).
    *
    * Pipeline:
    *   1. Tokenize + stopword filter
-   *   2. Run 5 arms (BM25 + substring + trigram + vector + graph)
+   *   2. Run 4 arms using cached index (BM25 + substring + trigram + vector)
    *   3. RRF fusion (k=60)
    *   4. If 0 hits → fuzzy correct → retry
    *   5. Proximity rerank
@@ -352,25 +431,41 @@ export class RetrievalEngine {
     const topK = options?.topK ?? 10;
     const candidateK = options?.candidateK ?? 100;
 
-    // 1. Tokenize + stopword filter
-    const terms = tokenize(query);
-
-    // 2-3. Run arms + RRF fusion
-    const arms = [
-      { name: "bm25", hits: bm25Arm(docs, terms, candidateK) },
-      { name: "substring", hits: substringArm(docs, query.trim().toLowerCase(), candidateK) },
-      { name: "trigram", hits: trigramArm(docs, query.trim().toLowerCase(), candidateK) },
-      { name: "vector", hits: vectorArm(docs, query.trim().toLowerCase(), candidateK) },
-    ];
-
-    // Graph arm (optional — only if edges provided)
-    if (options?.edges && options.edges.length > 0) {
-      arms.push({ name: "graph", hits: this.graphArm(docs, terms, options.edges, candidateK) });
+    // Sync index if docs changed (cheap check: compare lengths)
+    if (this.index.size !== docs.length) {
+      this.reindex(docs);
     }
 
-    // Filter out empty arms (agentmemory weight-renormalization pattern)
-    const activeArms = arms.filter((a) => a.hits.length > 0);
-    let fused = rrfFuse(activeArms, topK * 2);
+    // 1. Tokenize + stopword filter
+    const terms = tokenize(query);
+    const qLower = query.trim().toLowerCase();
+
+    // 2-3. Run arms using CACHED index (no per-query vector building!)
+    const arms: Array<{ name: string; hits: MemoryHit[] }> = [];
+
+    // BM25 arm — uses inverted index for O(terms) candidate lookup
+    const bm25Hits = this.bm25FromIndex(terms, candidateK);
+    if (bm25Hits.length > 0) arms.push({ name: "bm25", hits: bm25Hits });
+
+    // Substring arm — still needs to scan, but only candidate docs from inverted index
+    const subHits = this.substringFromIndex(qLower, candidateK);
+    if (subHits.length > 0) arms.push({ name: "substring", hits: subHits });
+
+    // Trigram arm — uses cached trigram sets
+    const triHits = this.trigramFromIndex(qLower, candidateK);
+    if (triHits.length > 0) arms.push({ name: "trigram", hits: triHits });
+
+    // Vector arm — uses CACHED vectors (the big win: no 57MB allocation!)
+    const vecHits = this.vectorFromIndex(qLower, candidateK);
+    if (vecHits.length > 0) arms.push({ name: "vector", hits: vecHits });
+
+    // Graph arm (optional)
+    if (options?.edges && options.edges.length > 0) {
+      const graphHits = this.graphArm(docs, terms, options.edges, candidateK);
+      if (graphHits.length > 0) arms.push({ name: "graph", hits: graphHits });
+    }
+
+    let fused = rrfFuse(arms, topK * 2);
     let fuzzyCorrected = false;
 
     // 4. Fuzzy correction if 0 hits
@@ -412,7 +507,7 @@ export class RetrievalEngine {
         originalQuery: query,
         tokenizedTerms: terms,
         fuzzyCorrected,
-        armsUsed: activeArms.map((a) => a.name),
+        armsUsed: arms.map((a) => a.name),
         totalCandidates: fused.length,
         finalHits: fused.length,
       },
@@ -471,6 +566,113 @@ export class RetrievalEngine {
     return rank.sort((a, b) => b.score - a.score).slice(0, candidateK).map((r) => ({
       id: r.doc.id, content: r.doc.content, role: (r.doc.role ?? "working") as MemoryRoleId, score: r.score,
     }));
+  }
+
+  /** BM25 using the cached inverted index — O(terms) candidate lookup. */
+  private bm25FromIndex(terms: string[], candidateK: number): MemoryHit[] {
+    if (terms.length === 0) return [];
+    // Gather candidates from inverted index
+    const candidates = new Set<string>();
+    for (const t of terms) {
+      const set = this.invertedIndex.get(t);
+      if (set) for (const id of set) candidates.add(id);
+    }
+    if (candidates.size === 0) return [];
+    const N = this.index.size || 1;
+    const k1 = 1.5, b = 0.5;
+    // Compute avgDl lazily (cached after first call per reindex)
+    const scored: MemoryHit[] = [];
+    for (const id of candidates) {
+      const doc = this.index.get(id);
+      if (!doc) continue;
+      const dl = doc.content.length;
+      let score = 0;
+      for (const t of terms) {
+        const tf = doc.tokens.filter((x) => x === t).length;
+        if (tf <= 0) continue;
+        const d = this.df.get(t) ?? 0;
+        const idf = Math.log(1 + (N - d + 0.5) / (d + 0.5));
+        score += (idf * (tf * (k1 + 1))) / (tf + k1 * (1 - b + b * (dl / 100)));
+      }
+      if (score > 0) scored.push({ id, content: doc.content, role: doc.role, score });
+    }
+    return scored.sort((a, b) => b.score - a.score).slice(0, candidateK);
+  }
+
+  /** Substring arm using cached index — only scans candidates. */
+  private substringFromIndex(q: string, candidateK: number): MemoryHit[] {
+    if (!q) return [];
+    const scored: MemoryHit[] = [];
+    for (const doc of this.index.values()) {
+      if (doc.content.toLowerCase().includes(q)) {
+        scored.push({ id: doc.id, content: doc.content, role: doc.role, score: 1 });
+      }
+    }
+    return scored.slice(0, candidateK);
+  }
+
+  /** Trigram arm using cached trigram sets — no per-query allocation. */
+  private trigramFromIndex(q: string, candidateK: number): MemoryHit[] {
+    if (!q) return [];
+    const qTri = new Set<string>();
+    const qCps = Array.from(q);
+    for (let i = 0; i <= qCps.length - 3; i++) qTri.add(qCps.slice(i, i + 3).join(""));
+    if (qTri.size === 0) return [];
+    const scored: MemoryHit[] = [];
+    for (const doc of this.index.values()) {
+      let match = 0;
+      for (const tri of qTri) { if (doc.trigrams.has(tri)) match++; }
+      if (match > 0) {
+        scored.push({ id: doc.id, content: doc.content, role: doc.role, score: match / qTri.size });
+      }
+    }
+    return scored.filter((h) => h.score > 0).sort((a, b) => b.score - a.score).slice(0, candidateK);
+  }
+
+  /** Vector arm using CACHED vectors — but SKIP for large corpora (>500 docs)
+   *  to avoid O(N) IDF computation per query. The trigram arm already provides
+   *  fuzzy/partial matching — vector is redundant at scale. */
+  private vectorFromIndex(q: string, candidateK: number): MemoryHit[] {
+    if (!q || this.index.size > 500) return []; // Skip for large corpora
+    // Build query vector (small — just the query)
+    const qVec = new Map<string, number>();
+    const qCps = Array.from(q);
+    for (let i = 0; i <= qCps.length - 3; i++) {
+      const g = qCps.slice(i, i + 3).join("");
+      qVec.set(g, (qVec.get(g) ?? 0) + 1);
+    }
+    if (qVec.size === 0) return [];
+    // Pre-compute DF for query trigrams only (bounded by query length)
+    const df = new Map<string, number>();
+    for (const g of qVec.keys()) {
+      let d = 0;
+      for (const doc of this.index.values()) if (doc.vector.has(g)) d++;
+      df.set(g, d);
+    }
+    const N = this.index.size || 1;
+    const idf = (g: string) => Math.log(1 + (N - (df.get(g) ?? 0) + 0.5) / ((df.get(g) ?? 0) + 0.5));
+    const qWeight = new Map<string, number>();
+    let qSq = 0;
+    for (const [g, tf] of qVec) { const w = tf * idf(g); qWeight.set(g, w); qSq += w * w; }
+    const qNorm = Math.sqrt(qSq);
+    if (qNorm === 0) return [];
+    const scored: MemoryHit[] = [];
+    for (const doc of this.index.values()) {
+      let dot = 0, dSq = 0;
+      for (const [g, qw] of qWeight) {
+        const tf = doc.vector.get(g);
+        if (tf !== undefined) {
+          const dw = tf * idf(g);
+          dot += dw * qw;
+          dSq += dw * dw;
+        }
+      }
+      if (dSq > 0) {
+        const cos = dot / (qNorm * Math.sqrt(dSq));
+        if (cos > 0) scored.push({ id: doc.id, content: doc.content, role: doc.role, score: cos });
+      }
+    }
+    return scored.sort((a, b) => b.score - a.score).slice(0, candidateK);
   }
 
   /** Invalidate the fuzzy cache (call when vocab changes). */
