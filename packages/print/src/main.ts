@@ -356,6 +356,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   } catch { /* ignore */ }
 
   const wsToken = cryptoRandomToken();
+  // Persistent DreamCycle: tracks whether the periodic memory consolidation
+  // timer is armed. memoryStats() reflects its real running state instead of
+  // a hardcoded false.
+  const { DreamCycle } = await import("@my-agent/memory");
+  const dreamCycle = new DreamCycle({ brain });
+
   const gw = new Gateway({
     port,
     rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
@@ -415,12 +421,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       facts: (brain as unknown as { facts: { size: number } }).facts.size,
       takes: (brain as unknown as { takes: { size: number } }).takes.size,
       tombstones: brain.tombstoneCount,
-      dreamRunning: false,
+      dreamRunning: dreamCycle.running,
     }),
     dreamTrigger: async () => {
-      const { DreamCycle } = await import("@my-agent/memory");
-      const dc = new DreamCycle({ brain });
-      return await dc.dream();
+      return await dreamCycle.dream();
     },
     // Pi tracks its own queue depth via session.isIdle + queue internals.
     // We expose busy=1/0 as a simple proxy (since pi's queue isn't directly observable).

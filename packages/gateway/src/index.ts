@@ -531,14 +531,17 @@ export class Gateway {
       case "/tools": return send(200, this.control.listTools());
       case "/models": {
         const providers = detectProviderSummary();
-        const models = providers.map((p) => ({
-          provider: p.id,
-          id: p.model,
-          name: p.model,
-          reasoning: undefined as boolean | undefined,
-          contextWindow: undefined as number | undefined,
-          maxTokens: undefined as number | undefined,
-        }));
+        const models = providers.map((p) => {
+          const meta = MODEL_METADATA[p.id] ?? MODEL_METADATA[p.id.split("-")[0] ?? ""] ?? {};
+          return {
+            provider: p.id,
+            id: p.model,
+            name: p.model,
+            reasoning: meta.reasoning,
+            contextWindow: meta.contextWindow,
+            maxTokens: meta.maxTokens,
+          };
+        });
         return send(200, models);
       }
       case "/repos": {
@@ -1301,6 +1304,43 @@ function parseChannelWebhook(channelId: string, body: string): ChannelMessage | 
     return null;
   }
 }
+
+/** Model metadata: known context window, max tokens, reasoning capability.
+ * Values sourced from vendored/pi-ai/dist/models.generated.js. Covers all
+ * providers in PROVIDER_REGISTRY with known values. */
+const MODEL_METADATA: Record<string, { contextWindow?: number; maxTokens?: number; reasoning?: boolean }> = {
+  anthropic:         { contextWindow: 200000,  maxTokens: 128000, reasoning: true  },
+  google:            { contextWindow: 1048576, maxTokens: 8192,   reasoning: false },
+  "google-vertex":   { contextWindow: 1048576, maxTokens: 8192,   reasoning: false },
+  openai:            { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
+  "openai-codex":    { contextWindow: 128000,  maxTokens: 16384,  reasoning: true  },
+  "azure-openai-responses": { contextWindow: 128000, maxTokens: 16384, reasoning: false },
+  deepseek:          { contextWindow: 64000,   maxTokens: 8192,   reasoning: false },
+  groq:              { contextWindow: 131072,  maxTokens: 32768,  reasoning: false },
+  mistral:           { contextWindow: 128000,  maxTokens: 8192,   reasoning: false },
+  xai:               { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  together:          { contextWindow: 131072,  maxTokens: 131072, reasoning: false },
+  fireworks:         { contextWindow: 131072,  maxTokens: 131072, reasoning: false },
+  moonshotai:        { contextWindow: 131072,  maxTokens: 16384,  reasoning: false },
+  openrouter:        { contextWindow: 200000,  maxTokens: 8192,   reasoning: false },
+  minimax:           { contextWindow: 1000000, maxTokens: 128000, reasoning: true  },
+  "minimax-cn":      { contextWindow: 24576,  maxTokens: 24576,  reasoning: false },
+  cerebras:          { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  nvidia:            { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  huggingface:       { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  "github-copilot":  { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
+  "cloudflare-workers-ai": { contextWindow: 131072, maxTokens: 8192, reasoning: false },
+  "cloudflare-ai-gateway": { contextWindow: 128000, maxTokens: 16384, reasoning: false },
+  zai:               { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  "zai-coding-cn":   { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  "ant-ling":        { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  xiaomi:            { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
+  "vercel-ai-gateway": { contextWindow: 128000, maxTokens: 16384, reasoning: false },
+  "kimi-coding":      { contextWindow: 131072, maxTokens: 8192,   reasoning: false },
+  opencode:          { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
+  "opencode-go":     { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
+  "amazon-bedrock":  { contextWindow: 200000,  maxTokens: 8192,   reasoning: false },
+};
 
 /** Full provider registry: ALL 37 pi-ai providers with env var mapping. */
 const PROVIDER_REGISTRY: Array<{ id: string; envKey: string; defaultModel: string }> = [

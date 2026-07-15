@@ -218,8 +218,10 @@ export function createAgent(config: AgentConfig = {}): Agent {
       );
     }
     // ── Auto-detect pi-ai providers from env vars ──
+    // Skip providers already explicitly registered (e.g. minimax, openai above).
+    const existingIds = new Set(providers.all().map((p) => p.id));
     for (const bridge of autoDetectPiAiProviders(tryResolve)) {
-      providers.register(bridge);
+      if (!existingIds.has(bridge.id)) providers.register(bridge);
     }
     // Always register a mock fallback so the agent runs without a key.
     providers.register(textMock("(no provider configured — mock echo)", "mock-fallback"));
@@ -754,18 +756,56 @@ export { AgentPool, type AgentPoolOptions, type AgentSessionEntry, type AgentSes
 
 // ── pi-ai auto-detection ──
 
-/** Known pi-ai provider configs: env var → provider module + default model. */
-const PI_AI_PROVIDERS: Array<{ envKey: string; providerId: string; defaultModel: string }> = [
-  { envKey: "ANTHROPIC_API_KEY", providerId: "anthropic", defaultModel: "claude-sonnet-4-20250514" },
-  { envKey: "GOOGLE_API_KEY", providerId: "google", defaultModel: "gemini-2.0-flash" },
-  { envKey: "DEEPSEEK_API_KEY", providerId: "deepseek", defaultModel: "deepseek-chat" },
-  { envKey: "GROQ_API_KEY", providerId: "groq", defaultModel: "llama-3.3-70b-versatile" },
-  { envKey: "MISTRAL_API_KEY", providerId: "mistral", defaultModel: "mistral-large-latest" },
-  { envKey: "XAI_API_KEY", providerId: "xai", defaultModel: "grok-3" },
-  { envKey: "TOGETHER_API_KEY", providerId: "together", defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
-  { envKey: "FIREWORKS_API_KEY", providerId: "fireworks", defaultModel: "accounts/fireworks/models/llama-v3p1-70b-instruct" },
-  { envKey: "MOONSHOT_API_KEY", providerId: "moonshotai", defaultModel: "moonshot-v1-auto" },
-  { envKey: "OPENROUTER_API_KEY", providerId: "openrouter", defaultModel: "anthropic/claude-3.5-sonnet" },
+/** Known pi-ai provider configs: env var → provider module + default model + API type.
+ * API types (forwarded to pi-ai's streamSimple model.api):
+ *   anthropic-messages, openai-completions, openai-responses, azure-openai-responses,
+ *   openai-codex-responses, google-generative-ai, google-vertex, mistral-conversations,
+ *   bedrock-converse-stream.
+ * Multi-API providers pick the most common default.
+ * Source: vendored/pi-ai/dist/providers/*.js + env-api-keys.js (35 text providers). */
+export const PI_AI_PROVIDERS: Array<{ envKey: string; providerId: string; defaultModel: string; defaultApi: string }> = [
+  // ── anthropic-messages API ──
+  { envKey: "ANTHROPIC_API_KEY", providerId: "anthropic", defaultModel: "claude-sonnet-4-20250514", defaultApi: "anthropic-messages" },
+  { envKey: "MINIMAX_API_KEY", providerId: "minimax", defaultModel: "MiniMax-M3", defaultApi: "anthropic-messages" },
+  { envKey: "MINIMAX_CN_API_KEY", providerId: "minimax-cn", defaultModel: "abab6.5s-chat", defaultApi: "anthropic-messages" },
+  { envKey: "KIMI_API_KEY", providerId: "kimi-coding", defaultModel: "moonshot-v1-auto", defaultApi: "anthropic-messages" },
+  { envKey: "AI_GATEWAY_API_KEY", providerId: "vercel-ai-gateway", defaultModel: "gpt-4o-mini", defaultApi: "anthropic-messages" },
+  // ── openai-responses API ──
+  { envKey: "OPENAI_API_KEY", providerId: "openai", defaultModel: "gpt-4o-mini", defaultApi: "openai-responses" },
+  { envKey: "OPENAI_API_KEY", providerId: "openai-codex", defaultModel: "codex-mini-latest", defaultApi: "openai-codex-responses" },
+  { envKey: "AZURE_OPENAI_API_KEY", providerId: "azure-openai-responses", defaultModel: "gpt-4o", defaultApi: "azure-openai-responses" },
+  // ── openai-completions API (OpenAI-compatible) ──
+  { envKey: "DEEPSEEK_API_KEY", providerId: "deepseek", defaultModel: "deepseek-chat", defaultApi: "openai-completions" },
+  { envKey: "GROQ_API_KEY", providerId: "groq", defaultModel: "llama-3.3-70b-versatile", defaultApi: "openai-completions" },
+  { envKey: "XAI_API_KEY", providerId: "xai", defaultModel: "grok-3", defaultApi: "openai-completions" },
+  { envKey: "TOGETHER_API_KEY", providerId: "together", defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo", defaultApi: "openai-completions" },
+  { envKey: "MOONSHOT_API_KEY", providerId: "moonshotai", defaultModel: "moonshot-v1-auto", defaultApi: "openai-completions" },
+  { envKey: "MOONSHOT_API_KEY", providerId: "moonshotai-cn", defaultModel: "moonshot-v1-auto", defaultApi: "openai-completions" },
+  { envKey: "OPENROUTER_API_KEY", providerId: "openrouter", defaultModel: "anthropic/claude-3.5-sonnet", defaultApi: "openai-completions" },
+  { envKey: "CEREBRAS_API_KEY", providerId: "cerebras", defaultModel: "llama3.1-70b", defaultApi: "openai-completions" },
+  { envKey: "NVIDIA_API_KEY", providerId: "nvidia", defaultModel: "meta/llama-3.1-70b-instruct", defaultApi: "openai-completions" },
+  { envKey: "HF_TOKEN", providerId: "huggingface", defaultModel: "meta-llama/Llama-3.1-70B-Instruct", defaultApi: "openai-completions" },
+  { envKey: "CLOUDFLARE_API_KEY", providerId: "cloudflare-workers-ai", defaultModel: "@cf/meta/llama-3.1-70b-instruct", defaultApi: "openai-completions" },
+  { envKey: "ZAI_API_KEY", providerId: "zai", defaultModel: "glm-4", defaultApi: "openai-completions" },
+  { envKey: "ZAI_CODING_CN_API_KEY", providerId: "zai-coding-cn", defaultModel: "glm-4", defaultApi: "openai-completions" },
+  { envKey: "ANT_LING_API_KEY", providerId: "ant-ling", defaultModel: "ant-ling-1", defaultApi: "openai-completions" },
+  { envKey: "XIAOMI_API_KEY", providerId: "xiaomi", defaultModel: "mimo-7b", defaultApi: "openai-completions" },
+  { envKey: "XIAOMI_TOKEN_PLAN_CN_API_KEY", providerId: "xiaomi-token-plan-cn", defaultModel: "mimo-7b", defaultApi: "openai-completions" },
+  { envKey: "XIAOMI_TOKEN_PLAN_AMS_API_KEY", providerId: "xiaomi-token-plan-ams", defaultModel: "mimo-7b", defaultApi: "openai-completions" },
+  { envKey: "XIAOMI_TOKEN_PLAN_SGP_API_KEY", providerId: "xiaomi-token-plan-sgp", defaultModel: "mimo-7b", defaultApi: "openai-completions" },
+  // ── Google / Vertex (custom APIs) ──
+  { envKey: "GEMINI_API_KEY", providerId: "google", defaultModel: "gemini-2.0-flash", defaultApi: "google-generative-ai" },
+  { envKey: "GOOGLE_CLOUD_API_KEY", providerId: "google-vertex", defaultModel: "gemini-2.0-flash", defaultApi: "google-vertex" },
+  // ── Mistral (custom API) ──
+  { envKey: "MISTRAL_API_KEY", providerId: "mistral", defaultModel: "mistral-large-latest", defaultApi: "mistral-conversations" },
+  // ── Amazon Bedrock (ambient AWS auth) ──
+  { envKey: "AWS_ACCESS_KEY_ID", providerId: "amazon-bedrock", defaultModel: "anthropic.claude-3-sonnet", defaultApi: "bedrock-converse-stream" },
+  // ── Multi-API providers (pick most common default) ──
+  { envKey: "FIREWORKS_API_KEY", providerId: "fireworks", defaultModel: "accounts/fireworks/models/llama-v3p1-70b-instruct", defaultApi: "anthropic-messages" },
+  { envKey: "COPILOT_GITHUB_TOKEN", providerId: "github-copilot", defaultModel: "gpt-4o", defaultApi: "openai-completions" },
+  { envKey: "CLOUDFLARE_API_KEY", providerId: "cloudflare-ai-gateway", defaultModel: "gpt-4o-mini", defaultApi: "openai-completions" },
+  { envKey: "OPENCODE_API_KEY", providerId: "opencode", defaultModel: "gpt-4o", defaultApi: "openai-completions" },
+  { envKey: "OPENCODE_API_KEY", providerId: "opencode-go", defaultModel: "gpt-4o", defaultApi: "openai-completions" },
 ];
 
 /** Auto-detect pi-ai providers from env vars and return bridge adapters. */
@@ -785,8 +825,9 @@ function autoDetectPiAiProviders(
       const ProviderClass = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
       if (typeof ProviderClass !== "function") continue;
       const provider = new ProviderClass({ apiKey });
-      const modelId = process.env[`${cfg.envKey.replace("_API_KEY", "_MODEL")}`] ?? cfg.defaultModel;
-      const model = { id: modelId, api: "messages" };
+      const modelEnvKey = cfg.envKey.replace(/_(API_KEY|TOKEN)$/, "_MODEL");
+      const modelId = process.env[modelEnvKey] ?? cfg.defaultModel;
+      const model = { id: modelId, api: cfg.defaultApi };
       bridges.push(new PiAiProviderBridge({ provider, model, apiKey, id: cfg.providerId }));
     } catch {
       // Provider module not found or init failed — skip silently.

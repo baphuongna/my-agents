@@ -35,6 +35,8 @@ export class TelegramChannel implements Channel {
   readonly alias?: string;
   readonly label: string;
   private token: string | undefined;
+  /** Last-processed update_id + 1 for Telegram long-polling offset. */
+  private pollOffset = 0;
 
   constructor(token?: string, alias?: string) {
     this.token = token ?? (alias ? process.env[`TELEGRAM_BOT_TOKEN_${alias.toUpperCase()}`] : process.env["TELEGRAM_BOT_TOKEN"]);
@@ -73,7 +75,31 @@ export class TelegramChannel implements Channel {
   }
 
   async receive(): Promise<ChannelMessage[]> {
-    return [];
+    if (!this.token) return [];
+    try {
+      const url = `https://api.telegram.org/bot${this.token}/getUpdates` +
+        `?offset=${this.pollOffset}&timeout=30`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = (await res.json()) as { ok?: boolean; result?: Array<{ update_id: number; message?: { chat?: { id?: number }; from?: { username?: string; first_name?: string }; text?: string } }> };
+      if (!data.ok || !data.result) return [];
+      const msgs: ChannelMessage[] = [];
+      for (const upd of data.result) {
+        this.pollOffset = upd.update_id + 1;
+        const msg = upd.message;
+        if (!msg || !msg.text) continue;
+        msgs.push({
+          channelId: this.id,
+          from: msg.from?.username ?? msg.from?.first_name ?? "unknown",
+          text: msg.text,
+          ts: nowWallclock(),
+          replyTarget: String(msg.chat?.id ?? ""),
+        });
+      }
+      return msgs;
+    } catch {
+      return [];
+    }
   }
 
   health(): "Healthy" | "Degraded" | "Failed" {
@@ -127,6 +153,36 @@ export class DiscordChannel implements Channel {
     }
   }
 
+  async receive(): Promise<ChannelMessage[]> {
+    if (!this.token) return [];
+    const channelId = this.alias
+      ? process.env[`DISCORD_CHANNEL_ID_${this.alias.toUpperCase()}`]
+      : process.env["DISCORD_CHANNEL_ID"];
+    if (!channelId) return [];
+    try {
+      const res = await fetch(
+        `https://discord.com/api/v10/channels/${channelId}/messages?limit=50`,
+        { headers: { "authorization": `Bot ${this.token}` } },
+      );
+      if (!res.ok) return [];
+      const data = (await res.json()) as Array<{ id: string; content?: string; author?: { username?: string }; channel_id?: string }>;
+      const msgs: ChannelMessage[] = [];
+      for (const m of data) {
+        if (!m.content) continue;
+        msgs.push({
+          channelId: this.id,
+          from: m.author?.username ?? "unknown",
+          text: m.content,
+          ts: nowWallclock(),
+          replyTarget: m.channel_id ?? channelId,
+        });
+      }
+      return msgs;
+    } catch {
+      return [];
+    }
+  }
+
   health(): "Healthy" | "Degraded" | "Failed" {
     return this.isConfigured() ? "Healthy" : "Failed";
   }
@@ -173,6 +229,36 @@ export class SlackChannel implements Channel {
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  async receive(): Promise<ChannelMessage[]> {
+    if (!this.token) return [];
+    const channel = this.alias
+      ? process.env[`SLACK_CHANNEL_ID_${this.alias.toUpperCase()}`]
+      : process.env["SLACK_CHANNEL_ID"];
+    if (!channel) return [];
+    try {
+      const res = await fetch(
+        `https://slack.com/api/conversations.history?channel=${encodeURIComponent(channel)}&limit=50`,
+        { headers: { "authorization": `Bearer ${this.token}` } },
+      );
+      const data = (await res.json()) as { ok?: boolean; messages?: Array<{ text?: string; user?: string; ts?: string }> };
+      if (!data.ok || !data.messages) return [];
+      const msgs: ChannelMessage[] = [];
+      for (const m of data.messages) {
+        if (!m.text) continue;
+        msgs.push({
+          channelId: this.id,
+          from: m.user ?? "unknown",
+          text: m.text,
+          ts: nowWallclock(),
+          replyTarget: channel,
+        });
+      }
+      return msgs;
+    } catch {
+      return [];
     }
   }
 

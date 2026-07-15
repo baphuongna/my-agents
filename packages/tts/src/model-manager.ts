@@ -19,6 +19,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { nowWallclock } from "@my-agent/core";
@@ -43,7 +44,7 @@ export const MODEL_REGISTRY: readonly ModelRegistryEntry[] = Object.freeze([
   {
     id: "barkan-mlx",
     name: "Barkan (MLX, multilingual)",
-    repo: "https://huggingface.co/barkan-mlx/barkan-mlx/resolve/main/model.bin",
+    repo: "https://huggingface.co/barkan-mlx/barkan-mlx/resolve/main/model.bin", // TODO: confirm URL + pin sha256
     sha256: "",
     sizeBytes: 380_000_000,
     defaultVoice: "barkan-default",
@@ -51,7 +52,7 @@ export const MODEL_REGISTRY: readonly ModelRegistryEntry[] = Object.freeze([
   {
     id: "kokoro-mlx",
     name: "Kokoro (MLX, lightweight HQ)",
-    repo: "https://huggingface.co/hf-internal-testing/kokoro-mlx/resolve/main/model.bin",
+    repo: "https://huggingface.co/hf-internal-testing/kokoro-mlx/resolve/main/model.bin", // TODO: confirm URL + pin sha256
     sha256: "",
     sizeBytes: 150_000_000,
     defaultVoice: "kokoro-default",
@@ -59,7 +60,7 @@ export const MODEL_REGISTRY: readonly ModelRegistryEntry[] = Object.freeze([
   {
     id: "parler-tts-mlx",
     name: "Parler-TTS (MLX, descriptive)",
-    repo: "https://huggingface.co/parler-tts/parler-tts-mini-mlx/resolve/main/model.bin",
+    repo: "https://huggingface.co/parler-tts/parler-tts-mini-mlx/resolve/main/model.bin", // TODO: confirm URL + pin sha256
     sha256: "",
     sizeBytes: 600_000_000,
     defaultVoice: "parler-default",
@@ -128,22 +129,39 @@ export class ModelManager {
     if (this.hasModel(id)) return target;
     // Download → write to temp → verify → atomic rename → write marker.
     mkdirSync(target, { recursive: true });
-    if (!entry.sha256) {
-      console.warn(`mlx: model ${id} has no SHA-256 pin — skipping verification`);
-    }
     const bytes = await this.fetcher(entry.repo);
-    if (entry.sha256) {
-      const got = createHash("sha256").update(bytes).digest("hex");
-      if (got !== entry.sha256) {
-        throw new Error(`sha256 mismatch for ${id}: expected ${entry.sha256}, got ${got}`);
-      }
-    }
     const staging = join(target, ".staging");
     writeFileSync(staging, bytes);
+    if (!(await verifyModel(staging, entry.sha256))) {
+      throw new Error(`sha256 mismatch for ${id}: expected ${entry.sha256}`);
+    }
     renameSync(staging, join(target, "model.bin"));
     writeFileSync(modelMarker(id), JSON.stringify({ id, ts: nowWallclock() }));
     return target;
   }
+}
+
+/**
+ * Verify a model file's SHA-256 hash. When `expectedSha256` is empty, logs a
+ * warning and returns true (verification skipped). Otherwise reads the file,
+ * computes its SHA-256, and returns whether it matches the expected value.
+ *
+ * @param filePath - path to the model file on disk
+ * @param expectedSha256 - expected hex digest; empty = skip with warning
+ * @returns true if hash matches or sha256 is empty; false on mismatch
+ */
+export async function verifyModel(filePath: string, expectedSha256: string): Promise<boolean> {
+  if (!expectedSha256) {
+    console.warn("mlx: sha256 pin is empty — skipping verification");
+    return true;
+  }
+  const data = await readFile(filePath);
+  const got = createHash("sha256").update(data).digest("hex");
+  if (got !== expectedSha256) {
+    console.warn(`mlx: sha256 mismatch for ${filePath} — expected ${expectedSha256}, got ${got}`);
+    return false;
+  }
+  return true;
 }
 
 /** Default fetcher: global fetch returns ArrayBuffer; convert to Uint8Array. */

@@ -191,8 +191,8 @@ describe("Phase D — Automation (Gaps 6, 10)", () => {
 
     it("throws on unsupported platform", async () => {
       restorePlatform();
-      mockPlatform("win32");
-      await expect(captureScreen()).rejects.toThrow("screen capture not supported on win32");
+      mockPlatform("aix");
+      await expect(captureScreen()).rejects.toThrow("screen capture not supported on aix");
       restorePlatform();
     });
 

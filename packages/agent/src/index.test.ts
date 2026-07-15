@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createAgent } from "@my-agent/agent";
+import { createAgent, PI_AI_PROVIDERS } from "@my-agent/agent";
 import { MockProvider } from "@my-agent/ai";
 import type { StreamEvent } from "@my-agent/core";
 
@@ -49,5 +49,36 @@ describe("Phase 13: createAgent integration — Brain + ragfs + memory wiring", 
     const agent = createAgent({ providers: [mock()] });
     expect(agent.memory.backends.length).toBeGreaterThanOrEqual(6);
     expect(agent.memory.roles.length).toBe(2);
+  });
+});
+
+describe("Phase 1: pi-ai provider wiring", () => {
+  it("PI_AI_PROVIDERS covers all 35 text providers", () => {
+    expect(PI_AI_PROVIDERS.length).toBe(35);
+  });
+
+  it("every provider has a correct (non-hardcoded-messages) defaultApi", () => {
+    // Only anthropic-family providers use anthropic-messages.
+    const anthropicFamily = new Set(["anthropic", "minimax", "minimax-cn", "kimi-coding", "vercel-ai-gateway", "fireworks"]);
+    for (const p of PI_AI_PROVIDERS) {
+      if (anthropicFamily.has(p.providerId)) {
+        expect(p.defaultApi).toBe("anthropic-messages");
+      } else {
+        expect(p.defaultApi).not.toBe("messages");
+        expect(p.defaultApi.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("uses pi-ai canonical env keys (GEMINI_API_KEY not GOOGLE_API_KEY)", () => {
+    const google = PI_AI_PROVIDERS.find((p) => p.providerId === "google");
+    expect(google).toBeDefined();
+    expect(google!.envKey).toBe("GEMINI_API_KEY");
+  });
+
+  it("openai provider uses openai-responses API", () => {
+    const openai = PI_AI_PROVIDERS.find((p) => p.providerId === "openai");
+    expect(openai).toBeDefined();
+    expect(openai!.defaultApi).toBe("openai-responses");
   });
 });

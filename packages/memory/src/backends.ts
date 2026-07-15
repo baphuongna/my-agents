@@ -31,6 +31,77 @@ export interface MemoryBackend {
   appendTreeLeaf?(path: string, md: string): Promise<WriteResult>;
 }
 
+// ─── BM25 scoring (pure TS, no external deps) ────────────────────────────────
+
+/** Tokenize text into lowercase word tokens. */
+function tokenize(text: string): string[] {
+  return text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+}
+
+/** BM25 corpus statistics (computed once per read() call from all matching docs). */
+export interface BM25Corpus {
+  docCount: number;
+  avgDocLength: number;
+  /** term → number of documents containing it (document frequency). */
+  docFreq: Map<string, number>;
+}
+
+/** Build BM25 corpus stats from an array of pre-tokenized documents. */
+function buildCorpus(docs: string[][]): BM25Corpus {
+  const docFreq = new Map<string, number>();
+  let totalLen = 0;
+  for (const tokens of docs) {
+    totalLen += tokens.length;
+    const seen = new Set(tokens);
+    for (const t of seen) docFreq.set(t, (docFreq.get(t) ?? 0) + 1);
+  }
+  return {
+    docCount: docs.length,
+    avgDocLength: docs.length > 0 ? totalLen / docs.length : 0,
+    docFreq,
+  };
+}
+
+/**
+ * Compute BM25 score for a query-document pair.
+ * Pure function, no external deps. k1=1.5, b=0.75 (standard Okapi defaults).
+ *
+ * When `corpus` is omitted, treats the document as a 1-doc corpus (useful for
+ * testing / single-doc scoring). For proper ranking across many docs, pass a
+ * pre-computed BM25Corpus from `buildCorpus`.
+ */
+export function bm25Score(
+  query: string,
+  document: string,
+  corpus?: BM25Corpus,
+  k1 = 1.5,
+  b = 0.75,
+): number {
+  const queryTokens = tokenize(query);
+  const docTokens = tokenize(document);
+  if (queryTokens.length === 0 || docTokens.length === 0) return 0;
+
+  const docLen = docTokens.length;
+  const N = corpus?.docCount ?? 1;
+  const avgdl = corpus?.avgDocLength ?? docLen;
+
+  // Term frequency in the document.
+  const docTf = new Map<string, number>();
+  for (const t of docTokens) docTf.set(t, (docTf.get(t) ?? 0) + 1);
+
+  let score = 0;
+  for (const qt of queryTokens) {
+    const f = docTf.get(qt);
+    if (!f) continue;
+    const df = corpus?.docFreq.get(qt) ?? 1;
+    // Okapi BM25 IDF (always positive with the +1 smoothing).
+    const idf = Math.log(1 + (N - df + 0.5) / (df + 0.5));
+    const denom = f + k1 * (1 - b + (b * docLen) / avgdl);
+    score += (idf * (f * (k1 + 1))) / denom;
+  }
+  return score;
+}
+
 // ─── InMemoryBackend (default; BestEffort; lost on restart) ──────────────────
 export class InMemoryBackend implements MemoryBackend {
   readonly durability: Durability = "BestEffort";
@@ -55,16 +126,20 @@ export class InMemoryBackend implements MemoryBackend {
   async read(query: MemoryQuery): Promise<MemoryHit[]> {
     const q = query.text.toLowerCase();
     const topK = query.topK ?? 10;
-    return this.entries
+    const filtered = this.entries
       .filter((e) => e.role === (query.role ?? this.role))
-      .filter((e) => !q || e.content.toLowerCase().includes(q))
-      .slice(0, topK)
+      .filter((e) => !q || e.content.toLowerCase().includes(q));
+    // Build corpus stats for BM25 ranking.
+    const corpus = buildCorpus(filtered.map((e) => tokenize(e.content)));
+    return filtered
       .map((e) => ({
         id: (e as MemoryEntry & { id?: string }).id ?? `mem-${this.role}-?`,
         role: e.role,
         content: e.content,
-        score: 1, // BM25/vector scoring lands Tier 2
-      }));
+        score: bm25Score(query.text, e.content, corpus),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
   }
 
   /** Test/inspection helper. */
@@ -112,15 +187,26 @@ export class FileBackend implements MemoryBackend {
     const content = await this.safeRead();
     const q = query.text.toLowerCase();
     const topK = query.topK ?? 10;
-    const hits: MemoryHit[] = [];
+    // Scan ALL matching lines, score with BM25, then take top-K by score.
     const lines = content.split("\n");
-    for (let i = 0; i < lines.length && hits.length < topK; i++) {
+    const candidates: Array<{ id: string; content: string }> = [];
+    for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
       if (line.startsWith("- ") && (!q || line.toLowerCase().includes(q))) {
-        hits.push({ id: `file-${this.role}-${i}`, role: this.role, content: line.slice(2), score: 1 });
+        candidates.push({ id: `file-${this.role}-${i}`, content: line.slice(2) });
       }
     }
-    return hits;
+    // Build corpus stats from all matching candidates.
+    const corpus = buildCorpus(candidates.map((c) => tokenize(c.content)));
+    return candidates
+      .map((c) => ({
+        id: c.id,
+        role: this.role,
+        content: c.content,
+        score: bm25Score(query.text, c.content, corpus),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
   }
 
   private async safeRead(): Promise<string> {

@@ -16,9 +16,10 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { MlxTtsBackend, FRAME_BYTES_8KHZ } from "./mlx.js";
-import { ModelManager, modelPath, modelMarker } from "./model-manager.js";
+import { createHash } from "node:crypto";
+import { ModelManager, modelPath, modelMarker, verifyModel } from "./model-manager.js";
 import { registerMlxBackend, speakMlx, ensureMlxBackendWired, __resetMlxBackendForTests } from "./index.js";
 
 let scratchDir: string | undefined;
@@ -182,5 +183,26 @@ describe("ModelManager — on-disk presence", () => {
   it("ensureModel() throws for unknown model id", async () => {
     const manager = new ModelManager({ fetcher: async () => new Uint8Array() });
     await expect(manager.ensureModel("nope-mlx")).rejects.toThrow(/unknown MLX model/);
+  });
+});
+
+describe("verifyModel — standalone SHA-256 verification", () => {
+  it("returns true and warns when sha256 is empty (skip)", async () => {
+    const file = join(scratchDir!, "test-model.bin");
+    writeFileSync(file, Buffer.from([1, 2, 3]));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await verifyModel(file, "");
+    expect(result).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("empty"));
+    warnSpy.mockRestore();
+  });
+
+  it("returns true for correct hash, false for wrong hash", async () => {
+    const content = Buffer.from([0xde, 0xad, 0xbe, 0xef]);
+    const file = join(scratchDir!, "test-model.bin");
+    writeFileSync(file, content);
+    const correctHash = createHash("sha256").update(content).digest("hex");
+    expect(await verifyModel(file, correctHash)).toBe(true);
+    expect(await verifyModel(file, "0".repeat(64))).toBe(false);
   });
 });

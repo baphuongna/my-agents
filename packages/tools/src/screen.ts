@@ -3,7 +3,7 @@
  * and text-based UI element location.
  *
  * Uses tesseract.js for OCR (pure JS, no native deps). OS screenshot via
- * screencapture (macOS) / scrot (Linux). Windows not supported.
+ * screencapture (macOS) / scrot (Linux) / PowerShell (Windows).
  */
 import { spawn } from "node:child_process";
 import { readFile, writeFile, unlink, mkdtemp } from "node:fs/promises";
@@ -82,6 +82,31 @@ export async function captureScreen(opts?: { ocr?: boolean }): Promise<ScreenCap
         const m = /(\d+)\s+(\d+)/.exec(idOut);
         if (m) { width = Number(m[1]); height = Number(m[2]); }
       } catch { /* identify not available — leave dims as 0 */ }
+    } else if (platform === "win32") {
+      // Windows: PowerShell + System.Windows.Forms + System.Drawing
+      const escapedPath = tmpFile.replace(/'/g, "''");
+      const psScript = [
+        "Add-Type -AssemblyName System.Windows.Forms",
+        "Add-Type -AssemblyName System.Drawing",
+        "$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds",
+        "$bmp = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)",
+        "$g = [System.Drawing.Graphics]::FromImage($bmp)",
+        "$g.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)",
+        `$bmp.Save('${escapedPath}')`,
+        "$g.Dispose(); $bmp.Dispose()",
+        'Write-Output "$($screen.Width) $($screen.Height)"',
+      ].join("\n");
+      const dims = await new Promise<string>((resolve, reject) => {
+        const proc = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Command", psScript]);
+        let out = "";
+        let stderrOut = "";
+        proc.stdout.on("data", (d: Buffer) => (out += d.toString()));
+        proc.stderr.on("data", (d: Buffer) => (stderrOut += d.toString()));
+        proc.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`powershell exited ${code}: ${stderrOut}`))));
+        proc.on("error", reject);
+      });
+      const m = /(\d+)\s+(\d+)/.exec(dims.trim());
+      if (m) { width = Number(m[1]); height = Number(m[2]); }
     } else {
       throw new Error(`screen capture not supported on ${platform}`);
     }

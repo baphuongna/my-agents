@@ -24,6 +24,9 @@ export interface CronJob {
   enabled: boolean;
   /** TTL lease in ms; a claimed job auto-releases after this if the worker dies. */
   leaseMs: number;
+  /** Optional IANA timezone for schedule evaluation (e.g. "America/New_York").
+   * Falls back to process.env.MYA_TZ, then system local time. */
+  timezone?: string;
 }
 
 export interface RunRecord {
@@ -132,7 +135,7 @@ export class CronScheduler {
         if (now >= job.schedule && !succeeded) out.push(job);
       }
       else if (job.trigger === "cron" && typeof job.schedule === "string") {
-        if (matchesCronExpr(job.schedule, new Date(now))) out.push(job);
+        if (matchesCronExpr(job.schedule, new Date(now), job.timezone)) out.push(job);
       }
     }
     return out;
@@ -201,8 +204,65 @@ function range(lo: number, hi: number): number[] {
   return r;
 }
 
-/** Check if a 5-field cron expression matches the given date. */
-export function matchesCronExpr(expr: string, date: Date): boolean {
+/**
+ * Extract cron-relevant date parts (minute, hour, day-of-month, month,
+ * day-of-week) from a Date in local time or a specific timezone.
+ *
+ * By default, uses system local time (getHours, getMinutes, etc.). When a
+ * `timezone` is passed or `MYA_TZ` is set, parts are resolved for that
+ * timezone via `Intl.DateTimeFormat`.
+ */
+function getCronParts(date: Date, timezone?: string): {
+  minute: number; hour: number; dom: number; month: number; dow: number;
+} {
+  const tz = timezone ?? process.env["MYA_TZ"];
+  if (!tz) {
+    return {
+      minute: date.getMinutes(),
+      hour: date.getHours(),
+      dom: date.getDate(),
+      month: date.getMonth() + 1,
+      dow: date.getDay(),
+    };
+  }
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    minute: "numeric",
+    hour: "numeric",
+    day: "numeric",
+    month: "numeric",
+    weekday: "short",
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  const dowNames: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+  return {
+    minute: Number(get("minute")),
+    hour: Number(get("hour")) % 24, // guard: some engines emit 24 for midnight
+    dom: Number(get("day")),
+    month: Number(get("month")),
+    dow: dowNames[get("weekday")] ?? date.getDay(),
+  };
+}
+
+/**
+ * Check if a 5-field cron expression matches the given date.
+ *
+ * **Timezone behavior:** By default, matching uses system local time
+ * (getHours/getMinutes/etc.). Pass an IANA timezone name (e.g.
+ * `"America/New_York"`) as the third argument to evaluate in a specific
+ * zone. If `MYA_TZ` is set in the environment, it serves as the default
+ * timezone when no explicit argument is provided.
+ *
+ * @param expr - 5-field cron expression (min hour dom month dow)
+ * @param date - the date to evaluate
+ * @param timezone - optional IANA timezone (e.g. "UTC", "America/New_York")
+ */
+export function matchesCronExpr(expr: string, date: Date, timezone?: string): boolean {
   const fields = expr.trim().split(/\s+/);
   if (fields.length !== 5) return false;
   const [minF, hourF, domF, monthF, dowF] = fields;
@@ -213,11 +273,13 @@ export function matchesCronExpr(expr: string, date: Date): boolean {
   const months = parseField(monthF!, 1, 12, MONTH_NAMES);
   const dows = parseField(dowF!, 0, 7, DOW_NAMES).map((d) => d % 7); // 7→0 (Sunday)
 
+  const parts = getCronParts(date, timezone);
+
   return (
-    minutes.includes(date.getUTCMinutes()) &&
-    hours.includes(date.getUTCHours()) &&
-    doms.includes(date.getUTCDate()) &&
-    months.includes(date.getUTCMonth() + 1) &&
-    dows.includes(date.getUTCDay())
+    minutes.includes(parts.minute) &&
+    hours.includes(parts.hour) &&
+    doms.includes(parts.dom) &&
+    months.includes(parts.month) &&
+    dows.includes(parts.dow)
   );
 }
