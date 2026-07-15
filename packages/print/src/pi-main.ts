@@ -35,6 +35,7 @@ export async function runPiInteractive(): Promise<void> {
     skillStore: shared.skillStore,
     cron: shared.cron,
     brain: shared.brain,
+    memory: shared.memory,
     wallet: shared.wallet,
     acp: shared.acp,
     sync: shared.sync,

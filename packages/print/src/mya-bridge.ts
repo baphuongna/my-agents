@@ -58,7 +58,7 @@ import type { SecretStore } from "@my-agent/secrets";
 import type { HookRegistry, McpManager, McpServerConfig, ChannelRegistry } from "@my-agent/gateway";
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
-import type { Brain } from "@my-agent/memory";
+import type { Brain, MemoryFacade } from "@my-agent/memory";
 import type { Wallet } from "@my-agent/x402";
 import type { AcpBridge } from "@my-agent/acp";
 import type { SyncServer } from "@my-agent/sync";
@@ -73,6 +73,7 @@ export interface MyaBridgeOptions {
   skillStore?: SkillStore;
   cron?: CronScheduler;
   brain?: Brain;
+  memory?: MemoryFacade;
   wallet?: Wallet;
   dapConnect?: { connect: { command: string; args?: string[] } };
   acp?: AcpBridge;
@@ -213,23 +214,36 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       const e = event as { systemPrompt?: string; prompt?: string };
       const parts: string[] = [];
 
-      // Inject brain facts (memory recall)
-      if (opts.brain && e.prompt) {
+      // Inject brain facts (memory recall) — uses RRF 4-arm retrieval when
+      // MemoryManager is wired; falls back to raw brain facts otherwise.
+      if (e.prompt) {
         try {
-          const brain = opts.brain;
-          const facts = brain.unconsolidatedFacts().slice(0, 10);
-          if (facts.length > 0) {
-            const factLines = facts
-              .map((f) => `- [${f.kind}] ${f.content.slice(0, 200)}`)
-              .join("\n");
-            parts.push(`\n[mya memory] Relevant facts from previous turns:\n${factLines}`);
+          let memoryParts: string[] = [];
+          if (opts.memory) {
+            // Use 4-arm RRF retrieval (BM25 + substring + vector + graph)
+            const domainResults = opts.memory.recall(e.prompt, { topK: 10 });
+            for (const slice of domainResults) {
+              if (slice.hits.length > 0) {
+                const hitLines = slice.hits
+                  .map((h) => `- ${h.content.slice(0, 200)}`)
+                  .join("\n");
+                memoryParts.push(`[${slice.domain}]\n${hitLines}`);
+              }
+            }
+          } else if (opts.brain) {
+            // Fallback: raw brain facts (no ranking)
+            const brain = opts.brain;
+            const facts = brain.unconsolidatedFacts().slice(0, 10);
+            if (facts.length > 0) {
+              memoryParts.push(`[facts]\n${facts.map((f) => `- [${f.kind}] ${f.content.slice(0, 200)}`).join("\n")}`);
+            }
+            const takes = brain.takes;
+            if (takes.length > 0) {
+              memoryParts.push(`[takes]\n${takes.slice(0, 5).map((t) => `- ${t.text.slice(0, 200)}`).join("\n")}`);
+            }
           }
-          const takes = brain.takes;
-          if (takes.length > 0) {
-            const takeLines = takes.slice(0, 5)
-              .map((t) => `- ${t.text.slice(0, 200)}`)
-              .join("\n");
-            parts.push(`\n[mya memory] Consolidated knowledge:\n${takeLines}`);
+          if (memoryParts.length > 0) {
+            parts.push(`\n[mya memory] Relevant knowledge from previous turns:\n${memoryParts.join("\n\n")}`);
           }
         } catch { /* memory recall is best-effort */ }
       }
@@ -438,6 +452,45 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // ═══════════════════════════════════════════════════════════════════
     // CUSTOM TOOLS
     // ═══════════════════════════════════════════════════════════════════
+
+    // ── recall (memory search via 4-arm RRF) ─────────────────────
+    if (opts.memory) {
+      const mem = opts.memory;
+      pi.registerTool({
+        name: "recall",
+        label: "Memory Recall",
+        description:
+          "Search memory for relevant facts, takes, and knowledge. " +
+          "Uses 4-arm RRF (BM25 + substring + vector + graph). " +
+          "Pass a query string to find relevant memories.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "What to recall from memory" },
+            topK: { type: "number", description: "Max results per domain (default: 10)" },
+          },
+          required: ["query"],
+        },
+        async execute(_id: string, params: { query: string; topK?: number }) {
+          const results = mem.recall(params.query, { topK: params.topK ?? 10 });
+          const lines: string[] = [];
+          for (const slice of results) {
+            if (slice.hits.length > 0) {
+              lines.push(`[${slice.domain}]`);
+              for (const h of slice.hits) {
+                lines.push(`  - ${h.content.slice(0, 500)}`);
+              }
+            }
+          }
+          return {
+            content: [{
+              type: "text",
+              text: lines.length > 0 ? lines.join("\n") : "No relevant memories found.",
+            }],
+          };
+        },
+      });
+    }
 
     // ── paid_fetch (x402 wallet) ──────────────────────────────────────
     if (opts.wallet) {

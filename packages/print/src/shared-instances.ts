@@ -9,7 +9,24 @@ import { AuditLog } from "@my-agent/audit";
 import { HookRegistry, McpManager, ChannelRegistry, ChannelSessionRouter, registerBuiltinChannels } from "@my-agent/gateway";
 import { SkillStore } from "@my-agent/skills";
 import { CronScheduler } from "@my-agent/cron";
-import { Brain } from "@my-agent/memory";
+import {
+  Brain,
+  MemoryManagerImpl,
+  MemoryContextSource,
+  archivistDomain,
+  treeDomain,
+  diffDomain,
+  goalsDomain,
+  syncDomain,
+  graphDomain,
+  conversationsDomain,
+  searchDomain,
+  sourcesDomain,
+  entitiesDomain,
+  storeDomain,
+  toolsDomain,
+  queueDomain,
+} from "@my-agent/memory";
 import { Wallet } from "@my-agent/x402";
 import { AcpBridge } from "@my-agent/acp";
 import { SyncServer } from "@my-agent/sync";
@@ -39,6 +56,26 @@ export const toolHooks: ToolHookSink = {
 export const skillStore = new SkillStore();
 export const cron = new CronScheduler();
 export const brain = new Brain();
+
+// ── Memory Manager with all 13 domains (wired, not dead code) ──
+const allDomains = [
+  archivistDomain, treeDomain, diffDomain, goalsDomain, syncDomain,
+  graphDomain, conversationsDomain, searchDomain, sourcesDomain,
+  entitiesDomain, storeDomain, toolsDomain, queueDomain,
+];
+
+export const memory = MemoryManagerImpl.withBrain({
+  brain,
+  domains: allDomains,
+});
+
+// Wire previously-dead domains (sources + store + goals)
+storeDomain.wireManager(memory);
+sourcesDomain.wireSource(new MemoryContextSource(memory));
+// Goals domain needs a store backend — use the one registered for "goals" role
+for (const backend of memory.backends) {
+  if (backend.role === "goals") { goalsDomain.wireStore(backend); break; }
+}
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
 export const sync = new SyncServer();
