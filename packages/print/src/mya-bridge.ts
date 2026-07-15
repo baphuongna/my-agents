@@ -495,6 +495,55 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           };
         },
       });
+
+      // ── remember (write a fact to memory) ─────────────────────
+      pi.registerTool({
+        name: "remember",
+        label: "Memory Remember",
+        description:
+          "Save a fact to long-term memory. The fact will be indexed and can " +
+          "be retrieved later via the recall tool. Use this for user preferences, " +
+          "key decisions, project context, or anything worth remembering.",
+        parameters: {
+          type: "object",
+          properties: {
+            content: { type: "string", description: "The fact to remember" },
+            entity: { type: "string", description: "Subject/topic (e.g. 'typescript', 'user-pref')" },
+            kind: {
+              type: "string",
+              enum: ["event", "preference", "commitment", "belief", "fact"],
+              description: "Type of fact (default: fact)",
+            },
+            visibility: {
+              type: "string",
+              enum: ["private", "world"],
+              description: "private (local only) or world (default: private)",
+            },
+          },
+          required: ["content", "entity"],
+        },
+        async execute(_id: string, params: {
+          content: string;
+          entity: string;
+          kind?: string;
+          visibility?: "private" | "world";
+        }) {
+          const fact = mem.record({
+            kind: (params.kind ?? "fact") as "event" | "preference" | "commitment" | "belief" | "fact",
+            entity: params.entity,
+            content: params.content,
+            visibility: params.visibility ?? "private",
+            notability: 3,
+            source: "tui",
+          });
+          return {
+            content: [{
+              type: "text",
+              text: `Remembered [${fact.kind}] ${fact.entity}: ${fact.content} (id=${fact.id.slice(0, 8)}, ttl=24h)`,
+            }],
+          };
+        },
+      });
     }
 
     // ── paid_fetch (x402 wallet) ──────────────────────────────────────
