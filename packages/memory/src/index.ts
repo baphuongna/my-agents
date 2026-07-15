@@ -46,6 +46,8 @@ export type { RetrievalResult } from "./retrieve.js";
 export { LifecycleManager } from "./lifecycle.js";
 export type { LifecycleResult } from "./lifecycle.js";
 export { UnifiedStore } from "./store.js";
+export { BrainStore } from "./brain-store.js";
+export type { BrainRecord, BrainSnapshot } from "./brain-store.js";
 
 // ── Domains (backward compat — still exported for existing tests/wiring) ──
 export { ArchivistDomain, archivistDomain } from "./domains/archivist.js";

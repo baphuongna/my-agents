@@ -28,6 +28,8 @@ import type { MemoryRole } from "./roles.js";
 import type { Brain, Fact } from "./brain.js";
 import type { DreamCycle, DreamResult } from "./dream-cycle.js";
 import type { ConsolidationReport, MemoryDomain, MemoryDomainEntry, MemoryDomainOpts } from "./domains/types.js";
+import { BrainStore } from "./brain-store.js";
+import type { Tier } from "./tree.js";
 
 export interface MemoryManagerCtorOptions {
   brain?: Brain;
@@ -61,6 +63,8 @@ export class MemoryManagerImpl implements MemoryManager {
   private readonly domains: MemoryDomain[] = [];
   /** Phase A: When true, domains have been init()-ed with brain. Idempotent. */
   private domainsInited = false;
+  /** Tier-3: Full-fidelity Brain persistence (facts + takes + pages + tier labels). */
+  private brainStore: BrainStore | undefined;
 
   constructor(opts: MemoryManagerCtorOptions = {}) {
     this.brain = opts.brain;
@@ -176,28 +180,11 @@ export class MemoryManagerImpl implements MemoryManager {
       : factRest;
     const persisted = this.brain.recordFact(withTtl as Omit<Fact, "id" | "createdAt"> & { id?: string });
     for (const d of this.domains) d.onRecord(persisted);
-    // Persist to backend (archivist role) so facts survive process restart.
-    // Fire-and-forget — the in-memory Brain already has the fact.
-    void this.persistFact(persisted);
+    // Persist to BrainStore (full-fidelity: all Fact fields + tier label).
+    if (this.brainStore) {
+      void this.brainStore.persistFact(persisted, _tier ?? "L0");
+    }
     return persisted;
-  }
-
-  /** Persist a fact to the archivist backend for cross-session durability. */
-  private async persistFact(fact: Fact): Promise<void> {
-    const backend = this.byRole.get("archivist");
-    if (!backend) return;
-    try {
-      await backend.write({
-        role: "archivist",
-        content: `[${fact.kind}|${fact.entity}] ${fact.content}`,
-        metadata: {
-          factId: fact.id,
-          visibility: fact.visibility,
-          validUntil: String(fact.validUntil ?? 0),
-          source: fact.source,
-        },
-      });
-    } catch { /* best-effort */ }
   }
 
   /** Phase A: Fan-out recall across every domain. Returns one slice per domain. */
@@ -222,6 +209,20 @@ export class MemoryManagerImpl implements MemoryManager {
     const consolidation: ConsolidationReport[] = [];
     // Phase 1: Domain lifecycle — archivist purges first, tree promotes second.
     for (const d of this.domains) consolidation.push(d.onConsolidate(now));
+    // Phase 1b: Persist any newly-created Takes + updated Facts to BrainStore.
+    // This ensures consolidated state survives restart.
+    if (this.brainStore) {
+      const takes = this.brain.takes;
+      if (takes.length > 0) {
+        void this.brainStore.persistTakes(takes, "L1");
+      }
+      // Persist facts that were just consolidated (they got consolidatedAt set)
+      for (const f of this.brain.allFacts.values()) {
+        if (f.consolidatedAt !== undefined) {
+          void this.brainStore.persistFact(f, "L1");
+        }
+      }
+    }
     // Phase 2: Summarize via DreamCycle (if wired) — runs AFTER lifecycle.
     if (this.dreamCycle) {
       const dream = await this.dreamCycle.dream();
@@ -288,38 +289,50 @@ export class MemoryManagerImpl implements MemoryManager {
     domains?: readonly MemoryDomain[];
     roleBackends?: readonly MemoryBackend[];
     defaultRoles?: readonly MemoryRoleId[];
+    /** Tier-3: directory for BrainStore persistence (enables cross-session L1/L2). */
+    persistenceDir?: string;
   }): MemoryManagerImpl {
     const m = new MemoryManagerImpl({ brain: opts.brain, dreamCycle: opts.dreamCycle, domains: opts.domains });
     for (const b of opts.roleBackends ?? []) m.register(b);
     m.ensureDefault(opts.defaultRoles ?? ["working", "archivist", "tree", "diff", "goals", "sync"]);
-    // Tier-3: load persisted facts from archivist backend (fire-and-forget)
-    void m.loadPersistedFacts();
+    // Tier-3: wire BrainStore for full-fidelity persistence of all tiers.
+    if (opts.persistenceDir) {
+      m.brainStore = new BrainStore(opts.persistenceDir);
+      void m.loadFromBrainStore();
+    }
     return m;
   }
 
-  /** Load persisted facts from archivist backend and re-hydrate Brain. */
-  private async loadPersistedFacts(): Promise<void> {
-    if (!this.brain) return;
-    const backend = this.byRole.get("archivist");
-    if (!backend) return;
+  /** Load persisted facts + takes + pages from BrainStore and re-hydrate Brain.
+   * Full-fidelity: restores ALL fields including consolidatedAt, tier labels, etc. */
+  private async loadFromBrainStore(): Promise<void> {
+    if (!this.brain || !this.brainStore) return;
     try {
-      const hits = await backend.read({ text: "", role: "archivist", topK: 10_000 });
-      for (const hit of hits) {
-        const match = hit.content.match(/^\[([^|]+)\|([^\]]+)\]\s*(.*)$/);
-        if (!match) continue;
-        const [, kind, entity, content] = match;
-        try {
-          this.brain.recordFact({
-            kind: (kind ?? "fact") as Fact["kind"],
-            entity: entity ?? "unknown",
-            content: content ?? "",
-            visibility: "private",
-            notability: 3,
-            source: "restored",
-          });
-        } catch { /* duplicate or cap — skip */ }
+      const snapshot = await this.brainStore.load();
+      // Hydrate facts — use Brain's internal map directly since we're restoring
+      const brainInternal = this.brain as unknown as {
+        facts: Map<string, Fact>;
+        takesMap: Map<string, import("./brain.js").Take>;
+        pagesMap: Map<string, import("./brain.js").BrainPage>;
+        tombstones: Map<string, { fact: Fact; deletedAt: number }>;
+      };
+      for (const [id, fact] of snapshot.facts) {
+        brainInternal.facts.set(id, fact);
       }
-    } catch { /* backend read failed — start fresh */ }
+      for (const [id, take] of snapshot.takes) {
+        brainInternal.takesMap.set(id, take);
+      }
+      for (const [id, page] of snapshot.pages) {
+        brainInternal.pagesMap.set(id, page);
+      }
+      for (const [id, ts] of snapshot.tombstones) {
+        brainInternal.tombstones.set(id, ts);
+      }
+      // Invalidate backlinks cache since we populated facts directly
+      (this.brain as unknown as { backlinksCache: unknown }).backlinksCache = null;
+    } catch {
+      // Corrupt or missing file — start fresh
+    }
   }
 }
 

@@ -16,6 +16,7 @@
  */
 import type { Brain, Fact, Take } from "./brain.js";
 import type { MemoryTree } from "./tree.js";
+import { BrainStore } from "./brain-store.js";
 import { nowWallclock } from "@my-agent/core";
 
 // ── Lifecycle constants ───────────────────────────────────────────────────
@@ -81,10 +82,17 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 // ── Unified Lifecycle Manager ─────────────────────────────────────────────
 
 export class LifecycleManager {
+  private brainStore: BrainStore | undefined;
+
   constructor(
     private brain: Brain,
     private tree: MemoryTree | undefined,
   ) {}
+
+  /** Wire a BrainStore so that Takes/Pages/Facts are persisted after tick(). */
+  wireBrainStore(store: BrainStore): void {
+    this.brainStore = store;
+  }
 
   /**
    * Run the full lifecycle pipeline. Called on turn_end + DreamCycle timer.
@@ -113,6 +121,26 @@ export class LifecycleManager {
 
     // 5. Reconcile tier labels
     this.tree?.reconcile();
+
+    // 6. Persist ALL state changes to BrainStore (full-fidelity).
+    //    This ensures newly-created Takes + consolidated Facts + compiled Pages
+    //    survive restart. Without this, consolidation is undone on restart.
+    if (this.brainStore) {
+      const takes = this.brain.takes;
+      if (takes.length > 0) {
+        void this.brainStore.persistTakes(takes, "L1");
+      }
+      // Persist facts that were consolidated (they got consolidatedAt set)
+      for (const f of this.brain.allFacts.values()) {
+        if (f.consolidatedAt !== undefined) {
+          void this.brainStore.persistFact(f, "L1");
+        }
+      }
+      // Persist any new pages
+      for (const p of this.brain.allPages) {
+        void this.brainStore.persistPage(p, "L2");
+      }
+    }
 
     return {
       purged: purgedExpired + purgedDecayed,

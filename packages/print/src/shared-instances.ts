@@ -77,6 +77,7 @@ export const memory = MemoryManagerImpl.withBrain({
     new FileBackend("archivist", memoryDir),
     new FileBackend("goals", memoryDir),
   ],
+  persistenceDir: memoryDir,
 });
 
 // Wire previously-dead domains (sources + store + goals)
@@ -92,6 +93,10 @@ for (const backend of memory.backends) {
 export const memoryTree = new MemoryTree(brain);
 export const retrievalEngine = new RetrievalEngine();
 export const lifecycleManager = new LifecycleManager(brain, memoryTree);
+// Wire BrainStore into lifecycleManager so Takes/Pages persist after tick().
+import { BrainStore } from "@my-agent/memory";
+const brainStore = new BrainStore(memoryDir);
+lifecycleManager.wireBrainStore(brainStore);
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
 export const sync = new SyncServer();
