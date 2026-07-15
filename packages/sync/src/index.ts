@@ -266,7 +266,7 @@ export class SyncServer {
     };
     try {
       mkdirSync(dirname(this.persistPath), { recursive: true });
-      writeFileSync(this.persistPath, JSON.stringify(snap, null, 2), "utf8");
+      writeFileSync(this.persistPath, JSON.stringify(snap, null, 2), { encoding: "utf8", mode: 0o600 });
     } catch {
       /* best-effort — sync persistence must never throw to callers */
     }

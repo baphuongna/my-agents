@@ -65,6 +65,9 @@ const CHALLENGE_TTL_MS = 90_000;
  */
 function decodeCbor(data: Buffer): unknown {
   let offset = 0;
+  let depth = 0;
+  const MAX_DEPTH = 32; // HIGH-security fix: prevent stack overflow DoS
+  const MAX_LEN = 1_000_000; // prevent OOM via large length fields
 
   function readByte(): number {
     if (offset >= data.length) throw new Error("cbor: unexpected end of data");
@@ -92,6 +95,7 @@ function decodeCbor(data: Buffer): unknown {
   }
 
   function readItem(): unknown {
+    if (++depth > MAX_DEPTH) throw new Error("cbor: max depth exceeded");
     const b = readByte();
     const mt = b >> 5;
     const ai = b & 0x1f;
@@ -102,12 +106,14 @@ function decodeCbor(data: Buffer): unknown {
         return -1 - readArg(ai);
       case 2: { // byte string
         const len = readArg(ai);
+        if (len > MAX_LEN || offset + len > data.length) throw new Error("cbor: byte string too long");
         const buf = data.subarray(offset, offset + len);
         offset += len;
         return Buffer.from(buf);
       }
       case 3: { // text string
         const len = readArg(ai);
+        if (len > MAX_LEN || offset + len > data.length) throw new Error("cbor: text string too long");
         const buf = data.subarray(offset, offset + len);
         offset += len;
         return buf.toString("utf8");
@@ -115,11 +121,13 @@ function decodeCbor(data: Buffer): unknown {
       case 4: { // array
         const len = readArg(ai);
         const arr: unknown[] = [];
+        if (len > MAX_LEN) throw new Error("cbor: array too long");
         for (let i = 0; i < len; i++) arr.push(readItem());
         return arr;
       }
       case 5: { // map
         const len = readArg(ai);
+        if (len > MAX_LEN) throw new Error("cbor: map too long");
         const m = new Map<number | string, unknown>();
         for (let i = 0; i < len; i++) {
           const k = readItem();
@@ -269,7 +277,7 @@ export class WebAuthnService {
 
   private async readStore(): Promise<WebAuthnStore> {
     try {
-      const raw = await readFile(this.storePath, "utf8");
+      const raw = await readFile(this.storePath, "utf8", { mode: 0o600 });
       const parsed = JSON.parse(raw) as Partial<WebAuthnStore>;
       if (parsed.version !== 1 || typeof parsed.rpCredentials !== "object" || parsed.rpCredentials === null) {
         return { version: 1, rpCredentials: {} };
@@ -282,7 +290,7 @@ export class WebAuthnService {
 
   private async writeStore(store: WebAuthnStore): Promise<void> {
     mkdirSync(dirname(this.storePath), { recursive: true });
-    await writeFile(this.storePath, JSON.stringify(store, null, 2), "utf8");
+    await writeFile(this.storePath, JSON.stringify(store, null, 2), "utf8", { mode: 0o600 });
   }
 
   private async listCredentials(rpId: string): Promise<StoredCredential[]> {
@@ -542,7 +550,7 @@ export class WebAuthnService {
 
     // 9. Counter check (clone detection): if either counter is non-zero, the
     //    new counter must be strictly greater than the stored one.
-    if (authData.signCount !== 0 || stored.counter !== 0) {
+    if (true) {
       if (authData.signCount <= stored.counter) {
         throw new Error("webauthn: counter not incremented (possible authenticator clone)");
       }

@@ -311,7 +311,7 @@ export class WebSocketTransport implements Transport {
         timer,
       });
 
-      this.ws!.send(JSON.stringify({ id, command: cmd, payload: payload ?? {} }));
+      if (this.disposed || !this.ws || this.ws.readyState !== 1) throw new Error("WS not connected"); this.ws.send(JSON.stringify({ id, command: cmd, payload: payload ?? {} }));
     });
   }
 

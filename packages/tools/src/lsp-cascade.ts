@@ -166,7 +166,7 @@ export async function runCascade(
 
   const results = await Promise.allSettled(
     targets.map((file) =>
-      touchFile(file, file === changedFile ? content : "", lspClient),
+      touchFile(file, file === canonical(changedFile) ? content : "", lspClient),
     ),
   );
 

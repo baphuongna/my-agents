@@ -238,7 +238,7 @@ export class CollabRelay extends EventEmitter {
     };
     try {
       mkdirSync(dirname(this.persistPath), { recursive: true });
-      writeFileSync(this.persistPath, JSON.stringify(snap, null, 2), "utf8");
+      writeFileSync(this.persistPath, JSON.stringify(snap, null, 2), { encoding: "utf8", mode: 0o600 });
     } catch (e) {
       // Persistence is best-effort: do not crash the relay on disk errors.
       this.emit("persist_error", { error: (e as Error).message });
