@@ -18,7 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { nowWallclock } from "@my-agent/core";
+import { nowWallclock, getDefaultModel } from "@my-agent/core";
 import { secretStore, auditLog, skillStore, wallet } from "./shared-instances.js";
 
 const BG_DIR = join(homedir(), ".mya", "sessions", "bg");
@@ -72,7 +72,7 @@ export function killBgSession(id: string): boolean {
 /** Run the background session: agent + TCP RPC server + manifest. */
 export async function runBgSession(opts: { id?: string; model?: string } = {}): Promise<void> {
   const id = opts.id ?? `bg_${nowWallclock().toString(36)}`;
-  const model = opts.model ?? "MiniMax-M3";
+  const model = opts.model ?? getDefaultModel();
 
   // Create agent with shared instances from pi-main.ts
   const agent = createAgent({

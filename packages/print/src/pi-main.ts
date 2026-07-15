@@ -48,9 +48,9 @@ export async function runPiInteractive(): Promise<void> {
 
   const piArgs = filterMyaFlags(process.argv.slice(2));
 
-  // Model: allow override via --model flag or MYA_MODEL env, default MiniMax-M3
+  // Model: --model flag > getDefaultModel() (MYA_MODEL env → auto-detect)
   const modelFlag = piArgs.find((_, i, arr) => arr[i - 1] === "--model");
-  const model = modelFlag ?? process.env["MYA_MODEL"] ?? "MiniMax-M3";
+  const model = modelFlag ?? getDefaultModel();
   const args = ["--model", model];
 
   // Thinking level: pass --thinking if MYA_THINKING_LEVEL is set and user

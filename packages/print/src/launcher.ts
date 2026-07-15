@@ -13,7 +13,7 @@
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join, resolve as pathResolve } from "node:path";
-import { nowWallclock } from "@my-agent/core";
+import { nowWallclock, getDefaultModel } from "@my-agent/core";
 
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
@@ -352,7 +352,7 @@ async function launchGatewaySession(sessionId: string): Promise<void> {
   process.stdout.write(A.altScreenOff + A.mouseOff + A.clear);
   process.stdout.write("\n  " + A.muted("Connecting to gateway session " + sessionId + "...") + "\n\n");
   await new Promise<void>((resolve) => {
-    const args = ["--model", "MiniMax-M3", "--gateway-session", sessionId];
+    const args = ["--model", getDefaultModel(), "--gateway-session", sessionId];
     const entry = process.argv[1] ?? join(process.cwd(), "dist", "mya.js");
     const child = spawn(process.execPath, [entry, ...args], {
       stdio: "inherit",

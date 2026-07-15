@@ -57,7 +57,7 @@ import { makePaidFetchTool, Wallet } from "@my-agent/x402";
 import { makeDebugTool } from "@my-agent/dap";
 import { PackageHost } from "@my-agent/pkg";
 import { speak } from "@my-agent/tts";
-import { type ToolHookSink, type TelemetryExporter } from "@my-agent/core";
+import { type ToolHookSink, type TelemetryExporter, getDefaultModel } from "@my-agent/core";
 import { PiAiProviderBridge } from "@my-agent/ai";
 import { createRequire } from "node:module";
 import { createExporter } from "./exporters.js";
@@ -201,7 +201,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     if (minimaxKey) {
       providers.register(
         new OpenAIAdapter({
-          model: process.env["MINIMAX_MODEL"] ?? config.model ?? "MiniMax-M3",
+          model: process.env["MINIMAX_MODEL"] ?? config.model ?? getDefaultModel(),
           baseUrl: process.env["MINIMAX_BASE_URL"] ?? "https://api.minimax.io/v1",
           apiKey: minimaxKey,
           id: "minimax",

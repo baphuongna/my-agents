@@ -20,7 +20,7 @@ export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js"
 import { ControlPlane } from "./control.js";
 import type { ControlCronJob } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
-import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
+import { nowWallclock, getDefaultModel, type RuntimeEvent } from "@my-agent/core";
 import { HookRegistry } from "./hooks.js";
 import { CronScheduler } from "@my-agent/cron";
 import { SyncServer } from "@my-agent/sync";
@@ -516,7 +516,7 @@ export class Gateway {
           messages: s.messages,
         }));
         return send(200, {
-          model: process.env["MYA_MODEL"] ?? "MiniMax-M3",
+          model: getDefaultModel(),
           uptime: Math.floor(process.uptime()),
           pid: process.pid,
           version: process.env["MYA_VERSION"] ?? "0.1.0",
