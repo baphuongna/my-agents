@@ -10,6 +10,26 @@
 import { createMyaBridge } from "./mya-bridge.js";
 import * as shared from "./shared-instances.js";
 
+/** Resolve default model inline (avoids ESM lazy-load scope issues). */
+function resolveDefaultModel(): string {
+  const env = process.env["MYA_MODEL"];
+  if (env && env.trim()) return env.trim();
+  const providers: Array<[string, string]> = [
+    ["MINIMAX_API_KEY", "MiniMax-M3"],
+    ["ANTHROPIC_API_KEY", "claude-sonnet-4-20250514"],
+    ["OPENAI_API_KEY", "gpt-4o-mini"],
+    ["GEMINI_API_KEY", "gemini-2.0-flash"],
+    ["DEEPSEEK_API_KEY", "deepseek-chat"],
+    ["GROQ_API_KEY", "llama-3.3-70b-versatile"],
+    ["XAI_API_KEY", "grok-3"],
+    ["MISTRAL_API_KEY", "mistral-large-latest"],
+  ];
+  for (const [key, model] of providers) {
+    if (process.env[key]) return model;
+  }
+  return "auto";
+}
+
 // Filter out mya-specific flags that pi doesn't understand.
 const MYA_FLAGS = new Set(["--no-launcher", "--print", "--json", "--rpc", "--debug"]);
 function filterMyaFlags(argv: string[]): string[] {
@@ -50,7 +70,7 @@ export async function runPiInteractive(): Promise<void> {
 
   // Model: --model flag > getDefaultModel() (MYA_MODEL env → auto-detect)
   const modelFlag = piArgs.find((_, i, arr) => arr[i - 1] === "--model");
-  const model = modelFlag ?? getDefaultModel();
+  const model = modelFlag ?? resolveDefaultModel();
   const args = ["--model", model];
 
   // Thinking level: pass --thinking if MYA_THINKING_LEVEL is set and user

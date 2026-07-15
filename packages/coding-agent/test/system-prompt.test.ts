@@ -46,16 +46,18 @@ describe("buildSystemPrompt", () => {
 			expect(prompt).toContain("- write:");
 		});
 
-		test("instructs models to resolve pi docs and examples under absolute base paths", () => {
+		test("references pi docs via absolute paths and scopes them to pi-only work", () => {
 			const prompt = buildSystemPrompt({
 				contextFiles: [],
 				skills: [],
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain(
-				"- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",
-			);
+			// Absolute paths for readme, docs/, examples/ must be present
+			expect(prompt).toMatch(/Pi docs[^\n]*only when working on pi/i);
+			expect(prompt).toMatch(/packages\/coding-agent\/README\.md/);
+			expect(prompt).toMatch(/packages\/coding-agent\/docs/);
+			expect(prompt).toMatch(/packages\/coding-agent\/examples/);
 		});
 	});
 
