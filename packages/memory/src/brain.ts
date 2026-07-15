@@ -99,8 +99,11 @@ export class Brain {
     let factsConsumed = 0;
     // bucket unconsolidated facts by (source, entity)
     const buckets = new Map<string, Fact[]>();
+    const now = nowWallclock();
     for (const f of this.facts.values()) {
       if (f.consolidatedAt) continue;
+      // Skip expired facts — they should be purged, not promoted to immortal Takes.
+      if (f.validUntil !== undefined && f.validUntil <= now) continue;
       const key = `${f.source}|${f.entity}`;
       const arr = buckets.get(key) ?? [];
       arr.push(f);

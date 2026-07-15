@@ -168,7 +168,14 @@ export class MemoryManagerImpl implements MemoryManager {
     this.ensureDomainsInited();
     // C1 fix: preserve validUntil (Fact field for TTL), strip only tier (tree-only metadata)
     const { tier: _tier, ...factRest } = fact;
-    const persisted = this.brain.recordFact(factRest as Omit<Fact, "id" | "createdAt"> & { id?: string });
+    // Assign default 24h TTL for L0 facts (no explicit validUntil).
+    // This ensures ephemeral facts expire instead of accumulating forever.
+    const isL0 = !_tier || _tier === "L0";
+    const now = nowWallclock();
+    const withTtl = isL0 && fact.validUntil === undefined
+      ? { ...factRest, validUntil: now + 86_400_000 }
+      : factRest;
+    const persisted = this.brain.recordFact(withTtl as Omit<Fact, "id" | "createdAt"> & { id?: string });
     for (const d of this.domains) d.onRecord(persisted);
     return persisted;
   }
@@ -183,17 +190,26 @@ export class MemoryManagerImpl implements MemoryManager {
     }));
   }
 
-  /** Phase A: Drive the dream cycle. Delegates to dreamCycle if wired;
-   * otherwise runs the zero-LLM `brain.consolidate()` + one onConsolidate per domain. */
+  /** Phase A: Drive the full consolidation lifecycle. Always runs domain
+   * onConsolidate (purge + promote + reconcile), then optionally summarizes
+   * via DreamCycle if wired. This fixes the double-consolidation bug (manager
+   * no longer calls brain.consolidate() directly — treeDomain does it via
+   * promote()) and ensures DreamCycle-wired managers still get domain lifecycle. */
   async consolidate(): Promise<DreamResult | { takesPromoted: number; factsConsumed: number; consolidation: ConsolidationReport[] }> {
-    if (this.dreamCycle) return this.dreamCycle.dream();
     if (!this.brain) return { takesPromoted: 0, factsConsumed: 0, consolidation: [] };
     this.ensureDomainsInited();
-    const r = this.brain.consolidate();
     const now = nowWallclock();
     const consolidation: ConsolidationReport[] = [];
+    // Phase 1: Domain lifecycle — archivist purges first, tree promotes second.
     for (const d of this.domains) consolidation.push(d.onConsolidate(now));
-    return { ...r, consolidation };
+    // Phase 2: Summarize via DreamCycle (if wired) — runs AFTER lifecycle.
+    if (this.dreamCycle) {
+      const dream = await this.dreamCycle.dream();
+      return { ...dream, consolidation };
+    }
+    const takesPromoted = consolidation.reduce((s, r) => s + r.promoted, 0);
+    const factsConsumed = consolidation.reduce((s, r) => s + r.consumed, 0);
+    return { takesPromoted, factsConsumed, consolidation };
   }
 
   /** SYNC snapshot (§5 contract) — returns the cached snapshot. */

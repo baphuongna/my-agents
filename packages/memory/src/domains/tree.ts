@@ -19,7 +19,11 @@ export class TreeDomain implements MemoryDomain {
     this.brain = brain;
     this.tree = new MemoryTree(brain);
   }
-  onRecord(_fact: Fact): void { /* assignTier is driven by MemoryManager.record */ }
+  onRecord(fact: Fact): void {
+    // Label the fact with L0 tier (no re-recording — fact already persisted by Brain).
+    // This ensures getTier(fact.id) returns "L0" for manager-recorded facts.
+    this.tree?.labelFact(fact.id, "L0");
+  }
   recall(query: string, opts?: MemoryDomainOpts): MemoryHit[] {
     if (!this.brain) return [];
     const tier = opts?.tier;

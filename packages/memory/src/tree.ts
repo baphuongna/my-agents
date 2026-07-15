@@ -132,6 +132,14 @@ export class MemoryTree {
     return { pagesCompiled, takesConsumed };
   }
 
+  /** Label an already-recorded fact with a tier (no re-recording).
+   * Used by MemoryManager.record() → TreeDomain.onRecord() so that facts
+   * recorded through the manager get tier labels without double-recording. */
+  labelFact(id: string, tier: Tier = "L0"): void {
+    this.tierMap.set(id, tier);
+    if (tier === "L0") this.knownL0Ids.add(id);
+  }
+
   /** Read the tier label for a record id. */
   getTier(id: string): Tier | undefined {
     return this.tierMap.get(id);

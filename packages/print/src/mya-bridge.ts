@@ -183,14 +183,19 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // BRAIN: consolidate on turn_end (memory dream-cycle)
+    // BRAIN: consolidate on turn_end (memory lifecycle)
     // ═══════════════════════════════════════════════════════════════════
-    if (opts.brain) {
-      const brain = opts.brain;
-      pi.on("turn_end", () => {
-        try { brain.consolidate(); } catch { /* never crash TUI */ }
-      });
-    }
+    // Use memory.consolidate() when available (runs full domain lifecycle:
+    // purge → promote → summarize). Falls back to brain.consolidate().
+    pi.on("turn_end", () => {
+      try {
+        if (opts.memory) {
+          void opts.memory.consolidate();
+        } else if (opts.brain) {
+          opts.brain.consolidate();
+        }
+      } catch { /* never crash TUI */ }
+    });
 
     // ═══════════════════════════════════════════════════════════════════
     // TTS: speak assistant messages (MYA_TTS=1)

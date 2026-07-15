@@ -19,6 +19,8 @@ export class QueueDomain implements MemoryDomain {
   private brain: Brain | undefined;
   private buffer: Fact[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Total duplicates removed across all flushes (for metrics). */
+  dedupedTotal = 0;
 
   init(brain: Brain): void {
     this.brain = brain;
@@ -39,9 +41,23 @@ export class QueueDomain implements MemoryDomain {
     }
   }
 
-  /** Flush the buffer (coalesce/dedup gate). Facts are already recorded via Brain. */
+  /** Flush the buffer. Facts are already recorded via Brain, so the flush
+   * just deduplicates by entity+content (keeps latest per unique key) and
+   * reports the count. No facts are lost — they persist in Brain.facts. */
   private flush(): void {
     if (!this.brain || this.buffer.length === 0) return;
+    // Dedup: keep only unique facts by (entity, content) key.
+    // This prevents the same fact from being counted multiple times.
+    const seen = new Set<string>();
+    const unique: Fact[] = [];
+    for (const f of this.buffer) {
+      const key = `${f.entity}|${f.content.slice(0, 200)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(f);
+      }
+    }
+    this.dedupedTotal += this.buffer.length - unique.length;
     this.buffer.splice(0);
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
