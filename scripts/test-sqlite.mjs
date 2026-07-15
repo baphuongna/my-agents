@@ -362,4 +362,41 @@ assert(typeof tickResult.purged.purged === "number", "purged phase ran");
 closeDB(db6);
 const phase4Pass = pass - 50;
 console.log(`\n═══ Phase 4 SUMMARY: pass=${phase4Pass}, fail=${fail} ═══`);
+// (exit moved to end)
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log("\n═══ Phase 5: Manager ═══\n");
+const { SqliteMemoryManager } = await import("../packages/memory/dist/index.js");
+
+const mgr = new SqliteMemoryManager({ dbPath: ":memory:" });
+
+// 1. Record
+console.log("Test: record stores working memory");
+const rid = mgr.record({ content: "User prefers TypeScript over Python", source: "user", importance: 0.9 });
+assert(rid.length > 0, `recorded with id: ${rid.slice(0,8)}`);
+
+// 2. Recall
+console.log("\nTest: recall finds stored memories");
+const rhits = mgr.recall("TypeScript");
+assert(rhits.length > 0, `${rhits.length} hits`);
+assert(rhits[0].content.includes("TypeScript"), "top hit mentions TypeScript");
+
+// 3. Record + recall fact
+console.log("\nTest: recordFact + recallFacts");
+mgr.recordFact({ subject: "Alice", predicate: "knows", object: "TypeScript" });
+const fhits = mgr.recallFacts("Alice");
+assert(fhits.length > 0, `${fhits.length} fact hits`);
+
+// 4. Lifecycle
+console.log("\nTest: lifecycle runs without crash");
+const lresult = mgr.lifecycle();
+assert(typeof lresult.consolidated.consolidated === "number", "consolidate ran");
+assert(typeof lresult.degraded.degraded === "number", "degrade ran");
+assert(typeof lresult.purged.purged === "number", "purge ran");
+
+// 5. Close
+console.log("\nTest: close + checkpoint");
+try { mgr.close(); assert(true, "close doesn't throw"); } catch(e) { assert(false, 'close throws'); }
+
+console.log(`\n═══ Phase 5 SUMMARY: pass=${pass-64}, fail=${fail} ═══`);
 process.exit(fail > 0 ? 1 : 0);

@@ -89,3 +89,7 @@ export {
   consolidate, degradeOldMemories, purgeWeakMemories, lifecycleTick,
 } from "./sqlite-consolidate.js";
 export type { ConsolidateResult, DegradeResult, PurgeResult } from "./sqlite-consolidate.js";
+
+// ── Phase 5: Manager ──
+export { SqliteMemoryManager } from "./sqlite-manager.js";
+export type { SqliteMemoryManagerOptions } from "./sqlite-manager.js";
