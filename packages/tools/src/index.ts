@@ -16,6 +16,8 @@ export { screenCaptureTool, screenFindTool, captureScreen, extractText, findOnSc
 export type { ScreenCapture, ScreenTextRegion } from "./screen.js";
 export { browserNavigateTool, browserClickTool, browserTypeTool, browserScreenshotTool, browserExtractTool, browserEvalTool, browserCloseTool, BrowserAutomation } from "./browser.js";
 export { lineHashes, formatHashed, replaceByHash, isValidAnchor, fileFingerprint } from "./hashline.js";
+export { computeLineHashes, canon, mapStableHashes, resolveAnchor, applyEdits, saveUndo, getUndo, clearUndo, HASH_LEN, HASH_SEP, HASH_RE } from "./hashline-edit.js";
+export type { AnchorResult, HashEdit, NoopEdit, ApplyResult, UndoEntry } from "./hashline-edit.js";
 export { resolveInsideWorkspace, resolveExistingInsideWorkspace, isInsideWorkspace } from "./path-safety.js";
 export type { ResolveMode, ResolveResult } from "./path-safety.js";
 export * from "./codegraph.js";
@@ -29,3 +31,4 @@ export * from "./tool-search.js";
 export * from "./search-index.js";
 export { ComposioClient, registerComposioTools, createComposioClient } from "./composio.js";
 export type { ComposioConfig, ComposioTool, ConnectedAccount } from "./composio.js";
+export * from "./output-compress.js";

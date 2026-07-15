@@ -6,5 +6,3 @@ Hard rules (§18): minimal core, no sandbox, single time helper (`core.time` / `
 no `process::exit` in natives (`NativeResult<T>`), transports ↛ core, byte-faithful JSON,
 no stub-then-replace.
 Style: TS strict + `noUncheckedIndexedAccess` + ESM + discriminated unions; Rust `clippy::exit` denied.
-Layout (§3): `packages/{core,agent,ai,memory,prompts,skills,tools,council,natives,print,rpc,gateway,web,tui}`
-+ standalone + `vendored/{pi,pi-ai,pi-agent-core}`.
