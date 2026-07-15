@@ -17,3 +17,4 @@ export { scan, scanInject } from "./inject.js";
 export { DriftGrader, identityCompressor } from "./drift.js";
 export type { DriftGrade } from "./drift.js";
 export { windowCompressor, summarizeCompressor, nativeContentCompressor, overflowRecovery } from "./compressors.js";
+export { rankedCompact } from "./ranked-compaction.js";

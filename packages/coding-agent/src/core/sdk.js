@@ -193,9 +193,14 @@ export async function createAgentSession(options = {}) {
             if (headerRunner?.hasHandlers("before_provider_headers")) {
                 headers = await headerRunner.emitBeforeProviderHeaders(headers ?? {});
             }
+            // Convention: extensions can rotate API keys via x-mya-rotated-key header.
+            const rotatedKey = headers?.["x-mya-rotated-key"];
+            const effectiveApiKey = rotatedKey ?? auth.apiKey;
+            if (rotatedKey)
+                delete headers["x-mya-rotated-key"];
             return streamSimple(model, context, {
                 ...options,
-                apiKey: auth.apiKey,
+                apiKey: effectiveApiKey,
                 env,
                 timeoutMs,
                 websocketConnectTimeoutMs,
