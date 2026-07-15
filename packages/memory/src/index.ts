@@ -69,3 +69,11 @@ export { QueueDomain, queueDomain } from "./domains/queue.js";
 export { openDB, transaction, closeDB, checkpoint } from "./sqlite-db.js";
 export type { DatabasePath } from "./sqlite-db.js";
 export { initSchema, getSchemaVersion } from "./sqlite-schema.js";
+
+// ── Phase 2: Store layer ──
+export {
+  storeWorking, storeEpisodic, storeFact,
+  markConsolidated, recordRecall, supersede, degradeTier, purgeExpired,
+  getUnconsolidated, getWorkingById, countTable,
+} from "./sqlite-store.js";
+export type { WorkingMemoryInput, EpisodicMemoryInput, FactInput, MemoryRecord } from "./sqlite-store.js";

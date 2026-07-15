@@ -121,4 +121,90 @@ assert(getSchemaVersion(db3) === 1, "schema version = 1");
 closeDB(db3);
 
 console.log(`\n═══ SUMMARY: ${pass} pass, ${fail} fail ═══`);
+// continue to Phase 2+
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log("\n═══ Phase 2: Store Layer ═══\n");
+const { storeWorking, storeEpisodic, storeFact, markConsolidated, recordRecall,
+        supersede, degradeTier, purgeExpired, getUnconsolidated, countTable } =
+  await import("../packages/memory/dist/index.js");
+
+const db4 = openDB(":memory:");
+initSchema(db4);
+
+// 1. storeWorking
+console.log("Test: storeWorking inserts into working_memory");
+const wid = storeWorking(db4, { content: "Alice loves TypeScript", source: "test" });
+assert(wid.length > 0, `working_memory id generated: ${wid.slice(0,8)}`);
+assert(countTable(db4, "working_memory") === 1, "1 working_memory record");
+
+// 2. FTS auto-sync
+console.log("\nTest: storeWorking auto-syncs FTS5");
+const wmFts = db4.prepare("SELECT id FROM fts_working WHERE fts_working MATCH ? ORDER BY rank").get("TypeScript");
+assert(wmFts?.id === wid, "FTS5 found the stored record");
+
+// 3. storeEpisodic
+console.log("\nTest: storeEpisodic inserts into episodic_memory");
+const eid = storeEpisodic(db4, { content: "Alice is a senior engineer", importance: 0.8, tier: 1 });
+assert(eid.length > 0, `episodic_memory id generated: ${eid.slice(0,8)}`);
+assert(countTable(db4, "episodic_memory") === 1, "1 episodic_memory record");
+
+// 4. storeFact
+console.log("\nTest: storeFact inserts into facts");
+const fid = storeFact(db4, { subject: "Alice", predicate: "loves", object: "TypeScript", confidence: 0.9 });
+assert(fid.length > 0, `fact id generated: ${fid.slice(0,8)}`);
+assert(countTable(db4, "facts") === 1, "1 fact record");
+
+// 5. markConsolidated
+console.log("\nTest: markConsolidated sets consolidated_at");
+storeWorking(db4, { content: "temp fact", source: "test" });
+storeWorking(db4, { content: "temp fact 2", source: "test" });
+markConsolidated(db4, [wid], eid);
+const wm = db4.prepare("SELECT consolidated_at FROM working_memory WHERE id = ?").get(wid);
+assert(wm.consolidated_at !== null, "consolidated_at is set");
+
+// 6. recordRecall
+console.log("\nTest: recordRecall increments count + sets last_recalled");
+recordRecall(db4, [wid], "working_memory");
+const wmRecall = db4.prepare("SELECT recall_count, last_recalled FROM working_memory WHERE id = ?").get(wid);
+assert(wmRecall.recall_count === 1, `recall_count = ${wmRecall.recall_count}`);
+assert(wmRecall.last_recalled !== null, "last_recalled is set");
+
+// 7. supersede
+console.log("\nTest: supersede sets superseded_by");
+const newId = storeWorking(db4, { content: "updated fact", source: "test" });
+supersede(db4, "working_memory", wid, newId);
+const wmSup = db4.prepare("SELECT superseded_by FROM working_memory WHERE id = ?").get(wid);
+assert(wmSup.superseded_by === newId, "superseded_by set correctly");
+
+// 8. degradeTier
+console.log("\nTest: degradeTier changes tier + sets degraded_at");
+degradeTier(db4, eid, 2);
+const emTier = db4.prepare("SELECT tier, degraded_at FROM episodic_memory WHERE id = ?").get(eid);
+assert(emTier.tier === 2, `tier = ${emTier.tier}`);
+assert(emTier.degraded_at !== null, "degraded_at is set");
+
+// 9. purgeExpired
+console.log("\nTest: purgeExpired removes expired records");
+const expiredId = storeWorking(db4, { content: "expired", source: "test", validUntil: "2000-01-01T00:00:00Z" });
+const purged = purgeExpired(db4, "working_memory");
+assert(purged >= 1, `${purged} expired record(s) purged`);
+
+// 10. getUnconsolidated
+console.log("\nTest: getUnconsolidated returns old unconsolidated records");
+const oldId = storeWorking(db4, { content: "old unconsolidated", source: "test" });
+// Manually set old timestamp
+db4.prepare("UPDATE working_memory SET timestamp = ? WHERE id = ?")
+  .run("2000-01-01T00:00:00Z", oldId);
+const uncons = getUnconsolidated(db4, "default", 1);
+assert(uncons.some(r => r.id === oldId), "old unconsolidated record found");
+
+// 11. countTable
+console.log("\nTest: countTable returns correct counts");
+assert(countTable(db4, "working_memory") >= 4, "multiple working_memory records");
+assert(countTable(db4, "episodic_memory") === 1, "1 episodic_memory record");
+assert(countTable(db4, "facts") === 1, "1 fact record");
+
+closeDB(db4);
+console.log(`\n═══ Phase 2 SUMMARY: ${pass - 21} pass, ${fail - 0} fail ═══`);
 process.exit(fail > 0 ? 1 : 0);
