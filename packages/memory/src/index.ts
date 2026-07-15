@@ -1,8 +1,12 @@
 /**
- * @my-agent/memory — MemoryManager + per-role backends (§8).
+ * @my-agent/memory — Unified 5-layer memory pipeline.
  *
- * InMemoryBackend (BestEffort) · FileBackend (Durable, markdown write-through).
- * snapshot() is sync (cached); refresh() is async (called at tier boundaries).
+ * Architecture:
+ *   Layer 1: INGEST     → capture() + compress + dedup
+ *   Layer 2: STORE      → UnifiedStore (in-memory BM25 index + markdown durability)
+ *   Layer 3: LIFECYCLE  → LifecycleManager (decay + consolidate + purge + supersede)
+ *   Layer 4: RETRIEVE   → RetrievalEngine (unified pipeline)
+ *   Layer 5: PERSIST    → snapshot + manifest
  */
 export { InMemoryBackend, FileBackend } from "./backends.js";
 export type { MemoryBackend } from "./backends.js";
@@ -36,6 +40,14 @@ export type {
   MemoryDomainOpts,
   ConsolidationReport,
 } from "./domains/types.js";
+// ── Tier-3: Unified pipeline modules ──
+export { RetrievalEngine, FuzzyCache } from "./retrieve.js";
+export type { RetrievalResult } from "./retrieve.js";
+export { LifecycleManager } from "./lifecycle.js";
+export type { LifecycleResult } from "./lifecycle.js";
+export { UnifiedStore } from "./store.js";
+
+// ── Domains (backward compat — still exported for existing tests/wiring) ──
 export { ArchivistDomain, archivistDomain } from "./domains/archivist.js";
 export { TreeDomain, treeDomain } from "./domains/tree.js";
 export { DiffDomain, diffDomain } from "./domains/diff.js";

@@ -30,6 +30,10 @@ export interface Fact {
   consolidatedInto?: string; // the take id this fact promoted into
   /** Phase 10 dream-cycle embed phase marker. */
   embedded?: boolean;
+  /** Tier-3: Ebbinghaus decay tracking. Updated by LifecycleManager. */
+  accessCount?: number;
+  lastAccessedAt?: number;
+  strength?: number;
 }
 
 export interface Take {
@@ -56,6 +60,8 @@ export interface BrainPage {
  */
 export class Brain {
   private readonly facts = new Map<string, Fact>();
+  /** Tier-3: public read-only view for cross-class access (LifecycleManager, etc). */
+  public get allFacts(): ReadonlyMap<string, Fact> { return this.facts; }
   /** Renamed internally to `takesMap` so the public `takes` getter doesn't
    * collide with the storage map (Phase A additive accessor). */
   private readonly takesMap = new Map<string, Take>();
