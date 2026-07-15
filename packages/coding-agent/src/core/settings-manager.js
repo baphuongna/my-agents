@@ -459,6 +459,33 @@ export class SettingsManager {
         this.markModified("defaultModel");
         this.save();
     }
+    getSystemPrompt() {
+        return this.settings.systemPrompt;
+    }
+    setSystemPrompt(value) {
+        if (value === undefined || value === "") {
+            delete this.globalSettings.systemPrompt;
+        }
+        else {
+            this.globalSettings.systemPrompt = value;
+        }
+        this.markModified("systemPrompt");
+        this.save();
+    }
+    getAppendSystemPrompt() {
+        return this.settings.appendSystemPrompt;
+    }
+    setAppendSystemPrompt(value) {
+        const v = Array.isArray(value) ? (value.length === 0 ? undefined : value) : value;
+        if (v === undefined || v === "") {
+            delete this.globalSettings.appendSystemPrompt;
+        }
+        else {
+            this.globalSettings.appendSystemPrompt = v;
+        }
+        this.markModified("appendSystemPrompt");
+        this.save();
+    }
     getSteeringMode() {
         return this.settings.steeringMode || "one-at-a-time";
     }

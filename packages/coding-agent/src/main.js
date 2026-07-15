@@ -36,6 +36,13 @@ import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 const EXTENSION_LOAD_FAILURE_HINT = 'Hint: Start without extensions using "mya -ne".';
+/** Normalize a settings-stored appendSystemPrompt (string|string[]|undefined) to the
+ *  string[] shape that ResourceLoaderOptions.appendSystemPrompt expects. */
+function toAppendSource(v) {
+    if (v === undefined)
+        return undefined;
+    return Array.isArray(v) ? v : [v];
+}
 /**
  * Read all content from piped stdin.
  * Returns undefined if stdin is a TTY (interactive terminal).
@@ -537,8 +544,10 @@ export async function main(args, options) {
                 noPromptTemplates: parsed.noPromptTemplates,
                 noThemes: parsed.noThemes,
                 noContextFiles: parsed.noContextFiles,
-                systemPrompt: parsed.systemPrompt,
-                appendSystemPrompt: parsed.appendSystemPrompt,
+                // CLI flag wins over settings.json (matches existing precedence for other options).
+                systemPrompt: parsed.systemPrompt ?? runtimeSettingsManager.getSystemPrompt(),
+                appendSystemPrompt: parsed.appendSystemPrompt ??
+                    toAppendSource(runtimeSettingsManager.getAppendSystemPrompt()),
                 extensionFactories: options?.extensionFactories,
             },
         });

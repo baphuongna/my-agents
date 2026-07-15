@@ -51,6 +51,13 @@ import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.
 
 const EXTENSION_LOAD_FAILURE_HINT = 'Hint: Start without extensions using "mya -ne".';
 
+/** Normalize a settings-stored appendSystemPrompt (string|string[]|undefined) to the
+ *  string[] shape that ResourceLoaderOptions.appendSystemPrompt expects. */
+function toAppendSource(v: string | string[] | undefined): string[] | undefined {
+	if (v === undefined) return undefined;
+	return Array.isArray(v) ? v : [v];
+}
+
 /**
  * Read all content from piped stdin.
  * Returns undefined if stdin is a TTY (interactive terminal).
@@ -671,8 +678,11 @@ export async function main(args: string[], options?: MainOptions) {
 				noPromptTemplates: parsed.noPromptTemplates,
 				noThemes: parsed.noThemes,
 				noContextFiles: parsed.noContextFiles,
-				systemPrompt: parsed.systemPrompt,
-				appendSystemPrompt: parsed.appendSystemPrompt,
+				// CLI flag wins over settings.json (matches existing precedence for other options).
+				systemPrompt: parsed.systemPrompt ?? runtimeSettingsManager.getSystemPrompt(),
+				appendSystemPrompt:
+					parsed.appendSystemPrompt ??
+					toAppendSource(runtimeSettingsManager.getAppendSystemPrompt()),
 				extensionFactories: options?.extensionFactories,
 			},
 		});

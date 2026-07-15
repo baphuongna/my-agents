@@ -85,6 +85,10 @@ export interface Settings {
 	defaultProvider?: string;
 	defaultModel?: string;
 	defaultThinkingLevel?: ThinkingLevel;
+	/** Path to a file containing a custom system prompt, or the prompt text itself. */
+	systemPrompt?: string;
+	/** Path(s) to append-system-prompt files, or the append text(s) themselves. */
+	appendSystemPrompt?: string | string[];
 	transport?: TransportSetting; // default: "auto"
 	steeringMode?: "all" | "one-at-a-time";
 	followUpMode?: "all" | "one-at-a-time";
@@ -697,6 +701,35 @@ export class SettingsManager {
 		this.globalSettings.defaultModel = modelId;
 		this.markModified("defaultProvider");
 		this.markModified("defaultModel");
+		this.save();
+	}
+
+	getSystemPrompt(): string | undefined {
+		return this.settings.systemPrompt;
+	}
+
+	setSystemPrompt(value: string | undefined): void {
+		if (value === undefined || value === "") {
+			delete this.globalSettings.systemPrompt;
+		} else {
+			this.globalSettings.systemPrompt = value;
+		}
+		this.markModified("systemPrompt");
+		this.save();
+	}
+
+	getAppendSystemPrompt(): string | string[] | undefined {
+		return this.settings.appendSystemPrompt;
+	}
+
+	setAppendSystemPrompt(value: string | string[] | undefined): void {
+		const v = Array.isArray(value) ? (value.length === 0 ? undefined : value) : value;
+		if (v === undefined || v === "") {
+			delete this.globalSettings.appendSystemPrompt;
+		} else {
+			this.globalSettings.appendSystemPrompt = v;
+		}
+		this.markModified("appendSystemPrompt");
 		this.save();
 	}
 

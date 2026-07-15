@@ -63,6 +63,10 @@ export interface Settings {
     defaultProvider?: string;
     defaultModel?: string;
     defaultThinkingLevel?: ThinkingLevel;
+    /** Path to a file containing a custom system prompt, or the prompt text itself. */
+    systemPrompt?: string;
+    /** Path(s) to append-system-prompt files, or the append text(s) themselves. */
+    appendSystemPrompt?: string | string[];
     transport?: TransportSetting;
     steeringMode?: "all" | "one-at-a-time";
     followUpMode?: "all" | "one-at-a-time";
@@ -183,6 +187,10 @@ export declare class SettingsManager {
     setDefaultProvider(provider: string): void;
     setDefaultModel(modelId: string): void;
     setDefaultModelAndProvider(provider: string, modelId: string): void;
+    getSystemPrompt(): string | undefined;
+    setSystemPrompt(value: string | undefined): void;
+    getAppendSystemPrompt(): string | string[] | undefined;
+    setAppendSystemPrompt(value: string | string[] | undefined): void;
     getSteeringMode(): "all" | "one-at-a-time";
     setSteeringMode(mode: "all" | "one-at-a-time"): void;
     getFollowUpMode(): "all" | "one-at-a-time";

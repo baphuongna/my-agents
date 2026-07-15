@@ -17,4 +17,3 @@ export { TelemetrySink, project, NoopExporter } from "./telemetry.js";
 export type { TelemetrySnapshot, TelemetryProjection, TelemetryExporter, Span } from "./telemetry.js";
 export * from "./canonical-json.js";
 export * from "./session-utils.js";
-export { getDefaultModel } from "./default-model.js";
