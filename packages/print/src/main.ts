@@ -156,7 +156,7 @@ async function main(): Promise<void> {
   if (print || prompt) {
     const agent = createAgent({
       model,
-      memoryDir: join(homedir(), ".my-agent", "memory"),
+      memoryDir: join(homedir(), ".mya", "memory"),
       auditLog,
       secretStore,
       skillStore,
@@ -202,7 +202,7 @@ async function runRpcServer(_model?: string): Promise<void> {
   const { RpcServer } = await import("@my-agent/rpc");
   let controller = new AbortController();
   const agent = createAgent({
-    memoryDir: join(homedir(), ".my-agent", "memory"),
+    memoryDir: join(homedir(), ".mya", "memory"),
     auditLog,
     secretStore,
     skillStore,

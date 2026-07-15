@@ -323,12 +323,40 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
 
     // ── paid_fetch (x402 wallet) ──────────────────────────────────────
     if (opts.wallet) {
-      try { pi.registerTool(makePaidFetchTool(opts.wallet)); } catch {}
+      try {
+        const raw = makePaidFetchTool(opts.wallet);
+        pi.registerTool({
+          name: raw.meta.name,
+          description: "Fetch a URL with x402 micropayment",
+          parameters: raw.meta.args,
+          async execute(_id: string, params: Record<string, unknown>) {
+            const result = await raw.run(params, null as never);
+            const text = typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
+            return result.ok
+              ? { content: [{ type: "text", text }] }
+              : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+          },
+        });
+      } catch {}
     }
 
     // ── debug tool (DAP) ──────────────────────────────────────────────
     if (opts.dapConnect) {
-      try { pi.registerTool(makeDebugTool(opts.dapConnect)); } catch {}
+      try {
+        const raw = makeDebugTool(opts.dapConnect);
+        pi.registerTool({
+          name: raw.meta.name,
+          description: "DAP debugger: initialize, setBreakpoints, continue, step, evaluate",
+          parameters: raw.meta.args,
+          async execute(_id: string, params: Record<string, unknown>) {
+            const result = await raw.run(params, null as never);
+            const text = typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
+            return result.ok
+              ? { content: [{ type: "text", text }] }
+              : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+          },
+        });
+      } catch {}
     }
 
     // ── hashline_edit (hash-anchored edits, from pi-hashline-edit-pro) ──

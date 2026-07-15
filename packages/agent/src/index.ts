@@ -248,8 +248,11 @@ export function createAgent(config: AgentConfig = {}): Agent {
     ],
   });
   if (config.memoryDir) {
-    memory.register(new FileBackend("archivist", config.memoryDir));
-    memory.register(new FileBackend("goals", config.memoryDir));
+    // ensureDefault() in withBrain already registered stubs for these roles.
+    // Replace with FileBackend (persistent) — wrap in try/catch since the
+    // role may already have a stub backend.
+    try { memory.register(new FileBackend("archivist", config.memoryDir)); } catch { /* stub already registered */ }
+    try { memory.register(new FileBackend("goals", config.memoryDir)); } catch { /* stub already registered */ }
   }
   memory.addRole(new ArchivistRole());
   const goalsRole = new GoalsRole();
