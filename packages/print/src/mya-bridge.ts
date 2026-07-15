@@ -58,7 +58,7 @@ import type { SecretStore } from "@my-agent/secrets";
 import type { HookRegistry, McpManager, McpServerConfig, ChannelRegistry } from "@my-agent/gateway";
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
-import type { Brain, MemoryFacade } from "@my-agent/memory";
+import type { Brain, MemoryFacade, RetrievalEngine, LifecycleManager } from "@my-agent/memory";
 import type { Wallet } from "@my-agent/x402";
 import type { AcpBridge } from "@my-agent/acp";
 import type { SyncServer } from "@my-agent/sync";
@@ -74,6 +74,8 @@ export interface MyaBridgeOptions {
   cron?: CronScheduler;
   brain?: Brain;
   memory?: MemoryFacade;
+  retrievalEngine?: RetrievalEngine;
+  lifecycleManager?: LifecycleManager;
   wallet?: Wallet;
   dapConnect?: { connect: { command: string; args?: string[] } };
   acp?: AcpBridge;
@@ -183,13 +185,15 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // BRAIN: consolidate on turn_end (memory lifecycle)
+    // LIFECYCLE: run unified lifecycle pipeline on turn_end
     // ═══════════════════════════════════════════════════════════════════
-    // Use memory.consolidate() when available (runs full domain lifecycle:
-    // purge → promote → summarize). Falls back to brain.consolidate().
+    // Pipeline: purge expired → purge decayed → consolidate → compile → reconcile
+    // Uses LifecycleManager when wired; falls back to memory.consolidate() or brain.consolidate().
     pi.on("turn_end", () => {
       try {
-        if (opts.memory) {
+        if (opts.lifecycleManager) {
+          opts.lifecycleManager.tick();
+        } else if (opts.memory) {
           void opts.memory.consolidate();
         } else if (opts.brain) {
           opts.brain.consolidate();
@@ -219,14 +223,34 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       const e = event as { systemPrompt?: string; prompt?: string };
       const parts: string[] = [];
 
-      // Inject brain facts (memory recall) — uses RRF 4-arm retrieval when
-      // MemoryManager is wired; falls back to raw brain facts otherwise.
-      if (e.prompt) {
+      // Inject brain facts via unified RetrievalEngine pipeline.
+      // Pipeline: tokenize → stopword → 5 arms (BM25+substring+trigram+vector+graph)
+      //           → RRF fusion → fuzzy correct → proximity rerank → caps → guard
+      if (e.prompt && opts.brain) {
         try {
           let memoryParts: string[] = [];
-          if (opts.memory) {
-            // Use 4-arm RRF retrieval (BM25 + substring + vector + graph)
-            const domainResults = opts.memory.recall(e.prompt, { topK: 10 });
+          if (opts.retrievalEngine) {
+            // Unified pipeline: build docs from Brain facts + takes
+            const brain = opts.brain;
+            const docs = [
+              ...brain.unconsolidatedFacts().map((f) => ({
+                id: f.id, content: f.content, role: "working" as const,
+              })),
+              ...brain.takes.map((t) => ({
+                id: t.id, content: t.text, role: "working" as const,
+              })),
+            ];
+            if (docs.length > 0) {
+              const result = opts.retrievalEngine.retrieve(docs, e.prompt, { topK: 5 });
+              if (result.hits.length > 0) {
+                const hitLines = result.hits.map((h) => `- ${h.content.slice(0, 200)}`).join("\n");
+                memoryParts.push(`[memory]
+${hitLines}`);
+              }
+            }
+          } else if (opts.memory) {
+            // Fallback: domain fan-out (legacy)
+            const domainResults = opts.memory.recall(e.prompt, { topK: 5 });
             for (const slice of domainResults) {
               if (slice.hits.length > 0) {
                 const hitLines = slice.hits
@@ -235,16 +259,12 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
                 memoryParts.push(`[${slice.domain}]\n${hitLines}`);
               }
             }
-          } else if (opts.brain) {
-            // Fallback: raw brain facts (no ranking)
+          } else {
+            // Last resort: raw brain facts (no ranking)
             const brain = opts.brain;
             const facts = brain.unconsolidatedFacts().slice(0, 10);
             if (facts.length > 0) {
               memoryParts.push(`[facts]\n${facts.map((f) => `- [${f.kind}] ${f.content.slice(0, 200)}`).join("\n")}`);
-            }
-            const takes = brain.takes;
-            if (takes.length > 0) {
-              memoryParts.push(`[takes]\n${takes.slice(0, 5).map((t) => `- ${t.text.slice(0, 200)}`).join("\n")}`);
             }
           }
           if (memoryParts.length > 0) {
@@ -448,7 +468,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           const confirmed = result.real;
           if (confirmed.length > 0) {
             // Log to stderr (visible in launcher but doesn't interrupt TUI)
-            process.stderr.write(`\n[mya review] ${confirmed.length} issue(s) flagged: ${confirmed.map((s: string) => s.finding.slice(0, 80)).join("; ")}\n`);
+            process.stderr.write(`\n[mya review] ${confirmed.length} issue(s) flagged: ${confirmed.slice(0, 80).join("; ")}\n`);
           }
         }).catch(() => { /* adversarial review is best-effort */ });
       });

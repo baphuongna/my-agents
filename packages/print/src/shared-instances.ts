@@ -13,6 +13,10 @@ import {
   Brain,
   MemoryManagerImpl,
   MemoryContextSource,
+  RetrievalEngine,
+  LifecycleManager,
+  MemoryTree,
+  FileBackend,
   archivistDomain,
   treeDomain,
   diffDomain,
@@ -64,9 +68,15 @@ const allDomains = [
   entitiesDomain, storeDomain, toolsDomain, queueDomain,
 ];
 
+const memoryDir = join(homedir(), ".mya", "memory");
+
 export const memory = MemoryManagerImpl.withBrain({
   brain,
   domains: allDomains,
+  roleBackends: [
+    new FileBackend("archivist", memoryDir),
+    new FileBackend("goals", memoryDir),
+  ],
 });
 
 // Wire previously-dead domains (sources + store + goals)
@@ -76,6 +86,12 @@ sourcesDomain.wireSource(new MemoryContextSource(memory));
 for (const backend of memory.backends) {
   if (backend.role === "goals") { goalsDomain.wireStore(backend); break; }
 }
+
+// ── Tier-3 unified pipeline: RetrievalEngine + LifecycleManager ──
+// These replace the fragmented domain fan-out with a single coherent pipeline.
+export const memoryTree = new MemoryTree(brain);
+export const retrievalEngine = new RetrievalEngine();
+export const lifecycleManager = new LifecycleManager(brain, memoryTree);
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
 export const sync = new SyncServer();
