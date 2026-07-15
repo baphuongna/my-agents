@@ -194,9 +194,11 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // ═══════════════════════════════════════════════════════════════════
     if (process.env["MYA_TTS"] === "1") {
       pi.on("message_end", (event: unknown) => {
-        const e = event as { role?: string; text?: string };
-        if (e.role === "assistant" && e.text) {
-          void speak(e.text).catch(() => {});
+        const e = event as { message?: { role?: string; content?: Array<{ type: string; text?: string }> } };
+        const msg = e.message;
+        if (msg?.role === "assistant" && msg.content) {
+          const text = msg.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
+          if (text) void speak(text).catch(() => {});
         }
       });
     }
@@ -261,8 +263,9 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     pi.on("tool_result", (event: unknown) => {
       const e = event as {
         toolName: string;
+        input?: Record<string, unknown>;
         content?: Array<{ type: string; text?: string }>;
-        details?: { exitCode?: number; command?: string; filePath?: string };
+        details?: Record<string, unknown>;
         isError?: boolean;
       };
 
@@ -271,8 +274,8 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         try {
           const textPart = e.content.find((c) => c.type === "text" && c.text);
           if (textPart?.text) {
-            const cmd = e.details?.command ?? "";
-            const exitCode = e.details?.exitCode ?? 0;
+            const cmd = (e.input?.["command"] as string) ?? "";
+            const exitCode = (e.details?.["exitCode"] as number) ?? 0;
             const result = compressCommandOutput(cmd, textPart.text, exitCode);
             // Only compress if savings are meaningful (>20% reduction)
             const ratio = result.originalTokens > 0 ? result.compressedTokens / result.originalTokens : 1;
