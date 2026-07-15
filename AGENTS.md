@@ -1,4 +1,4 @@
-# AGENTS.md — see .learned/AGENT-SPEC.md (authoritative)
+# AGENTS.md — see source/.learned/AGENT-SPEC.md (authoritative)
 
 Stack: TS7 / Rust-stable via napi-rs / Node ≥20 ESM.
 Rust gate (any one): trust boundary | hot inner loop (>100k files / AST) | determinism | platform parity.
