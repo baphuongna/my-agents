@@ -132,14 +132,10 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 Available tools:
 ${toolsList}
 
-In addition to the tools above, you may have access to other custom tools depending on the project.
-
 Guidelines:
 ${guidelines}
 
-Pi docs (only when working on pi itself — SDK, extensions, themes, skills, TUI, etc.):
-- ${readmePath}, ${docsPath}/, ${examplesPath}/
-- ls the docs/ dir to find a specific topic; follow .md cross-references when implementing`;
+Pi docs (only when working on pi): ${docsPath}/, ${examplesPath}/, ${readmePath}`;
 
 	if (appendSection) {
 		prompt += appendSection;
