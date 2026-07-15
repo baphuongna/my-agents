@@ -113,6 +113,7 @@ export class DiscordChannel implements Channel {
   readonly alias?: string;
   readonly label: string;
   private token: string | undefined;
+  private lastMessageId: string | undefined; // HIGH-3 fix: dedup tracking
 
   constructor(token?: string, alias?: string) {
     this.token = token ?? (alias ? process.env[`DISCORD_BOT_TOKEN_${alias.toUpperCase()}`] : process.env["DISCORD_BOT_TOKEN"]);
@@ -160,15 +161,19 @@ export class DiscordChannel implements Channel {
       : process.env["DISCORD_CHANNEL_ID"];
     if (!channelId) return [];
     try {
+      // HIGH-3 fix: dedup — only fetch messages after lastMessageId
+      const afterParam = this.lastMessageId ? `&after=${this.lastMessageId}` : "";
       const res = await fetch(
-        `https://discord.com/api/v10/channels/${channelId}/messages?limit=50`,
+        `https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages?limit=50${afterParam}`,
         { headers: { "authorization": `Bot ${this.token}` } },
       );
       if (!res.ok) return [];
       const data = (await res.json()) as Array<{ id: string; content?: string; author?: { username?: string }; channel_id?: string }>;
       const msgs: ChannelMessage[] = [];
-      for (const m of data) {
+      // Discord returns newest-first → reverse to oldest-first for processing
+      for (const m of [...data].reverse()) {
         if (!m.content) continue;
+        this.lastMessageId = m.id;
         msgs.push({
           channelId: this.id,
           from: m.author?.username ?? "unknown",
@@ -194,6 +199,7 @@ export class SlackChannel implements Channel {
   readonly alias?: string;
   readonly label: string;
   private token: string | undefined;
+  private lastTs: string | undefined; // HIGH-3 fix: dedup tracking
 
   constructor(token?: string, alias?: string) {
     this.token = token ?? (alias ? process.env[`SLACK_BOT_TOKEN_${alias.toUpperCase()}`] : process.env["SLACK_BOT_TOKEN"]);
@@ -239,15 +245,20 @@ export class SlackChannel implements Channel {
       : process.env["SLACK_CHANNEL_ID"];
     if (!channel) return [];
     try {
+      // HIGH-3 fix: dedup — only fetch messages after lastTs
+      const oldestParam = this.lastTs ? `&oldest=${this.lastTs}` : "";
       const res = await fetch(
-        `https://slack.com/api/conversations.history?channel=${encodeURIComponent(channel)}&limit=50`,
+        `https://slack.com/api/conversations.history?channel=${encodeURIComponent(channel)}&limit=50${oldestParam}`,
         { headers: { "authorization": `Bearer ${this.token}` } },
       );
+      if (!res.ok) return []; // LOW fix: check HTTP status before JSON parse
       const data = (await res.json()) as { ok?: boolean; messages?: Array<{ text?: string; user?: string; ts?: string }> };
       if (!data.ok || !data.messages) return [];
       const msgs: ChannelMessage[] = [];
-      for (const m of data.messages) {
+      // Slack returns newest-first → reverse to oldest-first
+      for (const m of [...data.messages].reverse()) {
         if (!m.text) continue;
+        if (m.ts) this.lastTs = m.ts;
         msgs.push({
           channelId: this.id,
           from: m.user ?? "unknown",

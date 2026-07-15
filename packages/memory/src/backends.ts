@@ -126,9 +126,20 @@ export class InMemoryBackend implements MemoryBackend {
   async read(query: MemoryQuery): Promise<MemoryHit[]> {
     const q = query.text.toLowerCase();
     const topK = query.topK ?? 10;
+    // MEDIUM-3 fix: include BOTH substring matches AND token matches.
+    // Substring match with no token overlap gets score 0 (BM25) but is still included.
+    const qTokens = q ? new Set(tokenize(q)) : null;
     const filtered = this.entries
       .filter((e) => e.role === (query.role ?? this.role))
-      .filter((e) => !q || e.content.toLowerCase().includes(q));
+      .filter((e) => {
+        if (!q) return true;
+        if (e.content.toLowerCase().includes(q)) return true; // substring match
+        if (qTokens) {
+          const tokens = new Set(tokenize(e.content.toLowerCase()));
+          for (const t of qTokens) { if (tokens.has(t)) return true; } // token match
+        }
+        return false;
+      });
     // Build corpus stats for BM25 ranking.
     const corpus = buildCorpus(filtered.map((e) => tokenize(e.content)));
     return filtered
@@ -189,12 +200,20 @@ export class FileBackend implements MemoryBackend {
     const topK = query.topK ?? 10;
     // Scan ALL matching lines, score with BM25, then take top-K by score.
     const lines = content.split("\n");
+    // MEDIUM-3 fix: include BOTH substring matches AND token matches
+    const qTokens = q ? new Set(tokenize(q)) : null;
     const candidates: Array<{ id: string; content: string }> = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
-      if (line.startsWith("- ") && (!q || line.toLowerCase().includes(q))) {
-        candidates.push({ id: `file-${this.role}-${i}`, content: line.slice(2) });
+      if (!line.startsWith("- ")) continue;
+      const lower = line.toLowerCase();
+      let match = !q;
+      if (!match && lower.includes(q)) match = true; // substring match
+      if (!match && qTokens) {
+        const tokens = new Set(tokenize(lower));
+        for (const t of qTokens) { if (tokens.has(t)) { match = true; break; } }
       }
+      if (match) candidates.push({ id: `file-${this.role}-${i}`, content: line.slice(2) });
     }
     // Build corpus stats from all matching candidates.
     const corpus = buildCorpus(candidates.map((c) => tokenize(c.content)));

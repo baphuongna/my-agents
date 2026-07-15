@@ -225,28 +225,39 @@ function getCronParts(date: Date, timezone?: string): {
       dow: date.getDay(),
     };
   }
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hourCycle: "h23",
-    minute: "numeric",
-    hour: "numeric",
-    day: "numeric",
-    month: "numeric",
-    weekday: "short",
-  });
-  const parts = fmt.formatToParts(date);
-  const get = (type: string): string =>
-    parts.find((p) => p.type === type)?.value ?? "";
-  const dowNames: Record<string, number> = {
-    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-  };
-  return {
-    minute: Number(get("minute")),
-    hour: Number(get("hour")) % 24, // guard: some engines emit 24 for midnight
-    dom: Number(get("day")),
-    month: Number(get("month")),
-    dow: dowNames[get("weekday")] ?? date.getDay(),
-  };
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      minute: "numeric",
+      hour: "numeric",
+      day: "numeric",
+      month: "numeric",
+      weekday: "short",
+    });
+    const parts = fmt.formatToParts(date);
+    const get = (type: string): string =>
+      parts.find((p) => p.type === type)?.value ?? "";
+    const dowNames: Record<string, number> = {
+      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+    };
+    return {
+      minute: Number(get("minute")),
+      hour: Number(get("hour")) % 24,
+      dom: Number(get("day")),
+      month: Number(get("month")),
+      dow: dowNames[get("weekday")] ?? date.getDay(),
+    };
+  } catch {
+    // MEDIUM-1 fix: invalid timezone string — fall back to local time
+    return {
+      minute: date.getMinutes(),
+      hour: date.getHours(),
+      dom: date.getDate(),
+      month: date.getMonth() + 1,
+      dow: date.getDay(),
+    };
+  }
 }
 
 /**

@@ -361,6 +361,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // a hardcoded false.
   const { DreamCycle } = await import("@my-agent/memory");
   const dreamCycle = new DreamCycle({ brain });
+  // MEDIUM-2 fix: actually start the periodic consolidation timer
+  dreamCycle.start();
 
   const gw = new Gateway({
     port,

@@ -825,7 +825,9 @@ function autoDetectPiAiProviders(
       const ProviderClass = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
       if (typeof ProviderClass !== "function") continue;
       const provider = new ProviderClass({ apiKey });
-      const modelEnvKey = cfg.envKey.replace(/_(API_KEY|TOKEN)$/, "_MODEL");
+      // HIGH-1 fix: handle AWS_ACCESS_KEY_ID, *_KEY_ID, *_SECRET_ACCESS_KEY patterns
+      const modelEnvKey = cfg.envKey
+        .replace(/_(API_KEY|API_KEY_ID|TOKEN|KEY_ID|SECRET_ACCESS_KEY)$/, "_MODEL");
       const modelId = process.env[modelEnvKey] ?? cfg.defaultModel;
       const model = { id: modelId, api: cfg.defaultApi };
       bridges.push(new PiAiProviderBridge({ provider, model, apiKey, id: cfg.providerId }));
