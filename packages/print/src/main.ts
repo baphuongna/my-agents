@@ -475,6 +475,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
           .catch((e) => console.warn(`[gateway] WS message handler failed: ${(e as Error).message}`));
       }
     },
+    onThinkingChange: (_level: string | undefined) => {
+      // MYA_THINKING_LEVEL env var is already updated by the endpoint handler.
+      // New sessions (pool.acquire → createAgentSession) will pick it up.
+      // Pi's AgentSession reads thinking level from settings on creation.
+    },
   });
   const { port: actualPort } = await gw.start();
 

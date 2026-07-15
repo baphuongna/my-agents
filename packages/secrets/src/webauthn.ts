@@ -277,7 +277,7 @@ export class WebAuthnService {
 
   private async readStore(): Promise<WebAuthnStore> {
     try {
-      const raw = await readFile(this.storePath, "utf8", { mode: 0o600 });
+      const raw = await readFile(this.storePath, { encoding: "utf8" });
       const parsed = JSON.parse(raw) as Partial<WebAuthnStore>;
       if (parsed.version !== 1 || typeof parsed.rpCredentials !== "object" || parsed.rpCredentials === null) {
         return { version: 1, rpCredentials: {} };
@@ -290,7 +290,7 @@ export class WebAuthnService {
 
   private async writeStore(store: WebAuthnStore): Promise<void> {
     mkdirSync(dirname(this.storePath), { recursive: true });
-    await writeFile(this.storePath, JSON.stringify(store, null, 2), "utf8", { mode: 0o600 });
+    await writeFile(this.storePath, JSON.stringify(store, null, 2), { encoding: "utf8", mode: 0o600 });
   }
 
   private async listCredentials(rpId: string): Promise<StoredCredential[]> {

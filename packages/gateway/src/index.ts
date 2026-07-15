@@ -134,6 +134,8 @@ export interface GatewayOptions {
   allowExternalBind?: boolean;
   /** Optional: handle incoming WS messages (e.g. a dashboard sending a prompt). */
   onWsMessage?: (session: string, data: unknown) => void;
+  /** Called when thinking level changes via POST /thinking. */
+  onThinkingChange?: (level: string | undefined) => void;
   /** Phase 15 M2: optional local-only WS auth token (blocks other local processes). */
   wsToken?: string;
   /** §12 control-plane (sessions/cron/config/tools + handle LRU). Defaults to a
@@ -260,6 +262,8 @@ export class Gateway {
   /** Phase 3-7: WebAuthn biometric auth service. */
   private readonly webAuthn?: WebAuthnService;
   private readonly voiceCall?: VoiceCallChannel;
+  /** Thinking level change handler. */
+  private onThinkingChange?: (level: string | undefined) => void;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
   /** Static file directory (optional — Phase 25.2 build pipeline). */
@@ -299,6 +303,7 @@ export class Gateway {
     this.rootHtml = opts.rootHtml;
     this.staticDir = opts.staticDir;
     this.onWsMessage = opts.onWsMessage;
+    this.onThinkingChange = opts.onThinkingChange;
     this.wsToken = opts.wsToken;
     this.control = opts.control ?? new ControlPlane();
     this.hooks = opts.hooks ?? new HookRegistry();
@@ -548,6 +553,27 @@ export class Gateway {
           };
         });
         return send(200, models);
+      }
+      case "/thinking": {
+        if (req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { level } = JSON.parse(body || "{}") as { level?: string };
+              const valid = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+              if (level && !valid.includes(level)) return send(400, { error: `invalid level; valid: ${valid.join("|")}` });
+              process.env["MYA_THINKING_LEVEL"] = level || "";
+              // Update all PiAiProviderBridge instances
+              if (this.onThinkingChange) this.onThinkingChange(level || undefined);
+              return send(200, { ok: true, level: level || "off" });
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
+        return send(200, { level: process.env["MYA_THINKING_LEVEL"] || "off" });
       }
       case "/repos": {
         if (req.method === "POST") {

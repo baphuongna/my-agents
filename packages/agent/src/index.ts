@@ -830,7 +830,7 @@ function autoDetectPiAiProviders(
         .replace(/_(API_KEY|API_KEY_ID|TOKEN|KEY_ID|SECRET_ACCESS_KEY)$/, "_MODEL");
       const modelId = process.env[modelEnvKey] ?? cfg.defaultModel;
       const model = { id: modelId, api: cfg.defaultApi };
-      bridges.push(new PiAiProviderBridge({ provider, model, apiKey, id: cfg.providerId }));
+      bridges.push(new PiAiProviderBridge({ provider, model, apiKey, id: cfg.providerId, reasoning: process.env["MYA_THINKING_LEVEL"] }));
     } catch {
       // Provider module not found or init failed — skip silently.
     }

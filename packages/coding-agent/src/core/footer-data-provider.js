@@ -143,6 +143,14 @@ export class FooterDataProvider {
     setAvailableProviderCount(count) {
         this.availableProviderCount = count;
     }
+    /** Set an extension status entry (shown in footer). */
+    setExtensionStatus(key, text) {
+        this.extensionStatuses.set(key, text);
+    }
+    /** Clear all extension status entries (called on shutdown). */
+    clearExtensionStatuses() {
+        this.extensionStatuses.clear();
+    }
     setCwd(cwd) {
         if (this.cwd === cwd) {
             return;

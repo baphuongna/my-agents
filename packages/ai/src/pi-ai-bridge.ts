@@ -64,7 +64,7 @@ interface PiAiProviderLike {
   streamSimple(
     model: { id: string; api?: string },
     context: PiAiContext,
-    options?: { apiKey?: string; signal?: AbortSignal },
+    options?: { apiKey?: string; signal?: AbortSignal; reasoning?: string },
   ): AsyncIterable<PiAiEvent>;
 }
 
@@ -77,6 +77,8 @@ export interface PiAiProviderBridgeOptions {
   model: { id: string; api?: string };
   apiKey?: string;
   id?: string;
+  /** Thinking/reasoning level: minimal|low|medium|high|xhigh|max */
+  reasoning?: string;
 }
 
 export class PiAiProviderBridge implements ProviderProfile {
@@ -85,6 +87,7 @@ export class PiAiProviderBridge implements ProviderProfile {
   private provider: PiAiProviderBridgeOptions["provider"];
   private piAiModel: { id: string; api?: string };
   private _apiKey: string;
+  private _reasoning?: string;
 
   constructor(opts: PiAiProviderBridgeOptions) {
     this.provider = opts.provider;
@@ -92,6 +95,12 @@ export class PiAiProviderBridge implements ProviderProfile {
     this.model = opts.model.id;
     this.id = opts.id ?? `${opts.provider.id}:${opts.model.id}`;
     this._apiKey = opts.apiKey ?? opts.provider.auth?.apiKey?.resolve() ?? "";
+    this._reasoning = opts.reasoning;
+  }
+
+  /** Set thinking/reasoning level at runtime. */
+  setReasoning(level: string | undefined): void {
+    this._reasoning = level;
   }
 
   private get apiKey(): string {
@@ -121,6 +130,7 @@ export class PiAiProviderBridge implements ProviderProfile {
     try {
       const stream = this.provider.streamSimple(this.piAiModel, context, {
         apiKey: this.apiKey,
+        reasoning: this._reasoning,
       });
 
       for await (const event of stream) {

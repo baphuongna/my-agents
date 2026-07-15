@@ -38,6 +38,10 @@ export declare class FooterDataProvider {
     setSubagentCount(count: number): void;
     /** Internal: update available provider count */
     setAvailableProviderCount(count: number): void;
+    /** Set an extension status entry (shown in footer). */
+    setExtensionStatus(key: string, text: string): void;
+    /** Clear all extension status entries (called on shutdown). */
+    clearExtensionStatuses(): void;
     setCwd(cwd: string): void;
     /** Internal: cleanup */
     dispose(): void;
