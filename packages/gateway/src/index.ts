@@ -28,7 +28,7 @@ import { CollabRelay } from "@my-agent/collab";
 import { ChannelSessionRouter } from "./channel-session.js";
 import type { ChannelRegistry, ChannelMessage } from "./channels.js";
 import { getVapidPublicKey, addSubscription, removeSubscription } from "./push.js";
-import { encodePairingQR, type DevicePairing, type PairingQR } from "@my-agent/secrets";
+import { encodePairingQR, type DevicePairing, type PairingQR, type WebAuthnService } from "@my-agent/secrets";
 import type { VoiceCallChannel } from "./voice-call.js";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
@@ -191,6 +191,8 @@ export interface GatewayOptions {
   wsInfo?: () => unknown;
   /** Phase G: device pairing manager (optional). */
   devicePairing?: DevicePairing;
+  /** Phase 3-7: WebAuthn/FaceID biometric auth service (optional). */
+  webAuthn?: WebAuthnService;
   /** C-5 fix: optional voice call channel for Twilio integration. */
   voiceCall?: VoiceCallChannel;
 }
@@ -255,6 +257,8 @@ export class Gateway {
   private readonly wsInfo?: () => unknown;
   /** Phase G: device pairing manager. */
   private readonly devicePairing?: DevicePairing;
+  /** Phase 3-7: WebAuthn biometric auth service. */
+  private readonly webAuthn?: WebAuthnService;
   private readonly voiceCall?: VoiceCallChannel;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
@@ -331,6 +335,7 @@ export class Gateway {
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
+    this.webAuthn = opts.webAuthn;
     this.voiceCall = opts.voiceCall;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
     if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
@@ -914,6 +919,59 @@ export class Gateway {
               removeSubscription(endpoint);
               return send(200, { ok: true });
             } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        // ── WebAuthn/FaceID (Phase 3-7) ──
+        if (url.pathname === "/auth/webauthn/status" && req.method === "GET" && this.webAuthn) {
+          const rpId = url.searchParams.get("rpId") ?? undefined;
+          this.webAuthn.status(rpId).then(
+            (result) => send(200, result),
+            (e: unknown) => send(500, { error: (e as Error).message }),
+          );
+          return;
+        }
+        if (url.pathname === "/auth/webauthn/challenge" && req.method === "POST" && this.webAuthn) {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { kind, rpId } = JSON.parse(body || "{}") as { kind?: "register" | "authenticate"; rpId?: string };
+              if (!kind || (kind !== "register" && kind !== "authenticate")) {
+                return send(400, { error: "kind must be 'register' or 'authenticate'" });
+              }
+              const result = this.webAuthn!.generateChallenge(kind, rpId);
+              return send(200, result);
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
+        if (url.pathname === "/auth/webauthn/verify" && req.method === "POST" && this.webAuthn) {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { challengeId, credential, kind } = JSON.parse(body || "{}") as {
+                challengeId?: string;
+                credential?: unknown;
+                kind?: "register" | "authenticate";
+              };
+              if (!challengeId || !credential) {
+                return send(400, { error: "challengeId + credential required" });
+              }
+              const promise = kind === "register"
+                ? this.webAuthn!.verifyRegistration(challengeId, credential)
+                : this.webAuthn!.verifyAuthentication(challengeId, credential);
+              promise.then(
+                (result) => send(200, result),
+                (e: unknown) => send(400, { ok: false, error: (e as Error).message }),
+              );
+              return;
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
           });
           return;
         }

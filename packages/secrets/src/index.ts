@@ -235,3 +235,4 @@ export function makeSecretRedactor(store: SecretStore): (payload: Record<string,
 }
 
 export * from "./pairing.js";
+export * from "./webauthn.js";

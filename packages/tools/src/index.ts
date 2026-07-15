@@ -15,6 +15,8 @@ export { builtinTools, readTool, writeTool, editTool, replaceTool, bashTool, glo
 export { screenCaptureTool, screenFindTool, captureScreen, extractText, findOnScreen } from "./screen.js";
 export type { ScreenCapture, ScreenTextRegion } from "./screen.js";
 export { browserNavigateTool, browserClickTool, browserTypeTool, browserScreenshotTool, browserExtractTool, browserEvalTool, browserCloseTool, BrowserAutomation } from "./browser.js";
+export { prepareAction, extractOutline, executeAction } from "./cdp-actions.js";
+export type { UiAction, OutlineNode, PreparedAction, OutlineRect, MouseButtonName, CdpInputClient } from "./cdp-actions.js";
 export { lineHashes, formatHashed, replaceByHash, isValidAnchor, fileFingerprint } from "./hashline.js";
 export { computeLineHashes, canon, mapStableHashes, resolveAnchor, applyEdits, saveUndo, getUndo, clearUndo, HASH_LEN, HASH_SEP, HASH_RE } from "./hashline-edit.js";
 export type { AnchorResult, HashEdit, NoopEdit, ApplyResult, UndoEntry } from "./hashline-edit.js";
@@ -26,6 +28,7 @@ export * from "./graph-store.js";
 export * from "./reference-graph.js";
 export * from "./codeexec.js";
 export * from "./lsp-client.js";
+export * from "./lsp-cascade.js";
 export * from "./approval.js";
 export * from "./tool-search.js";
 export * from "./search-index.js";

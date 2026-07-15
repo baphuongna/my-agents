@@ -171,7 +171,7 @@ export class DiscordChannel implements Channel {
       const data = (await res.json()) as Array<{ id: string; content?: string; author?: { username?: string }; channel_id?: string }>;
       const msgs: ChannelMessage[] = [];
       // Discord returns newest-first → reverse to oldest-first for processing
-      for (const m of [...data].reverse()) {
+      for (const m of data) {
         if (!m.content) continue;
         this.lastMessageId = m.id;
         msgs.push({
@@ -256,7 +256,7 @@ export class SlackChannel implements Channel {
       if (!data.ok || !data.messages) return [];
       const msgs: ChannelMessage[] = [];
       // Slack returns newest-first → reverse to oldest-first
-      for (const m of [...data.messages].reverse()) {
+      for (const m of data.messages) {
         if (!m.text) continue;
         if (m.ts) this.lastTs = m.ts;
         msgs.push({

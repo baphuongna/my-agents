@@ -14,6 +14,9 @@
  * Source: §8 Memory frontier (multi-device sync), §23 #5; Lamport HLC.
  */
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { nowWallclock } from "@my-agent/core";
 
 /** A hybrid logical clock entry — wall + counter + node id. Orders events
@@ -154,26 +157,134 @@ export interface PushResponse {
   conflicts: { key: string; resolved: "remote-wins" | "local-wins" }[];
 }
 
+/** Options for {@link SyncServer.start}. */
+export interface SyncServerStartOptions {
+  /** Periodic exchange/persist interval (ms). Default: 30_000 (30 s). */
+  exchangeIntervalMs?: number;
+  /** Persisted state path. Default: ~/.mya/sync/state.json. */
+  persistPath?: string;
+  /** Disable persistence (useful for tests). */
+  disablePersistence?: boolean;
+}
+
+/** On-disk snapshot shape: the LWW entries + lastSync heartbeat. */
+interface SyncSnapshot {
+  lastSync: number;
+  entries: Versioned[];
+}
+
 /** A server-authoritative sync endpoint. Clients push their local writes; the
  * server is the source of truth (LWW merge). Clients pull to converge. */
 export class SyncServer {
   private readonly replica = new SyncReplica("server");
+  /** Wall-clock timestamp (ms) of the most recent push / pull / heartbeat. */
+  private lastSyncValue: number = 0;
+  /** Periodic exchange timer (Phase 3-6 — active mode). */
+  private exchangeTimer: ReturnType<typeof setInterval> | null = null;
+  /** Active exchange interval (ms). */
+  private exchangeIntervalMs = 30_000;
+  /** Active persist path (set on start). */
+  private persistPath: string | null = null;
+  /** Whether persistence is enabled this run. */
+  private persistenceEnabled = false;
 
   pull(since?: Hlc): PullResponse {
     const entries = since
       ? this.replica.export().filter((v) => compareHlc(v.hlc, since) > 0)
       : this.replica.export();
+    // A successful pull counts as a sync heartbeat.
+    this.lastSyncValue = nowWallclock();
     return { entries, serverClock: this.replica.hlc };
   }
 
   push(clientEntries: Versioned[]): PushResponse {
     const accepted = this.replica.merge(clientEntries);
     const conflicts = accepted.map((key) => ({ key, resolved: "remote-wins" as const }));
+    if (accepted.length > 0) this.lastSyncValue = nowWallclock();
     return { accepted, conflicts };
   }
 
   get replicaState(): SyncReplica {
     return this.replica;
+  }
+
+  // ── Phase 3-6: lifecycle (active mode) ─────────────────────────────────────
+
+  /** Whether the periodic exchange timer is armed. */
+  get running(): boolean {
+    return this.exchangeTimer !== null;
+  }
+
+  /** Timestamp (ms) of the most recent push / pull / periodic tick. */
+  get lastSync(): number {
+    return this.lastSyncValue;
+  }
+
+  /** Begin periodic state exchange + persistence. Idempotent. */
+  start(opts: SyncServerStartOptions = {}): void {
+    if (this.exchangeTimer !== null) return;
+    this.exchangeIntervalMs = opts.exchangeIntervalMs ?? 30_000;
+    this.persistenceEnabled = !opts.disablePersistence;
+    this.persistPath = this.persistenceEnabled
+      ? (opts.persistPath ?? join(homedir(), ".mya", "sync", "state.json"))
+      : null;
+    if (this.persistenceEnabled) {
+      this.loadSnapshot();
+      this.persistSnapshot();
+    }
+    this.exchangeTimer = setInterval(() => this.heartbeat(), this.exchangeIntervalMs);
+    // Background nicety: never keep the process alive for the sync heartbeat.
+    (this.exchangeTimer as unknown as { unref?: () => void }).unref?.();
+    // Mark as active the moment we start (was zero before).
+    this.lastSyncValue = nowWallclock();
+    if (this.persistenceEnabled) this.persistSnapshot();
+  }
+
+  /** Stop the periodic timer + persist a final snapshot. Idempotent. */
+  stop(): void {
+    if (this.exchangeTimer !== null) {
+      clearInterval(this.exchangeTimer);
+      this.exchangeTimer = null;
+    }
+    this.persistSnapshot();
+  }
+
+  /** One periodic tick: update lastSync + persist (best-effort). Tests can
+   *  drive this directly without fake timers. */
+  heartbeat(): void {
+    this.lastSyncValue = nowWallclock();
+    if (this.persistenceEnabled) this.persistSnapshot();
+  }
+
+  /** Persist current entries + lastSync to disk. No-op when persistence is
+   *  disabled. */
+  persistSnapshot(): void {
+    if (!this.persistenceEnabled || !this.persistPath) return;
+    const snap: SyncSnapshot = {
+      lastSync: this.lastSyncValue,
+      entries: this.replica.export(),
+    };
+    try {
+      mkdirSync(dirname(this.persistPath), { recursive: true });
+      writeFileSync(this.persistPath, JSON.stringify(snap, null, 2), "utf8");
+    } catch {
+      /* best-effort — sync persistence must never throw to callers */
+    }
+  }
+
+  /** Load entries from the snapshot file (if present) into the server's
+   *  replica. */
+  private loadSnapshot(): void {
+    if (!this.persistPath || !existsSync(this.persistPath)) return;
+    try {
+      const raw = readFileSync(this.persistPath, "utf8");
+      const parsed = JSON.parse(raw) as SyncSnapshot;
+      if (!parsed || !Array.isArray(parsed.entries)) return;
+      this.replica.merge(parsed.entries);
+      if (typeof parsed.lastSync === "number") this.lastSyncValue = parsed.lastSync;
+    } catch {
+      /* malformed snapshot → start fresh */
+    }
   }
 }
 

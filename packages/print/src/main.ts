@@ -482,6 +482,21 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   syncCronJobs();
   setInterval(syncCronJobs, 5000).unref?.();
 
+  // Phase 3-6: activate sync + collab (was stored-only). Each starts an
+  // unref'd background timer (collab: stale-room sweep; sync: heartbeat +
+  // persist). stop() is wired on gateway shutdown.
+  collab.start();
+  sync.start();
+
+  // Wire a clean shutdown — gateway.stop() already tears down HTTP/WS; this
+  // additionally stops the sync/collab background timers.
+  const shutdown = (): void => {
+    try { sync.stop(); } catch { /* best-effort */ }
+    try { collab.stop(); } catch { /* best-effort */ }
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
   process.stderr.write(`mya gateway: http://localhost:${actualPort} (AgentPool: ${pool.size} sessions)\n`);
 }
 
