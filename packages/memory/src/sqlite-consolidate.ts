@@ -8,7 +8,9 @@
  *   2. Tier degradation: episodic tier 1→2→3 (content compression)
  *   3. Weibull purge: remove memories below strength threshold
  */
-import type { DatabaseSync } from "node:sqlite";
+// DatabaseSync type — use any to avoid node:sqlite import at module eval time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DatabaseSync = any;
 import { randomUUID } from "node:crypto";
 import { getUnconsolidated, markConsolidated, degradeTier } from "./sqlite-store.js";
 import { weibullDecayFactor } from "./weibull.js";

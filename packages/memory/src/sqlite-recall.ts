@@ -12,7 +12,9 @@
  *   5. Veracity weight: stated=1.0, inferred=0.7, tool=0.5, false=0.0
  *   6. Update recall_count + last_recalled
  */
-import type { DatabaseSync } from "node:sqlite";
+// DatabaseSync type — use any to avoid node:sqlite import at module eval time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DatabaseSync = any;
 import { weibullBoost } from "./weibull.js";
 import { recordRecall } from "./sqlite-store.js";
 

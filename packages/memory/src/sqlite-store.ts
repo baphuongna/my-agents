@@ -7,7 +7,9 @@
  * FTS5 triggers auto-sync search index on every INSERT/UPDATE/DELETE.
  * No in-memory cache needed.
  */
-import type { DatabaseSync } from "node:sqlite";
+// DatabaseSync type — use any to avoid node:sqlite import at module eval time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DatabaseSync = any;
 import { randomUUID } from "node:crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────────

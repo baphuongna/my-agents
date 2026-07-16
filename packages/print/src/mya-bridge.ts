@@ -58,7 +58,7 @@ import type { SecretStore } from "@my-agent/secrets";
 import type { HookRegistry, McpManager, McpServerConfig, ChannelRegistry } from "@my-agent/gateway";
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
-import type { Brain, MemoryFacade, RetrievalEngine, LifecycleManager } from "@my-agent/memory";
+import type { Brain, MemoryFacade, RetrievalEngine, LifecycleManager, SqliteMemoryManager } from "@my-agent/memory";
 import type { Wallet } from "@my-agent/x402";
 import type { AcpBridge } from "@my-agent/acp";
 import type { SyncServer } from "@my-agent/sync";
@@ -76,6 +76,7 @@ export interface MyaBridgeOptions {
   memory?: MemoryFacade;
   retrievalEngine?: RetrievalEngine;
   lifecycleManager?: LifecycleManager;
+  sqliteMemory?: SqliteMemoryManager;
   wallet?: Wallet;
   dapConnect?: { connect: { command: string; args?: string[] } };
   acp?: AcpBridge;
@@ -191,7 +192,9 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // Uses LifecycleManager when wired; falls back to memory.consolidate() or brain.consolidate().
     pi.on("turn_end", () => {
       try {
-        if (opts.lifecycleManager) {
+        if (opts.sqliteMemory) {
+          opts.sqliteMemory.lifecycle();
+        } else if (opts.lifecycleManager) {
           opts.lifecycleManager.tick();
         } else if (opts.memory) {
           void opts.memory.consolidate();
@@ -226,10 +229,16 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       // Inject brain facts via unified RetrievalEngine pipeline.
       // Pipeline: tokenize → stopword → 5 arms (BM25+substring+trigram+vector+graph)
       //           → RRF fusion → fuzzy correct → proximity rerank → caps → guard
-      if (e.prompt && opts.brain) {
+      if (e.prompt) {
         try {
           let memoryParts: string[] = [];
-          if (opts.retrievalEngine) {
+          if (opts.sqliteMemory) {
+            const hits = opts.sqliteMemory.recall(e.prompt, { topK: 5 });
+            if (hits.length > 0) {
+              const hitLines = hits.map((h) => `- [${h.tier}] ${h.content.slice(0, 200)}`).join("\n");
+              memoryParts.push(`[memory]\n${hitLines}`);
+            }
+          } else if (opts.retrievalEngine && opts.brain) {
             // Unified pipeline: build docs from Brain facts + takes
             const brain = opts.brain;
             const docs = [
@@ -259,7 +268,7 @@ ${hitLines}`);
                 memoryParts.push(`[${slice.domain}]\n${hitLines}`);
               }
             }
-          } else {
+          } else if (opts.brain) {
             // Last resort: raw brain facts (no ranking)
             const brain = opts.brain;
             const facts = brain.unconsolidatedFacts().slice(0, 10);
@@ -548,6 +557,10 @@ ${hitLines}`);
           kind?: string;
           visibility?: "private" | "world";
         }) {
+          if (opts.sqliteMemory) {
+            const sid = opts.sqliteMemory.record({ content: params.content, source: "tui", importance: 0.7, memoryType: params.entity });
+            return { content: [{ type: "text", text: `Remembered: ${params.content} (id=${sid.slice(0, 8)})` }] };
+          }
           const fact = mem.record({
             kind: (params.kind ?? "fact") as "event" | "preference" | "commitment" | "belief" | "fact",
             entity: params.entity,

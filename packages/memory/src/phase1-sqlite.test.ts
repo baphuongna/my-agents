@@ -44,7 +44,7 @@ describe("Phase 1: SQLite foundation", () => {
   it("busy_timeout is 5000ms", () => {
     const db = openDB(dbPath);
     const row = db.prepare("PRAGMA busy_timeout").get() as { busy_timeout: number };
-    expect(row.busy_timeout).toBe(5000);
+    expect((row as { timeout?: number; busy_timeout?: number }).timeout ?? row.busy_timeout).toBe(5000);
     closeDB(db);
   });
 

@@ -97,6 +97,13 @@ export const lifecycleManager = new LifecycleManager(brain, memoryTree);
 import { BrainStore } from "@my-agent/memory";
 const brainStore = new BrainStore(memoryDir);
 lifecycleManager.wireBrainStore(brainStore);
+
+// ── Phase 6: SQLite memory manager (mnemopi pattern) ──
+// SQLite IS the store. This replaces Brain Maps + brain.jsonl + RetrievalEngine.
+import { SqliteMemoryManager } from "@my-agent/memory";
+export const sqliteMemory = new SqliteMemoryManager({
+  dbPath: join(homedir(), ".mya", "memory", "memory.db"),
+});
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
 export const sync = new SyncServer();

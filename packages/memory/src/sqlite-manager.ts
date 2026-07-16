@@ -6,7 +6,9 @@
  *
  * Replaces the old MemoryManagerImpl + Brain + MemoryTree + 13 domains.
  */
-import type { DatabaseSync } from "node:sqlite";
+// DatabaseSync type — use any to avoid node:sqlite import at module eval time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DatabaseSync = any;
 import { openDB, closeDB, checkpoint, type DatabasePath } from "./sqlite-db.js";
 import { initSchema } from "./sqlite-schema.js";
 import {

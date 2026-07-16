@@ -11,17 +11,36 @@
  *
  * File location: ~/.mya/memory/memory.db (+ -wal, -shm)
  */
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+
+// Lazy-load node:sqlite — avoids breaking vitest/vite which can't resolve
+// the experimental node: scheme at module evaluation time.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let DatabaseSyncCtor: any = null;
+function getDatabaseSyncSync(): any {
+  if (DatabaseSyncCtor) return DatabaseSyncCtor;
+
+  const req = createRequire(import.meta.url);
+  const mod = req('node:sqlite');
+  DatabaseSyncCtor = mod.DatabaseSync;
+  return DatabaseSyncCtor;
+}
+
 export type DatabasePath = string | ":memory:";
 
+// Use the type from node:sqlite without importing the module at eval time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDatabaseSync = any;
+
 /** Open a SQLite database with WAL pragmas. */
-export function openDB(path: DatabasePath): DatabaseSync {
+export function openDB(path: DatabasePath): AnyDatabaseSync {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
   }
+  const DatabaseSync = getDatabaseSyncSync();
   const db = new DatabaseSync(path);
   // mnemopi pragmas — battle-tested across context-mode, ctx, pi-session-manager
   db.exec("PRAGMA journal_mode = WAL");
@@ -34,14 +53,14 @@ export function openDB(path: DatabasePath): DatabaseSync {
 
 /** Transaction state for reentrant detection. */
 const TX_STATE = Symbol("mya.txState");
-type TxDB = DatabaseSync & { [TX_STATE]?: { depth: number } };
+type TxDB = AnyDatabaseSync & { [TX_STATE]?: { depth: number } };
 
 /**
  * Run a function inside a SQLite transaction.
  * Reentrant: nested calls reuse the outer transaction.
  * Commits on success, rolls back on error.
  */
-export function transaction<T>(db: DatabaseSync, fn: () => T): T {
+export function transaction<T>(db: AnyDatabaseSync, fn: () => T): T {
   const txDb = db as TxDB;
   let state = txDb[TX_STATE];
   if (state !== undefined && state.depth > 0) {
@@ -70,12 +89,12 @@ export function transaction<T>(db: DatabaseSync, fn: () => T): T {
 }
 
 /** Close database quietly (best-effort). */
-export function closeDB(db: DatabaseSync | null | undefined): void {
+export function closeDB(db: AnyDatabaseSync | null | undefined): void {
   if (!db) return;
   try { db.close(); } catch { /* best-effort */ }
 }
 
 /** WAL checkpoint + truncate (call on shutdown for clean wal file). */
-export function checkpoint(db: DatabaseSync): void {
+export function checkpoint(db: AnyDatabaseSync): void {
   try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* best-effort */ }
 }

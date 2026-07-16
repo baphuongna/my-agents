@@ -38,6 +38,7 @@ export async function runPiInteractive(): Promise<void> {
     memory: shared.memory,
     retrievalEngine: shared.retrievalEngine,
     lifecycleManager: shared.lifecycleManager,
+    sqliteMemory: shared.sqliteMemory,
     wallet: shared.wallet,
     acp: shared.acp,
     sync: shared.sync,

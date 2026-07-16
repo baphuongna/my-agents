@@ -9,7 +9,9 @@
  *
  * SQLite IS the store. No in-memory Maps.
  */
-import type { DatabaseSync } from "node:sqlite";
+// DatabaseSync type — use any to avoid node:sqlite import at module eval time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DatabaseSync = any;
 
 /** Check if a column exists; add it if missing. Returns true if added.
  *  Identifiers are escaped to prevent SQL injection (review HIGH #2). */
