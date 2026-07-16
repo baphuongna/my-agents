@@ -30,6 +30,12 @@ export interface RecallOptions {
    * Requires sessionId to be set.
    */
   sessionAware?: boolean;
+  /**
+   * When true, skip the recall_count/last_recalled side-effect (recordRecall).
+   * Use for INTERNAL callers (e.g. conflict detection) that must not pollute
+   * the access-frequency metric or the access-reinforcement retention boost.
+   */
+  internal?: boolean;
 }
 
 export interface MemoryHit {
@@ -196,8 +202,10 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   // ── Update recall_count for hits ───────────────────────────────────────
   const workingIds = top.filter((h) => h.tier === "working").map((h) => h.id);
   const episodicIds = top.filter((h) => h.tier === "episodic").map((h) => h.id);
-  if (workingIds.length > 0) recordRecall(db, workingIds, "working_memory");
-  if (episodicIds.length > 0) recordRecall(db, episodicIds, "episodic_memory");
+  if (!options?.internal) {
+    if (workingIds.length > 0) recordRecall(db, workingIds, "working_memory");
+    if (episodicIds.length > 0) recordRecall(db, episodicIds, "episodic_memory");
+  }
 
   return top;
 }

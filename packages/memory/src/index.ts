@@ -80,6 +80,7 @@ export type { WorkingMemoryInput, EpisodicMemoryInput, FactInput, MemoryRecord }
 
 // ── Phase 3: Recall pipeline + Weibull ──
 export { recall, recallFacts } from "./sqlite-recall.js";
+export { checkAndResolveConflicts, findTextConflicts, jaccardSimilarity, isBrainType, BRAIN_TYPES } from "./conflict.js";
 export type { RecallOptions, MemoryHit } from "./sqlite-recall.js";
 export { weibullBoost, weibullDecayFactor, WEIBULL_PARAMS } from "./weibull.js";
 export type { MemoryType, WeibullParams } from "./weibull.js";

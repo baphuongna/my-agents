@@ -15,6 +15,7 @@ import {
 } from "./sqlite-store.js";
 import { recall, recallFacts, type RecallOptions, type MemoryHit } from "./sqlite-recall.js";
 import { lifecycleTick, type ConsolidateResult, type DegradeResult, type PurgeResult } from "./sqlite-consolidate.js";
+import { checkAndResolveConflicts } from "./conflict.js";
 
 export interface SqliteMemoryManagerOptions {
   dbPath: DatabasePath;
@@ -46,7 +47,17 @@ export class SqliteMemoryManager {
 
   /** Record a working memory (L0). */
   record(input: WorkingMemoryInput): string {
-    return storeWorking(this.db, input);
+    const id = storeWorking(this.db, input);
+    // Phase 2: detect + supersede conflicting brain memories (re-adopted mya-v1 conflict.rs).
+    // Best-effort — never break the write.
+    try {
+      checkAndResolveConflicts(this.db, id, input.content, input.memoryType);
+    } catch (err) {
+      // conflict detection is best-effort but should not be silent — log so
+      // operators can debug "why didn't my contradiction get superseded?"
+      console.warn(`[memory] checkAndResolveConflicts failed for ${id}:`, err);
+    }
+    return id;
   }
 
   /** Record an episodic memory (L1) — usually from consolidation. */
