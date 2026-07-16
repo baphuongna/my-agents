@@ -50,9 +50,8 @@ import { applyEdits, computeLineHashes } from "@my-agent/tools";
 import { rankedCompact } from "@my-agent/prompts";
 import { adversarialReview } from "@my-agent/council";
 import { commandRegistry } from "./command-registry.js";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 
 import type { AuditLog } from "@my-agent/audit";
 import type { SecretStore } from "@my-agent/secrets";
@@ -115,23 +114,6 @@ function uiOf(ctx: unknown): { notify: (m: string, t?: string) => void } {
   return (ctx as { ui: { notify: (m: string, t?: string) => void } }).ui;
 }
 
-// ── Role persistence (BUG #7: survive TUI restart) ────────────────────────
-const ROLE_STATE_FILE = join(homedir(), ".mya", "agent", "current-role");
-
-function loadPersistedRole(registry: RoleRegistry): RoleConfig | undefined {
-  try {
-    const name = readFileSync(ROLE_STATE_FILE, "utf8").trim();
-    if (!name || name === "default") return registry.getDefault();
-    return registry.get(name) ?? registry.getDefault();
-  } catch {
-    return registry.getDefault();
-  }
-}
-
-function persistRole(name: string): void {
-  try { writeFileSync(ROLE_STATE_FILE, name); } catch { /* best-effort */ }
-}
-
 function registerSharedCommand(
   pi: MyaPiApi,
   name: string,
@@ -165,8 +147,10 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // roles added/deleted by the launcher (separate process). The singleton
     // above is a fallback only.
     const freshRoles = (): RoleRegistry => loadRoles(getRolesDir());
-    // BUG #7: restore last active role from disk instead of always default.
-    let currentRole: RoleConfig | undefined = loadPersistedRole(freshRoles());
+    // Restart resets to default (intended: a stale restrictive role should
+    // NOT persist across restarts and surprise the user). Switch via /role
+    // during a session; next launch starts clean.
+    let currentRole: RoleConfig | undefined = freshRoles().getDefault();
     // BUG #1: capture the original full tool set on first role switch so that
     // switching back to a permissive role RESTORES removed tools. Filtering
     // from getActiveTools() is one-way/destructive (removed tools never return).
@@ -275,9 +259,9 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           }
         }
 
-        // 3. Switch active role (prompt injection happens in before_agent_start)
+        // 3. Switch active role (prompt injection happens in before_agent_start).
+        // Not persisted: restart resets to default (intended).
         currentRole = role;
-        persistRole(role.name); // BUG #7: remember choice across restarts
         const summary = notes.length > 0 ? ` — ${notes.join(" · ")}` : "";
         uiOf(ctx).notify(`[role] Switched to "${role.name}": ${role.description}${summary}`, "info");
       },

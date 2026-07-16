@@ -78,7 +78,9 @@ export function getRolesDir(): string {
 export function loadRoles(dir?: string): RoleRegistry {
   const rolesDir = dir ?? getRolesDir();
   const roles = new Map<string, RoleConfig>();
-  roles.set("default", DEFAULT_ROLE);
+  // Track names loaded from FILES so we detect file-vs-file collisions,
+  // without treating the hardcoded DEFAULT_ROLE seed as a collision.
+  const seenFromFiles = new Set<string>();
 
   if (!existsSync(rolesDir)) {
     try {
@@ -88,6 +90,7 @@ export function loadRoles(dir?: string): RoleRegistry {
         JSON.stringify(DEFAULT_ROLE, null, 2) + "\n",
       );
     } catch { /* best-effort */ }
+    roles.set("default", DEFAULT_ROLE);
     return createRegistry(roles);
   }
 
@@ -105,17 +108,23 @@ export function loadRoles(dir?: string): RoleRegistry {
         process.stderr.write(`[roles] skipping ${file}: invalid format\n`);
         continue;
       }
-      // Detect name collision: a role with this name was already loaded from
-      // an earlier (alphabetically smaller) file. First file wins; skip the
-      // duplicate with a warning instead of silently overwriting.
-      if (roles.has(parsed.name)) {
+      // Detect name collision between FILES: skip the later one with a warning
+      // instead of silently overwriting. (The DEFAULT_ROLE seed below is not a
+      // file, so it does not trigger this — files are authoritative over it.)
+      if (seenFromFiles.has(parsed.name)) {
         process.stderr.write(`[roles] skipping ${file}: name "${parsed.name}" already defined by another file\n`);
         continue;
       }
+      seenFromFiles.add(parsed.name);
       roles.set(parsed.name, parsed);
     } catch (e) {
       process.stderr.write(`[roles] skipping ${file}: ${(e as Error).message}\n`);
     }
+  }
+
+  // Seed the hardcoded DEFAULT_ROLE only if no file defined a "default" role.
+  if (!roles.has("default")) {
+    roles.set("default", DEFAULT_ROLE);
   }
 
   return createRegistry(roles);
