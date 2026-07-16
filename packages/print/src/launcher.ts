@@ -651,18 +651,40 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         } else {
           lines.push(`  ${A.bold("Roles")}  ${A.dim2("(" + roles.length + " loaded from ~/.mya/roles/")}`);
           lines.push(`  ${A.dim2("─".repeat(40))}`);
-          for (const role of roles) {
+          for (let i = 0; i < roles.length; i++) {
+            const role = roles[i]!;
+            const isSelected = i === state.sel;
             const tools = role.toolsAllowed
               ? A.blue(role.toolsAllowed.join(","))
               : role.toolsDenied
                 ? A.dim2("all except ") + A.yellow(role.toolsDenied.join(","))
                 : A.dim2("all tools");
             const model = role.modelPrefer ? A.accent(role.modelPrefer) : A.dim2("inherit");
-            lines.push(`  ${A.green("●")}  ${A.bold(role.name.padEnd(14))} ${role.description}`);
-            lines.push(`     ${A.dim2("tools:")} ${tools}`);
-            lines.push(`     ${A.dim2("model:")} ${model}`);
+            const cursor = isSelected ? A.accent("▶") : " ";
+            const nameColored = isSelected ? A.bold(A.accent(role.name.padEnd(14))) : A.bold(role.name.padEnd(14));
+            const line = `  ${cursor} ${nameColored} ${role.description}`;
+            if (isSelected) {
+              lines.push(`  ${A.selBg(line + A.clrEol)}`);
+            } else {
+              lines.push(line);
+            }
+            const indent = "    ";
+            const toolLine = `${indent}${A.dim2("tools:")} ${tools}`;
+            const modelLine = `${indent}${A.dim2("model:")} ${model}`;
+            if (isSelected) {
+              lines.push(`  ${A.selBg(toolLine + A.clrEol)}`);
+              lines.push(`  ${A.selBg(modelLine + A.clrEol)}`);
+            } else {
+              lines.push(toolLine);
+              lines.push(modelLine);
+            }
             if (role.promptAppend) {
-              lines.push(`     ${A.dim2("prompt:")} ${role.promptAppend.slice(0, 60)}${role.promptAppend.length > 60 ? "…" : ""}`);
+              const promptLine = `${indent}${A.dim2("prompt:")} ${role.promptAppend.slice(0, 60)}${role.promptAppend.length > 60 ? "…" : ""}`;
+              if (isSelected) {
+                lines.push(`  ${A.selBg(promptLine + A.clrEol)}`);
+              } else {
+                lines.push(promptLine);
+              }
             }
             lines.push("");
           }
