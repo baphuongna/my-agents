@@ -381,6 +381,9 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
             const r = autoCapture(pendingUserPrompt, opts.sqliteMemory, {
               source: "auto:user",
               minConfidence: 0.55,
+              // Phase 3: tag captures with active role → brain types scope='role' (contained)
+              agentId: currentRole?.name,
+              sessionId: parentSessionId || undefined,
             });
             
             if (r.captured > 0) {
@@ -395,6 +398,8 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               source: "auto:assistant",
               minConfidence: 0.85, // very high bar — only near-certain matches
               importance: 0.3,
+              agentId: currentRole?.name,
+              sessionId: parentSessionId || undefined,
             });
           }
           pendingUserPrompt = "";
@@ -411,7 +416,9 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     pi.on("turn_end", () => {
       try {
         if (opts.sqliteMemory) {
-          opts.sqliteMemory.lifecycle();
+          // Phase 3: pass real session id so consolidation covers the actual pi
+          // session (was no-arg → only consolidated the "default" session).
+          opts.sqliteMemory.lifecycle(parentSessionId || undefined);
         } else if (opts.lifecycleManager) {
           opts.lifecycleManager.tick();
         } else if (opts.memory) {
@@ -455,6 +462,10 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               topK: 5,
               sessionAware: true,
               sessionId: parentSessionId || undefined,
+              // Phase 3: scope-derived recall — include active role's memories too
+              // (3-tier: common global + own-role + own-session). Without agentId,
+              // only common + own-session are returned (backward compatible).
+              agentId: currentRole?.name,
             });
             if (hits.length > 0) {
               const hitLines = hits.map((h) => `- [${h.tier}] ${h.content.slice(0, 200)}`).join("\n");

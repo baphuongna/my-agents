@@ -190,6 +190,7 @@ export class DreamCycle {
         AND consolidated_at IS NULL
         AND superseded_by IS NULL
         AND source NOT LIKE 'dream%'
+        AND scope = 'global'
       ORDER BY importance DESC, timestamp DESC
       LIMIT 50
     `).all(cutoff) as Array<{ id: string; content: string; memory_type: string; importance: number; source: string }>;

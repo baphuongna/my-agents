@@ -36,6 +36,12 @@ export interface RecallOptions {
    * the access-frequency metric or the access-reinforcement retention boost.
    */
   internal?: boolean;
+  /**
+   * Phase 3 scope-derived: when set with sessionAware, recall ALSO includes
+   * this role's memories (scope='role' AND agent_id=agentId). Implements the
+   * 3-tier isolation: a role sees common (global) + own-role + own-session.
+   */
+  agentId?: string;
 }
 
 export interface MemoryHit {
@@ -48,6 +54,9 @@ export interface MemoryHit {
   veracity: string;
   memory_type: string;
   timestamp: string;
+  /** Phase 3: scope + agent_id for same-scope conflict filtering. */
+  scope?: string;
+  agent_id?: string | null;
 }
 
 // ── Veracity weights (mnemopi pattern) ────────────────────────────────────
@@ -110,9 +119,12 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
 
   // ── Search working_memory (L0) via FTS5 ──────────────────────────────
   const sessionAware = options?.sessionAware && options?.sessionId;
+  // Phase 3: 3-tier scope clause. sessionAware returns common(global) + own-role
+  // (if agentId set) + own-session. Without sessionAware, fall back to legacy.
+  const roleClause = options?.agentId ? `OR (wm.scope = 'role' AND wm.agent_id = ?)` : "";
   const workingSql = `
     SELECT wm.id, wm.content, wm.source, wm.timestamp, wm.importance,
-           wm.veracity, wm.memory_type,
+           wm.veracity, wm.memory_type, wm.scope, wm.agent_id,
            bm25(fts_working) AS bm25_rank
     FROM fts_working
     JOIN working_memory wm ON wm.id = fts_working.id
@@ -120,7 +132,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
       AND wm.superseded_by IS NULL
       AND (wm.valid_until IS NULL OR wm.valid_until > ?)
       ${sessionAware
-        ? `AND (wm.scope = 'global' OR (wm.scope = 'session' AND wm.session_id = ?))`
+        ? `AND (wm.scope = 'global' OR (wm.scope = 'session' AND wm.session_id = ?) ${roleClause})`
         : options?.sessionId
           ? "AND wm.session_id = ?"
           : options?.scope
@@ -131,14 +143,20 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   `;
 
   const workingParams: (string | number)[] = [ftsQuery, now.toISOString()];
-  if (sessionAware) workingParams.push(options!.sessionId!);
-  else if (options?.sessionId) workingParams.push(options.sessionId);
-  else if (options?.scope) workingParams.push(options.scope);
+  if (sessionAware) {
+    workingParams.push(options!.sessionId!);
+    if (options?.agentId) workingParams.push(options.agentId);
+  } else if (options?.sessionId) {
+    workingParams.push(options.sessionId);
+  } else if (options?.scope) {
+    workingParams.push(options.scope);
+  }
   workingParams.push(topK * 2);
 
   const workingRows = db.prepare(workingSql).all(...workingParams) as Array<{
     id: string; content: string; source: string; timestamp: string;
     importance: number; veracity: string; memory_type: string; bm25_rank: number;
+    scope: string; agent_id: string | null;
   }>;
 
   for (const row of workingRows) {
@@ -148,11 +166,13 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
       id: row.id, content: row.content, source: row.source, tier: "working",
       score, importance: row.importance, veracity: row.veracity,
       memory_type: row.memory_type, timestamp: row.timestamp,
+      scope: row.scope, agent_id: row.agent_id,
     });
   }
 
   // ── Search episodic_memory (L1) via FTS5 ───────────────────────────────
   if (options?.includeEpisodic !== false) {
+    const episodicRoleClause = options?.agentId ? `OR (em.scope = 'role' AND em.agent_id = ?)` : "";
     const episodicSql = `
       SELECT em.id, em.content, em.source, em.timestamp, em.importance,
              em.veracity, em.memory_type,
@@ -163,7 +183,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
         AND em.superseded_by IS NULL
         AND (em.valid_until IS NULL OR em.valid_until > ?)
         ${sessionAware
-          ? `AND (em.scope = 'global' OR (em.scope = 'session' AND em.session_id = ?))`
+          ? `AND (em.scope = 'global' OR (em.scope = 'session' AND em.session_id = ?) ${episodicRoleClause})`
           : options?.sessionId
             ? "AND em.session_id = ?"
             : options?.scope
@@ -174,14 +194,20 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
     `;
 
     const episodicParams: (string | number)[] = [ftsQuery, now.toISOString()];
-    if (sessionAware) episodicParams.push(options!.sessionId!);
-    else if (options?.sessionId) episodicParams.push(options.sessionId);
-    else if (options?.scope) episodicParams.push(options.scope);
+    if (sessionAware) {
+      episodicParams.push(options!.sessionId!);
+      if (options?.agentId) episodicParams.push(options.agentId);
+    } else if (options?.sessionId) {
+      episodicParams.push(options.sessionId);
+    } else if (options?.scope) {
+      episodicParams.push(options.scope);
+    }
     episodicParams.push(topK);
 
     const episodicRows = db.prepare(episodicSql).all(...episodicParams) as Array<{
       id: string; content: string; source: string; timestamp: string;
       importance: number; veracity: string; memory_type: string; bm25_rank: number;
+      scope: string; agent_id: string | null;
     }>;
 
     for (const row of episodicRows) {
@@ -191,6 +217,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
         id: row.id, content: row.content, source: row.source, tier: "episodic",
         score, importance: row.importance, veracity: row.veracity,
         memory_type: row.memory_type, timestamp: row.timestamp,
+        scope: row.scope, agent_id: row.agent_id,
       });
     }
   }

@@ -144,7 +144,7 @@ export function consolidate(
   // so role-scoped memories don't mix across roles during consolidation.
   const groups = new Map<string, typeof items>();
   for (const item of items) {
-    const key = `${item.source}|${item.memory_type}|${item.scope ?? "global"}`;
+    const key = `${item.source}|${item.memory_type}|${item.scope ?? "global"}|${item.agent_id ?? ""}`;
     const group = groups.get(key);
     if (group) group.push(item);
     else groups.set(key, [item]);
@@ -166,10 +166,11 @@ export function consolidate(
       // INSERT into episodic_memory
       // INSERT into episodic_memory (preserve scope from source items)
       const episodicScope = group[0]!.scope ?? "global";
+      const episodicAgentId = group[0]!.agent_id ?? null;
       db.prepare(`
         INSERT INTO episodic_memory
-          (id, content, source, timestamp, session_id, importance, summary_of, memory_type, tier, scope)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          (id, content, source, timestamp, session_id, importance, summary_of, memory_type, tier, scope, agent_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).run(
         episodicId,
         summary,
@@ -180,6 +181,7 @@ export function consolidate(
         group.map((g) => g.id).join(","),
         group[0]!.memory_type,
         episodicScope,
+        episodicAgentId,
       );
 
       // Mark source items as consolidated

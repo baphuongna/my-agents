@@ -48,13 +48,14 @@ export class SqliteMemoryManager {
   /** Record a working memory (L0). */
   record(input: WorkingMemoryInput): string {
     const id = storeWorking(this.db, input);
-    // Phase 2: detect + supersede conflicting brain memories (re-adopted mya-v1 conflict.rs).
+    // Phase 2+3: detect + supersede conflicting brain memories IN THE SAME SCOPE.
+    // Scope-aware: a role memory only supersedes same-role; no cross-role leak.
     // Best-effort — never break the write.
     try {
-      checkAndResolveConflicts(this.db, id, input.content, input.memoryType);
+      checkAndResolveConflicts(this.db, id, input.content, input.memoryType, {
+        scope: input.scope, agentId: input.agentId, sessionId: input.sessionId,
+      });
     } catch (err) {
-      // conflict detection is best-effort but should not be silent — log so
-      // operators can debug "why didn't my contradiction get superseded?"
       console.warn(`[memory] checkAndResolveConflicts failed for ${id}:`, err);
     }
     return id;

@@ -232,6 +232,14 @@ export function initSchema(db: SqliteDatabase): void {
   // so the Weibull purge never deletes it regardless of age/strength).
   addColumnIfMissing(db, "working_memory", "pinned", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing(db, "episodic_memory", "pinned", "INTEGER NOT NULL DEFAULT 0");
+  // R18+ (Phase 3 scope-derived): agent_id (role) + turn_id columns for the
+  // 3-tier scope model (common | role:X | session). scope_level is DERIVED from
+  // which IDs are populated (headroom pattern), not stored as a separate column.
+  // scope values: 'global' (common/brain) | 'role' (agent-scoped) | 'session'.
+  addColumnIfMissing(db, "working_memory", "agent_id", "TEXT");
+  addColumnIfMissing(db, "working_memory", "turn_id", "TEXT");
+  addColumnIfMissing(db, "episodic_memory", "agent_id", "TEXT");
+  addColumnIfMissing(db, "episodic_memory", "turn_id", "TEXT");
 
   // R17+: purge audit log — every retention-driven DELETE records what was purged
   // and why, so an operator can answer "what did we forget today?" (security

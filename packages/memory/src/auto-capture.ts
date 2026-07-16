@@ -226,6 +226,11 @@ export interface CaptureOptions {
   sessionId?: string;
   /** Import override for auto-captured (default: 0.4 — lower than explicit remember). */
   importance?: number;
+  /** Phase 3: active role. Brain-type captures get scope='role'+agent_id (contained
+   *  to this role — don't leak to parallel roles). Session types stay session-scoped. */
+  agentId?: string;
+  /** Turn id (ephemeral). */
+  turnId?: string;
 }
 
 /**
@@ -273,8 +278,19 @@ export function autoCapture(
 
     // Store with detected type + hash for future dedup
     // Scope: current-task types are session-scoped (don't leak to parallel roles);
-    // long-term brain types are global (shared across roles).
-    const scope = isSessionScoped(classification.memoryType) ? "session" : "global";
+    // long-term brain types are global (shared across roles) UNLESS a role is active
+    // (Phase 3): then brain captures are role-scoped (contained to this role — the
+    // "default-private" principle: auto-captured noise doesn't flood the shared brain).
+    let scope: string;
+    let agentId: string | undefined;
+    if (isSessionScoped(classification.memoryType)) {
+      scope = "session";
+    } else if (opts.agentId) {
+      scope = "role";
+      agentId = opts.agentId;
+    } else {
+      scope = "global";
+    }
     manager.record({
       content: sentence,
       source,
@@ -283,6 +299,8 @@ export function autoCapture(
       memoryType: classification.memoryType,
       veracity: "inferred",
       scope,
+      agentId,
+      turnId: opts.turnId,
       metadata: { captureHash: hash, captureConfidence: classification.confidence, autoCaptured: true },
     });
 

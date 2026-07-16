@@ -3,25 +3,18 @@
  *
  * Ported from mya-v1 `crates/mya-memory/src/conflict.rs` (mya's own predecessor,
  * dropped in the SQLite rewrite — this re-adopts it). Fixes Dig 2-3:
- * without this, contradictory memories are immortal (both recalled, LLM must
- * resolve ad-hoc). With this, storing a conflicting brain memory supersedes the
- * old one (sets superseded_by); recall already filters superseded_by IS NULL.
+ * without this, contradictory memories are immortal. With this, storing a
+ * conflicting brain memory supersedes the old one; recall filters superseded_by.
  *
- * Policy (faithful to mya-v1):
- *   - Only check "brain" / long-term types (preference/decision/fact/...).
- *     Session-scoped types (context/goal/error/event/...) are ephemeral — skip.
- *   - A conflict = HIGH text similarity (jaccard) BUT different content.
- *   - Same content (case/whitespace-insensitive) = update, not conflict.
- *   - Resolution = newest wins: old row gets superseded_by = newId.
- *
- * Phase-2 review fixes applied:
- *   - Case-folded identical check (HIGH-1: case-only diff no longer false-supersedes).
- *   - Transaction around supersede loop (HIGH-2: no partial state on throw).
- *   - recall(internal:true) — skips recall_count side-effect (MEDIUM-3).
- *   - Tier-aware supersede (table from hit.tier, not hardcoded working_memory).
- *   - artifact added to BRAIN_TYPES (MEDIUM-1).
+ * Policy (faithful to mya-v1 + Phase 3 scope-aware):
+ *   - Only check "brain" types (preference/decision/fact/...). Session types skip.
+ *   - A conflict = HIGH jaccard BUT different content (case-insensitive).
+ *   - Scope-aware (Phase 3): a memory only supersedes memories in the SAME scope
+ *     (same role / same session / common). No cross-role/cross-session supersede.
+ *   - Resolution = newest wins (old → superseded_by = newId).
  */
-import { recall, type MemoryHit } from "./sqlite-recall.js";
+import { recall } from "./sqlite-recall.js";
+import type { MemoryHit } from "./sqlite-recall.js";
 import { supersede } from "./sqlite-store.js";
 import { transaction } from "./sqlite-db.js";
 import type { SqliteDatabase } from "./sqlite-db.js";
@@ -31,12 +24,10 @@ export const BRAIN_TYPES = new Set([
   "preference", "decision", "fact", "relationship", "learning", "instruction", "entity", "artifact",
 ]);
 
-/** Whether a memory type should be conflict-checked (brain types only). */
 export function isBrainType(memoryType: string | undefined): boolean {
   return memoryType !== undefined && BRAIN_TYPES.has(memoryType);
 }
 
-/** Normalize content for the identical-check (trim + case-fold). */
 function normalize(s: string): string {
   return s.trim().toLowerCase();
 }
@@ -53,11 +44,7 @@ export function jaccardSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-/**
- * Find existing brain-type memories that conflict with new content.
- * A conflict = jaccard > threshold AND content differs case-insensitively
- * (identical content = update, not conflict). Pure function.
- */
+/** Find existing brain-type memories (same scope) that conflict. Pure function. */
 export function findTextConflicts(
   hits: MemoryHit[],
   newContent: string,
@@ -71,31 +58,37 @@ export function findTextConflicts(
 }
 
 /**
- * Check for conflicting brain memories and supersede them with the new one.
- * Mirrors mya-v1 `check_and_resolve_conflicts`. Returns the superseded IDs.
- * No-op for non-brain types. Supersede loop is wrapped in a transaction (atomic).
+ * Check for conflicting brain memories IN THE SAME SCOPE and supersede them.
+ * Scope-aware (Phase 3): candidates are recall'd broadly (internal, no metric
+ * side-effect) then filtered to the same (scope, agent_id) as the new memory.
+ * No cross-role / cross-session supersession.
  */
 export function checkAndResolveConflicts(
   db: SqliteDatabase,
   newId: string,
   newContent: string,
   newMemoryType: string | undefined,
-  threshold = 0.7,
-  topN = 50,
+  opts: { threshold?: number; topN?: number; scope?: string; agentId?: string; sessionId?: string } = {},
 ): string[] {
   if (!isBrainType(newMemoryType)) return [];
+  const threshold = opts.threshold ?? 0.7;
+  const topN = opts.topN ?? 50;
+  const scope = opts.scope ?? "global";
+  const agentId = opts.agentId;
 
-  // internal:true avoids polluting recall_count / access-reinforcement (this is
-  // an internal scan, not a user retrieval). topN raised from 10 → 50 to avoid
-  // missing conflicts in stores with >10 brain memories.
+  // Broad candidate recall (internal: no recall_count side-effect), then narrow
+  // to same-scope. recall returns hits with scope+agent_id for the filter.
   const hits = recall(db, newContent, { topK: topN, internal: true });
-  const candidates = hits.filter((h) => h.id !== newId);
-  const conflicts = findTextConflicts(candidates, newContent, threshold);
-
+  const sameScope = hits.filter((h) => {
+    if (h.id === newId) return false;
+    if ((h.scope ?? "global") !== scope) return false; // same scope only
+    if (scope === "role" && agentId && (h.agent_id ?? null) !== agentId) return false; // same role
+    return true;
+  });
+  const conflicts = findTextConflicts(sameScope, newContent, threshold);
   if (conflicts.length === 0) return [];
 
   const superseded: string[] = [];
-  // Atomic: all supersedes commit together, or none (no partial state on throw).
   transaction(db, () => {
     for (const h of conflicts) {
       const table = h.tier === "episodic" ? "episodic_memory" : "working_memory";

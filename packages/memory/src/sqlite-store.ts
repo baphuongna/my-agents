@@ -23,6 +23,10 @@ export interface WorkingMemoryInput {
   embedText?: string;
   scope?: string;
   metadata?: Record<string, unknown>;
+  /** Role/agent that captured this (Phase 3 scope-derived). */
+  agentId?: string;
+  /** Turn this memory belongs to (ephemeral, single LLM call). */
+  turnId?: string;
 }
 
 /**
@@ -101,6 +105,8 @@ export interface MemoryRecord {
   valid_until: string | null;
   superseded_by: string | null;
   scope: string;
+  agent_id: string | null;
+  turn_id: string | null;
 }
 
 // ── Store operations ──────────────────────────────────────────────────────
@@ -114,8 +120,8 @@ export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): str
   db.prepare(`
     INSERT INTO working_memory
       (id, content, embed_text, source, timestamp, session_id, importance,
-       metadata_json, veracity, memory_type, valid_until, scope)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       metadata_json, veracity, memory_type, valid_until, scope, agent_id, turn_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.content,
@@ -133,6 +139,8 @@ export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): str
     // also falls back (empty would otherwise cause immediate delete on next purge).
     input.validUntil || ttlValidUntil(input.memoryType),
     input.scope ?? "global",
+    input.agentId ?? null,
+    input.turnId ?? null,
   );
   return id;
 }
