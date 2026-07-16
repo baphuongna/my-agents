@@ -148,6 +148,6 @@ After Phase 5 verify:
 - [x] Phase 1 — Retention ✅ (3review+1verify PASS)
 - [x] Phase 2 — conflict.rs re-adopt ✅ (3review+1verify PASS)
 - [x] Phase 3 — Scope-derived ✅ (3review+1verify PASS)
-- [ ] Phase 4 — Ports
+- [x] Phase 4 — Ports ✅ (2-review+1-verify PASS; foundation, consumer-migration deferred)
 - [ ] Phase 5 — Governance + Grounding
 - [ ] Final — Full test suite
