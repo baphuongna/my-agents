@@ -179,7 +179,7 @@ export function getUnconsolidated(db: DatabaseSync, sessionId: string, olderThan
     SELECT * FROM working_memory
     WHERE session_id = ? AND consolidated_at IS NULL AND timestamp < ?
       AND superseded_by IS NULL
-    ORDER BY timestamp ASC
+    ORDER BY timestamp ASC LIMIT 500
   `).all(sessionId, cutoff) as unknown as MemoryRecord[];
 }
 

@@ -111,6 +111,11 @@ try {
     process.stderr.write(`\n[mya] Migrated ${result.migrated} memories to SQLite\n`);
   }
 } catch { /* migration is best-effort */ }
+// Ensure sqliteMemory is properly closed on process exit (WAL checkpoint)
+process.on("exit", () => { try { sqliteMemory.close(); } catch {} });
+process.on("SIGINT", () => { try { sqliteMemory.close(); } catch {} process.exit(0); });
+process.on("SIGTERM", () => { try { sqliteMemory.close(); } catch {} process.exit(0); });
+
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
 export const sync = new SyncServer();

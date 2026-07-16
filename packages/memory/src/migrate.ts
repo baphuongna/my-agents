@@ -43,18 +43,8 @@ export function migrateOldMemory(db: DatabaseSync, memoryDir: string): { migrate
     try {
       const content = readFileSync(brainJsonl, "utf8");
       const lines = content.split("\n").filter((l) => l.trim());
-      const seen = new Set<string>(); // dedup by id (last-wins in JSONL)
 
-      for (const line of lines) {
-        try {
-          const record = JSON.parse(line) as { type: string; data: OldFact; tier?: string };
-          if (record.type === "fact" && record.data?.id) {
-            seen.add(record.data.id);
-          }
-        } catch { /* skip corrupt lines */ }
-      }
-
-      // Insert unique facts
+      // Insert unique facts (INSERT OR IGNORE = first-wins dedup by PK)
       const insertStmt = db.prepare(`
         INSERT OR IGNORE INTO working_memory
           (id, content, source, timestamp, session_id, importance, veracity, memory_type)

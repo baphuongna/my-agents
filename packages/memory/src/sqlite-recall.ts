@@ -108,12 +108,14 @@ export function recall(db: DatabaseSync, query: string, options?: RecallOptions)
       AND wm.superseded_by IS NULL
       AND (wm.valid_until IS NULL OR wm.valid_until > ?)
       ${options?.sessionId ? "AND wm.session_id = ?" : ""}
+      ${options?.scope ? "AND wm.scope = ?" : ""}
     ORDER BY bm25_rank
     LIMIT ?
   `;
 
   const workingParams: (string | number)[] = [ftsQuery, now.toISOString()];
   if (options?.sessionId) workingParams.push(options.sessionId);
+  if (options?.scope) workingParams.push(options.scope);
   workingParams.push(topK * 2);
 
   const workingRows = db.prepare(workingSql).all(...workingParams) as Array<{
@@ -142,11 +144,18 @@ export function recall(db: DatabaseSync, query: string, options?: RecallOptions)
       WHERE fts_episodes MATCH ?
         AND em.superseded_by IS NULL
         AND (em.valid_until IS NULL OR em.valid_until > ?)
+        ${options?.sessionId ? "AND em.session_id = ?" : ""}
+        ${options?.scope ? "AND em.scope = ?" : ""}
       ORDER BY bm25_rank
       LIMIT ?
     `;
 
-    const episodicRows = db.prepare(episodicSql).all(ftsQuery, now.toISOString(), topK) as Array<{
+    const episodicParams: (string | number)[] = [ftsQuery, now.toISOString()];
+    if (options?.sessionId) episodicParams.push(options.sessionId);
+    if (options?.scope) episodicParams.push(options.scope);
+    episodicParams.push(topK);
+
+    const episodicRows = db.prepare(episodicSql).all(...episodicParams) as Array<{
       id: string; content: string; source: string; timestamp: string;
       importance: number; veracity: string; memory_type: string; bm25_rank: number;
     }>;
@@ -182,9 +191,10 @@ export function recall(db: DatabaseSync, query: string, options?: RecallOptions)
  * Final: (1 - normalized_bm25) * 0.5 + importance * 0.2 + temporal * 0.2 + veracity * 0.1
  */
 function composeScore(bm25Rank: number, importance: number, temporalBoost: number, veracity: number): number {
-  // BM25 is negative; normalize: clamp to [-10, 0] then map to [0, 1]
-  const clampedBm25 = Math.max(-10, Math.min(0, bm25Rank));
-  const normalizedBm25 = 1 - (-clampedBm25 / 10); // [0, 1], higher = better
+  // BM25 returns negative values (more negative = better). Normalize per-query
+  // using exponential decay: e^(bm25) maps [-inf, 0] → [0, 1] smoothly.
+  // This preserves ranking discrimination even for very relevant docs.
+  const normalizedBm25 = Math.exp(bm25Rank); // [0, 1], higher = better
   return normalizedBm25 * 0.5 + importance * 0.2 + temporalBoost * 0.2 + veracity * 0.1;
 }
 
