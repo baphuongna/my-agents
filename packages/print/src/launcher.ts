@@ -194,6 +194,38 @@ async function addCronJob(name: string, schedule: string, prompt: string): Promi
   } catch { return false; }
 }
 
+/** Write a role config to ~/.mya/roles/<name>.json. */
+async function addRoleFile(name: string, description: string, promptAppend: string): Promise<boolean> {
+  try {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const dir = join(homedir(), ".mya", "roles");
+    mkdirSync(dir, { recursive: true });
+    const role = {
+      name,
+      description,
+      ...(promptAppend ? { promptAppend } : {}),
+    };
+    writeFileSync(join(dir, `${name}.json`), JSON.stringify(role, null, 2) + "\n");
+    return true;
+  } catch { return false; }
+}
+
+/** Delete a role config file. */
+async function deleteRoleFile(name: string): Promise<boolean> {
+  try {
+    if (name === "default") return false; // protect default role
+    const { unlinkSync, existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const file = join(homedir(), ".mya", "roles", `${name}.json`);
+    if (!existsSync(file)) return false;
+    unlinkSync(file);
+    return true;
+  } catch { return false; }
+}
+
 async function configureProvider(id: string, envKey: string, apiKey: string, action: "add" | "remove"): Promise<{ ok: boolean; restart?: boolean }> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/providers/config`, {
@@ -693,7 +725,9 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
                   ? "1-8 tabs | ↑/↓ scroll | q quit"
                   : state.tab === "memory"
                     ? "1-8 tabs | Enter/d = dream now | r refresh | q quit"
-                    : "1-8 tabs | ↑/↓ scroll | r refresh | q quit";
+                    : state.tab === "roles"
+                      ? "1-8 tabs | ↑/↓ select | a add | d delete | r refresh | q quit"
+                      : "1-8 tabs | ↑/↓ scroll | r refresh | q quit";
       lines.push(`  ${A.dim2(help)}`);
 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
@@ -982,6 +1016,43 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
               process.stdout.write(`\n  ${A.green("✓ Dream complete")} ${A.dim2(consolidated + " consolidated")}`);
             });
           void refresh();
+          return;
+        }
+      } else if (state.tab === "roles") {
+        const roles = state.info.roles ?? [];
+        if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
+        if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, roles.length - 1), state.sel + 1); render(); return; }
+        if (k === "a") {
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          if (isTTY) process.stdin.setRawMode(false);
+          process.stdout.write(A.altScreenOff + A.showCursor);
+          const name = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
+          if (name && /^[a-z0-9-]+$/.test(name)) {
+            const description = await inlinePrompt("Description", "What does this role do?", `${name} role`);
+            if (description) {
+              const promptAppend = await inlinePrompt("Prompt (optional)", "Appended to system prompt. Enter to skip");
+              const ok = await addRoleFile(name, description, promptAppend ?? "");
+              process.stdout.write(`\n  ${ok ? A.green("✓ Role created") : A.red("✗ Failed")} ${A.dim2("(~/.mya/roles/" + name + ".json)")}\n`);
+              process.stdout.write(`  ${A.dim2("Edit the file to add tools/model settings. Press any key...")}`);
+              await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
+            }
+          }
+          if (isTTY) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdout.write(A.altScreenOn + A.hideCursor);
+          process.stdin.on("data", onData);
+          void refresh();
+          return;
+        }
+        if (k === "d") {
+          const role = roles[state.sel];
+          if (role && role.name !== "default") {
+            const ok = await deleteRoleFile(role.name);
+            process.stdout.write(`\n  ${ok ? A.green("✓ Deleted") : A.red("✗ Failed")} ${A.dim2(role.name)}\n  ${A.dim2("Press any key...")}`);
+            await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
+            void refresh();
+          }
           return;
         }
       } else if (state.tab === "status") {
