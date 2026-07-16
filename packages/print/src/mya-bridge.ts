@@ -167,24 +167,73 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     });
 
     // /role slash command — list or switch roles
-    registerSharedCommand(pi, "role", "List or switch roles (e.g. /role coder)", async (args: string) => {
-      if (!roleRegistry) return "[role] Roles not configured.";
-      const name = args.trim();
-      if (!name) {
-        const roles = roleRegistry.list();
-        const lines = roles.map((r) => {
-          const active = r.name === currentRole?.name ? " ← active" : "";
-          return `  ${r.name.padEnd(15)} ${r.description}${active}`;
-        });
-        return `[role] Available roles:\n${lines.join("\n")}`;
-      }
-      if (name === "default" || roleRegistry.has(name)) {
-        const role = name === "default" ? roleRegistry.getDefault() : roleRegistry.get(name)!;
+    // Uses pi.registerCommand directly (not registerSharedCommand) to get
+    // full ExtensionCommandContext for setActiveTools + setModel access.
+    pi.registerCommand("role", {
+      description: "List or switch roles (e.g. /role coder)",
+      handler: async (args: string, ctx: unknown) => {
+        if (!roleRegistry) {
+          uiOf(ctx).notify("[role] Roles not configured.", "info");
+          return;
+        }
+        const name = args.trim();
+        if (!name) {
+          const roles = roleRegistry.list();
+          const lines = roles.map((r) => {
+            const active = r.name === currentRole?.name ? " ← active" : "";
+            return `  ${r.name.padEnd(15)} ${r.description}${active}`;
+          });
+          uiOf(ctx).notify(`[role] Available roles:\n${lines.join("\n")}`, "info");
+          return;
+        }
+        const role = name === "default" ? roleRegistry.getDefault() : roleRegistry.get(name);
+        if (!role) {
+          uiOf(ctx).notify(`[role] Unknown role "${name}". Available: ${roleRegistry.list().map((r) => r.name).join(", ")}`, "info");
+          return;
+        }
+
+        // Apply role overlay: tools + model + prompt
+        const cmdCtx = ctx as {
+          getActiveTools?: () => string[];
+          setActiveTools?: (tools: string[]) => void;
+          setModel?: (model: unknown) => Promise<boolean>;
+          modelRegistry?: { getAll?: () => Array<{ provider: string; id: string }> };
+        };
+
+        // 1. Apply tool filter (whitelist/blacklist)
+        if (cmdCtx.getActiveTools && cmdCtx.setActiveTools) {
+          try {
+            const currentTools = cmdCtx.getActiveTools();
+            const filtered = filterToolsForRole(currentTools, role);
+            if (filtered.length > 0 && filtered.length !== currentTools.length) {
+              cmdCtx.setActiveTools(filtered);
+            }
+          } catch { /* tool filter is best-effort */ }
+        }
+
+        // 2. Apply model override (if role specifies a preferred model)
+        if (role.modelPrefer && cmdCtx.setModel && cmdCtx.modelRegistry) {
+          try {
+            const allModels = cmdCtx.modelRegistry.getAll?.() ?? [];
+            const match = allModels.find(
+              (m) => m.id === role.modelPrefer || m.id.includes(role.modelPrefer!)
+            );
+            if (match) {
+              await cmdCtx.setModel(match);
+            }
+          } catch { /* model override is best-effort */ }
+        }
+
+        // 3. Switch active role (prompt injection happens in before_agent_start)
         currentRole = role;
-        return `[role] Switched to "${role.name}": ${role.description}`;
-      }
-      return `[role] Unknown role "${name}". Available: ${roleRegistry.list().map((r) => r.name).join(", ")}`;
+        const toolsNote = role.toolsAllowed || role.toolsDenied
+          ? ` (tools filtered)`
+          : "";
+        const modelNote = role.modelPrefer ? ` (model: ${role.modelPrefer})` : "";
+        uiOf(ctx).notify(`[role] Switched to "${role.name}": ${role.description}${toolsNote}${modelNote}`, "info");
+      },
     });
+    commandRegistry.register({ name: "role", description: "List or switch roles", handler: () => "" });
 
     // ═══════════════════════════════════════════════════════════════════
     // SESSION START: capture session ID + load cron jobs
