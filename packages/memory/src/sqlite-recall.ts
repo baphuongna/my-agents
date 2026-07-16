@@ -57,6 +57,8 @@ export interface MemoryHit {
   /** Phase 3: scope + agent_id for same-scope conflict filtering. */
   scope?: string;
   agent_id?: string | null;
+  /** Phase 5: trust score [0,1] — recall multiplies score by trust. */
+  trust?: number;
 }
 
 // ── Veracity weights (mnemopi pattern) ────────────────────────────────────
@@ -124,7 +126,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   const roleClause = options?.agentId ? `OR (wm.scope = 'role' AND wm.agent_id = ?)` : "";
   const workingSql = `
     SELECT wm.id, wm.content, wm.source, wm.timestamp, wm.importance,
-           wm.veracity, wm.memory_type, wm.scope, wm.agent_id,
+           wm.veracity, wm.memory_type, wm.scope, wm.agent_id, wm.trust,
            bm25(fts_working) AS bm25_rank
     FROM fts_working
     JOIN working_memory wm ON wm.id = fts_working.id
@@ -156,17 +158,19 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   const workingRows = db.prepare(workingSql).all(...workingParams) as Array<{
     id: string; content: string; source: string; timestamp: string;
     importance: number; veracity: string; memory_type: string; bm25_rank: number;
-    scope: string; agent_id: string | null;
+    scope: string; agent_id: string | null; trust: number;
   }>;
 
   for (const row of workingRows) {
     const temporalBoost = weibullBoost(row.timestamp, now, row.memory_type);
-    const score = composeScore(row.bm25_rank, row.importance, temporalBoost, veracityWeight(row.veracity));
+    const base = composeScore(row.bm25_rank, row.importance, temporalBoost, veracityWeight(row.veracity));
+    // Phase 5 governance: multiply by trust so low-trust memories rank lower.
+    const score = base * (row.trust ?? 0.5);
     hits.push({
       id: row.id, content: row.content, source: row.source, tier: "working",
       score, importance: row.importance, veracity: row.veracity,
       memory_type: row.memory_type, timestamp: row.timestamp,
-      scope: row.scope, agent_id: row.agent_id,
+      scope: row.scope, agent_id: row.agent_id, trust: row.trust,
     });
   }
 
@@ -175,7 +179,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
     const episodicRoleClause = options?.agentId ? `OR (em.scope = 'role' AND em.agent_id = ?)` : "";
     const episodicSql = `
       SELECT em.id, em.content, em.source, em.timestamp, em.importance,
-             em.veracity, em.memory_type,
+             em.veracity, em.memory_type, em.scope, em.agent_id, em.trust,
              bm25(fts_episodes) AS bm25_rank
       FROM fts_episodes
       JOIN episodic_memory em ON em.rowid = fts_episodes.rowid
@@ -207,17 +211,19 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
     const episodicRows = db.prepare(episodicSql).all(...episodicParams) as Array<{
       id: string; content: string; source: string; timestamp: string;
       importance: number; veracity: string; memory_type: string; bm25_rank: number;
-      scope: string; agent_id: string | null;
+      scope: string; agent_id: string | null; trust: number;
     }>;
 
     for (const row of episodicRows) {
       const temporalBoost = weibullBoost(row.timestamp, now, row.memory_type);
-      const score = composeScore(row.bm25_rank, row.importance, temporalBoost, veracityWeight(row.veracity));
+      const base = composeScore(row.bm25_rank, row.importance, temporalBoost, veracityWeight(row.veracity));
+      // Phase 5 governance: multiply by trust (H1 fix — was missing for episodic).
+      const score = base * (row.trust ?? 0.5);
       hits.push({
         id: row.id, content: row.content, source: row.source, tier: "episodic",
         score, importance: row.importance, veracity: row.veracity,
         memory_type: row.memory_type, timestamp: row.timestamp,
-        scope: row.scope, agent_id: row.agent_id,
+        scope: row.scope, agent_id: row.agent_id, trust: row.trust,
       });
     }
   }

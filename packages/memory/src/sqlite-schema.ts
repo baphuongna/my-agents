@@ -240,6 +240,25 @@ export function initSchema(db: SqliteDatabase): void {
   addColumnIfMissing(db, "working_memory", "turn_id", "TEXT");
   addColumnIfMissing(db, "episodic_memory", "agent_id", "TEXT");
   addColumnIfMissing(db, "episodic_memory", "turn_id", "TEXT");
+  // R19+ (Phase 5 governance): trust score [0,1] — feedback-driven (hermes holographic).
+  // recall multiplies score by trust so low-trust memories rank lower. Default 0.5 (neutral).
+  addColumnIfMissing(db, "working_memory", "trust", "REAL NOT NULL DEFAULT 0.5");
+  addColumnIfMissing(db, "episodic_memory", "trust", "REAL NOT NULL DEFAULT 0.5");
+
+  // R19+ (Phase 5 grounding): referent tracking (codebase-memory-mcp pattern).
+  // Observations that reference a file/entity carry a content hash so recall can
+  // detect staleness (metadata_changed) when the referent changes.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS referents (
+      memory_id TEXT NOT NULL,
+      referent_path TEXT NOT NULL,
+      sha256 TEXT,
+      mtime_ms INTEGER,
+      size INTEGER,
+      recorded_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (memory_id, referent_path)
+    )
+  `);
 
   // R17+: purge audit log — every retention-driven DELETE records what was purged
   // and why, so an operator can answer "what did we forget today?" (security

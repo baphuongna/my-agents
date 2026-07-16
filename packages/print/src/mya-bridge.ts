@@ -184,6 +184,54 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       }
     });
 
+    // Phase 5 governance: /trust <id> [up|down] — feedback-driven trust (hermes holographic).
+    // Without this, trust stays 0.5 forever (no authority signal). Wired so Dig 4 is live.
+    if (opts.sqliteMemory) {
+      registerSharedCommand(pi, "trust", "Adjust memory trust: /trust <memoryId> [up|down]", async (args) => {
+        try {
+          const { applyFeedback } = await import("@my-agent/memory");
+          const [id, dir] = args.trim().split(/\s+/);
+          if (!id) return "[trust] Usage: /trust <memoryId> [up|down]. Find ids via /memory <query>.";
+          const helpful = dir !== "down"; // default up
+          const db = opts.sqliteMemory!.getDatabase() as never;
+          const w = applyFeedback(db, id, "working_memory", helpful);
+          const e = applyFeedback(db, id, "episodic_memory", helpful);
+          const next = w ?? e;
+          if (next === null) return `[trust] No memory found with id ${id}.`;
+          return `[trust] Memory ${id} trust ${helpful ? "↑" : "↓"} → ${next.toFixed(2)}.`;
+        } catch (e) {
+          return `[trust] Error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      });
+
+      // Phase 5 governance: /contradict — surface (don't auto-resolve) high-overlap divergent facts.
+      registerSharedCommand(pi, "contradict", "Detect potentially-contradictory memories (review only)", async () => {
+        try {
+          const { detectContradictions } = await import("@my-agent/memory");
+          const db = opts.sqliteMemory!.getDatabase() as never;
+          const pairs = detectContradictions(db, { similarityThreshold: 0.6 });
+          if (pairs.length === 0) return "[contradict] No potential contradictions found.";
+          return `[contradict] ${pairs.length} pair(s) to review:\n` + pairs.slice(0, 10).map((p: { aContent: string; bContent: string; similarity: number }, i: number) =>
+            `  ${i + 1}. (${p.similarity.toFixed(2)})\n     A: ${p.aContent.slice(0, 80)}\n     B: ${p.bContent.slice(0, 80)}`).join("\n");
+        } catch (e) {
+          return `[contradict] Error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      });
+
+      // Phase 5 grounding: /stale — list memories whose file referents changed/disappeared.
+      registerSharedCommand(pi, "stale", "List memories with stale (changed/gone) file referents", async () => {
+        try {
+          const { staleMemories } = await import("@my-agent/memory");
+          const db = opts.sqliteMemory!.getDatabase() as never;
+          const stale = staleMemories(db);
+          if (stale.length === 0) return "[stale] No stale referents (or none tracked).";
+          return `[stale] ${stale.length} memory(ies) with changed/gone referents:\n` + stale.map((s: { memory_id: string; staleness: string }) => `  ${s.memory_id}: ${s.staleness}`).join("\n");
+        } catch (e) {
+          return `[stale] Error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      });
+    }
+
     // /role slash command — list or switch roles
     // Uses pi.registerCommand directly (not registerSharedCommand) to get
     // full ExtensionCommandContext for setActiveTools + setModel access.
@@ -794,10 +842,19 @@ ${hitLines}`);
           entity: string;
           kind?: string;
           visibility?: "private" | "world";
+          filePath?: string; // Phase 5 grounding: optional file referent to track
         }) {
           if (opts.sqliteMemory) {
             const sid = opts.sqliteMemory.record({ content: params.content, source: "tui", importance: 0.7, memoryType: params.entity });
-            return { content: [{ type: "text", text: `Remembered: ${params.content} (id=${sid.slice(0, 8)})` }] };
+            // Phase 5 grounding: if a file path is given, track it as a referent so
+            // /stale can detect when the file changes (codebase-memory-mcp pattern).
+            if (params.filePath) {
+              try {
+                const { trackReferent } = await import("@my-agent/memory");
+                trackReferent(opts.sqliteMemory.getDatabase() as never, sid, params.filePath);
+              } catch { /* grounding best-effort */ }
+            }
+            return { content: [{ type: "text", text: `Remembered: ${params.content} (id=${sid.slice(0, 8)})${params.filePath ? ` +grounded→${params.filePath}` : ""}` }] };
           }
           const fact = mem.record({
             kind: (params.kind ?? "fact") as "event" | "preference" | "commitment" | "belief" | "fact",
