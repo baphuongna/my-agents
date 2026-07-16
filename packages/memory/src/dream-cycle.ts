@@ -66,8 +66,8 @@ export interface DreamCycleOptions {
   allowPrivateInPrompt?: boolean;
 }
 
-/** Default cycle interval: 30 minutes. */
-export const DEFAULT_DREAM_INTERVAL_MS = 30 * 60 * 1000;
+/** Default cycle interval: 4 hours (deep consolidation — shallow lifecycle runs on every turn_end). */
+export const DEFAULT_DREAM_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /** Staleness threshold for the skill review (>30 days unused). */
 export const STALE_SKILL_AFTER_DAYS = 30;
@@ -319,8 +319,13 @@ export class DreamCycle {
   /** Review skills via the curator; returns the count reviewed. */
   private async reviewSkills(): Promise<number> {
     if (!this.skillCurator) return 0;
-    const { reviewed } = await this.skillCurator.review();
-    return reviewed;
+    try {
+      const { reviewed } = await this.skillCurator.review();
+      return reviewed;
+    } catch {
+      // Skill review is best-effort — never fail the dream cycle for it
+      return 0;
+    }
   }
 }
 

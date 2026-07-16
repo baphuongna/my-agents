@@ -35,7 +35,7 @@
  * - TTS:              message_end → speak() (MYA_TTS=1)
  * - Skills:           discovered from ~/.mya/skills/
  *
- * Slash commands: /audit, /secrets, /skills, /memory, /wallet, /eval, /sync,
+ * Slash commands: /audit, /secrets, /skills, /memory, /dream, /wallet, /eval, /sync,
  *   /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /mya-help
  */
 import { nowWallclock } from "@my-agent/core";
@@ -128,18 +128,32 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     let parentSessionId = "";
 
     // ═══════════════════════════════════════════════════════════════════
-    // DREAM CYCLE: periodic offline consolidation (every 30 min when idle)
+    // DREAM CYCLE: periodic deep consolidation (every 4h when idle)
     // ═══════════════════════════════════════════════════════════════════
     // DreamCycle collects recent memories, summarizes them into episodic
     // memory, runs lifecycle (consolidate/degrade/purge), and reviews skills.
     // Uses SQLite when available, falls back to legacy Brain.
+    // Pattern: mnemopi/agentmemory — on-demand + long-interval timer.
+    // turn_end lifecycle() handles shallow consolidation every turn.
+    // DreamCycle handles DEEP consolidation (summarize + dream summary).
     const dreamCycle = opts.dreamCycle ?? new DreamCycle({
       sqliteMemory: opts.sqliteMemory,
       brain: opts.brain,
-      skillCurator: opts.skillStore as unknown as { review(): { reviewed: number; stale: string[] } } | undefined,
+      // skillCurator: not wired — SkillStore doesn't have review().
+      // Skills review is best-effort; can be wired later via a proper adapter.
       isIdle: () => !pi, // always idle in TUI context (pi is active only during turns)
     });
     dreamCycle.start();
+
+    // /dream slash command — on-demand deep consolidation (mnemopi pattern)
+    registerSharedCommand(pi, "dream", "Run memory dream cycle (deep consolidation)", async () => {
+      try {
+        const r = await dreamCycle.dream();
+        return `[dream] Consolidated ${r.memoriesConsolidated} memories, reviewed ${r.skillsReviewed} skills (${r.durationMs}ms).\nSummary: ${r.summary.slice(0, 200)}`;
+      } catch (e) {
+        return `[dream] Error: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    });
 
     // ═══════════════════════════════════════════════════════════════════
     // SESSION START: capture session ID + load cron jobs
@@ -1113,7 +1127,7 @@ ${hitLines}`);
     });
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
-      "[mya] Commands: /audit, /secrets, /skills, /memory, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
+      "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
       "Tools: paid_fetch, hashline_edit, browser_action, delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
