@@ -298,7 +298,11 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       if (k === "\x1b") { cleanup(); return; }
       if (k === "\r" || k === "\n") { cleanup(buf.trim() || undefined); return; }
       if (k === "\x7f" || k === "\b") { buf = buf.slice(0, -1); render(); return; }
-      if (k.length === 1 && k >= " ") { buf += k; render(); return; }
+      if (k.length === 1 && k >= " ") {
+        // First character clears the default value
+        if (defaultValue && buf === defaultValue) buf = "";
+        buf += k; render(); return;
+      }
     };
     render();
     process.stdin.on("data", onData);
@@ -1027,13 +1031,24 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
           process.stdout.write(A.altScreenOff + A.showCursor);
-          const name = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
-          if (name && /^[a-z0-9-]+$/.test(name)) {
-            const description = await inlinePrompt("Description", "What does this role do?", `${name} role`);
+          let roleName: string | undefined;
+          let retries = 3;
+          while (retries-- > 0) {
+            const n = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
+            if (!n) { roleName = undefined; break; }
+            if (/^[a-z0-9][a-z0-9-]*$/.test(n)) { roleName = n; break; }
+            process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("— use kebab-case (lowercase, digits, hyphens, must start with letter/digit)")}\n  ${A.dim2("Press any key to retry...")}`);
+            await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
+            // Re-enable raw mode for next inlinePrompt
+            if (isTTY) process.stdin.setRawMode(true);
+            process.stdin.resume();
+          }
+          if (roleName) {
+            const description = await inlinePrompt("Description", "What does this role do?");
             if (description) {
               const promptAppend = await inlinePrompt("Prompt (optional)", "Appended to system prompt. Enter to skip");
-              const ok = await addRoleFile(name, description, promptAppend ?? "");
-              process.stdout.write(`\n  ${ok ? A.green("✓ Role created") : A.red("✗ Failed")} ${A.dim2("(~/.mya/roles/" + name + ".json)")}\n`);
+              const ok = await addRoleFile(roleName, description, promptAppend ?? "");
+              process.stdout.write(`\n  ${ok ? A.green("✓ Role created") : A.red("✗ Failed")} ${A.dim2("(~/.mya/roles/" + roleName + ".json)")}\n`);
               process.stdout.write(`  ${A.dim2("Edit the file to add tools/model settings. Press any key...")}`);
               await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
             }
@@ -1051,6 +1066,10 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
             const ok = await deleteRoleFile(role.name);
             process.stdout.write(`\n  ${ok ? A.green("✓ Deleted") : A.red("✗ Failed")} ${A.dim2(role.name)}\n  ${A.dim2("Press any key...")}`);
             await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
+            if (isTTY) process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdout.write(A.altScreenOn + A.hideCursor);
+            process.stdin.on("data", onData);
             void refresh();
           }
           return;
