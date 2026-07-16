@@ -403,10 +403,10 @@ async function launchGatewaySession(sessionId: string): Promise<void> {
 }
 
 /** Main launcher UI — fullscreen TUI with tabs, search, status bar, real-time refresh. */
-function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new" } | undefined> {
+function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string } | undefined> {
   return new Promise((resolve) => {
     const state: LauncherState = {
-      tab: "agents",
+      tab: initialTab ?? "agents",
       sel: 0,
       cronSel: 0,
       filter: "",
@@ -737,7 +737,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       process.stdout.write(A.clear + lines.join("\n") + "\n");
     };
 
-    const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" }) => {
+    const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string }) => {
       if (resolved) return;
       resolved = true;
       if (refreshTimer) clearInterval(refreshTimer);
@@ -745,6 +745,8 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       process.stdin.removeListener("data", onData);
       if (isTTY) process.stdin.setRawMode(false);
       process.stdout.write(A.altScreenOff + A.mouseOff + A.clear + A.showCursor);
+      // Remember the current tab so launcher can resume there after external actions
+      if (result && typeof result === "object") (result as { _resumeTab?: Tab })._resumeTab = state.tab;
       resolve(result);
     };
 
@@ -1027,52 +1029,19 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
         if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, roles.length - 1), state.sel + 1); render(); return; }
         if (k === "a") {
-          process.stdin.pause();
-          process.stdin.removeListener("data", onData);
-          if (isTTY) process.stdin.setRawMode(false);
-          process.stdout.write(A.altScreenOff + A.showCursor);
-          let roleName: string | undefined;
-          let retries = 3;
-          while (retries-- > 0) {
-            const n = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
-            if (!n) { roleName = undefined; break; }
-            if (/^[a-z0-9][a-z0-9-]*$/.test(n)) { roleName = n; break; }
-            process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("— use kebab-case (lowercase, digits, hyphens, must start with letter/digit)")}\n  ${A.dim2("Press any key to retry...")}`);
-            await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
-            // Re-enable raw mode for next inlinePrompt
-            if (isTTY) process.stdin.setRawMode(true);
-            process.stdin.resume();
-          }
-          if (roleName) {
-            const description = await inlinePrompt("Description", "What does this role do?");
-            if (description) {
-              const promptAppend = await inlinePrompt("Prompt (optional)", "Appended to system prompt. Enter to skip");
-              const ok = await addRoleFile(roleName, description, promptAppend ?? "");
-              process.stdout.write(`\n  ${ok ? A.green("✓ Role created") : A.red("✗ Failed")} ${A.dim2("(~/.mya/roles/" + roleName + ".json)")}\n`);
-              process.stdout.write(`  ${A.dim2("Edit the file to add tools/model settings. Press any key...")}`);
-              await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
-            }
-          }
-          if (isTTY) process.stdin.setRawMode(true);
-          process.stdin.resume();
-          process.stdout.write(A.altScreenOn + A.hideCursor);
-          process.stdin.on("data", onData);
-          void refresh();
+          // Exit TUI cleanly, run add flow externally (pickDirectory pattern)
+          const currentTab = state.tab;
+          cleanup({ kind: "add-role" });
+          // Store current tab so launcher can resume
+          (cleanup as unknown as { _lastTab?: Tab })._lastTab = currentTab;
           return;
         }
         if (k === "d") {
           const role = roles[state.sel];
           if (role && role.name !== "default") {
-            const ok = await deleteRoleFile(role.name);
-            process.stdout.write(`\n  ${ok ? A.green("✓ Deleted") : A.red("✗ Failed")} ${A.dim2(role.name)}\n  ${A.dim2("Press any key...")}`);
-            await new Promise<void>((r) => { const h = () => { process.stdin.removeListener("data", h); r(); }; process.stdin.on("data", h); });
-            if (isTTY) process.stdin.setRawMode(true);
-            process.stdin.resume();
-            process.stdout.write(A.altScreenOn + A.hideCursor);
-            process.stdin.on("data", onData);
-            void refresh();
+            cleanup({ kind: "delete-role", name: role.name });
+            return;
           }
-          return;
         }
       } else if (state.tab === "status") {
         // ↑/↓ scrolls the status viewport
@@ -1089,17 +1058,67 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 }
 
 export async function runLauncherLoop(): Promise<void> {
+  let resumeTab: Tab | undefined;
   while (true) {
-    const result = await runLauncherUI();
+    const result = await runLauncherUI(resumeTab);
     if (!result) return;
 
     if (result.kind === "new") {
       const cwd = await pickDirectory(process.cwd());
-      if (!cwd) continue;
+      if (!cwd) { resumeTab = "agents"; continue; }
       const sessionId = await acquireGatewaySession(cwd);
       if (sessionId) await launchGatewaySession(sessionId);
+      resumeTab = "agents";
     } else if (result.kind === "session") {
       await launchGatewaySession(result.id);
+      resumeTab = "agents";
+    } else if (result.kind === "add-role") {
+      // External prompt flow (pickDirectory pattern — proven to work)
+      const roleName = await promptForRoleName();
+      if (roleName) {
+        const description = await inlinePrompt("Description", "What does this role do?");
+        if (description) {
+          const promptAppend = await inlinePrompt("Prompt (optional)", "Appended to system prompt. Enter to skip");
+          const ok = await addRoleFile(roleName, description, promptAppend ?? "");
+          process.stdout.write(`\n  ${ok ? A.green("✓ Role created") : A.red("✗ Failed")} ${A.dim2("(~/.mya/roles/" + roleName + ".json)")}\n`);
+          process.stdout.write(`  ${A.dim2("Edit the file to add tools/model settings. Press any key...")}`);
+          await waitForKey();
+        }
+      }
+      resumeTab = "roles";
+    } else if (result.kind === "delete-role") {
+      const ok = await deleteRoleFile(result.name);
+      process.stdout.write(`\n  ${ok ? A.green("✓ Deleted") : A.red("✗ Failed")} ${A.dim2(result.name)}\n`);
+      process.stdout.write(`  ${A.dim2("Press any key...")}`);
+      await waitForKey();
+      resumeTab = "roles";
+    } else {
+      const _exhaustive: never = result;
+      void _exhaustive;
+      return;
     }
   }
+}
+
+/** Wait for any keypress (used after external action messages). */
+function waitForKey(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const isTTY = !!process.stdin.isTTY;
+    if (isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const h = () => { process.stdin.removeListener("data", h); resolve(); };
+    process.stdin.on("data", h);
+  });
+}
+
+/** Prompt for a valid role name (kebab-case). Re-prompts on invalid. */
+async function promptForRoleName(): Promise<string | undefined> {
+  for (let retries = 3; retries > 0; retries--) {
+    const n = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
+    if (!n) return undefined; // Escape
+    if (/^[a-z0-9][a-z0-9-]*$/.test(n)) return n;
+    process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("— use kebab-case (lowercase, digits, hyphens, must start with letter/digit)")}\n  ${A.dim2("Press any key to retry...")}`);
+    await waitForKey();
+  }
+  return undefined;
 }
