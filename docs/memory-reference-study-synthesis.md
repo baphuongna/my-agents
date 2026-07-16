@@ -94,3 +94,76 @@ If mya wants multi-agent, **do NOT extend the shared brain to multiple agents.**
 - **openclaw**: composable multi-tier (active=working, core=episodic, lancedb=vector, wiki=knowledge). memory-core's signal-driven promotion scoring is borrowable for "what deserves to persist".
 - **pi-crew**: mailbox actor model + dependency-context — the multi-agent coordination reference. Radically downsized memory (1 markdown file) = "simple = trustworthy".
 - **Claude Code / Cursor / OpenCode / Devin**: no persistence / append-to-rules-file — the anti-memory baseline. Validates that memory is optional, not load-bearing.
+
+---
+
+## Round 2 addendum — 6 more systems studied (mya-v1, openhuman, codebase-memory-mcp, hermes, headroom, OpenViking)
+
+After the user noted the first round was too narrow (missed hermes/openhuman/etc.), 3 more agents + a direct read covered 6 additional systems. **One finding reframes the whole investigation.**
+
+### 🚨 THE BIGGEST FINDING: mya-v1 regression (mya's OWN predecessor)
+
+Read directly (agent failed twice). `source/mya-v1/crates/mya-memory/src/conflict.rs`:
+- `check_and_resolve_conflicts()` — semantic similarity (cosine OR jaccard fallback) against existing **Core** memories; if sim > threshold AND content differs → mark old `superseded_by`.
+- `find_text_conflicts()` — jaccard fallback (no embeddings needed).
+- Distinguishes **update** (same key) vs **conflict** (diff content); skips already-superseded.
+
+Plus `agent_scoped.rs` (agent_id-based multi-agent scoping + `purge_namespace`/`purge_session`), `MemoryEntry` struct had `agent_id`/`agent_alias`/`tenant_id`/`namespace` fields, `knowledge_graph.rs`/`decay.rs`/`consolidation.rs`/`merge.rs`/`audit.rs`/`hygiene.rs` — a FULL mature subsystem.
+
+**→ The rewrite mya-v1→current REGRESSED on exactly the layers the 7 digs found broken:**
+| Dig | mya-v1 HAD | current mya LOST |
+|---|---|---|
+| 2-3 conflict/TMS | `conflict.rs` supersede (cosine+jaccard) | NO conflict detection (supersede only consolidation merge) |
+| 4 agent scoping | `agent_scoped.rs`, `agent_id` field | currentRole closure var, no agent_id |
+| 7 retention | `purge_namespace`/`purge_session`, `decay.rs` | degrade-only, valid_until never set |
+
+**Implication**: mya does NOT need to borrow conflict/agent-scoping from mnemopi/gbrain — it can **RE-ADOPT its own predecessor's code**. The "finish half-built TMS" (Dig 3) is literally "port mya-v1's conflict.rs back". This is the lowest-effort highest-value path.
+
+### Openhuman — namespace + MemoryTaint provenance
+4 concern-separated modules (archivist/store/sync/diff), NOT tiers. Borrowable: **`MemoryTaint` (Internal/ExternalSync) flows through entire recall path** → callers make trust decisions. Profile facets have stability-based eviction (Active/Provisional/Candidate/Dropped → DELETE below threshold, `pinned` protected). No TMS/grounding/retention-for-docs. memory_sync is NOT multi-agent (upstream ingestion only).
+
+### codebase-memory-mcp — GROUNDING superpower (but NOT a belief store)
+Reframe: this is a **code structural knowledge-graph** (tree-sitter AST → node/edge), agents are READ-ONLY (single writer = indexer → no multi-writer conflict). **Borrowable: `file_hashes` table (sha256 + mtime + size) → `metadata_match`/`metadata_changed` is the grounding + re-verification + self-expiry primitive mya Dig 6 lacks.** Every node carries `file_path`+`start_line`+`end_line`. Zero TMS/authority (it never let beliefs in). Read-only-query vs dedicated-writer split is a clean single-writer pattern.
+
+### Hermes holographic — TRUST scoring + contradiction detection ★
+Trust [0,1] with feedback deltas (+0.05 helpful/-0.10 unhelpful). `contradict()` finds facts **sharing entities with divergent content vectors** → automated memory hygiene. Retrieval `score = relevance × trust_score`. Self-described as "no other memory system does this". ~100 lines. Fixes Dig 4 authority in a NOVEL way (feedback-driven trust, not source-weight).
+
+### Headroom — temporal supersession + 4-level hierarchy + port architecture
+`valid_from`/`valid_until` chains + `supersede()` (old gets valid_until, new supersedes pointer) + point-in-time queries. 4 scope levels (USER/SESSION/AGENT/TURN) + **bubbling** (importance≥0.7 promotes session→user). Port architecture (6 `@runtime_checkable` protocols) defines clean layer boundaries. Budget manager: staleness git-check (file-existence) + importance×recency×access pruning.
+
+### OpenViking — thin clients, but hook architecture is gold
+NOT a memory impl (delegates to opaque server). Borrowable integration patterns: deterministic session-id derivation, incremental capture via atomic state files, **pending queue + replay for offline writes**, structured tool parts, `<context>` boundary wrapping to avoid self-referential pollution.
+
+---
+
+## REVISED borrow map (all systems, final)
+
+| mya dig | Best borrow | Source | Effort |
+|---|---|---|---|
+| **2-3 conflict/TMS** | **RE-ADOPT mya-v1 `conflict.rs`** (cosine/jaccard + supersede) | `source/mya-v1/crates/mya-memory/src/conflict.rs` | LOW (own code) |
+| 2-3 (richer) | mnemopi bitemporal triples + Bayesian veracity | mnemopi `core/{triples,veracity-consolidation}.ts` | MED |
+| **4 authority** | hermes holographic trust scoring + contradiction detect | hermes `plugins/memory/holographic/retrieval.py` | LOW (~100 lines) |
+| 4 (alt) | mnemopi VERACITY_WEIGHTS + bayesianUpdate | mnemopi `veracity-consolidation.ts` | MED |
+| 4 (capture provenance) | openhuman MemoryTaint flows through recall | openhuman `memory_store/memory_trait.rs` | MED |
+| **5 capture source-blind** | agentmemory structural hookType/toolName/userPrompt | agentmemory `observe.ts` | MED |
+| **6 grounding** | **codebase-memory-mcp `file_hashes` + re-verify** | codebase-memory-mcp `store.c` | MED (the only re-verify primitive found) |
+| 6 (alt) | openclaw memory-core file:line + fs.stat | openclaw `short-term-promotion.ts` | LOW |
+| **7 retention** ⭐ | agentmemory score-driven eviction (3 DELETE paths) | agentmemory `functions/retention.ts` | MED |
+| 7 (alt) | openhuman profile facet stability eviction | openhuman `memory_store/unified/profile.rs` | LOW |
+| 7 (alt) | headroom budget manager (importance×recency×access + git staleness) | headroom `headroom/memory/budget.py` | MED |
+| **1 concurrency** | gbrain dual-engine SQLite↔Postgres (deployment knob) | gbrain `engine.ts` | HIGH |
+| multi-agent coord | pi-crew mailbox + dependency-context (avoid shared brain) | pi-crew `state/mailbox.ts` | MED |
+
+## REVISED verdict (final)
+
+1. **mya-v1 regression is the headline.** The 7-dig "broken memory" is largely SELF-INFLICTED — the rewrite dropped mya-v1's working conflict resolution, agent scoping, and retention. **Re-adopting mya-v1's `conflict.rs` + `agent_scoped.rs` is the lowest-effort fix for Digs 2,3,4,7** — it's mya's own proven code, not a foreign borrow.
+
+2. **For grounding (Dig 6)**, codebase-memory-mcp's `file_hashes` re-verification is the ONLY real re-verify primitive found across all ~12 systems. If mya wants grounded facts, that's the pattern.
+
+3. **For authority (Dig 4)**, hermes holographic's trust scoring is the most novel (feedback-driven, not source-weight) and cheapest (~100 lines).
+
+4. **The multi-agent answer is unchanged**: pi-crew model (mailbox + dependency-context + fresh-context), NOT shared brain. Reaffirmed by all systems — none share a belief base across agents.
+
+5. **Total systems studied: ~12** (mnemopi, agentmemory, gbrain, openclaw×4, pi-crew, Claude Code/Cursor/OpenCode/Devin, openhuman, mya-v1, codebase-memory-mcp, hermes, headroom, OpenViking). Coverage is now comprehensive.
+
+**Net recommendation**: before borrowing anything externally, **port mya-v1's conflict.rs + agent_scoped.rs back** — it fixes 4 of 7 digs using mya's own predecessor code. Then add codebase-memory-mcp-style grounding + hermes-holographic trust for the remaining epistemic layers. Retention via agentmemory pattern. Multi-agent via pi-crew pattern (don't share brain).
