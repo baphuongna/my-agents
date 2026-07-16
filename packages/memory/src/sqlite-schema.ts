@@ -9,13 +9,11 @@
  *
  * SQLite IS the store. No in-memory Maps.
  */
-// DatabaseSync type — use any to avoid node:sqlite import at module eval time
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DatabaseSync = any;
+import type { SqliteDatabase } from "./sqlite-db.js";
 
 /** Check if a column exists; add it if missing. Returns true if added.
  *  Identifiers are escaped to prevent SQL injection (review HIGH #2). */
-function addColumnIfMissing(db: DatabaseSync, table: string, column: string, definition: string): boolean {
+function addColumnIfMissing(db: SqliteDatabase, table: string, column: string, definition: string): boolean {
   const rows = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as Array<{ name: string }>;
   for (const row of rows) {
     if (row.name === column) return false;
@@ -25,7 +23,7 @@ function addColumnIfMissing(db: DatabaseSync, table: string, column: string, def
 }
 
 /** Run multiple SQL statements. */
-function runAll(db: DatabaseSync, statements: readonly string[]): void {
+function runAll(db: SqliteDatabase, statements: readonly string[]): void {
   for (const stmt of statements) db.exec(stmt);
 }
 
@@ -33,7 +31,7 @@ function runAll(db: DatabaseSync, statements: readonly string[]): void {
  * Initialize the full schema. Idempotent — safe to call on every startup.
  * Creates tables, FTS5 virtual tables, triggers, and indexes.
  */
-export function initSchema(db: DatabaseSync): void {
+export function initSchema(db: SqliteDatabase): void {
   // ── L0: Working memory (raw facts, session-scoped) ──────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS working_memory (
@@ -173,14 +171,14 @@ export function initSchema(db: DatabaseSync): void {
   // Working memory: standalone FTS (id-keyed)
   runAll(db, [
     `CREATE TRIGGER IF NOT EXISTS wm_ai AFTER INSERT ON working_memory BEGIN
-      INSERT INTO fts_working(id, content) VALUES (new.id, COALESCE(new.embed_text, new.content));
+      INSERT INTO fts_working(id, content) VALUES (new.id, COALESCE(new.content, '') || COALESCE(new.embed_text, ''));
     END`,
     `CREATE TRIGGER IF NOT EXISTS wm_ad AFTER DELETE ON working_memory BEGIN
       DELETE FROM fts_working WHERE id = old.id;
     END`,
     `CREATE TRIGGER IF NOT EXISTS wm_au AFTER UPDATE OF content, embed_text ON working_memory BEGIN
       DELETE FROM fts_working WHERE id = old.id;
-      INSERT INTO fts_working(id, content) VALUES (new.id, COALESCE(new.embed_text, new.content));
+      INSERT INTO fts_working(id, content) VALUES (new.id, COALESCE(new.content, '') || COALESCE(new.embed_text, ''));
     END`,
   ]);
 
@@ -227,7 +225,7 @@ export function initSchema(db: DatabaseSync): void {
 }
 
 /** Get schema version. */
-export function getSchemaVersion(db: DatabaseSync): number {
+export function getSchemaVersion(db: SqliteDatabase): number {
   const row = db.prepare("SELECT MAX(version) as v FROM schema_version").get() as { v: number | null };
   return row?.v ?? 0;
 }

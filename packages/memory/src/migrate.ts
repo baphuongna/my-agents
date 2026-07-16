@@ -69,7 +69,7 @@ export function migrateOldMemory(db: DatabaseSync, memoryDir: string): { migrate
           migrated++;
         } catch { /* skip */ }
       }
-    } catch { /* read error — skip */ }
+    } catch (e) { process.stderr.write(String.fromCharCode(10) + "[mya] migration warning: " + (e instanceof Error ? e.message : String(e)) + String.fromCharCode(10)); }
   }
 
   // 2. Migrate archivist.md (if exists)
@@ -99,7 +99,7 @@ export function migrateOldMemory(db: DatabaseSync, memoryDir: string): { migrate
         insertStmt.run(id, factContent, "migrated-archivist", now, "default", 0.5, kind);
         migrated++;
       }
-    } catch { /* read error — skip */ }
+    } catch (e) { process.stderr.write(String.fromCharCode(10) + "[mya] migration warning: " + (e instanceof Error ? e.message : String(e)) + String.fromCharCode(10)); }
   }
 
   return { migrated, skipped: false };

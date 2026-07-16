@@ -8,9 +8,7 @@
  *   2. Tier degradation: episodic tier 1→2→3 (content compression)
  *   3. Weibull purge: remove memories below strength threshold
  */
-// DatabaseSync type — use any to avoid node:sqlite import at module eval time
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DatabaseSync = any;
+import type { SqliteDatabase } from "./sqlite-db.js";
 import { randomUUID } from "node:crypto";
 import { getUnconsolidated, markConsolidated, degradeTier } from "./sqlite-store.js";
 import { weibullDecayFactor } from "./weibull.js";
@@ -63,7 +61,7 @@ const PURGE_STRENGTH_THRESHOLD = 0.05;
  *   4. Mark source items as consolidated
  */
 export function consolidate(
-  db: DatabaseSync,
+  db: SqliteDatabase,
   sessionId?: string,
 ): ConsolidateResult {
   const targetSession = sessionId ?? "default";
@@ -142,7 +140,7 @@ export function consolidate(
  * Tier 2 (compressed, 30-180d): content truncated to 800 chars
  * Tier 3 (key-signal, >180d):   content truncated to 300 chars
  */
-export function degradeOldMemories(db: DatabaseSync): DegradeResult {
+export function degradeOldMemories(db: SqliteDatabase): DegradeResult {
   let degraded = 0;
   const now = Date.now();
 
@@ -150,7 +148,7 @@ export function degradeOldMemories(db: DatabaseSync): DegradeResult {
     // Tier 1 → 2: older than 30 days
     const tier1Items = db.prepare(`
       SELECT id, content, timestamp FROM episodic_memory
-      WHERE tier = 1 AND superseded_by IS NULL
+      WHERE tier = 1 AND superseded_by IS NULL LIMIT 1000
     `).all() as Array<{ id: string; content: string; timestamp: string }>;
 
     for (const item of tier1Items) {
@@ -171,7 +169,7 @@ export function degradeOldMemories(db: DatabaseSync): DegradeResult {
     // Tier 2 → 3: older than 180 days
     const tier2Items = db.prepare(`
       SELECT id, content, timestamp FROM episodic_memory
-      WHERE tier = 2 AND superseded_by IS NULL
+      WHERE tier = 2 AND superseded_by IS NULL LIMIT 1000
     `).all() as Array<{ id: string; content: string; timestamp: string }>;
 
     for (const item of tier2Items) {
@@ -194,7 +192,7 @@ export function degradeOldMemories(db: DatabaseSync): DegradeResult {
  * Strength is computed per memory_type — profile types survive much longer
  * than event types.
  */
-export function purgeWeakMemories(db: DatabaseSync): PurgeResult {
+export function purgeWeakMemories(db: SqliteDatabase): PurgeResult {
   let purged = 0;
   const now = Date.now();
 
@@ -202,7 +200,7 @@ export function purgeWeakMemories(db: DatabaseSync): PurgeResult {
     // Check working_memory
     const workingItems = db.prepare(`
       SELECT id, timestamp, memory_type FROM working_memory
-      WHERE consolidated_at IS NULL AND superseded_by IS NULL
+      WHERE consolidated_at IS NULL AND superseded_by IS NULL LIMIT 1000
     `).all() as Array<{ id: string; timestamp: string; memory_type: string }>;
 
     for (const item of workingItems) {
@@ -217,7 +215,7 @@ export function purgeWeakMemories(db: DatabaseSync): PurgeResult {
     // Check episodic_memory (higher threshold — they're consolidated)
     const episodicItems = db.prepare(`
       SELECT id, timestamp, memory_type FROM episodic_memory
-      WHERE superseded_by IS NULL AND tier >= 3
+      WHERE superseded_by IS NULL AND tier >= 3 LIMIT 1000
     `).all() as Array<{ id: string; timestamp: string; memory_type: string }>;
 
     for (const item of episodicItems) {
@@ -241,7 +239,7 @@ export function purgeWeakMemories(db: DatabaseSync): PurgeResult {
  * Called on turn_end or DreamCycle timer.
  */
 export function lifecycleTick(
-  db: DatabaseSync,
+  db: SqliteDatabase,
   sessionId?: string,
 ): {
   consolidated: ConsolidateResult;

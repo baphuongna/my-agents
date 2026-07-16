@@ -12,9 +12,7 @@
  *   5. Veracity weight: stated=1.0, inferred=0.7, tool=0.5, false=0.0
  *   6. Update recall_count + last_recalled
  */
-// DatabaseSync type — use any to avoid node:sqlite import at module eval time
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DatabaseSync = any;
+import type { SqliteDatabase } from "./sqlite-db.js";
 import { weibullBoost } from "./weibull.js";
 import { recordRecall } from "./sqlite-store.js";
 
@@ -89,7 +87,7 @@ function sanitizeQuery(query: string): string {
  *   4. Merge + sort by score
  *   5. Update recall_count for hits
  */
-export function recall(db: DatabaseSync, query: string, options?: RecallOptions): MemoryHit[] {
+export function recall(db: SqliteDatabase, query: string, options?: RecallOptions): MemoryHit[] {
   const topK = options?.topK ?? 10;
   const ftsQuery = sanitizeQuery(query);
   if (!ftsQuery) return [];
@@ -200,7 +198,7 @@ function composeScore(bm25Rank: number, importance: number, temporalBoost: numbe
 
 /** Recall structured facts (L2) via FTS5. */
 export function recallFacts(
-  db: DatabaseSync,
+  db: SqliteDatabase,
   query: string,
   options?: { topK?: number },
 ): Array<{ fact_id: string; subject: string; predicate: string; object: string; score: number }> {

@@ -7,9 +7,7 @@
  * FTS5 triggers auto-sync search index on every INSERT/UPDATE/DELETE.
  * No in-memory cache needed.
  */
-// DatabaseSync type — use any to avoid node:sqlite import at module eval time
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DatabaseSync = any;
+import type { SqliteDatabase } from "./sqlite-db.js";
 import { randomUUID } from "node:crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -68,7 +66,7 @@ export interface MemoryRecord {
 const now = () => new Date().toISOString();
 
 /** INSERT into working_memory (L0). FTS5 trigger auto-syncs search index. */
-export function storeWorking(db: DatabaseSync, input: WorkingMemoryInput): string {
+export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): string {
   const id = randomUUID();
   const ts = now();
   db.prepare(`
@@ -93,7 +91,7 @@ export function storeWorking(db: DatabaseSync, input: WorkingMemoryInput): strin
 }
 
 /** INSERT into episodic_memory (L1). FTS5 trigger auto-syncs search index. */
-export function storeEpisodic(db: DatabaseSync, input: EpisodicMemoryInput): string {
+export function storeEpisodic(db: SqliteDatabase, input: EpisodicMemoryInput): string {
   const id = randomUUID();
   const ts = now();
   db.prepare(`
@@ -117,7 +115,7 @@ export function storeEpisodic(db: DatabaseSync, input: EpisodicMemoryInput): str
 }
 
 /** INSERT into facts (L2). FTS5 trigger auto-syncs search index. */
-export function storeFact(db: DatabaseSync, input: FactInput): string {
+export function storeFact(db: SqliteDatabase, input: FactInput): string {
   const id = randomUUID();
   const ts = now();
   db.prepare(`
@@ -136,7 +134,7 @@ export function storeFact(db: DatabaseSync, input: FactInput): string {
 }
 
 /** Mark working_memory entries as consolidated (set consolidated_at). */
-export function markConsolidated(db: DatabaseSync, ids: string[], episodicId: string): void {
+export function markConsolidated(db: SqliteDatabase, ids: string[], episodicId: string): void {
   const ts = now();
   const stmt = db.prepare("UPDATE working_memory SET consolidated_at = ? WHERE id = ?");
   for (const id of ids) {
@@ -145,27 +143,27 @@ export function markConsolidated(db: DatabaseSync, ids: string[], episodicId: st
 }
 
 /** Increment recall_count + update last_recalled for hit IDs. */
-export function recordRecall(db: DatabaseSync, ids: string[], table: "working_memory" | "episodic_memory"): void {
+export function recordRecall(db: SqliteDatabase, ids: string[], table: "working_memory" | "episodic_memory"): void {
   const ts = now();
-  const stmt = db.prepare(`UPDATE ${table} SET recall_count = recall_count + 1, last_recalled = ? WHERE id = ?`);
-  for (const id of ids) {
-    stmt.run(ts, id);
-  }
+  // Batch UPDATE: single statement with IN clause for efficiency
+  const placeholders = ids.map(() => "?").join(",");
+  db.prepare(`UPDATE ${table} SET recall_count = recall_count + 1, last_recalled = ? WHERE id IN (${placeholders})`)
+    .run(ts, ...ids);
 }
 
 /** Supersede a memory: set superseded_by. */
-export function supersede(db: DatabaseSync, table: "working_memory" | "episodic_memory", oldId: string, newId: string): void {
+export function supersede(db: SqliteDatabase, table: "working_memory" | "episodic_memory", oldId: string, newId: string): void {
   db.prepare(`UPDATE ${table} SET superseded_by = ? WHERE id = ?`).run(newId, oldId);
 }
 
 /** Degrade episodic tier (1→2→3 content compression). */
-export function degradeTier(db: DatabaseSync, id: string, newTier: number): void {
+export function degradeTier(db: SqliteDatabase, id: string, newTier: number): void {
   const ts = now();
   db.prepare("UPDATE episodic_memory SET tier = ?, degraded_at = ? WHERE id = ?").run(newTier, ts, id);
 }
 
 /** Delete expired memories (valid_until < now). Returns count deleted. */
-export function purgeExpired(db: DatabaseSync, table: "working_memory" | "episodic_memory"): number {
+export function purgeExpired(db: SqliteDatabase, table: "working_memory" | "episodic_memory"): number {
   const ts = now();
   const result = db.prepare(`DELETE FROM ${table} WHERE valid_until IS NOT NULL AND valid_until < ?`).run(ts);
   // node:sqlite Statement.run() returns changes count
@@ -173,7 +171,7 @@ export function purgeExpired(db: DatabaseSync, table: "working_memory" | "episod
 }
 
 /** Get unconsolidated working memories older than threshold. */
-export function getUnconsolidated(db: DatabaseSync, sessionId: string, olderThanHours: number): MemoryRecord[] {
+export function getUnconsolidated(db: SqliteDatabase, sessionId: string, olderThanHours: number): MemoryRecord[] {
   const cutoff = new Date(Date.now() - olderThanHours * 3600_000).toISOString();
   return db.prepare(`
     SELECT * FROM working_memory
@@ -184,12 +182,12 @@ export function getUnconsolidated(db: DatabaseSync, sessionId: string, olderThan
 }
 
 /** Get a memory by ID. */
-export function getWorkingById(db: DatabaseSync, id: string): MemoryRecord | null {
+export function getWorkingById(db: SqliteDatabase, id: string): MemoryRecord | null {
   return (db.prepare("SELECT * FROM working_memory WHERE id = ?").get(id) as unknown as MemoryRecord | undefined) ?? null;
 }
 
 /** Count records in a table. */
-export function countTable(db: DatabaseSync, table: "working_memory" | "episodic_memory" | "facts" | "triples"): number {
+export function countTable(db: SqliteDatabase, table: "working_memory" | "episodic_memory" | "facts" | "triples"): number {
   const row = db.prepare(`SELECT COUNT(*) as n FROM ${table}`).get() as { n: number };
   return row.n;
 }

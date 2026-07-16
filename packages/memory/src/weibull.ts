@@ -55,7 +55,7 @@ function parseTimestamp(timestamp: TimestampInput): Date | null {
     return Number.isFinite(timestamp.getTime()) ? timestamp : null;
   }
   if (typeof timestamp !== "string") return null;
-  const normalized = timestamp.replace("Z", "+00:00");
+  const normalized = timestamp;
   const parsed = new Date(normalized);
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
