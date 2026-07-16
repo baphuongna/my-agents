@@ -101,6 +101,13 @@ export interface MyaPiApi {
   registerTool(tool: unknown): void;
   registerCommand(name: string, options: unknown): void;
   registerShortcut(shortcut: string, options: unknown): void;
+  // Role overlay surface — these live on ExtensionAPI (the `pi` handle),
+  // NOT on ExtensionCommandContext (the `ctx` passed to command handlers).
+  // Declared here so /role can apply tool/model overlay deterministically.
+  getActiveTools?(): string[];
+  setActiveTools?(toolNames: string[]): void;
+  setModel?(model: { id: string; provider?: string }): Promise<boolean>;
+  modelRegistry?: { getAll?(): Array<{ id: string; provider?: string }> };
 }
 
 function uiOf(ctx: unknown): { notify: (m: string, t?: string) => void } {
@@ -192,45 +199,52 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           return;
         }
 
-        // Apply role overlay: tools + model + prompt
-        const cmdCtx = ctx as {
-          getActiveTools?: () => string[];
-          setActiveTools?: (tools: string[]) => void;
-          setModel?: (model: unknown) => Promise<boolean>;
-          modelRegistry?: { getAll?: () => Array<{ provider: string; id: string }> };
-        };
+        // Apply role overlay: tools + model + prompt.
+        // These methods live on the `pi` handle (ExtensionAPI), not on `ctx`
+        // (ExtensionCommandContext). Calling them on ctx is dead code — the
+        // guard would always be false. Call on pi instead.
+        const notes: string[] = [];
 
-        // 1. Apply tool filter (whitelist/blacklist)
-        if (cmdCtx.getActiveTools && cmdCtx.setActiveTools) {
+        // 1. Apply tool filter (fail-closed: always apply the filter result).
+        if (pi.getActiveTools && pi.setActiveTools) {
           try {
-            const currentTools = cmdCtx.getActiveTools();
+            const currentTools = pi.getActiveTools();
             const filtered = filterToolsForRole(currentTools, role);
-            if (filtered.length > 0 && filtered.length !== currentTools.length) {
-              cmdCtx.setActiveTools(filtered);
+            pi.setActiveTools(filtered);
+            if (filtered.length === 0) {
+              notes.push(`⚠ no tools match role filter (check tool names)`);
+            } else if (filtered.length < currentTools.length) {
+              notes.push(`tools: ${currentTools.length}→${filtered.length}`);
             }
-          } catch { /* tool filter is best-effort */ }
+          } catch (e) {
+            notes.push(`⚠ tool filter failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        } else {
+          notes.push(`⚠ tool filter unavailable`);
         }
 
         // 2. Apply model override (if role specifies a preferred model)
-        if (role.modelPrefer && cmdCtx.setModel && cmdCtx.modelRegistry) {
+        if (role.modelPrefer && pi.setModel && pi.modelRegistry) {
           try {
-            const allModels = cmdCtx.modelRegistry.getAll?.() ?? [];
+            const allModels = pi.modelRegistry.getAll?.() ?? [];
             const match = allModels.find(
               (m) => m.id === role.modelPrefer || m.id.includes(role.modelPrefer!)
             );
             if (match) {
-              await cmdCtx.setModel(match);
+              const ok = await pi.setModel(match);
+              notes.push(ok ? `model: ${match.id}` : `⚠ setModel rejected`);
+            } else {
+              notes.push(`⚠ model "${role.modelPrefer}" not found`);
             }
-          } catch { /* model override is best-effort */ }
+          } catch (e) {
+            notes.push(`⚠ model override failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
         }
 
         // 3. Switch active role (prompt injection happens in before_agent_start)
         currentRole = role;
-        const toolsNote = role.toolsAllowed || role.toolsDenied
-          ? ` (tools filtered)`
-          : "";
-        const modelNote = role.modelPrefer ? ` (model: ${role.modelPrefer})` : "";
-        uiOf(ctx).notify(`[role] Switched to "${role.name}": ${role.description}${toolsNote}${modelNote}`, "info");
+        const summary = notes.length > 0 ? ` — ${notes.join(" · ")}` : "";
+        uiOf(ctx).notify(`[role] Switched to "${role.name}": ${role.description}${summary}`, "info");
       },
     });
     commandRegistry.register({ name: "role", description: "List or switch roles", handler: () => "" });
