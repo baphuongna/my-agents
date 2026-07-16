@@ -16,6 +16,7 @@ import {
 import { recall, recallFacts, type RecallOptions, type MemoryHit } from "./sqlite-recall.js";
 import { lifecycleTick, type ConsolidateResult, type DegradeResult, type PurgeResult } from "./sqlite-consolidate.js";
 import { checkAndResolveConflicts } from "./conflict.js";
+import type { MemoryStore } from "./ports.js";
 
 export interface SqliteMemoryManagerOptions {
   dbPath: DatabasePath;
@@ -37,7 +38,7 @@ export interface LifecycleResult {
  *   mgr.lifecycle(); // consolidate + degrade + purge
  *   mgr.close();
  */
-export class SqliteMemoryManager {
+export class SqliteMemoryManager implements MemoryStore {
   private db: SqliteDatabase;
 
   constructor(opts: SqliteMemoryManagerOptions) {

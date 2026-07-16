@@ -16,6 +16,9 @@ export { ArchivistRole, GoalsRole, cleanTurnToMarkdown } from "./roles.js";
 export type { MemoryRole } from "./roles.js";
 
 export type { RetrievalArm } from "./rrf.js";
+/** @deprecated Legacy in-memory belief graph (pre-SQLite). Kept for the dream-cycle
+ * bridge + backward compat; new code should use the SQLite memory system via MemoryStore.
+ * Routing Brain through a GraphStore adapter is a future refactor (Dig 3 de-fragmentation). */
 export { Brain } from "./brain.js";
 export type { Fact, Take, BrainPage, FactKind, FactVisibility } from "./brain.js";
 export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm, graphArm } from "./rrf.js";
@@ -80,6 +83,7 @@ export type { WorkingMemoryInput, EpisodicMemoryInput, FactInput, MemoryRecord }
 
 // ── Phase 3: Recall pipeline + Weibull ──
 export { recall, recallFacts } from "./sqlite-recall.js";
+export type { MemoryStore, MemoryEngine, VectorIndex, TextIndex, Embedder, MemoryCache, GraphStore } from "./ports.js";
 export { checkAndResolveConflicts, findTextConflicts, jaccardSimilarity, isBrainType, BRAIN_TYPES } from "./conflict.js";
 export type { RecallOptions, MemoryHit } from "./sqlite-recall.js";
 export { weibullBoost, weibullDecayFactor, WEIBULL_PARAMS } from "./weibull.js";
