@@ -70,10 +70,11 @@ export function consolidate(
     return { consolidated: 0, episodicId: null, summaryPreview: "" };
   }
 
-  // Group by (source, memory_type)
+  // Group by (source, memory_type, scope) — preserve scope isolation
+  // so role-scoped memories don't mix across roles during consolidation.
   const groups = new Map<string, typeof items>();
   for (const item of items) {
-    const key = `${item.source}|${item.memory_type}`;
+    const key = `${item.source}|${item.memory_type}|${item.scope ?? "global"}`;
     const group = groups.get(key);
     if (group) group.push(item);
     else groups.set(key, [item]);
@@ -93,10 +94,12 @@ export function consolidate(
       const episodicId = randomUUID();
 
       // INSERT into episodic_memory
+      // INSERT into episodic_memory (preserve scope from source items)
+      const episodicScope = group[0]!.scope ?? "global";
       db.prepare(`
         INSERT INTO episodic_memory
-          (id, content, source, timestamp, session_id, importance, summary_of, memory_type, tier)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+          (id, content, source, timestamp, session_id, importance, summary_of, memory_type, tier, scope)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       `).run(
         episodicId,
         summary,
@@ -106,6 +109,7 @@ export function consolidate(
         Math.max(...group.map((g) => g.importance)),
         group.map((g) => g.id).join(","),
         group[0]!.memory_type,
+        episodicScope,
       );
 
       // Mark source items as consolidated
