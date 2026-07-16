@@ -5,7 +5,7 @@
  * (CBOR-encoded attestation objects, COSE public keys, ECDSA signatures) to
  * exercise the full verification pipeline without a real browser/authenticator.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { WebAuthnService } from "./webauthn.js";
 import {
   createHash,
@@ -213,6 +213,12 @@ beforeEach(() => {
 
 afterEach(() => {
   if (existsSync(tmpStore)) rmSync(tmpStore, { force: true });
+});
+
+afterAll(() => {
+  // Clean up the parent temp directory created by beforeEach
+  const parent = join(tmpStore, "..");
+  if (existsSync(parent)) rmSync(parent, { recursive: true, force: true });
 });
 
 describe("WebAuthnService — challenge generation", () => {

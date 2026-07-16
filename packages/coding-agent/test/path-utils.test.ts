@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -56,16 +56,8 @@ describe("path-utils", () => {
 		});
 
 		afterEach(() => {
-			// Clean up temp files and directory
-			try {
-				const files = readdirSync(tempDir);
-				for (const file of files) {
-					unlinkSync(join(tempDir, file));
-				}
-				rmdirSync(tempDir);
-			} catch {
-				// Ignore cleanup errors
-			}
+			// Clean up temp directory (recursive — handles nested files/dirs)
+			rmSync(tempDir, { recursive: true, force: true });
 		});
 
 		it("should resolve existing file path", () => {

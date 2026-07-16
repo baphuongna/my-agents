@@ -1,8 +1,26 @@
 /**
  * Phase 14 tests: §9 SkillCurator + SkillProvenance enum.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SkillStore, curate, parseSkillMarkdown } from "./index.js";
+
+const dirtyDirs: string[] = [];
+
+async function tempDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix));
+  dirtyDirs.push(dir);
+  return dir;
+}
+
+afterEach(async () => {
+  while (dirtyDirs.length) {
+    const d = dirtyDirs.pop()!;
+    await rm(d, { recursive: true, force: true });
+  }
+});
 
 const SKILL_MD = (name: string) =>
   `---\nname: ${name}\ndescription: test skill\ntriggers: [test]\n---\n\nBody.`;
@@ -33,7 +51,7 @@ describe("SkillCurator", () => {
   }
 
   it("archives inactive AgentCreated skills (archive-not-delete)", async () => {
-    const dir = `/tmp/mya-test-curator-${Date.now()}`;
+    const dir = await tempDir("mya-test-curator-");
     const store = storeWith("AgentCreated", 60); // 60 days old → inactive
     const actions = await curate(store, { inactiveAfterDays: 30, archiveDir: dir, now: Date.now() });
     expect(actions).toHaveLength(1);
@@ -64,7 +82,7 @@ describe("SkillCurator", () => {
   });
 
   it("Bundled pruned only when pruneBuiltins is on", async () => {
-    const dir = `/tmp/mya-test-curator-${Date.now()}`;
+    const dir = await tempDir("mya-test-curator-");
     const storeOn = storeWith("Bundled", 60);
     const on = await curate(storeOn, { inactiveAfterDays: 30, pruneBuiltins: true, archiveDir: dir, now: Date.now() });
     expect(on[0]!.action).toBe("archived");
@@ -98,7 +116,7 @@ describe("SkillCurator", () => {
     store.add({ ...skill, name: "../../../etc/evil", provenance: { ...skill.provenance, loadedAt: Date.now() - 60 * 86400000 } });
     // rename the key too (store uses name as key)
     store.remove("test");
-    const dir = `/tmp/mya-test-traversal-${Date.now()}`;
+    const dir = await tempDir("mya-test-traversal-");
     const actions = await curate(store, { inactiveAfterDays: 30, archiveDir: dir, now: Date.now() });
     // Should archive safely (no path escape), not throw.
     const archived = actions.find((a) => a.action === "archived");

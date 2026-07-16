@@ -23,6 +23,9 @@ describe("lsTool", () => {
     await writeFile(join(dir, "sub", "b.ts"), "code");
     await mkdir(join(dir, "sub", "nested"));
   });
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
 
   it("lists directory entries with types", async () => {
     const res = await lsTool.run({ path: "sub" }, makeCtx(dir));
@@ -75,6 +78,9 @@ describe("findTool", () => {
     await writeFile(join(dir, "readme.md"), "");
     await mkdir(join(dir, ".github"));
     await writeFile(join(dir, ".github", "workflow.yml"), "");
+  });
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
   });
 
   it("finds files matching *.ts pattern (root level only)", async () => {

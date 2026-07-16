@@ -1,7 +1,7 @@
 /**
  * @my-agent/gateway — WebAuthn endpoint tests (Phase 3-7).
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, afterAll } from "vitest";
 import { Gateway } from "./index.js";
 import { WebAuthnService } from "@my-agent/secrets";
 import { existsSync, rmSync, mkdirSync } from "node:fs";
@@ -12,6 +12,12 @@ const tmpStore = join(tmpdir(), `mya-gw-webauthn-test-${process.pid}-${Date.now(
 
 afterEach(() => {
   if (existsSync(tmpStore)) rmSync(tmpStore, { force: true });
+});
+
+afterAll(() => {
+  // Clean up the parent temp directory
+  const parent = join(tmpStore, "..");
+  if (existsSync(parent)) rmSync(parent, { recursive: true, force: true });
 });
 
 describe("Gateway WebAuthn endpoints", () => {
