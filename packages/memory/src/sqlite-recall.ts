@@ -23,6 +23,13 @@ export interface RecallOptions {
   sessionId?: string;
   scope?: string;
   includeEpisodic?: boolean;
+  /**
+   * When true, exclude other sessions' session-scoped memories.
+   * Returns: all global memories + only THIS session's session-scoped memories.
+   * This prevents context leak between parallel roles.
+   * Requires sessionId to be set.
+   */
+  sessionAware?: boolean;
 }
 
 export interface MemoryHit {
@@ -95,7 +102,8 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   const now = new Date();
   const hits: MemoryHit[] = [];
 
-  // ── Search working_memory (L0) via FTS5 ────────────────────────────────
+  // ── Search working_memory (L0) via FTS5 ──────────────────────────────
+  const sessionAware = options?.sessionAware && options?.sessionId;
   const workingSql = `
     SELECT wm.id, wm.content, wm.source, wm.timestamp, wm.importance,
            wm.veracity, wm.memory_type,
@@ -105,15 +113,21 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
     WHERE fts_working MATCH ?
       AND wm.superseded_by IS NULL
       AND (wm.valid_until IS NULL OR wm.valid_until > ?)
-      ${options?.sessionId ? "AND wm.session_id = ?" : ""}
-      ${options?.scope ? "AND wm.scope = ?" : ""}
+      ${sessionAware
+        ? `AND (wm.scope = 'global' OR (wm.scope = 'session' AND wm.session_id = ?))`
+        : options?.sessionId
+          ? "AND wm.session_id = ?"
+          : options?.scope
+            ? "AND wm.scope = ?"
+            : ""}
     ORDER BY bm25_rank
     LIMIT ?
   `;
 
   const workingParams: (string | number)[] = [ftsQuery, now.toISOString()];
-  if (options?.sessionId) workingParams.push(options.sessionId);
-  if (options?.scope) workingParams.push(options.scope);
+  if (sessionAware) workingParams.push(options!.sessionId!);
+  else if (options?.sessionId) workingParams.push(options.sessionId);
+  else if (options?.scope) workingParams.push(options.scope);
   workingParams.push(topK * 2);
 
   const workingRows = db.prepare(workingSql).all(...workingParams) as Array<{
@@ -142,15 +156,21 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
       WHERE fts_episodes MATCH ?
         AND em.superseded_by IS NULL
         AND (em.valid_until IS NULL OR em.valid_until > ?)
-        ${options?.sessionId ? "AND em.session_id = ?" : ""}
-        ${options?.scope ? "AND em.scope = ?" : ""}
+        ${sessionAware
+          ? `AND (em.scope = 'global' OR (em.scope = 'session' AND em.session_id = ?))`
+          : options?.sessionId
+            ? "AND em.session_id = ?"
+            : options?.scope
+              ? "AND em.scope = ?"
+              : ""}
       ORDER BY bm25_rank
       LIMIT ?
     `;
 
     const episodicParams: (string | number)[] = [ftsQuery, now.toISOString()];
-    if (options?.sessionId) episodicParams.push(options.sessionId);
-    if (options?.scope) episodicParams.push(options.scope);
+    if (sessionAware) episodicParams.push(options!.sessionId!);
+    else if (options?.sessionId) episodicParams.push(options.sessionId);
+    else if (options?.scope) episodicParams.push(options.scope);
     episodicParams.push(topK);
 
     const episodicRows = db.prepare(episodicSql).all(...episodicParams) as Array<{

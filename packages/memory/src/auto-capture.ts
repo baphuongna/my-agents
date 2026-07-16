@@ -30,6 +30,23 @@ export type MemoryType =
   | "event" | "instruction" | "relationship" | "context"
   | "learning" | "observation" | "error" | "artifact" | "general";
 
+/**
+ * Current-task memory types are session-scoped to prevent context leak
+ * between parallel roles. Long-term brain types are global (shared).
+ *
+ * Session-scoped: context, goal, error, event, commitment, request, observation
+ *   — These describe "what I'm doing RIGHT NOW" and would confuse other roles.
+ * Global: preference, decision, fact, relationship, learning, instruction, artifact
+ *   — These are stable knowledge about the user/project.
+ */
+const SESSION_SCOPED_TYPES = new Set<MemoryType>([
+  "context", "goal", "error", "event", "commitment", "observation",
+]);
+
+function isSessionScoped(type: MemoryType): boolean {
+  return SESSION_SCOPED_TYPES.has(type);
+}
+
 type TypePriority =
   | "stable" | "moderate" | "high" | "time_critical"
   | "decaying" | "accumulating" | "evolving" | "persistent" | "reference";
@@ -255,6 +272,9 @@ export function autoCapture(
     }
 
     // Store with detected type + hash for future dedup
+    // Scope: current-task types are session-scoped (don't leak to parallel roles);
+    // long-term brain types are global (shared across roles).
+    const scope = isSessionScoped(classification.memoryType) ? "session" : "global";
     manager.record({
       content: sentence,
       source,
@@ -262,6 +282,7 @@ export function autoCapture(
       importance: Math.max(importance, classification.confidence * 0.6),
       memoryType: classification.memoryType,
       veracity: "inferred",
+      scope,
       metadata: { captureHash: hash, captureConfidence: classification.confidence, autoCaptured: true },
     });
 

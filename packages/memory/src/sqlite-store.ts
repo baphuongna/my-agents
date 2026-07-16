@@ -21,6 +21,7 @@ export interface WorkingMemoryInput {
   veracity?: string;
   validUntil?: string;
   embedText?: string;
+  scope?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -72,8 +73,8 @@ export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): str
   db.prepare(`
     INSERT INTO working_memory
       (id, content, embed_text, source, timestamp, session_id, importance,
-       metadata_json, veracity, memory_type, valid_until)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       metadata_json, veracity, memory_type, valid_until, scope)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.content,
@@ -86,6 +87,7 @@ export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): str
     input.veracity ?? "unknown",
     input.memoryType ?? "general",
     input.validUntil ?? null,
+    input.scope ?? "global",
   );
   return id;
 }

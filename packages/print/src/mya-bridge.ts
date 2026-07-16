@@ -338,7 +338,11 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         try {
           let memoryParts: string[] = [];
           if (opts.sqliteMemory) {
-            const hits = opts.sqliteMemory.recall(e.prompt, { topK: 5 });
+            const hits = opts.sqliteMemory.recall(e.prompt, {
+              topK: 5,
+              sessionAware: true,
+              sessionId: parentSessionId || undefined,
+            });
             if (hits.length > 0) {
               const hitLines = hits.map((h) => `- [${h.tier}] ${h.content.slice(0, 200)}`).join("\n");
               memoryParts.push(`[memory]\n${hitLines}`);
