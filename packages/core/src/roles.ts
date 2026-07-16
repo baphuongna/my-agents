@@ -93,7 +93,8 @@ export function loadRoles(dir?: string): RoleRegistry {
 
   let entries: string[] = [];
   try {
-    entries = readdirSync(rolesDir).filter((f) => f.endsWith(".json"));
+    // Sort alphabetically for deterministic load order (collision winner is predictable).
+    entries = readdirSync(rolesDir).filter((f) => f.endsWith(".json")).sort();
   } catch { /* dir not readable */ }
 
   for (const file of entries) {
@@ -102,6 +103,13 @@ export function loadRoles(dir?: string): RoleRegistry {
       const parsed = JSON.parse(content) as unknown;
       if (!isValidRoleConfig(parsed)) {
         process.stderr.write(`[roles] skipping ${file}: invalid format\n`);
+        continue;
+      }
+      // Detect name collision: a role with this name was already loaded from
+      // an earlier (alphabetically smaller) file. First file wins; skip the
+      // duplicate with a warning instead of silently overwriting.
+      if (roles.has(parsed.name)) {
+        process.stderr.write(`[roles] skipping ${file}: name "${parsed.name}" already defined by another file\n`);
         continue;
       }
       roles.set(parsed.name, parsed);

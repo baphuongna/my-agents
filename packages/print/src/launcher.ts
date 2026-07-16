@@ -196,24 +196,34 @@ async function addCronJob(name: string, schedule: string, prompt: string): Promi
 
 /** Write a role config to ~/.mya/roles/<name>.json. */
 async function addRoleFile(name: string, description: string, promptAppend: string): Promise<boolean> {
+  // BUG #2: validate name to prevent path traversal. kebab-case regex rejects
+  // "..", "/", and any char that could escape the roles directory.
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) return false;
   try {
-    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { writeFileSync, mkdirSync, existsSync } = await import("node:fs");
     const { join } = await import("node:path");
     const { homedir } = await import("node:os");
     const dir = join(homedir(), ".mya", "roles");
     mkdirSync(dir, { recursive: true });
+    const file = join(dir, `${name}.json`);
+    // BUG #6: refuse to silently overwrite an existing role.
+    if (existsSync(file)) return false;
     const role = {
       name,
       description,
       ...(promptAppend ? { promptAppend } : {}),
     };
-    writeFileSync(join(dir, `${name}.json`), JSON.stringify(role, null, 2) + "\n");
+    writeFileSync(file, JSON.stringify(role, null, 2) + "\n");
     return true;
   } catch { return false; }
 }
 
 /** Delete a role config file. */
 async function deleteRoleFile(name: string): Promise<boolean> {
+  // BUG #2: validate name — it comes from role.name (JSON content field),
+  // NOT from a validated filename. A planted malicious JSON with
+  // name="../../.mya/memory/memory" would otherwise delete arbitrary files.
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) return false;
   try {
     if (name === "default") return false; // protect default role
     const { unlinkSync, existsSync } = await import("node:fs");
@@ -1135,12 +1145,25 @@ function waitForKey(): Promise<void> {
 
 /** Prompt for a valid role name (kebab-case). Re-prompts on invalid. */
 async function promptForRoleName(): Promise<string | undefined> {
+  const { existsSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { homedir } = await import("node:os");
+  const rolesDir = join(homedir(), ".mya", "roles");
   for (let retries = 3; retries > 0; retries--) {
     const n = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
     if (!n) return undefined; // Escape
-    if (/^[a-z0-9][a-z0-9-]*$/.test(n)) return n;
-    process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("— use kebab-case (lowercase, digits, hyphens, must start with letter/digit)")}\n  ${A.dim2("Press any key to retry...")}`);
-    await waitForKey();
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(n)) {
+      process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("— use kebab-case (lowercase, digits, hyphens, must start with letter/digit)")}\n  ${A.dim2("Press any key to retry...")}`);
+      await waitForKey();
+      continue;
+    }
+    // BUG #6: reject duplicate names instead of silently overwriting.
+    if (existsSync(join(rolesDir, `${n}.json`))) {
+      process.stdout.write(`\n  ${A.red("✗ Already exists")} ${A.dim2(`— a role named "${n}" already exists. Choose a different name.`)}\n  ${A.dim2("Press any key to retry...")}`);
+      await waitForKey();
+      continue;
+    }
+    return n;
   }
   return undefined;
 }

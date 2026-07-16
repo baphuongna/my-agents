@@ -38,7 +38,7 @@
  * Slash commands: /audit, /secrets, /skills, /memory, /dream, /wallet, /eval, /sync,
  *   /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /mya-help
  */
-import { nowWallclock, type RoleRegistry, type RoleConfig, filterToolsForRole } from "@my-agent/core";
+import { nowWallclock, loadRoles, getRolesDir, type RoleRegistry, type RoleConfig, filterToolsForRole } from "@my-agent/core";
 import { makePaidFetchTool } from "@my-agent/x402";
 import { makeDebugTool } from "@my-agent/dap";
 import { defaultHarness } from "@my-agent/eval";
@@ -50,8 +50,9 @@ import { applyEdits, computeLineHashes } from "@my-agent/tools";
 import { rankedCompact } from "@my-agent/prompts";
 import { adversarialReview } from "@my-agent/council";
 import { commandRegistry } from "./command-registry.js";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 import type { AuditLog } from "@my-agent/audit";
 import type { SecretStore } from "@my-agent/secrets";
@@ -114,6 +115,23 @@ function uiOf(ctx: unknown): { notify: (m: string, t?: string) => void } {
   return (ctx as { ui: { notify: (m: string, t?: string) => void } }).ui;
 }
 
+// ── Role persistence (BUG #7: survive TUI restart) ────────────────────────
+const ROLE_STATE_FILE = join(homedir(), ".mya", "agent", "current-role");
+
+function loadPersistedRole(registry: RoleRegistry): RoleConfig | undefined {
+  try {
+    const name = readFileSync(ROLE_STATE_FILE, "utf8").trim();
+    if (!name || name === "default") return registry.getDefault();
+    return registry.get(name) ?? registry.getDefault();
+  } catch {
+    return registry.getDefault();
+  }
+}
+
+function persistRole(name: string): void {
+  try { writeFileSync(ROLE_STATE_FILE, name); } catch { /* best-effort */ }
+}
+
 function registerSharedCommand(
   pi: MyaPiApi,
   name: string,
@@ -143,7 +161,16 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // Roles share one brain (memory.db) but differ in persona + tools.
     // Pattern: pi-crew roles + Claude Code agent types.
     const roleRegistry = opts.roleRegistry;
-    let currentRole: RoleConfig | undefined = roleRegistry?.getDefault();
+    // BUG #5: re-scan ~/.mya/roles/ fresh on each /role call so the TUI sees
+    // roles added/deleted by the launcher (separate process). The singleton
+    // above is a fallback only.
+    const freshRoles = (): RoleRegistry => loadRoles(getRolesDir());
+    // BUG #7: restore last active role from disk instead of always default.
+    let currentRole: RoleConfig | undefined = loadPersistedRole(freshRoles());
+    // BUG #1: capture the original full tool set on first role switch so that
+    // switching back to a permissive role RESTORES removed tools. Filtering
+    // from getActiveTools() is one-way/destructive (removed tools never return).
+    let originalTools: string[] | null = null;
 
     // ═══════════════════════════════════════════════════════════════════
     // DREAM CYCLE: periodic deep consolidation (every 4h when idle)
@@ -179,13 +206,15 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     pi.registerCommand("role", {
       description: "List or switch roles (e.g. /role coder)",
       handler: async (args: string, ctx: unknown) => {
-        if (!roleRegistry) {
+        // BUG #5: re-scan disk so newly added/deleted roles are visible.
+        const reg = freshRoles();
+        if (reg.list().length === 0) {
           uiOf(ctx).notify("[role] Roles not configured.", "info");
           return;
         }
         const name = args.trim();
         if (!name) {
-          const roles = roleRegistry.list();
+          const roles = reg.list();
           const lines = roles.map((r) => {
             const active = r.name === currentRole?.name ? " ← active" : "";
             return `  ${r.name.padEnd(15)} ${r.description}${active}`;
@@ -193,9 +222,9 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           uiOf(ctx).notify(`[role] Available roles:\n${lines.join("\n")}`, "info");
           return;
         }
-        const role = name === "default" ? roleRegistry.getDefault() : roleRegistry.get(name);
+        const role = name === "default" ? reg.getDefault() : reg.get(name);
         if (!role) {
-          uiOf(ctx).notify(`[role] Unknown role "${name}". Available: ${roleRegistry.list().map((r) => r.name).join(", ")}`, "info");
+          uiOf(ctx).notify(`[role] Unknown role "${name}". Available: ${reg.list().map((r) => r.name).join(", ")}`, "info");
           return;
         }
 
@@ -206,15 +235,20 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         const notes: string[] = [];
 
         // 1. Apply tool filter (fail-closed: always apply the filter result).
+        // BUG #1: filter from the ORIGINAL full tool set (captured once), not
+        // from getActiveTools() (current, possibly already-restricted). This
+        // makes role switching reversible: reviewer→default restores all tools.
         if (pi.getActiveTools && pi.setActiveTools) {
           try {
-            const currentTools = pi.getActiveTools();
-            const filtered = filterToolsForRole(currentTools, role);
+            if (originalTools === null) {
+              originalTools = pi.getActiveTools(); // capture once, on first switch
+            }
+            const filtered = filterToolsForRole(originalTools, role);
             pi.setActiveTools(filtered);
             if (filtered.length === 0) {
               notes.push(`⚠ no tools match role filter (check tool names)`);
-            } else if (filtered.length < currentTools.length) {
-              notes.push(`tools: ${currentTools.length}→${filtered.length}`);
+            } else {
+              notes.push(`tools: ${filtered.length}/${originalTools.length}`);
             }
           } catch (e) {
             notes.push(`⚠ tool filter failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -243,6 +277,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
 
         // 3. Switch active role (prompt injection happens in before_agent_start)
         currentRole = role;
+        persistRole(role.name); // BUG #7: remember choice across restarts
         const summary = notes.length > 0 ? ` — ${notes.join(" · ")}` : "";
         uiOf(ctx).notify(`[role] Switched to "${role.name}": ${role.description}${summary}`, "info");
       },

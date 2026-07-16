@@ -221,6 +221,14 @@ export function initSchema(db: SqliteDatabase): void {
       applied_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  // ── Migrations for older databases ─────────────────────────────────────
+  // R16+ schema adds `scope` (global/session). Old DBs created before this
+  // column must be migrated, else every recall query referencing scope throws
+  // "no such column: scope" and silently breaks all memory recall.
+  addColumnIfMissing(db, "working_memory", "scope", "TEXT DEFAULT 'global'");
+  addColumnIfMissing(db, "episodic_memory", "scope", "TEXT DEFAULT 'global'");
+
   db.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (1)").run();
 }
 
