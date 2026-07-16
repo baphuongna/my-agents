@@ -146,7 +146,7 @@ After Phase 5 verify:
 ## Execution status
 
 - [x] Phase 1 — Retention ✅ (3review+1verify PASS)
-- [ ] Phase 2 — conflict.rs re-adopt
+- [x] Phase 2 — conflict.rs re-adopt ✅ (3review+1verify PASS)
 - [ ] Phase 3 — Scope-derived
 - [ ] Phase 4 — Ports
 - [ ] Phase 5 — Governance + Grounding
