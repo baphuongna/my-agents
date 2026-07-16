@@ -76,6 +76,14 @@ export class SqliteMemoryManager {
     return lifecycleTick(this.db, sessionId);
   }
 
+  /** Check if a memory with this content hash already exists (dedup). */
+  findByHash(hash: string): boolean {
+    const row = this.db.prepare(
+      `SELECT 1 FROM working_memory WHERE metadata_json LIKE ? LIMIT 1`
+    ).get(`%"captureHash":"${hash}"%`);
+    return row !== undefined;
+  }
+
   /** Get the underlying database (for advanced operations). */
   getDatabase(): SqliteDatabase {
     return this.db;

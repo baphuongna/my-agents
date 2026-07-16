@@ -4,7 +4,7 @@
  * Run once on first boot with the new SQLite store. If ~/.mya/memory/memory.db
  * already has data, migration is skipped.
  */
-import type { DatabaseSync } from "node:sqlite";
+import type { SqliteDatabase } from "./sqlite-db.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -27,7 +27,7 @@ interface OldFact {
  * Checks for brain.jsonl and archivist.md, imports if found.
  * Idempotent: skips if SQLite already has working_memory records.
  */
-export function migrateOldMemory(db: DatabaseSync, memoryDir: string): { migrated: number; skipped: boolean } {
+export function migrateOldMemory(db: SqliteDatabase, memoryDir: string): { migrated: number; skipped: boolean } {
   // Check if SQLite already has data
   const count = db.prepare("SELECT COUNT(*) as n FROM working_memory").get() as { n: number };
   if (count.n > 0) {

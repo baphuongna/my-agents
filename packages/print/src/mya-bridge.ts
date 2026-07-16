@@ -59,6 +59,7 @@ import type { HookRegistry, McpManager, McpServerConfig, ChannelRegistry } from 
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
 import type { Brain, MemoryFacade, RetrievalEngine, LifecycleManager, SqliteMemoryManager } from "@my-agent/memory";
+import { autoCapture } from "@my-agent/memory";
 import type { Wallet } from "@my-agent/x402";
 import type { AcpBridge } from "@my-agent/acp";
 import type { SyncServer } from "@my-agent/sync";
@@ -184,6 +185,80 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       pi.on("tool_call", () => void hooks.fire("pre_tool", {}));
       pi.on("tool_result", () => void hooks.fire("post_tool", {}));
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AUTO-CAPTURE: automatically extract memorable facts from conversation
+    // ═══════════════════════════════════════════════════════════════════
+    // Problem: relying solely on the LLM calling 'remember' loses most facts.
+    // Solution: pattern-based heuristic extraction (mnemopi pattern).
+    // We capture the user prompt at before_agent_start (reliable source),
+    // and the assistant message via message_end.
+    // On turn_end, run autoCapture() on both → stores high-confidence matches.
+    // This is the lightweight always-on safety net; explicit 'remember' tool
+    // remains for high-importance facts the LLM chooses to save.
+    let pendingUserPrompt = "";
+    let lastAssistantTextCapture = "";
+
+    // Track user prompt before the turn starts
+    pi.on("before_agent_start", (event: unknown) => {
+      try {
+        const e = event as { prompt?: string };
+        if (e.prompt && e.prompt.trim()) {
+          pendingUserPrompt = e.prompt;
+          
+        } else {
+          
+        }
+      } catch { /* never crash */ }
+    });
+
+    // Track assistant response (for decisions, learnings, errors)
+    pi.on("message_end", (event: unknown) => {
+      try {
+        const e = event as { message?: { role?: string; content?: unknown } };
+        const msg = e.message;
+        if (msg?.role === "assistant") {
+          // Content can be string or array of {type, text}
+          const c = msg.content;
+          if (typeof c === "string") {
+            lastAssistantTextCapture = c;
+          } else if (Array.isArray(c)) {
+            lastAssistantTextCapture = c.filter((x: { type?: string }) => x.type === "text").map((x: { text?: string }) => x.text ?? "").join("");
+          }
+        }
+      } catch { /* never crash */ }
+    });
+
+    pi.on("turn_end", () => {
+      try {
+        if (opts.sqliteMemory) {
+          
+          // 1. Auto-capture from user prompt (preferences, decisions, facts)
+          if (pendingUserPrompt) {
+            const r = autoCapture(pendingUserPrompt, opts.sqliteMemory, {
+              source: "auto:user",
+              minConfidence: 0.55,
+            });
+            
+            if (r.captured > 0) {
+              console.error(`[mya] auto-captured ${r.captured} fact(s) from user message`);
+            }
+          }
+          // 2. Auto-capture from assistant message — VERY conservative
+          // Only capture clear learnings/errors, NOT preferences/decisions
+          // (the LLM might echo back user's words, causing false positives)
+          if (lastAssistantTextCapture) {
+            autoCapture(lastAssistantTextCapture, opts.sqliteMemory, {
+              source: "auto:assistant",
+              minConfidence: 0.85, // very high bar — only near-certain matches
+              importance: 0.3,
+            });
+          }
+          pendingUserPrompt = "";
+          lastAssistantTextCapture = "";
+        }
+      } catch { /* never crash TUI */ }
+    });
 
     // ═══════════════════════════════════════════════════════════════════
     // LIFECYCLE: run unified lifecycle pipeline on turn_end

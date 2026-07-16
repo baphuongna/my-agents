@@ -96,3 +96,7 @@ export type { SqliteMemoryManagerOptions } from "./sqlite-manager.js";
 
 // ── Phase 7: Migration ──
 export { migrateOldMemory } from "./migrate.js";
+
+// ── Auto-capture (automatic conversation capture) ──
+export { autoCapture, classify } from "./auto-capture.js";
+export type { CaptureResult, CaptureOptions, Classification, MemoryType as CaptureMemoryType } from "./auto-capture.js";
