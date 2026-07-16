@@ -22,7 +22,7 @@ import { createRequire } from "node:module";
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry } from "./shared-instances.js";
 
 
 // ── auth.json loader ──
@@ -419,6 +419,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     mcpConnect: async (id: string) => { await mcp.start(id); },
     mcpDiscover: async (id: string) => { return mcp.listServers().find((s) => s.id === id)?.tools ?? []; },
     skillsList: () => skillStore.index().map((s) => ({ name: s.name, description: s.description, triggers: s.triggers ?? [] })),
+    rolesList: () => roleRegistry.list().map((r) => ({
+      name: r.name, description: r.description,
+      promptAppend: r.promptAppend, toolsAllowed: r.toolsAllowed,
+      toolsDenied: r.toolsDenied, modelPrefer: r.modelPrefer,
+      memoryScope: r.memoryScope,
+    })),
     memoryStats: () => ({
       facts: (brain as unknown as { facts: { size: number } }).facts.size,
       takes: (brain as unknown as { takes: { size: number } }).takes.size,

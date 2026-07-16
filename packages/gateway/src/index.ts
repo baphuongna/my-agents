@@ -178,6 +178,8 @@ export interface GatewayOptions {
   mcpDiscover?: (id: string) => Promise<string[]>;
   /** Skills list. */
   skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
+  /** Roles list (from ~/.mya/roles/*.json). */
+  rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
   /** Memory/brain stats. */
   memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   /** Trigger a dream cycle manually. */
@@ -249,6 +251,7 @@ export class Gateway {
   private readonly mcpConnect?: (id: string) => Promise<void>;
   private readonly mcpDiscover?: (id: string) => Promise<string[]>;
   private readonly skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
+  private readonly rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
   private readonly memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   private readonly dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
@@ -332,6 +335,7 @@ export class Gateway {
     this.mcpConnect = opts.mcpConnect;
     this.mcpDiscover = opts.mcpDiscover;
     this.skillsList = opts.skillsList;
+    this.rolesList = opts.rolesList;
     this.memoryStats = opts.memoryStats;
     this.dreamTrigger = opts.dreamTrigger;
     this.cronRunNow = opts.cronRunNow;
@@ -522,6 +526,7 @@ export class Gateway {
           version: process.env["MYA_VERSION"] ?? "0.1.0",
           channels,
           providers,
+          roles: this.rolesList ? this.rolesList() : [],
           subagents: { active: subagents.filter((s: { busy: boolean }) => s.busy).length, total: subagents.length },
         });
       }
@@ -1004,6 +1009,10 @@ export class Gateway {
         // ── Skills ──
         if (url.pathname === "/skills" && req.method === "GET" && this.skillsList) {
           return send(200, this.skillsList());
+        }
+        // ── Roles ──
+        if (url.pathname === "/roles" && req.method === "GET" && this.rolesList) {
+          return send(200, this.rolesList());
         }
         // ── Memory + Dream ──
         if (url.pathname === "/memory/stats" && req.method === "GET" && this.memoryStats) {

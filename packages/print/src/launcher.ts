@@ -60,6 +60,7 @@ interface GatewayInfo {
   agentTree?: AgentTreeEntry[];
   mcpServers?: Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   skills?: Array<{ name: string; description: string; triggers: string[] }>;
+  roles?: Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
   memoryStats?: { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   version?: string;
   pid?: number;
@@ -102,7 +103,7 @@ async function loadGatewaySessions(): Promise<Sess[]> {
 }
 
 async function loadGatewayInfo(): Promise<GatewayInfo> {
-  const [health, sessions, status, cronJobs, tree, mcpServers, skills, memoryStats] = await Promise.all([
+  const [health, sessions, status, cronJobs, tree, mcpServers, skills, memoryStats, roles] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
     fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
@@ -111,6 +112,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     fetchJson<GatewayInfo["mcpServers"]>(`http://127.0.0.1:${GW_PORT}/mcp/servers`),
     fetchJson<GatewayInfo["skills"]>(`http://127.0.0.1:${GW_PORT}/skills`),
     fetchJson<GatewayInfo["memoryStats"]>(`http://127.0.0.1:${GW_PORT}/memory/stats`),
+    fetchJson<GatewayInfo["roles"]>(`http://127.0.0.1:${GW_PORT}/roles`),
   ]);
   return {
     connected: !!health?.ok,
@@ -127,6 +129,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     mcpServers,
     skills,
     memoryStats,
+    roles,
     version: status?.version,
     pid: status?.pid,
   };
@@ -214,7 +217,7 @@ async function killSubagent(sessionId: string): Promise<boolean> {
   } catch { return false; }
 }
 
-type Tab = "agents" | "channels" | "cron" | "providers" | "mcp" | "skills" | "memory" | "status";
+type Tab = "agents" | "channels" | "cron" | "providers" | "mcp" | "skills" | "memory" | "roles" | "status";
 
 interface AgentTreeEntry {
   sessionId: string;
@@ -416,7 +419,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
       lines.push(`  ${A.dim2("─".repeat(Math.max(40, w - 4)))}`);
 
       // Tabs
-      const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "skills", "memory", "status"];
+      const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "skills", "memory", "roles", "status"];
       const tabLabels: Record<Tab, string> = {
         agents: `Agents (${state.info.sessions})`,
         channels: `Channels (${state.info.channels?.length ?? "?"})`,
@@ -425,6 +428,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         mcp: `MCP (${state.info.mcpServers?.length ?? "?"})`,
         skills: `Skills (${state.info.skills?.length ?? "?"})`,
         memory: `Memory`,
+        roles: `Roles (${state.info.roles?.length ?? "?"})`,
         status: "Status",
       };
       const tabLine = tabs.map((t) => {
@@ -603,6 +607,31 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
         lines.push(`  ${m?.dreamRunning ? A.yellow("● running") : A.green("○ idle")}  Status:     ${m?.dreamRunning ? "consolidating..." : "waiting (30min)"}`);
         lines.push("");
         lines.push(`  ${A.dim2("Enter/d = trigger dream now | r refresh")}`);
+      } else if (state.tab === "roles") {
+        const roles = state.info.roles ?? [];
+        if (roles.length === 0) {
+          lines.push(`  ${A.dim2("No roles configured.")}`);
+          lines.push(`  ${A.dim2("Create ~/.mya/roles/*.json to add roles.")}`);
+        } else {
+          lines.push(`  ${A.bold("Roles")}  ${A.dim2("(" + roles.length + " loaded from ~/.mya/roles/")}`);
+          lines.push(`  ${A.dim2("─".repeat(40))}`);
+          for (const role of roles) {
+            const tools = role.toolsAllowed
+              ? A.blue(role.toolsAllowed.join(","))
+              : role.toolsDenied
+                ? A.dim2("all except ") + A.yellow(role.toolsDenied.join(","))
+                : A.dim2("all tools");
+            const model = role.modelPrefer ? A.accent(role.modelPrefer) : A.dim2("inherit");
+            lines.push(`  ${A.green("●")}  ${A.bold(role.name.padEnd(14))} ${role.description}`);
+            lines.push(`     ${A.dim2("tools:")} ${tools}`);
+            lines.push(`     ${A.dim2("model:")} ${model}`);
+            if (role.promptAppend) {
+              lines.push(`     ${A.dim2("prompt:")} ${role.promptAppend.slice(0, 60)}${role.promptAppend.length > 60 ? "…" : ""}`);
+            }
+            lines.push("");
+          }
+          lines.push(`  ${A.dim2("Use /role <name> in TUI to switch roles.")}`);
+        }
       } else if (state.tab === "status") {
         const configuredProviders = (state.info.providers ?? []).filter((p) => p.configured);
         const statusLines: string[] = [];
@@ -691,7 +720,7 @@ function runLauncherUI(): Promise<{ kind: "session"; id: string } | { kind: "new
 
       // Tab switch
       if (k === "\t" || k === "\x1b[Z") {
-        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "skills", "memory", "status"];
+        const tabs: Tab[] = ["agents", "channels", "cron", "providers", "mcp", "skills", "memory", "roles", "status"];
         const idx = tabs.indexOf(state.tab);
         state.tab = tabs[(idx + 1) % tabs.length]!;
         state.sel = 0;
