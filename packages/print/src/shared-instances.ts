@@ -100,10 +100,17 @@ lifecycleManager.wireBrainStore(brainStore);
 
 // ── Phase 6: SQLite memory manager (mnemopi pattern) ──
 // SQLite IS the store. This replaces Brain Maps + brain.jsonl + RetrievalEngine.
-import { SqliteMemoryManager } from "@my-agent/memory";
+import { SqliteMemoryManager, migrateOldMemory } from "@my-agent/memory";
 export const sqliteMemory = new SqliteMemoryManager({
   dbPath: join(homedir(), ".mya", "memory", "memory.db"),
 });
+// Migrate old brain.jsonl + archivist.md → SQLite (idempotent)
+try {
+  const result = migrateOldMemory(sqliteMemory.getDatabase(), join(homedir(), ".mya", "memory"));
+  if (result.migrated > 0) {
+    process.stderr.write(`\n[mya] Migrated ${result.migrated} memories to SQLite\n`);
+  }
+} catch { /* migration is best-effort */ }
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
 export const sync = new SyncServer();
