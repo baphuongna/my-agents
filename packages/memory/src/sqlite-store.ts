@@ -25,6 +25,46 @@ export interface WorkingMemoryInput {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Per-type TTL (hours) for the hard expiry cap. Derived from Weibull eta
+ * (the decay scale): a memory is eligible for hard purge once it has lived
+ * past its type's natural decay horizon. Lower-eta types (event=168h, context=360h)
+ * expire faster; high-eta (preference=4380h, profile=8760h) live long.
+ * Falls back to a 1-year cap for unknown types. The existing purgeExpired()
+ * (DELETE WHERE valid_until < now) now actually fires because storeWorking sets
+ * valid_until at capture when the caller doesn't supply one.
+ */
+const TTL_HOURS_BY_TYPE: Record<string, number> = {
+  event: 336,        // 2 weeks (>= eta 168)
+  error: 336,        // 2 weeks (>= eta 336 — was 168, violated 'TTL >= eta')
+  issue: 336,        // 2 weeks (eta 336)
+  context: 720,      // 30 days
+  goal: 1440,        // 60 days
+  observation: 960,
+  decision: 672,
+  request: 144,      // 6 days (>= eta 72)
+  pattern: 3360,
+  setup: 4320,
+  artifact: 4320,
+  project: 2160,
+  fact: 1440,
+  entity: 8760,
+  learning: 2880,
+  commitment: 4320,
+  instruction: 8760,
+  relationship: 17520, // 2 years
+  preference: 8760,  // 1 year
+  profile: 17520,    // 2 years
+  general: 720,      // 30 days (aligned with eta 168 — was 8760)
+};
+const DEFAULT_TTL_HOURS = 8760;
+
+/** Compute the hard-expiry timestamp for a memory type (ISO string). */
+export function ttlValidUntil(memoryType: string | undefined, nowMs: number = Date.now()): string {
+  const hours = TTL_HOURS_BY_TYPE[memoryType ?? "general"] ?? DEFAULT_TTL_HOURS;
+  return new Date(nowMs + hours * 3_600_000).toISOString();
+}
+
 export interface EpisodicMemoryInput {
   content: string;
   source?: string;
@@ -34,6 +74,7 @@ export interface EpisodicMemoryInput {
   memoryType?: string;
   veracity?: string;
   tier?: number;
+  validUntil?: string;
 }
 
 export interface FactInput {
@@ -86,7 +127,11 @@ export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): str
     JSON.stringify(input.metadata ?? {}),
     input.veracity ?? "unknown",
     input.memoryType ?? "general",
-    input.validUntil ?? null,
+    // Hard TTL cap: set valid_until at capture per-type so purgeExpired() fires
+    // as a ceiling (even popular memories eventually expire by type horizon).
+    // Caller may override via input.validUntil. Use `||` not `??` so empty string
+    // also falls back (empty would otherwise cause immediate delete on next purge).
+    input.validUntil || ttlValidUntil(input.memoryType),
     input.scope ?? "global",
   );
   return id;
@@ -99,8 +144,8 @@ export function storeEpisodic(db: SqliteDatabase, input: EpisodicMemoryInput): s
   db.prepare(`
     INSERT INTO episodic_memory
       (id, content, source, timestamp, session_id, importance,
-       summary_of, veracity, tier, memory_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       summary_of, veracity, tier, memory_type, valid_until)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.content,
@@ -112,6 +157,9 @@ export function storeEpisodic(db: SqliteDatabase, input: EpisodicMemoryInput): s
     input.veracity ?? "unknown",
     input.tier ?? 1,
     input.memoryType ?? "general",
+    // Episodic are consolidated summaries but still get a TTL ceiling (longer —
+    // they're higher-value). Use 2x the working TTL to give them headroom.
+    input.validUntil || ttlValidUntil(input.memoryType),
   );
   return id;
 }

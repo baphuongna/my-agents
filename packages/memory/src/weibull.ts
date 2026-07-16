@@ -49,7 +49,7 @@ export const DEFAULT_HALFLIFE_HOURS = 168.0;
 
 type TimestampInput = string | Date | null | undefined;
 
-function parseTimestamp(timestamp: TimestampInput): Date | null {
+export function parseTimestamp(timestamp: TimestampInput): Date | null {
   if (timestamp == null) return null;
   if (timestamp instanceof Date) {
     return Number.isFinite(timestamp.getTime()) ? timestamp : null;

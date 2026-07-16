@@ -228,6 +228,27 @@ export function initSchema(db: SqliteDatabase): void {
   // "no such column: scope" and silently breaks all memory recall.
   addColumnIfMissing(db, "working_memory", "scope", "TEXT DEFAULT 'global'");
   addColumnIfMissing(db, "episodic_memory", "scope", "TEXT DEFAULT 'global'");
+  // R17+: pinned column for retention protection (user/agent can pin a memory
+  // so the Weibull purge never deletes it regardless of age/strength).
+  addColumnIfMissing(db, "working_memory", "pinned", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(db, "episodic_memory", "pinned", "INTEGER NOT NULL DEFAULT 0");
+
+  // R17+: purge audit log — every retention-driven DELETE records what was purged
+  // and why, so an operator can answer "what did we forget today?" (security
+  // review: repudiation concern). Mirrors the existing consolidation_log pattern.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS purge_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_table TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      memory_type TEXT,
+      content_snippet TEXT,
+      reason TEXT NOT NULL,
+      strength_at_purge REAL,
+      pinned INTEGER DEFAULT 0,
+      purged_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
 
   db.prepare("INSERT OR IGNORE INTO schema_version (version) VALUES (1)").run();
 }

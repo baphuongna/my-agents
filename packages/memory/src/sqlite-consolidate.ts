@@ -10,8 +10,8 @@
  */
 import type { SqliteDatabase } from "./sqlite-db.js";
 import { randomUUID } from "node:crypto";
-import { getUnconsolidated, markConsolidated, degradeTier } from "./sqlite-store.js";
-import { weibullDecayFactor } from "./weibull.js";
+import { getUnconsolidated, markConsolidated, degradeTier, purgeExpired } from "./sqlite-store.js";
+import { weibullDecayFactor, parseTimestamp } from "./weibull.js";
 import { transaction } from "./sqlite-db.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -48,6 +48,76 @@ const TIER3_MAX_CHARS = 300;
 
 /** Strength threshold for Weibull purge. */
 const PURGE_STRENGTH_THRESHOLD = 0.05;
+
+/**
+ * Salience weight per memory type (agentmemory pattern).
+ * High-value types (preference/decision) survive longer than low-value (event/context).
+ * Multiplied into the Weibull strength so a preference decays slower than an event
+ * of the same age. Popular memories also get an access-reinforcement boost below.
+ */
+const SALIENCE_BY_TYPE: Record<string, number> = {
+  preference: 0.85,
+  decision: 0.8,
+  fact: 0.7,
+  relationship: 0.7,
+  learning: 0.7,
+  instruction: 0.75,
+  pattern: 0.6,
+  setup: 0.6,
+  entity: 0.6,
+  artifact: 0.55,
+  project: 0.5,
+  profile: 0.5,
+  goal: 0.45,
+  observation: 0.4,
+  context: 0.35,
+  event: 0.3,
+  error: 0.3,
+  issue: 0.3,        // added: was silently 0.5 (same shape as error, eta 336)
+  request: 0.25,     // added: was silently 0.5 (fastest-decaying, eta 72)
+  commitment: 0.65,
+  general: 0.45,
+};
+const DEFAULT_SALIENCE = 0.5;
+
+/**
+ * Access-reinforcement cap. Frequently-recalled memories get up to +50% strength
+ * so popularity counteracts age (mirrors how human memory prioritizes referenced facts).
+ * Derived from recall_count via log1p (agentmemory sigma=0.3 pattern).
+ */
+const ACCESS_BOOST_CAP = 0.5;
+const ACCESS_BOOST_COEFF = 0.1;
+
+function salienceFor(type: string): number {
+  return SALIENCE_BY_TYPE[type] ?? DEFAULT_SALIENCE;
+}
+
+/**
+ * Retention strength = Weibull temporal decay × salience(type) × (1 + accessBoost).
+ * - Weibull: age-based decay (existing).
+ * - Salience: type-based importance (NEW — preference > event).
+ * - AccessBoost: recall-frequency reinforcement (NEW — popular survives).
+ */
+function retentionStrength(
+  ageHours: number,
+  memoryType: string,
+  recallCount: number,
+): number {
+  const decay = weibullDecayFactor(ageHours, memoryType);
+  const salience = salienceFor(memoryType);
+  // Guard recall_count: SQLite INTEGER is unbounded but a defective/hostile
+  // UPDATE could set negative or NULL. log1p(-1) = -Infinity → purges every
+  // tick; log1p(NaN) = NaN → NaN < threshold is false → lives forever. Clamp.
+  const safeRecall = Number.isFinite(recallCount) && recallCount > 0 ? recallCount : 0;
+  const accessBoost = Math.min(ACCESS_BOOST_CAP, Math.log1p(safeRecall) * ACCESS_BOOST_COEFF);
+  return decay * salience * (1 + accessBoost);
+}
+
+/** Parse a memory timestamp to epoch ms, robustly (handles Z, no-zone, datetime('now')). */
+function tsToMs(timestamp: string): number | null {
+  const d = parseTimestamp(timestamp);
+  return d ? d.getTime() : null;
+}
 
 // ── Consolidation ─────────────────────────────────────────────────────────
 
@@ -201,33 +271,55 @@ export function purgeWeakMemories(db: SqliteDatabase): PurgeResult {
   const now = Date.now();
 
   transaction(db, () => {
-    // Check working_memory
+    // Check working_memory — enhanced with salience(type) + access-reinforcement + pin protection.
+    // Previously: pure Weibull decay (popular memories died same rate as unpopular).
+    // Now: retentionStrength weights type importance + recall frequency, and pinned rows survive.
     const workingItems = db.prepare(`
-      SELECT id, timestamp, memory_type FROM working_memory
+      SELECT id, timestamp, memory_type, recall_count, pinned, content FROM working_memory
       WHERE consolidated_at IS NULL AND superseded_by IS NULL LIMIT 1000
-    `).all() as Array<{ id: string; timestamp: string; memory_type: string }>;
+    `).all() as Array<{ id: string; timestamp: string; memory_type: string; recall_count: number; pinned: number; content: string }>;
+
+    const auditWorking = db.prepare(`
+      INSERT INTO purge_log (source_table, row_id, memory_type, content_snippet, reason, strength_at_purge, pinned)
+      VALUES ('working_memory', ?, ?, ?, 'weak_strength', ?, ?)
+    `);
+    const delWorking = db.prepare("DELETE FROM working_memory WHERE id = ?");
 
     for (const item of workingItems) {
-      const ageHours = (now - new Date(item.timestamp.replace("Z", "+00:00")).getTime()) / 3_600_000;
-      const strength = weibullDecayFactor(ageHours, item.memory_type);
+      if (item.pinned) continue; // pin protection — never purge user-pinned memories
+      const ms = tsToMs(item.timestamp);
+      if (ms === null) continue; // unparseable timestamp — skip rather than mis-purge
+      const ageHours = (now - ms) / 3_600_000;
+      const strength = retentionStrength(ageHours, item.memory_type, item.recall_count ?? 0);
       if (strength < PURGE_STRENGTH_THRESHOLD) {
-        db.prepare("DELETE FROM working_memory WHERE id = ?").run(item.id);
+        auditWorking.run(item.id, item.memory_type, item.content.slice(0, 200), strength, item.pinned);
+        delWorking.run(item.id);
         purged++;
       }
     }
 
     // Check episodic_memory (higher threshold — they're consolidated)
     const episodicItems = db.prepare(`
-      SELECT id, timestamp, memory_type FROM episodic_memory
+      SELECT id, timestamp, memory_type, recall_count, pinned, content FROM episodic_memory
       WHERE superseded_by IS NULL AND tier >= 3 LIMIT 1000
-    `).all() as Array<{ id: string; timestamp: string; memory_type: string }>;
+    `).all() as Array<{ id: string; timestamp: string; memory_type: string; recall_count: number; pinned: number; content: string }>;
+
+    const auditEpisodic = db.prepare(`
+      INSERT INTO purge_log (source_table, row_id, memory_type, content_snippet, reason, strength_at_purge, pinned)
+      VALUES ('episodic_memory', ?, ?, ?, 'weak_strength', ?, ?)
+    `);
+    const delEpisodic = db.prepare("DELETE FROM episodic_memory WHERE id = ?");
 
     for (const item of episodicItems) {
-      const ageHours = (now - new Date(item.timestamp.replace("Z", "+00:00")).getTime()) / 3_600_000;
-      const strength = weibullDecayFactor(ageHours, item.memory_type);
+      if (item.pinned) continue;
+      const ms = tsToMs(item.timestamp);
+      if (ms === null) continue;
+      const ageHours = (now - ms) / 3_600_000;
+      const strength = retentionStrength(ageHours, item.memory_type, item.recall_count ?? 0);
       // Tier 3 memories need to be very weak before purge (threshold / 2)
       if (strength < PURGE_STRENGTH_THRESHOLD / 2) {
-        db.prepare("DELETE FROM episodic_memory WHERE id = ?").run(item.id);
+        auditEpisodic.run(item.id, item.memory_type, item.content.slice(0, 200), strength, item.pinned);
+        delEpisodic.run(item.id);
         purged++;
       }
     }
@@ -249,10 +341,17 @@ export function lifecycleTick(
   consolidated: ConsolidateResult;
   degraded: DegradeResult;
   purged: PurgeResult;
+  expired: number;
 } {
+  // Phase 1 (R17): run the hard TTL purge FIRST so expired rows (valid_until < now)
+  // are removed regardless of strength. This is the ceiling that purgeExpired enforces;
+  // before R17, valid_until was never set so purgeExpired was a no-op. Now storeWorking/
+  // storeEpisodic set valid_until at capture per-type TTL, so this actually fires.
+  const expired = purgeExpired(db, "working_memory") + purgeExpired(db, "episodic_memory");
   return {
     consolidated: consolidate(db, sessionId),
     degraded: degradeOldMemories(db),
     purged: purgeWeakMemories(db),
+    expired,
   };
 }
