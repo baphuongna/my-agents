@@ -23,6 +23,7 @@ import {
   type SystemPrompt,
 } from "@my-agent/core";
 import type { Brain, Fact } from "./brain.js";
+import type { SqliteMemoryManager } from "./sqlite-manager.js";
 
 /** Result of a single dream cycle. */
 export interface DreamResult {
@@ -49,12 +50,15 @@ export interface SkillCurator {
 
 /** DreamCycle constructor options. */
 export interface DreamCycleOptions {
-  brain: Brain;
+  /** Legacy Brain (old system). Optional when sqliteMemory is provided. */
+  brain?: Brain;
   skillCurator?: SkillCurator;
   /** Period between automatic cycles (default: 30 min). */
   intervalMs?: number;
   /** LLM provider for richer consolidation (optional; absent → zero-LLM digest). */
   provider?: ProviderProfile;
+  /** SQLite memory manager (NEW — preferred over brain when available). */
+  sqliteMemory?: SqliteMemoryManager;
   /** Idle check: cycle only runs when this returns true (default: always idle). */
   isIdle?: () => boolean;
   /** Allow private facts to be sent to the LLM provider (default: false).
@@ -78,7 +82,8 @@ const DREAM_ENTITY = "dream-summary";
  * The timer is unref'd so dreaming never keeps an otherwise-idle process alive.
  */
 export class DreamCycle {
-  private readonly brain: Brain;
+  private readonly brain?: Brain;
+  private readonly sqliteMemory?: SqliteMemoryManager;
   private readonly skillCurator?: SkillCurator;
   private readonly intervalMs: number;
   private readonly provider?: ProviderProfile;
@@ -88,6 +93,7 @@ export class DreamCycle {
 
   constructor(opts: DreamCycleOptions) {
     this.brain = opts.brain;
+    this.sqliteMemory = opts.sqliteMemory;
     this.skillCurator = opts.skillCurator;
     this.intervalMs = opts.intervalMs ?? DEFAULT_DREAM_INTERVAL_MS;
     this.provider = opts.provider;
@@ -128,6 +134,16 @@ export class DreamCycle {
   async dream(): Promise<DreamResult> {
     const start = nowWallclock();
 
+    // SQLite path (new system — preferred)
+    if (this.sqliteMemory) {
+      return this.dreamSQLite(start);
+    }
+
+    // Legacy Brain path (old system)
+    if (!this.brain) {
+      return { memoriesConsolidated: 0, skillsReviewed: 0, summary: "No memory backend.", durationMs: 0 };
+    }
+
     // 1. Collect recent memory facts from the last interval period.
     const recent = this.collectRecentFacts();
 
@@ -158,6 +174,91 @@ export class DreamCycle {
   }
 
   /**
+   * SQLite dream cycle: uses the new SQLite memory system.
+   * Collects recent working_memory entries, summarizes them,
+   * stores the summary as episodic memory, and runs lifecycle.
+   */
+  private async dreamSQLite(start: number): Promise<DreamResult> {
+    const db = this.sqliteMemory!.getDatabase();
+    const cutoff = new Date(nowWallclock() - this.intervalMs).toISOString();
+
+    // 1. Collect recent unconsolidated memories from SQLite
+    const rows = db.prepare(`
+      SELECT id, content, memory_type, importance, source
+      FROM working_memory
+      WHERE timestamp >= ?
+        AND consolidated_at IS NULL
+        AND superseded_by IS NULL
+        AND source NOT LIKE 'dream%'
+      ORDER BY importance DESC, timestamp DESC
+      LIMIT 50
+    `).all(cutoff) as Array<{ id: string; content: string; memory_type: string; importance: number; source: string }>;
+
+    // 2. Summarize
+    const summary = this.provider
+      ? await this.summarizeSqliteWithProvider(rows)
+      : this.basicSummarizeSqlite(rows);
+
+    // 3. Store summary as episodic memory (the dream output)
+    if (rows.length > 0) {
+      this.sqliteMemory!.recordEpisodic({
+        content: `[Dream] ${summary}`,
+        source: DREAM_SOURCE,
+        importance: 0.6,
+        veracity: "inferred",
+        memoryType: "event",
+      });
+    }
+
+    // 4. Run lifecycle (consolidate working→episodic, degrade, purge)
+    this.sqliteMemory!.lifecycle();
+
+    // 5. Review skills
+    const skillsReviewed = await this.reviewSkills();
+
+    return {
+      memoriesConsolidated: rows.length,
+      skillsReviewed,
+      summary,
+      durationMs: nowWallclock() - start,
+    };
+  }
+
+  /** LLM summarization of SQLite rows. */
+  private async summarizeSqliteWithProvider(rows: Array<{ content: string; memory_type: string }>): Promise<string> {
+    const corpus =
+      rows.length === 0
+        ? "(no new memories in this period)"
+        : rows.map((r, i) => `${i + 1}. [${r.memory_type}] ${r.content}`).join("\n");
+    const prompt: SystemPrompt = {
+      stable: "You are a memory consolidation engine. Summarize the following memories into a concise summary and extract recurring patterns.",
+      context: `Consolidate these ${rows.length} memories:\n${corpus}`,
+      volatile: "",
+    };
+    try {
+      const { events } = await this.provider!.stream(prompt, makeStubHistory());
+      const text = collectText(events);
+      return text.trim().length > 0 ? text : this.basicSummarizeSqlite(rows);
+    } catch {
+      return this.basicSummarizeSqlite(rows);
+    }
+  }
+
+  /** Zero-LLM deterministic digest of SQLite rows. */
+  private basicSummarizeSqlite(rows: Array<{ content: string; memory_type: string }>): string {
+    if (rows.length === 0) return "No new memories to consolidate.";
+    const byType = new Map<string, number>();
+    for (const r of rows) byType.set(r.memory_type, (byType.get(r.memory_type) ?? 0) + 1);
+    const top = [...byType.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([t, n]) => `${t}(${n})`)
+      .join(", ");
+    const samples = rows.slice(0, 3).map((r) => r.content.slice(0, 60)).join(" | ");
+    return `Consolidated ${rows.length} memories [${top}]. Recent: ${samples}`;
+  }
+
+  /**
    * Collect unconsolidated facts from the last `intervalMs` period. Dream
    * summaries (source: "dream") are excluded so they don't feed back into
    * themselves on the next cycle.
@@ -165,6 +266,7 @@ export class DreamCycle {
    * allowPrivateInPrompt is true (default false — trust boundary).
    */
   private collectRecentFacts(now: number = nowWallclock()): Fact[] {
+    if (!this.brain) return [];
     const cutoff = now - this.intervalMs;
     return this.brain
       .unconsolidatedFacts()

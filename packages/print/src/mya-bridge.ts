@@ -59,7 +59,7 @@ import type { HookRegistry, McpManager, McpServerConfig, ChannelRegistry } from 
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
 import type { Brain, MemoryFacade, RetrievalEngine, LifecycleManager, SqliteMemoryManager } from "@my-agent/memory";
-import { autoCapture } from "@my-agent/memory";
+import { autoCapture, DreamCycle } from "@my-agent/memory";
 import type { Wallet } from "@my-agent/x402";
 import type { AcpBridge } from "@my-agent/acp";
 import type { SyncServer } from "@my-agent/sync";
@@ -78,6 +78,8 @@ export interface MyaBridgeOptions {
   retrievalEngine?: RetrievalEngine;
   lifecycleManager?: LifecycleManager;
   sqliteMemory?: SqliteMemoryManager;
+  /** DreamCycle for offline consolidation (uses SQLite when available). */
+  dreamCycle?: DreamCycle;
   wallet?: Wallet;
   dapConnect?: { connect: { command: string; args?: string[] } };
   acp?: AcpBridge;
@@ -124,6 +126,20 @@ const COMPRESS_THRESHOLD_TOKENS = 4096;
 export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void {
   return (pi: MyaPiApi) => {
     let parentSessionId = "";
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DREAM CYCLE: periodic offline consolidation (every 30 min when idle)
+    // ═══════════════════════════════════════════════════════════════════
+    // DreamCycle collects recent memories, summarizes them into episodic
+    // memory, runs lifecycle (consolidate/degrade/purge), and reviews skills.
+    // Uses SQLite when available, falls back to legacy Brain.
+    const dreamCycle = opts.dreamCycle ?? new DreamCycle({
+      sqliteMemory: opts.sqliteMemory,
+      brain: opts.brain,
+      skillCurator: opts.skillStore as unknown as { review(): { reviewed: number; stale: string[] } } | undefined,
+      isIdle: () => !pi, // always idle in TUI context (pi is active only during turns)
+    });
+    dreamCycle.start();
 
     // ═══════════════════════════════════════════════════════════════════
     // SESSION START: capture session ID + load cron jobs
