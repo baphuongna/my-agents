@@ -48,6 +48,7 @@ export async function runPiInteractive(): Promise<void> {
     mcp: shared.mcp,
     mcpConfigs: shared.mcpConfigs,
     channels: shared.channels,
+    roleRegistry: shared.roleRegistry,
   });
 
   // Pass user args directly to pi — pi handles model selection, thinking level,

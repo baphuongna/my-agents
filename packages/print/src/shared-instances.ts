@@ -9,6 +9,7 @@ import { AuditLog } from "@my-agent/audit";
 import { HookRegistry, McpManager, ChannelRegistry, ChannelSessionRouter, registerBuiltinChannels } from "@my-agent/gateway";
 import { SkillStore } from "@my-agent/skills";
 import { CronScheduler } from "@my-agent/cron";
+import { loadRoles as loadRolesRegistry, type RoleRegistry } from "@my-agent/core";
 import {
   Brain,
   MemoryManagerImpl,
@@ -213,3 +214,6 @@ export const mcpConfigs = _mcpConfigs;
 
 // ── Auto-configure channels ──
 autoConfigureChannels(channels);
+
+// ── Roles registry (load ~/.mya/roles/*.json) ──
+export const roleRegistry: RoleRegistry = loadRolesRegistry();

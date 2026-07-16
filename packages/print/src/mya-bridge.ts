@@ -38,7 +38,7 @@
  * Slash commands: /audit, /secrets, /skills, /memory, /dream, /wallet, /eval, /sync,
  *   /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /mya-help
  */
-import { nowWallclock } from "@my-agent/core";
+import { nowWallclock, type RoleRegistry, type RoleConfig, filterToolsForRole } from "@my-agent/core";
 import { makePaidFetchTool } from "@my-agent/x402";
 import { makeDebugTool } from "@my-agent/dap";
 import { defaultHarness } from "@my-agent/eval";
@@ -90,6 +90,8 @@ export interface MyaBridgeOptions {
   mcp?: McpManager;
   mcpConfigs?: McpServerConfig[];
   channels?: ChannelRegistry;
+  /** Role registry for role-based overlays (prompt + tools + model). */
+  roleRegistry?: RoleRegistry;
   registerTools?: (pi: MyaPiApi) => void;
 }
 
@@ -128,6 +130,15 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     let parentSessionId = "";
 
     // ═══════════════════════════════════════════════════════════════════
+    // ROLES: track current role + apply overlay on each turn
+    // ═══════════════════════════════════════════════════════════════════
+    // A role is a lightweight overlay: prompt append + tool filter + model.
+    // Roles share one brain (memory.db) but differ in persona + tools.
+    // Pattern: pi-crew roles + Claude Code agent types.
+    const roleRegistry = opts.roleRegistry;
+    let currentRole: RoleConfig | undefined = roleRegistry?.getDefault();
+
+    // ═══════════════════════════════════════════════════════════════════
     // DREAM CYCLE: periodic deep consolidation (every 4h when idle)
     // ═══════════════════════════════════════════════════════════════════
     // DreamCycle collects recent memories, summarizes them into episodic
@@ -153,6 +164,26 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       } catch (e) {
         return `[dream] Error: ${e instanceof Error ? e.message : String(e)}`;
       }
+    });
+
+    // /role slash command — list or switch roles
+    registerSharedCommand(pi, "role", "List or switch roles (e.g. /role coder)", async (args: string) => {
+      if (!roleRegistry) return "[role] Roles not configured.";
+      const name = args.trim();
+      if (!name) {
+        const roles = roleRegistry.list();
+        const lines = roles.map((r) => {
+          const active = r.name === currentRole?.name ? " ← active" : "";
+          return `  ${r.name.padEnd(15)} ${r.description}${active}`;
+        });
+        return `[role] Available roles:\n${lines.join("\n")}`;
+      }
+      if (name === "default" || roleRegistry.has(name)) {
+        const role = name === "default" ? roleRegistry.getDefault() : roleRegistry.get(name)!;
+        currentRole = role;
+        return `[role] Switched to "${role.name}": ${role.description}`;
+      }
+      return `[role] Unknown role "${name}". Available: ${roleRegistry.list().map((r) => r.name).join(", ")}`;
     });
 
     // ═══════════════════════════════════════════════════════════════════
@@ -402,6 +433,11 @@ ${hitLines}`);
             parts.push(`\n[mya skills] Available skills (ask to use):\n${skillLines}`);
           }
         } catch { /* skills index is best-effort */ }
+      }
+
+      // Role prompt append (if a named role is active)
+      if (currentRole?.promptAppend) {
+        parts.push(`\n[role: ${currentRole.name}] ${currentRole.promptAppend}`);
       }
 
       // Context note
@@ -1131,7 +1167,7 @@ ${hitLines}`);
     });
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
-      "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
+      "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
       "Tools: paid_fetch, hashline_edit, browser_action, delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
