@@ -5,7 +5,7 @@
  * Runs in a Node `vm` sandbox with a frozen, restricted context (no fs/net/
  * child_process). Used for cron jobs, SOP scripts, skill-driven workflows.
  */
-export { runWorkflow, runWorkflowIsolated, runRhaiWorkflow } from "./runner.js";
+export { runWorkflow, runWorkflowSource, runWorkflowIsolated, runRhaiWorkflow } from "./runner.js";
 export type { WorkflowContext } from "./runner.js";
 export { evalRhai } from "./rhai-runner.js";
 export type { RhaiResult, RhaiEvent, RhaiOptions } from "./rhai-runner.js";

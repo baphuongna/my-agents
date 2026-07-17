@@ -43,7 +43,7 @@ import { makePaidFetchTool } from "@my-agent/x402";
 import { makeDebugTool } from "@my-agent/dap";
 import { defaultHarness } from "@my-agent/eval";
 import { speak } from "@my-agent/tts";
-import { runWorkflow, type WorkflowContext } from "@my-agent/workflows";
+import { runWorkflow, runWorkflowSource, type WorkflowContext } from "@my-agent/workflows";
 import { fileSha256, verifyTarball, type SigstoreBundle } from "@my-agent/signing";
 import { compressCommandOutput, buildCodegraph, runCascade as _rc } from "@my-agent/tools";
 import { applyEdits, computeLineHashes } from "@my-agent/tools";
@@ -1050,6 +1050,66 @@ ${hitLines}`);
               text: `[semantic_search] top ${res.hits.length} of ${res.indexedChunks} chunks:\n\n${lines.join("\n\n")}`,
             }],
           };
+        },
+      });
+    } catch {}
+
+    // ── workflow (multi-step orchestration: agent/parallel/pipeline/phase) ──
+    // A1: lets the model write a JS orchestration script with subagents. Source:
+    // Claude Code `Workflow`, pi-dynamic-workflows, oh-my-pi `task`. v2 will add
+    // journaled resume + worktree isolation (reflink_or_copy is already available).
+    try {
+      pi.registerTool({
+        name: "workflow",
+        label: "Workflow (orchestration)",
+        description:
+          "Run a multi-step orchestration script. Write a JS body " +
+          "`export default async (ctx) => { ... }`. Inside, use the globals: " +
+          "agent(goal) → spawns a subagent, returns its output; " +
+          "parallel([fn, fn, ...]) → runs concurrently (fan-out / best-of-N); " +
+          "pipeline([s1, s2, ...]) → sequential, each stage receives the previous " +
+          "stage's output; phase('name') → checkpoint marker. Return a value to " +
+          "surface it. Best for multi-step tasks, parallel exploration, staged pipelines.",
+        parameters: {
+          type: "object",
+          properties: {
+            script: {
+              type: "string",
+              description: "JS workflow body. Must `module.exports.default = async (ctx) => { ... }`. Use agent()/parallel()/pipeline()/phase().",
+            },
+            input: { description: "Optional input passed as ctx.input" },
+            timeout_ms: { type: "number", description: "Max runtime ms (default 120000)" },
+          },
+          required: ["script"],
+        },
+        async execute(_id: string, params: { script: string; input?: unknown; timeout_ms?: number }) {
+          const { spawnSubagent, trackSubagent } = await import("../../coding-agent/src/core/subagent.js");
+          const { resolveInsideWorkspace } = await import("@my-agent/tools");
+          // S3-style containment: subagent cwd must stay inside the workspace.
+          const spawn = async (goal: string, o: { allowedTools?: string[]; cwd?: string } = {}): Promise<string> => {
+            const ws = process.cwd();
+            const cwdResolved = resolveInsideWorkspace(o.cwd ?? ws, ws);
+            if (!cwdResolved.ok) throw new Error(`workflow agent cwd rejected: ${cwdResolved.reason}: ${cwdResolved.detail}`);
+            const sub = await spawnSubagent(parentSessionId, {
+              goal, allowedTools: o.allowedTools, cwd: cwdResolved.abs, parentDepth: 1,
+            });
+            trackSubagent(parentSessionId, sub);
+            return (await sub.wait()) || "";
+          };
+          const wfCtx = {
+            input: params.input,
+            tools: { execute: async () => [] },
+            provider: { stream: async () => ({ events: [] }), health: (() => "Healthy") as () => "Healthy", id: "stub", model: "stub" },
+            session: { id: parentSessionId || "mya-workflow", cwd: process.cwd() },
+            spawn,
+          } as unknown as WorkflowContext;
+          try {
+            const events = await runWorkflowSource(params.script, wfCtx, { timeoutMs: params.timeout_ms ?? 120_000 });
+            const logs = events.filter((e) => e.kind === "log").map((e) => e.message).join("\n");
+            return { content: [{ type: "text", text: logs || "[workflow] completed (no output)" }] };
+          } catch (e) {
+            return { content: [{ type: "text", text: `[workflow] failed: ${(e as Error).message}` }], isError: true };
+          }
         },
       });
     } catch {}

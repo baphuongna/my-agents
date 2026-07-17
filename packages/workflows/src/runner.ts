@@ -58,6 +58,9 @@ export interface WorkflowContext {
   provider: ProviderProfile;
   /** Optional session snapshot (read-only projection). */
   session: { id: string; cwd: string };
+  /** A1 orchestration: spawn a subagent for a goal. Returns its text output.
+   * When absent, agent() inside a workflow throws a clear 'unavailable' error. */
+  spawn?: (goal: string, opts?: { allowedTools?: string[]; cwd?: string }) => Promise<string>;
 }
 
 /** Per-call event sink (R42: was module-level → concurrent calls cross-contaminated). */
@@ -76,15 +79,28 @@ function makeSink(): { sink: EventSink; console: typeof SAFE_GLOBALS.console } {
   return { sink: { events, emit }, console: consoleSurface };
 }
 
-/** Load + execute a workflow file in the sandbox. */
+/** Load + execute a workflow FILE in the sandbox. Thin wrapper over runWorkflowSource. */
 export async function runWorkflow(
   filePath: string,
   context: WorkflowContext,
   opts: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<RuntimeEvent[]> {
+  const source = await readFile(filePath, "utf8");
+  return runWorkflowSource(source, context, { ...opts, filename: basename(filePath) });
+}
+
+/** Execute a workflow from inline SOURCE in the sandbox. Exposes the A1
+ * orchestration primitives — agent(goal) / parallel(tasks) / pipeline(stages) /
+ * phase(name) — as sandbox globals (usable directly inside the workflow body).
+ * `agent()` requires context.spawn (a host subagent spawner); the others are
+ * pure helpers. Source: Claude Code `Workflow`, pi-dynamic-workflows, oh-my-pi. */
+export async function runWorkflowSource(
+  source: string,
+  context: WorkflowContext,
+  opts: { timeoutMs?: number; signal?: AbortSignal; filename?: string } = {},
+): Promise<RuntimeEvent[]> {
   const { sink, console: sandboxConsole } = makeSink();
   const emit = sink.emit;
-  const source = await readFile(filePath, "utf8");
 
   // The sandbox receives ONLY the exposed API — no fs/net/child_process/require.
   const sandbox: Context = {
@@ -96,6 +112,18 @@ export async function runWorkflow(
       provider: context.provider,
       session: Object.freeze({ ...context.session }),
     }),
+    // A1 orchestration primitives (globals usable inside the workflow body).
+    agent: context.spawn
+      ? (goal: string, o: { allowedTools?: string[]; cwd?: string } = {}) => context.spawn!(goal, o)
+      : async () => { throw new Error("agent() unavailable: this workflow host has no spawn bound"); },
+    parallel: async (tasks: unknown[]) =>
+      Promise.all(tasks.map((t) => (typeof t === "function" ? (t as () => Promise<unknown>)() : t))),
+    pipeline: async (stages: Array<(input?: unknown) => Promise<unknown>>) => {
+      let acc: unknown;
+      for (const s of stages) acc = await s(acc);
+      return acc;
+    },
+    phase: (name: string) => emit({ kind: "log", level: "info", message: `[phase] ${name}` }),
     // No `require`, `process`, `globalThis`, `Buffer` — keep the surface tight.
   };
 
@@ -129,7 +157,7 @@ export async function runWorkflow(
 
   let runner: (cb: (err: Error | null, val?: unknown) => void) => void;
   try {
-    runner = runInNewContext(wrapped, sandbox, { filename: basename(filePath), timeout: timeoutMs });
+    runner = runInNewContext(wrapped, sandbox, { filename: opts.filename ?? "workflow.js", timeout: timeoutMs });
   } catch (e) {
     emit({ kind: "log", level: "error", message: `workflow compile failed: ${(e as Error).message}` });
     return [...sink.events];
