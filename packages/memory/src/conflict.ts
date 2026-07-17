@@ -71,6 +71,14 @@ export function checkAndResolveConflicts(
   opts: { threshold?: number; topN?: number; scope?: string; agentId?: string; sessionId?: string } = {},
 ): string[] {
   if (!isBrainType(newMemoryType)) return [];
+  // Threshold 0.7 (NOT 0.80): verified the canonical true-positive
+  // "User prefers tabs/spaces for code indentation" has jaccard 5/7 ≈ 0.714, so a
+  // higher threshold (0.80) would LOSE it. Token-overlap jaccard cannot cleanly
+  // separate a real 1-word-swap contradiction (≈0.714) from a distinct 1-word-swap
+  // fact (e.g. backend/frontend ≈0.75) — that needs semantic similarity (deferred:
+  // deep-dive Finding 3, wire embed_text). Until then we keep 0.7 (catches real
+  // conflicts) and rely on the conflict_audit table (below) to make the occasional
+  // false-positive supersede observable/reviewable.
   const threshold = opts.threshold ?? 0.7;
   const topN = opts.topN ?? 50;
   const scope = opts.scope ?? "global";
@@ -93,8 +101,23 @@ export function checkAndResolveConflicts(
     for (const h of conflicts) {
       const table = h.tier === "episodic" ? "episodic_memory" : "working_memory";
       supersede(db, table, h.id, newId);
+      // Audit every supersession (deep-dive Finding 1): a supersede is a data
+      // mutation that hides a memory — record old/new + similarity so operators
+      // can review wrongful supersessions. Mirrors purge_log/consolidation_log.
+      const jac = jaccardSimilarity(h.content, newContent);
+      db.prepare(`
+        INSERT INTO conflict_audit
+          (old_id, new_id, memory_type, jaccard, scope, agent_id, old_snippet, new_snippet)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        h.id, newId, h.memory_type ?? null, jac, scope, agentId ?? null,
+        h.content.slice(0, 200), newContent.slice(0, 200),
+      );
       superseded.push(h.id);
     }
   });
-  return superseded;
+  // Dedupe (correctness/security review): on SQLITE_BUSY retry, fn() re-runs and
+  // could push the same id twice. Dedupe defensively (sole caller discards the
+  // value today, but keep the contract clean).
+  return [...new Set(superseded)];
 }

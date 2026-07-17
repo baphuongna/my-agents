@@ -15,6 +15,7 @@
 import type { SqliteDatabase } from "./sqlite-db.js";
 import { weibullBoost } from "./weibull.js";
 import { recordRecall } from "./sqlite-store.js";
+import { getCachedQueryVec, warmQueryVec, bufferToVec, cosine, embeddingDim, type Vec } from "./embeddings.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   const roleClause = options?.agentId ? `OR (wm.scope = 'role' AND wm.agent_id = ?)` : "";
   const workingSql = `
     SELECT wm.id, wm.content, wm.source, wm.timestamp, wm.importance,
-           wm.veracity, wm.memory_type, wm.scope, wm.agent_id, wm.trust,
+           wm.veracity, wm.memory_type, wm.scope, wm.agent_id, wm.trust, wm.embedding,
            bm25(fts_working) AS bm25_rank
     FROM fts_working
     JOIN working_memory wm ON wm.id = fts_working.id
@@ -158,28 +159,20 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   const workingRows = db.prepare(workingSql).all(...workingParams) as Array<{
     id: string; content: string; source: string; timestamp: string;
     importance: number; veracity: string; memory_type: string; bm25_rank: number;
-    scope: string; agent_id: string | null; trust: number;
+    scope: string; agent_id: string | null; trust: number; embedding: Buffer | null;
   }>;
 
-  for (const row of workingRows) {
-    const temporalBoost = weibullBoost(row.timestamp, now, row.memory_type);
-    const base = composeScore(row.bm25_rank, row.importance, temporalBoost, veracityWeight(row.veracity));
-    // Phase 5 governance: multiply by trust so low-trust memories rank lower.
-    const score = base * (row.trust ?? 0.5);
-    hits.push({
-      id: row.id, content: row.content, source: row.source, tier: "working",
-      score, importance: row.importance, veracity: row.veracity,
-      memory_type: row.memory_type, timestamp: row.timestamp,
-      scope: row.scope, agent_id: row.agent_id, trust: row.trust,
-    });
-  }
-
   // ── Search episodic_memory (L1) via FTS5 ───────────────────────────────
+  let episodicRows: Array<{
+    id: string; content: string; source: string; timestamp: string;
+    importance: number; veracity: string; memory_type: string; bm25_rank: number;
+    scope: string; agent_id: string | null; trust: number; embedding: Buffer | null;
+  }> = [];
   if (options?.includeEpisodic !== false) {
     const episodicRoleClause = options?.agentId ? `OR (em.scope = 'role' AND em.agent_id = ?)` : "";
     const episodicSql = `
       SELECT em.id, em.content, em.source, em.timestamp, em.importance,
-             em.veracity, em.memory_type, em.scope, em.agent_id, em.trust,
+             em.veracity, em.memory_type, em.scope, em.agent_id, em.trust, em.embedding,
              bm25(fts_episodes) AS bm25_rank
       FROM fts_episodes
       JOIN episodic_memory em ON em.rowid = fts_episodes.rowid
@@ -208,25 +201,109 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
     }
     episodicParams.push(topK);
 
-    const episodicRows = db.prepare(episodicSql).all(...episodicParams) as Array<{
+    episodicRows = db.prepare(episodicSql).all(...episodicParams) as Array<{
       id: string; content: string; source: string; timestamp: string;
       importance: number; veracity: string; memory_type: string; bm25_rank: number;
-      scope: string; agent_id: string | null; trust: number;
+      scope: string; agent_id: string | null; trust: number; embedding: Buffer | null;
     }>;
+  }
 
-    for (const row of episodicRows) {
-      const temporalBoost = weibullBoost(row.timestamp, now, row.memory_type);
-      const base = composeScore(row.bm25_rank, row.importance, temporalBoost, veracityWeight(row.veracity));
-      // Phase 5 governance: multiply by trust (H1 fix — was missing for episodic).
-      const score = base * (row.trust ?? 0.5);
-      hits.push({
-        id: row.id, content: row.content, source: row.source, tier: "episodic",
-        score, importance: row.importance, veracity: row.veracity,
-        memory_type: row.memory_type, timestamp: row.timestamp,
-        scope: row.scope, agent_id: row.agent_id, trust: row.trust,
-      });
+  // ── Vector arm (action #3, docs/embeddings-cross-system.md) ──────────────
+  // fastembed is async; recall is sync (called from the sync before_agent_start
+  // hook) → the query vector is served from a process-wide LRU cache
+  // (warmQueryVec). A COLD query → FTS-only (current behavior) + async warm for
+  // the next recall. Stored vectors are background-embedded on capture and read
+  // here directly from the `embedding` BLOB (sync). Semantic-only candidates
+  // (paraphrases that miss FTS) are added via brute-force cosine.
+  const qvec: Vec | null = getCachedQueryVec(query);
+  const dim = qvec ? embeddingDim() : 0;
+  const cosOf = (emb: Buffer | null): number | null => {
+    if (!qvec || !emb) return null;
+    const v = bufferToVec(emb, dim);
+    return v ? Math.max(0, cosine(qvec, v)) : null;
+  };
+  if (!qvec) void warmQueryVec(query); // fire-and-forget warm for next time
+
+  // Semantic-only candidates: embedded rows in scope, NOT in FTS results, ranked
+  // by cosine (brute-force — personal scale; openhuman: "~100K vectors fast enough").
+  type RowLite = { id: string; content: string; source: string; timestamp: string;
+    importance: number; veracity: string; memory_type: string;
+    scope: string; agent_id: string | null; trust: number; };
+  const vecOnly: Array<RowLite & { tier: "working" | "episodic"; cosine: number }> = [];
+  if (qvec) {
+    const seen = new Set<string>([...workingRows.map((r) => r.id), ...episodicRows.map((r) => r.id)]);
+    const arms: Array<[string, string, "working" | "episodic"]> = [["working_memory", "wm", "working"]];
+    if (options?.includeEpisodic !== false) arms.push(["episodic_memory", "em", "episodic"]);
+    for (const [table, alias, tier] of arms) {
+      const roleClause = options?.agentId ? `OR (${alias}.scope = 'role' AND ${alias}.agent_id = ?)` : "";
+      const scopeSql = sessionAware
+        ? `AND (${alias}.scope = 'global' OR (${alias}.scope = 'session' AND ${alias}.session_id = ?) ${roleClause})`
+        : options?.sessionId ? `AND ${alias}.session_id = ?`
+        : options?.scope ? `AND ${alias}.scope = ?` : "";
+      const params: (string | number)[] = [now.toISOString()];
+      if (sessionAware) { params.push(options!.sessionId!); if (options?.agentId) params.push(options.agentId); }
+      else if (options?.sessionId) params.push(options.sessionId);
+      else if (options?.scope) params.push(options.scope);
+      try {
+        const rows = db.prepare(
+          `SELECT ${alias}.id, ${alias}.content, ${alias}.source, ${alias}.timestamp,
+                  ${alias}.importance, ${alias}.veracity, ${alias}.memory_type,
+                  ${alias}.scope, ${alias}.agent_id, ${alias}.trust, ${alias}.embedding
+           FROM ${table} ${alias}
+           WHERE ${alias}.embedding IS NOT NULL
+             AND ${alias}.superseded_by IS NULL
+             AND (${alias}.valid_until IS NULL OR ${alias}.valid_until > ?)
+             ${scopeSql}
+             LIMIT 5000`,
+        ).all(...params) as Array<RowLite & { embedding: Buffer | null }>;
+        for (const r of rows) {
+          if (seen.has(r.id)) continue;
+          const c = cosOf(r.embedding);
+          if (c === null || c < 0.3) continue; // similarity floor → skip noise
+          seen.add(r.id);
+          const { embedding: _drop, ...lite } = r;
+          void _drop;
+          vecOnly.push({ ...lite, tier, cosine: c });
+        }
+      } catch { /* old DB without embedding column → skip vector arm (FTS-only) */ }
     }
   }
+
+  // ── Normalize BM25 per-query (global min-max across FTS rows) ────────────
+  // SQLite FTS5 bm25() returns negative values where MORE NEGATIVE = BETTER.
+  // Min-max normalize so the best candidate → 1.0, worst → 0.0, before blending
+  // with importance/temporal/veracity/trust. This fixes the prior Math.exp(bm25)
+  // inversion (docs/mem0-comparison-deepdive.md Finding A).
+  const allRanks = [
+    ...workingRows.map((r) => r.bm25_rank),
+    ...episodicRows.map((r) => r.bm25_rank),
+  ];
+  const bestRank = allRanks.length ? Math.min(...allRanks) : 0;   // most negative = best
+  const worstRank = allRanks.length ? Math.max(...allRanks) : 0;  // least negative = worst
+  const rankSpan = worstRank - bestRank;                          // >0 (best < worst)
+
+  const buildHit = (
+    row: RowLite,
+    tier: "working" | "episodic",
+    bm25Rank: number | null,
+    vectorRel: number | null,
+  ): MemoryHit => {
+    const relevance = bm25Rank === null ? 0
+      : (rankSpan > 1e-9 ? (worstRank - bm25Rank) / rankSpan : 1.0);
+    const temporalBoost = weibullBoost(row.timestamp, now, row.memory_type);
+    const base = composeScore(relevance, vectorRel, row.importance, temporalBoost, veracityWeight(row.veracity));
+    const score = base * (row.trust ?? 0.5); // Phase 5 governance
+    return {
+      id: row.id, content: row.content, source: row.source, tier,
+      score, importance: row.importance, veracity: row.veracity,
+      memory_type: row.memory_type, timestamp: row.timestamp,
+      scope: row.scope, agent_id: row.agent_id, trust: row.trust,
+    };
+  };
+
+  for (const row of workingRows) hits.push(buildHit(row, "working", row.bm25_rank, cosOf(row.embedding)));
+  for (const row of episodicRows) hits.push(buildHit(row, "episodic", row.bm25_rank, cosOf(row.embedding)));
+  for (const row of vecOnly) hits.push(buildHit(row, row.tier, null, row.cosine));
 
   // ── Merge + sort + topK ────────────────────────────────────────────────
   hits.sort((a, b) => b.score - a.score);
@@ -244,17 +321,23 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
 }
 
 /**
- * Compose final score from BM25 rank, importance, temporal boost, and veracity.
+ * Compose final score from BM25 relevance, optional vector similarity, importance,
+ * temporal boost, and veracity.
  *
- * BM25 returns negative values (more negative = better). We normalize to [0, 1].
- * Final: (1 - normalized_bm25) * 0.5 + importance * 0.2 + temporal * 0.2 + veracity * 0.1
+ * `relevance` ∈ [0,1] — pre-normalized per-query min-max over FTS5 bm25 ranks.
+ * `vectorRel` ∈ [0,1] — cosine similarity to the query embedding, or NULL when
+ * embeddings are unavailable (cold query / disabled / row not yet embedded).
+ *
+ * When `vectorRel` is present, blend semantic + lexical (openclaw-style
+ * 0.45/0.25) with compressed metadata signals. When NULL, use the FTS-only
+ * weights (unchanged from the pre-embedding design) so disabling embeddings
+ * is a clean no-op — never a regression.
  */
-function composeScore(bm25Rank: number, importance: number, temporalBoost: number, veracity: number): number {
-  // BM25 returns negative values (more negative = better). Normalize per-query
-  // using exponential decay: e^(bm25) maps [-inf, 0] → [0, 1] smoothly.
-  // This preserves ranking discrimination even for very relevant docs.
-  const normalizedBm25 = Math.exp(bm25Rank); // [0, 1], higher = better
-  return normalizedBm25 * 0.5 + importance * 0.2 + temporalBoost * 0.2 + veracity * 0.1;
+function composeScore(relevance: number, vectorRel: number | null, importance: number, temporalBoost: number, veracity: number): number {
+  if (vectorRel !== null) {
+    return 0.45 * vectorRel + 0.25 * relevance + importance * 0.1 + temporalBoost * 0.1 + veracity * 0.1;
+  }
+  return relevance * 0.5 + importance * 0.2 + temporalBoost * 0.2 + veracity * 0.1;
 }
 
 /** Recall structured facts (L2) via FTS5. */
@@ -275,8 +358,15 @@ export function recallFacts(
   `).all(ftsQuery, options?.topK ?? 5) as Array<{
     fact_id: string; subject: string; predicate: string; object: string; rank: number;
   }>;
+  if (rows.length === 0) return [];
+  // Per-query min-max normalize bm25 (more-negative = better → best = 1.0).
+  // Fixes the prior `1 - (...)` inversion that scored the best fact as 0.
+  const factRanks = rows.map((r) => r.rank);
+  const factBest = Math.min(...factRanks);
+  const factWorst = Math.max(...factRanks);
+  const factSpan = factWorst - factBest;
   return rows.map((r) => ({
     fact_id: r.fact_id, subject: r.subject, predicate: r.predicate, object: r.object,
-    score: 1 - (-Math.max(-10, Math.min(0, r.rank)) / 10),
+    score: factSpan > 1e-9 ? (factWorst - r.rank) / factSpan : 1.0,
   }));
 }

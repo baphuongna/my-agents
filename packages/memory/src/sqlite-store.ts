@@ -9,6 +9,26 @@
  */
 import type { SqliteDatabase } from "./sqlite-db.js";
 import { randomUUID } from "node:crypto";
+import { embedContent, vecToBuffer, embeddingDim, embeddingsDisabled } from "./embeddings.js";
+
+/** Background-embed a memory's content into its `embedding` BLOB (action #3).
+ *  Fire-and-forget — never blocks the write; recall reads the BLOB once populated
+ *  and falls back to FTS for not-yet-embedded rows. Best-effort: if the embedder
+ *  is disabled/unavailable, the row stays NULL (FTS-only, current behavior). */
+function scheduleEmbed(db: SqliteDatabase, table: "working_memory" | "episodic_memory", id: string, content: string): void {
+  if (embeddingsDisabled()) return;
+  const text = content;
+  // Defer to after the current sync stack so the INSERT commits first.
+  setImmediate(() => {
+    embedContent(text).then((vec) => {
+      if (!vec || vec.length !== embeddingDim()) return;
+      try {
+        db.prepare(`UPDATE ${table} SET embedding = ? WHERE id = ? AND embedding IS NULL`)
+          .run(vecToBuffer(vec), id);
+      } catch { /* best-effort — DB closed / race */ }
+    }).catch(() => { /* never break capture on embed failure */ });
+  });
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -107,6 +127,7 @@ export interface MemoryRecord {
   scope: string;
   agent_id: string | null;
   turn_id: string | null;
+  trust: number;
 }
 
 // ── Store operations ──────────────────────────────────────────────────────
@@ -142,6 +163,7 @@ export function storeWorking(db: SqliteDatabase, input: WorkingMemoryInput): str
     input.agentId ?? null,
     input.turnId ?? null,
   );
+  scheduleEmbed(db, "working_memory", id, input.content);
   return id;
 }
 
@@ -169,6 +191,7 @@ export function storeEpisodic(db: SqliteDatabase, input: EpisodicMemoryInput): s
     // they're higher-value). Use 2x the working TTL to give them headroom.
     input.validUntil || ttlValidUntil(input.memoryType),
   );
+  scheduleEmbed(db, "episodic_memory", id, input.content);
   return id;
 }
 
@@ -224,7 +247,7 @@ export function degradeTier(db: SqliteDatabase, id: string, newTier: number): vo
 export function purgeExpired(db: SqliteDatabase, table: "working_memory" | "episodic_memory"): number {
   const ts = now();
   const result = db.prepare(`DELETE FROM ${table} WHERE valid_until IS NOT NULL AND valid_until < ?`).run(ts);
-  // node:sqlite Statement.run() returns changes count
+  // better-sqlite3 Statement.run() returns changes count
   return (result as unknown as { changes?: number }).changes ?? 0;
 }
 

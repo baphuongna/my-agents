@@ -95,10 +95,20 @@ export type { MemoryType, WeibullParams } from "./weibull.js";
 // ── Phase 4: Consolidation + lifecycle ──
 export {
   consolidate, degradeOldMemories, purgeWeakMemories, lifecycleTick,
+  purgeStaleAuditLogs, CAPTURE_AUDIT_RETENTION_DAYS, CONFLICT_AUDIT_RETENTION_DAYS,
 } from "./sqlite-consolidate.js";
 export type { ConsolidateResult, DegradeResult, PurgeResult } from "./sqlite-consolidate.js";
 
 // ── Phase 5: Manager ──
+
+// ── Action #3: embeddings (opt-in semantic recall) ──
+export {
+  embeddingsDisabled, embeddingModel, embeddingDim,
+  embedContent, warmQueryVec, getCachedQueryVec,
+  cosine, vecToBuffer, bufferToVec,
+  _setEmbedImpl, CONFLICT_COSINE_DUP,
+  type Vec,
+} from "./embeddings.js";
 export { SqliteMemoryManager } from "./sqlite-manager.js";
 export type { SqliteMemoryManagerOptions } from "./sqlite-manager.js";
 

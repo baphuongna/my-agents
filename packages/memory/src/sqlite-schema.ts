@@ -245,6 +245,13 @@ export function initSchema(db: SqliteDatabase): void {
   addColumnIfMissing(db, "working_memory", "trust", "REAL NOT NULL DEFAULT 0.5");
   addColumnIfMissing(db, "episodic_memory", "trust", "REAL NOT NULL DEFAULT 0.5");
 
+  // Action #3 (docs/embeddings-cross-system.md): dense-vector embedding BLOB for
+  // semantic recall. Populated in the background by the embedder (fastembed);
+  // NULL = not-yet-embedded (recall falls back to FTS for that row). Float32
+  // (4 bytes/dim); default model bge-small-en = 384 dims → 1536 bytes/vector.
+  addColumnIfMissing(db, "working_memory", "embedding", "BLOB");
+  addColumnIfMissing(db, "episodic_memory", "embedding", "BLOB");
+
   // R19+ (Phase 5 grounding): referent tracking (codebase-memory-mcp pattern).
   // Observations that reference a file/entity carry a content hash so recall can
   // detect staleness (metadata_changed) when the referent changes.
@@ -274,6 +281,40 @@ export function initSchema(db: SqliteDatabase): void {
       strength_at_purge REAL,
       pinned INTEGER DEFAULT 0,
       purged_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // ── Conflict audit log — every supersession records old/new + similarity, so an
+  // operator can audit "why did this memory disappear?" (false-positive guard for
+  // the jaccard conflict detector). Mirrors purge_log/consolidation_log pattern.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conflict_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      old_id TEXT NOT NULL,
+      new_id TEXT NOT NULL,
+      memory_type TEXT,
+      jaccard REAL NOT NULL,
+      scope TEXT,
+      agent_id TEXT,
+      old_snippet TEXT,
+      new_snippet TEXT,
+      superseded_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // ── Capture audit log — records autoCapture sentences that were SKIPPED (below
+  // confidence / no match / duplicate), so an operator can answer "why wasn't X
+  // remembered?" without re-reading the conversation.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS capture_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_snippet TEXT,
+      matched_type TEXT,
+      confidence REAL,
+      reason TEXT NOT NULL,
+      agent_id TEXT,
+      session_id TEXT,
+      skipped_at TEXT DEFAULT (datetime('now'))
     )
   `);
 

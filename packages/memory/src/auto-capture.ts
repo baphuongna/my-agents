@@ -251,6 +251,20 @@ export function autoCapture(
   const importance = opts.importance ?? 0.4;
 
   const result: CaptureResult = { captured: 0, skipped: 0, details: [] };
+
+  // Persistent audit of skipped captures (deep-dive Finding 7): previously a
+  // skip lived only in the returned `details` (no DB trail), so "why wasn't X
+  // remembered?" was unanswerable. Best-effort — never breaks capture.
+  const auditDb = manager.getDatabase();
+  const auditSkip = (content: string, type: string, confidence: number, reason: string): void => {
+    try {
+      auditDb.prepare(`
+        INSERT INTO capture_audit (content_snippet, matched_type, confidence, reason, agent_id, session_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(content.slice(0, 200), type, confidence, reason, opts.agentId ?? null, sessionId);
+    } catch { /* best-effort audit — never break capture */ }
+  };
+
   const sentences = splitSentences(text);
 
   for (const sentence of sentences) {
@@ -258,12 +272,14 @@ export function autoCapture(
 
     if (!classification || classification.confidence < minConfidence) {
       result.skipped++;
+      const reason = classification ? "below threshold" : "no pattern match";
       result.details.push({
         content: sentence.slice(0, 80),
         type: "general",
         confidence: classification?.confidence ?? 0,
-        reason: classification ? "below threshold" : "no pattern match",
+        reason,
       });
+      auditSkip(sentence, "general", classification?.confidence ?? 0, reason);
       continue;
     }
 
@@ -273,6 +289,7 @@ export function autoCapture(
     if (existing) {
       result.skipped++;
       result.details.push({ content: sentence.slice(0, 80), type: classification.memoryType, confidence: classification.confidence, reason: "duplicate" });
+      auditSkip(sentence, classification.memoryType, classification.confidence, "duplicate");
       continue;
     }
 

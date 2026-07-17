@@ -68,15 +68,16 @@ describe("Group B — Consolidation runtime", () => {
     expect(ep).toBeTruthy();
     expect(ep.scope).toBe("role");
   });
-  it("B2: consolidation trust behavior — documented (resets to 0.5 default)", () => {
-    // Working trust set high; after consolidate, episodic trust = default 0.5 (reviewer M3 finding — by design for now)
+  it("B2: consolidation trust behavior — propagates MAX trust (deep-dive Finding 5 fix)", () => {
+    // Working trust set high; after consolidate, episodic trust = MAX of sources
+    // (deep-dive Finding 5: previously reset to 0.5 default, demoting validated
+    // consolidated memories — now propagated via Math.max(...trusts)).
     seed({ content: "high trust fact alpha beta", type: "fact", scope: "global", ts: PAST(48), trust: 0.95 });
     seed({ content: "high trust fact alpha beta gamma", type: "fact", scope: "global", ts: PAST(48), trust: 0.95 });
     seed({ content: "high trust fact alpha beta delta", type: "fact", scope: "global", ts: PAST(48), trust: 0.95 });
     lifecycleTick(db, "s");
     const ep = db.prepare("SELECT trust FROM episodic_memory ORDER BY timestamp DESC LIMIT 1").get() as { trust: number } | undefined;
-    // documented behavior: episodic trust defaults to 0.5 (not propagated — known gap)
-    expect(ep?.trust ?? 0.5).toBe(0.5);
+    expect(ep?.trust ?? 0).toBeCloseTo(0.95, 2); // propagated max trust, not 0.5 default
   });
   it("B3: dream excludes role memories (scope='global' only)", () => {
     seed({ content: "role secret alpha beta gamma", type: "context", scope: "role", agentId: "coder", ts: PAST(1) });

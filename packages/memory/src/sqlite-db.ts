@@ -1,7 +1,10 @@
 /**
- * @my-agent/memory/sqlite-db — node:sqlite wrapper with WAL + transaction support.
+ * @my-agent/memory/sqlite-db — SQLite wrapper with WAL + transaction support.
  *
- * Following mnemopi/db.ts pattern, adapted for Node 22's built-in `node:sqlite`.
+ * Backend: better-sqlite3 (stable, synchronous, prebuilt native addon).
+ * Previously used Node's experimental `node:sqlite`; switched to better-sqlite3
+ * to avoid the ExperimentalWarning on every launch + use a production-stable
+ * SQLite. API surface (exec/prepare/run/get/all/close) is compatible.
  *
  * Design:
  *   - SQLite IS the store (disk-primary, not RAM-primary)
@@ -16,8 +19,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 // ── Minimal type-safe interface for the SQLite API surface we use ─────────
-// This avoids importing node:sqlite at module eval time (which breaks vitest)
-// while still providing type safety for all DB operations.
+// This avoids importing the native addon at module eval time (which breaks
+// vitest/esbuild resolution) while still providing type safety for all DB ops.
 
 export interface SqliteStatement {
   run(...params: unknown[]): { changes?: number; lastInsertRowid?: number | string };
@@ -31,18 +34,21 @@ export interface SqliteDatabase {
   close(): void;
 }
 
-// Lazy-load node:sqlite — avoids breaking vitest/vite which can't resolve
-// the experimental node: scheme at module evaluation time.
-// node:module IS recognized by vite (well-known builtin), so this import is safe.
-let DatabaseSyncCtor: (new (path: string, options?: Record<string, unknown>) => SqliteDatabase) | null = null;
+// Lazy-load better-sqlite3 — avoids breaking vitest/vite/esbuild which can't
+// resolve the native addon at module evaluation time. createRequire resolves
+// from this file's location at call time (runtime), finding better-sqlite3 in
+// node_modules (bundled install or global node_modules).
+let DatabaseCtor: (new (path: string, options?: Record<string, unknown>) => SqliteDatabase) | null = null;
 
-function getDatabaseSyncCtor(): new (path: string, options?: Record<string, unknown>) => SqliteDatabase {
-  if (DatabaseSyncCtor !== null) return DatabaseSyncCtor;
+function getDatabaseCtor(): new (path: string, options?: Record<string, unknown>) => SqliteDatabase {
+  if (DatabaseCtor !== null) return DatabaseCtor;
   const req = createRequire(import.meta.url);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod: any = req("node:sqlite");
-  DatabaseSyncCtor = mod.DatabaseSync as new (path: string, options?: Record<string, unknown>) => SqliteDatabase;
-  return DatabaseSyncCtor;
+  const mod: any = req("better-sqlite3");
+  // better-sqlite3 exports the Database class directly (module.exports = Database),
+  // so `mod` IS the constructor. The ?? fallback also tolerates a { Database } shape.
+  DatabaseCtor = (mod.Database ?? mod) as new (path: string, options?: Record<string, unknown>) => SqliteDatabase;
+  return DatabaseCtor;
 }
 
 export type DatabasePath = string | ":memory:";
@@ -52,7 +58,7 @@ export function openDB(path: DatabasePath): SqliteDatabase {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
   }
-  const Ctor = getDatabaseSyncCtor();
+  const Ctor = getDatabaseCtor();
   const db = new Ctor(path);
   // mnemopi pragmas — battle-tested across context-mode, ctx, pi-session-manager
   db.exec("PRAGMA journal_mode = WAL");
@@ -67,10 +73,29 @@ export function openDB(path: DatabasePath): SqliteDatabase {
 const TX_STATE = Symbol("mya.txState");
 type TxDB = SqliteDatabase & { [TX_STATE]?: { depth: number } };
 
+/** Detect SQLITE_BUSY / "database is locked" from better-sqlite3 (or the adapter). */
+function isSqliteBusy(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: string; message?: string };
+  return /SQLITE_BUSY|database is locked/i.test(`${e.code ?? ""} ${e.message ?? ""}`);
+}
+
+/** Synchronous sleep (better-sqlite3 is synchronous; no async sleep possible). */
+function syncSleep(ms: number): void {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { /* spin — only on rare contention */ }
+}
+
 /**
  * Run a function inside a SQLite transaction.
  * Reentrant: nested calls reuse the outer transaction.
  * Commits on success, rolls back on error.
+ *
+ * Retries on SQLITE_BUSY beyond the built-in busy_timeout (deep-dive Finding 8):
+ * under cross-process contention a long DreamCycle consolidation can exceed the
+ * 5s busy_timeout, which previously surfaced as a raw error to the agent. We now
+ * roll back + retry the whole transaction up to 3× with exponential backoff so a
+ * transient lock doesn't break a capture/recall/consolidation call.
  */
 export function transaction<T>(db: SqliteDatabase, fn: () => T): T {
   const txDb = db as TxDB;
@@ -83,20 +108,29 @@ export function transaction<T>(db: SqliteDatabase, fn: () => T): T {
       state.depth--;
     }
   }
-  state = { depth: 1 };
-  txDb[TX_STATE] = state;
-  db.exec("BEGIN");
-  try {
-    const result = fn();
-    state.depth = 0;
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    state.depth = 0;
-    try { db.exec("ROLLBACK"); } catch { /* preserve original error */ }
-    throw error;
-  } finally {
-    delete txDb[TX_STATE];
+
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 50;
+  for (let attempt = 0; ; attempt++) {
+    state = { depth: 1 };
+    txDb[TX_STATE] = state;
+    try {
+      db.exec("BEGIN");
+      const result = fn();
+      state.depth = 0;
+      db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      state.depth = 0;
+      try { db.exec("ROLLBACK"); } catch { /* preserve original error */ }
+      if (isSqliteBusy(error) && attempt < MAX_RETRIES) {
+        syncSleep(BASE_DELAY_MS * Math.pow(2, attempt)); // 50, 100, 200 ms
+        continue;
+      }
+      throw error;
+    } finally {
+      delete txDb[TX_STATE];
+    }
   }
 }
 

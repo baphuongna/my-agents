@@ -169,8 +169,8 @@ export function consolidate(
       const episodicAgentId = group[0]!.agent_id ?? null;
       db.prepare(`
         INSERT INTO episodic_memory
-          (id, content, source, timestamp, session_id, importance, summary_of, memory_type, tier, scope, agent_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          (id, content, source, timestamp, session_id, importance, summary_of, memory_type, tier, scope, agent_id, trust)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
       `).run(
         episodicId,
         summary,
@@ -182,6 +182,7 @@ export function consolidate(
         group[0]!.memory_type,
         episodicScope,
         episodicAgentId,
+        Math.max(...group.map((g) => g.trust ?? 0.5)), // propagate trust (deep-dive Finding 5)
       );
 
       // Mark source items as consolidated
@@ -350,10 +351,33 @@ export function lifecycleTick(
   // before R17, valid_until was never set so purgeExpired was a no-op. Now storeWorking/
   // storeEpisodic set valid_until at capture per-type TTL, so this actually fires.
   const expired = purgeExpired(db, "working_memory") + purgeExpired(db, "episodic_memory");
+  // Security review (mem0 deep-dive): bound the info-leak surface of the audit
+  // tables — capture_audit persists previously-ephemeral conversation snippets.
+  // Purged every tick so sensitive data (e.g. a key pasted in chat but never
+  // "remembered") doesn't accumulate unbounded or outlive the memories.
+  purgeStaleAuditLogs(db);
   return {
     consolidated: consolidate(db, sessionId),
     degraded: degradeOldMemories(db),
     purged: purgeWeakMemories(db),
     expired,
   };
+}
+
+/** Audit-table retention constants (days). capture_audit is short (ephemeral
+ * debugging of skipped captures); conflict_audit is longer (supersession trail).
+ * purge_log / consolidation_log are left intact — they predate this change and
+ * their stated purpose is historical audit. */
+export const CAPTURE_AUDIT_RETENTION_DAYS = 30;
+export const CONFLICT_AUDIT_RETENTION_DAYS = 90;
+
+/** Purge stale rows from the audit tables. Called from lifecycleTick. */
+export function purgeStaleAuditLogs(db: SqliteDatabase): { capture: number; conflict: number } {
+  const capture = db.prepare(
+    "DELETE FROM capture_audit WHERE skipped_at < datetime('now', ?)",
+  ).run(`-${CAPTURE_AUDIT_RETENTION_DAYS} days`).changes ?? 0;
+  const conflict = db.prepare(
+    "DELETE FROM conflict_audit WHERE superseded_at < datetime('now', ?)",
+  ).run(`-${CONFLICT_AUDIT_RETENTION_DAYS} days`).changes ?? 0;
+  return { capture, conflict };
 }
