@@ -48,12 +48,17 @@ interface JsonRpcResponse {
 export class McpManager {
   private servers = new Map<string, McpServer>();
   private procs = new Map<string, ChildProcess>();
+  /** B6 fix: retain full server config (incl. env) so spawn-time env merge recovers it. */
+  private configs = new Map<string, McpServerConfig>();
+  /** B3 fix: retain full McpToolInfo[] (incl. inputSchema) per server. */
+  private toolSchemas = new Map<string, McpToolInfo[]>();
   private rpcId = 0;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffers = new Map<string, string>();
 
   /** Register a server config (does not start it). */
   register(cfg: McpServerConfig): void {
+    this.configs.set(cfg.id, cfg); // B6: retain full config (incl. env) for spawn-time merge.
     const server: McpServer = {
       id: cfg.id,
       command: cfg.command,
@@ -69,15 +74,27 @@ export class McpManager {
 
   /** Start a server: spawn process → initialize → discover tools. */
   async start(id: string): Promise<McpServer> {
-    const server = this.servers.get(id);
+    let server = this.servers.get(id);
     if (!server) throw new Error(`MCP server "${id}" not registered`);
     if (server.phase === "Healthy" || server.phase === "Degraded") return server;
+    // Allow restart from Stopped: Stopped → Discovered (legal), then the normal path.
+    if (server.phase === "Stopped") {
+      server = transition(server, "Discovered");
+      this.servers.set(id, server);
+    }
 
-    const updated = transition(server, "Initializing");
-    this.servers.set(id, updated);
+    // B2 fix: phase order MUST follow ALLOWED_TRANSITIONS:
+    //   Discovered → Validated → Initializing → Healthy.
+    // The prior order (Discovered → Initializing → Validated → Healthy) hit THREE
+    // illegal transitions and threw on the very first call — MCP was unusable.
+    const validated = transition(server, "Validated");
+    this.servers.set(id, validated);
 
     try {
-      const proc = spawn(updated.command, updated.args, {
+      // Validated → Initializing (spawn process + send initialize).
+      const initializing = transition(validated, "Initializing");
+      this.servers.set(id, initializing);
+      const proc = spawn(initializing.command, initializing.args, {
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, ...this.getConfig(id)?.env },
       });
@@ -97,17 +114,13 @@ export class McpManager {
       this.buffers.set(id, buf);
 
       proc.on("error", (err) => {
-        const s = this.servers.get(id);
-        if (s) {
-          this.servers.set(id, transition(s, "Failed", { error: err.message }));
-        }
+        if (this.procs.get(id) !== proc) return; // stale proc (restart replaced it)
+        this.toFailed(id, err.message); // idempotent — respects terminal states
       });
 
       proc.on("exit", () => {
-        const s = this.servers.get(id);
-        if (s && s.phase !== "Stopped") {
-          this.servers.set(id, transition(s, "Failed", { error: "process exited" }));
-        }
+        if (this.procs.get(id) !== proc) return; // stale proc (restart replaced it)
+        this.toFailed(id, "process exited");
       });
 
       // Send initialize request
@@ -118,19 +131,22 @@ export class McpManager {
       }) as { capabilities?: Record<string, unknown> };
 
       const capabilities = Object.keys(initResult.capabilities ?? {});
-      const validated = transition(updated, "Validated");
-      this.servers.set(id, { ...validated, capabilities });
+      // (still Initializing — initialize RPC done, awaiting tools/list)
 
-      // Discover tools
+      // Discover tools. B3 fix: retain full McpToolInfo[] (incl. inputSchema) so
+      // callers register tools with real parameter schemas instead of empty {}.
       const toolsResult = await this.rpc(id, "tools/list", {}) as { tools?: McpToolInfo[] };
-      const tools = (toolsResult.tools ?? []).map((t) => t.name);
+      const toolInfos = toolsResult.tools ?? [];
+      this.toolSchemas.set(id, toolInfos);
+      const tools = toolInfos.map((t) => t.name);
+
+      // Initializing → Healthy
       const healthy = transition(this.servers.get(id)!, "Healthy");
-      this.servers.set(id, { ...healthy, tools });
+      this.servers.set(id, { ...healthy, tools, capabilities });
 
       return this.servers.get(id)!;
     } catch (e) {
-      const failed = transition(this.servers.get(id)!, "Failed", { error: (e as Error).message });
-      this.servers.set(id, failed);
+      this.toFailed(id, (e as Error).message); // idempotent — 'error'/'exit' may have set Failed already
       throw e;
     }
   }
@@ -151,6 +167,7 @@ export class McpManager {
       proc.kill();
       this.procs.delete(id);
     }
+    this.toolSchemas.delete(id); // clear stale schemas (re-discovered on restart)
     const server = this.servers.get(id);
     if (server) {
       this.servers.set(id, transition(server, "Stopped"));
@@ -195,11 +212,27 @@ export class McpManager {
     return out;
   }
 
-  private getConfig(id: string): McpServerConfig | undefined {
-    // Config is stored as part of register(); we reconstruct from server state.
+  /** Full tool infos (incl. inputSchema) for a server. B3 fix: callers use this
+   * to register MCP tools with real parameter schemas instead of empty `{}`. */
+  getToolInfos(id: string): McpToolInfo[] {
+    return this.toolSchemas.get(id) ?? [];
+  }
+
+  /** Idempotent transition to Failed — skips terminal states (Failed/Quarantine/
+   * Stopped). Prevents the FSM from throwing "illegal transition: Failed → Failed"
+   * when the proc 'error'/'exit' handler and the start() catch both fire for the
+   * same failure (which previously masked the real spawn/RPC error). */
+  private toFailed(id: string, error: string): void {
     const s = this.servers.get(id);
-    if (!s) return undefined;
-    return { id: s.id, command: s.command, args: s.args };
+    if (!s) return;
+    if (s.phase === "Failed" || s.phase === "Quarantine" || s.phase === "Stopped") return;
+    this.servers.set(id, transition(s, "Failed", { error }));
+  }
+
+  private getConfig(id: string): McpServerConfig | undefined {
+    // B6 fix: return the full registered config (incl. env) so spawn-time env
+    // merge recovers custom environment overrides registered via mcp.json.
+    return this.configs.get(id);
   }
 
   /** Send a JSON-RPC request and await the response. */

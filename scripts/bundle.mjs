@@ -81,6 +81,9 @@ await build({
     "better-sqlite3",
     // Optional native deps — resolved at runtime via dynamic import()
     "tesseract.js", "chrome-remote-interface", "sharp",
+    // Embeddings (action #3) — fastembed pulls onnxruntime-node (.node natives);
+    // both are dynamic-imported by embeddings.ts and resolved at runtime.
+    "fastembed", "onnxruntime-node", "onnxruntime-common",
   ],
   plugins: [sourceResolve],
   legalComments: "none",

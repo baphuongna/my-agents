@@ -216,10 +216,18 @@ export const globTool: ToolImpl = {
     },
     requiredMode: READONLY,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.pattern !== "string")
       return err("glob", "pattern required");
-    const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
+    // S2 fix: bound the search root to the turn workspace (path-containment).
+    // Previously glob/grep accepted any caller-supplied cwd, unbounded.
+    const ws = ctx?.workspace ?? process.cwd();
+    let cwd = typeof args.cwd === "string" ? args.cwd : ws;
+    if (cwd !== ws) {
+      const r = resolveExistingInsideWorkspace(cwd, ws);
+      if (!r.ok) return err("glob", `cwd outside workspace: ${r.reason}: ${r.detail}`);
+      cwd = r.abs;
+    }
     // Tier 4: prefer the Rust native glob (hot loop); fall back to JS walk.
     try {
       const matches = nativeGlob(args.pattern, cwd, { maxResults: 1000 });
@@ -263,10 +271,17 @@ export const grepTool: ToolImpl = {
     },
     requiredMode: READONLY,
   },
-  async run(args): Promise<ToolResult> {
+  async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.pattern !== "string")
       return err("grep", "pattern required");
-    const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();
+    // S2 fix: bound the search root to the turn workspace (path-containment).
+    const ws = ctx?.workspace ?? process.cwd();
+    let cwd = typeof args.cwd === "string" ? args.cwd : ws;
+    if (cwd !== ws) {
+      const r = resolveExistingInsideWorkspace(cwd, ws);
+      if (!r.ok) return err("grep", `cwd outside workspace: ${r.reason}: ${r.detail}`);
+      cwd = r.abs;
+    }
     // Tier 4: prefer the Rust native grep (hot loop); fall back to JS walk.
     try {
       const hits = nativeGrep(args.pattern, cwd, { maxResults: 200, caseInsensitive: true });

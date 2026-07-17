@@ -5,6 +5,10 @@ import { describe, it, expect } from "vitest";
 import { transition, aggregateHealth, availableTools } from "./mcp-lifecycle.js";
 import { McpManager } from "./mcp-client.js";
 import type { McpServer } from "./mcp-lifecycle.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const FIXTURE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "mcp-fixture.cjs");
 
 function makeServer(phase: string, tools: string[] = [], failures = 0): McpServer {
   return {
@@ -35,6 +39,19 @@ describe("MCP lifecycle FSM", () => {
     const s = makeServer("Unconfigured");
     const next = transition(s, "Healthy", { allowUnsafe: true });
     expect(next.phase).toBe("Healthy");
+  });
+
+  it("start() phase path Discovered→Validated→Initializing→Healthy is legal (B2 regression)", () => {
+    // B2: McpManager.start() MUST follow this order per ALLOWED_TRANSITIONS.
+    // The prior implementation did Discovered→Initializing (illegal) on the
+    // very first transition and threw on every MCP connect — MCP was unusable.
+    let s = makeServer("Discovered");
+    s = transition(s, "Validated");    // Discovered → Validated
+    expect(s.phase).toBe("Validated");
+    s = transition(s, "Initializing"); // Validated → Initializing
+    expect(s.phase).toBe("Initializing");
+    s = transition(s, "Healthy");      // Initializing → Healthy
+    expect(s.phase).toBe("Healthy");
   });
 
   it("quarantines after 5 consecutive failures", () => {
@@ -117,5 +134,37 @@ describe("McpManager", () => {
     mgr.register({ id: "s1", command: "x" });
     mgr.stop("s1");
     expect(mgr.getServer("s1")?.phase).toBe("Stopped");
+  });
+});
+
+describe("McpManager.start() integration (B2/B3/B6/restart)", () => {
+  // Spins up the mcp-fixture.cjs stdio server. This is the integration coverage
+  // that was MISSING when B2 shipped — start() was never exercised, so three
+  // illegal phase transitions went undetected (MCP was completely broken).
+  it("start() reaches Healthy + captures inputSchema + env (B2+B3+B6)", async () => {
+    const mgr = new McpManager();
+    mgr.register({ id: "f", command: process.execPath, args: [FIXTURE], env: { MYA_B6_TEST: "b6-ok" } });
+    const s = await mgr.start("f");
+    expect(s.phase).toBe("Healthy");
+    const infos = mgr.getToolInfos("f");
+    expect(infos.length).toBe(1);
+    expect(infos[0]!.name).toBe("echo");
+    expect((infos[0]!.inputSchema?.properties as { text?: unknown })?.text).toBeDefined(); // B3
+    expect(infos[0]!.description).toContain("b6-ok"); // B6: registered env reached the server
+    mgr.stopAll();
+  });
+
+  it("start() works again after stop() (restart lifecycle)", async () => {
+    const mgr = new McpManager();
+    mgr.register({ id: "r", command: process.execPath, args: [FIXTURE] });
+    const s1 = await mgr.start("r");
+    expect(s1.phase).toBe("Healthy");
+    mgr.stop("r");
+    expect(mgr.getServer("r")?.phase).toBe("Stopped");
+    expect(mgr.getToolInfos("r")).toEqual([]); // stop() cleared stale schemas
+    // start-after-stopped: previously threw (Stopped → Validated is illegal)
+    const s2 = await mgr.start("r");
+    expect(s2.phase).toBe("Healthy");
+    mgr.stopAll();
   });
 });

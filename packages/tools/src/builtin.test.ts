@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { lsTool, findTool } from "./builtin.js";
+import { lsTool, findTool, globTool, grepTool } from "./builtin.js";
 import type { TurnContext } from "@my-agent/core";
 
 function makeCtx(cwd: string): TurnContext {
@@ -131,5 +131,46 @@ describe("findTool", () => {
   it("rejects path traversal", async () => {
     const res = await findTool.run({ path: "../../etc", pattern: "*" }, makeCtx(dir));
     expect(res.ok).toBe(false);
+  });
+});
+
+describe("glob/grep cwd containment (S2)", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "mya-glob-"));
+    await writeFile(join(dir, "a.ts"), "const x = 1;\n");
+  });
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  it("glob rejects cwd outside workspace", async () => {
+    const res = await globTool.run({ pattern: "*.ts", cwd: "/etc" }, makeCtx(dir));
+    expect(res.ok).toBe(false);
+  });
+
+  it("glob rejects cwd traversal escape", async () => {
+    const res = await globTool.run({ pattern: "*.ts", cwd: "../../etc" }, makeCtx(dir));
+    expect(res.ok).toBe(false);
+  });
+
+  it("glob allows cwd = workspace and finds files", async () => {
+    const res = await globTool.run({ pattern: "*.ts", cwd: dir }, makeCtx(dir));
+    expect(res.ok).toBe(true);
+  });
+
+  it("glob defaults to ctx.workspace when cwd omitted", async () => {
+    const res = await globTool.run({ pattern: "*.ts" }, makeCtx(dir));
+    expect(res.ok).toBe(true);
+  });
+
+  it("grep rejects cwd outside workspace", async () => {
+    const res = await grepTool.run({ pattern: "x", cwd: "/etc" }, makeCtx(dir));
+    expect(res.ok).toBe(false);
+  });
+
+  it("grep allows cwd = workspace", async () => {
+    const res = await grepTool.run({ pattern: "const", cwd: dir }, makeCtx(dir));
+    expect(res.ok).toBe(true);
   });
 });

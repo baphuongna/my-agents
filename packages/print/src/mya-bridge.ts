@@ -1046,15 +1046,26 @@ ${hitLines}`);
           },
         ) {
           const { readFileSync, writeFileSync } = await import("node:fs");
-          const content = readFileSync(params.filePath, "utf8");
+          const { resolveInsideWorkspace } = await import("@my-agent/tools");
+          // S1 fix: contain the path inside the workspace. hashline_edit previously
+          // read/wrote params.filePath directly, allowing edits outside the workspace.
+          const ws = process.cwd();
+          const resolved = resolveInsideWorkspace(params.filePath, ws);
+          if (!resolved.ok) {
+            return {
+              content: [{ type: "text", text: `[hashline_edit] rejected: ${resolved.reason}: ${resolved.detail}` }],
+            };
+          }
+          const filePath = resolved.abs;
+          const content = readFileSync(filePath, "utf8");
           const hashes = computeLineHashes(content);
           const result = applyEdits(content, params.edits, hashes);
           const noopCount = result.noopEdits?.length ?? 0;
-          writeFileSync(params.filePath, result.content);
+          writeFileSync(filePath, result.content);
           return {
             content: [{
               type: "text",
-              text: `[hashline_edit] Applied ${params.edits.length - noopCount} edit(s) to ${params.filePath}` +
+              text: `[hashline_edit] Applied ${params.edits.length - noopCount} edit(s) to ${filePath}` +
                 (noopCount > 0 ? ` (${noopCount} noop)` : "") +
                 (result.firstChangedLine !== undefined ? ` lines ${result.firstChangedLine}-${result.lastChangedLine}` : ""),
             }],
@@ -1172,9 +1183,21 @@ ${hitLines}`);
             _toolCallId: string,
             params: { goal: string; allowed_tools?: string[]; cwd?: string; parent_depth?: number; wait?: boolean },
           ) {
+            // S3 fix: contain the subagent cwd inside the workspace. Previously
+            // params.cwd passed straight through, letting a model spawn a subagent
+            // in /root, ~/.ssh, etc. (expanding the workspace without consent).
+            const { resolveInsideWorkspace } = await import("@my-agent/tools");
+            const ws = process.cwd();
+            const cwdResolved = resolveInsideWorkspace(params.cwd ?? ws, ws);
+            if (!cwdResolved.ok) {
+              return {
+                content: [{ type: "text", text: `[delegate_task] rejected cwd: ${cwdResolved.reason}: ${cwdResolved.detail}` }],
+                isError: true,
+              };
+            }
             const sub = await spawnSubagent(parentSessionId, {
               goal: params.goal,
-              cwd: params.cwd,
+              cwd: cwdResolved.abs,
               allowedTools: params.allowed_tools,
               parentDepth: params.parent_depth ?? 0,
             });
@@ -1205,14 +1228,17 @@ ${hitLines}`);
       // Auto-start configured servers and register their tools
       for (const cfg of opts.mcpConfigs ?? []) {
         void mcp.start(cfg.id).then((server) => {
-          // server.tools is string[] (tool names) — register each as pi tool
-          for (const toolName of server.tools) {
+          // B3 fix: use full McpToolInfo[] (incl. inputSchema) so the model sees
+          // real parameter schemas instead of empty {}.
+          const infos = mcp.getToolInfos(cfg.id);
+          for (const info of infos) {
+            const toolName = info.name;
             try {
               pi.registerTool({
                 name: `mcp_${cfg.id}_${toolName}`,
                 label: `MCP: ${toolName}`,
-                description: `MCP tool from server ${cfg.id}: ${toolName}`,
-                parameters: { type: "object", properties: {} },
+                description: info.description ?? `MCP tool from server ${cfg.id}: ${toolName}`,
+                parameters: info.inputSchema ?? { type: "object", properties: {} },
                 async execute(_id: string, params: Record<string, unknown>) {
                   const result = await mcp.callTool(cfg.id, toolName, params);
                   return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -1235,14 +1261,16 @@ ${hitLines}`);
         } else if (sub === "connect" && parts[1]) {
           try {
             const server = await mcp.start(parts[1]!);
-            // Register tools after manual connect too
-            for (const toolName of server.tools) {
+            // B3 fix: register tools with real inputSchema (not empty {}).
+            const infos = mcp.getToolInfos(parts[1]!);
+            for (const info of infos) {
+              const toolName = info.name;
               try {
                 pi.registerTool({
                   name: `mcp_${parts[1]}_${toolName}`,
                   label: `MCP: ${toolName}`,
-                  description: `MCP tool from server ${parts[1]}: ${toolName}`,
-                  parameters: { type: "object", properties: {} },
+                  description: info.description ?? `MCP tool from server ${parts[1]}: ${toolName}`,
+                  parameters: info.inputSchema ?? { type: "object", properties: {} },
                   async execute(_id: string, params: Record<string, unknown>) {
                     const result = await mcp.callTool(parts[1]!, toolName, params);
                     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
