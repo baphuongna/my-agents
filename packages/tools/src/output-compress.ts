@@ -559,38 +559,51 @@ export function compressCommandOutput(
   cmd: string,
   output: string,
   exitCode: number,
-  options?: Partial<CompressionOptions>,
+ options?: Partial<CompressionOptions>,
 ): CompressionResult {
   const opts: CompressionOptions = { ...DEFAULT_COMPRESSION_OPTIONS, ...options };
   const originalTokens = estimateTokens(output);
   const { executable, args } = parseCommand(cmd);
   const exe = executable.toLowerCase();
 
+  let result: CompressionResult;
   // git status|diff|log
   if (exe === "git" && ["status", "diff", "log"].includes(args[0] ?? "")) {
-    return compressGit(output, args);
-  }
-  // tsc / npx tsc
-  if (exe === "tsc" || (exe === "npx" && (args[0] ?? "") === "tsc")) {
-    return compressTsc(output);
-  }
-  // npm / pnpm / yarn (case-insensitive, per CanHandle)
-  if (exe === "npm" || exe === "pnpm" || exe === "yarn") {
-    return compressPackageManager(output, exitCode, opts);
-  }
-  // cargo
-  if (exe === "cargo") {
-    return compressCargo(output);
+    result = compressGit(output, args);
+  } else if (exe === "tsc" || (exe === "npx" && (args[0] ?? "") === "tsc")) {
+    // tsc / npx tsc
+    result = compressTsc(output);
+  } else if (exe === "npm" || exe === "pnpm" || exe === "yarn") {
+    // npm / pnpm / yarn (case-insensitive, per CanHandle)
+    result = compressPackageManager(output, exitCode, opts);
+  } else if (exe === "cargo") {
+    result = compressCargo(output);
+  } else {
+    // generic fallback — 5-stage pipeline
+    const pipeline = runGenericPipeline(output, opts);
+    result = {
+      text: pipeline.text,
+      originalTokens,
+      compressedTokens: estimateTokens(pipeline.text),
+      reducerId: "generic",
+      stagesApplied: pipeline.stagesApplied,
+      wasTruncated: pipeline.wasTruncated,
+    };
   }
 
-  // generic fallback — 5-stage pipeline
-  const pipeline = runGenericPipeline(output, opts);
-  return {
-    text: pipeline.text,
-    originalTokens,
-    compressedTokens: estimateTokens(pipeline.text),
-    reducerId: "generic",
-    stagesApplied: pipeline.stagesApplied,
-    wasTruncated: pipeline.wasTruncated,
-  };
+  // S3 never_worse guard (rtk pattern): only apply compression if it actually
+  // SAVES tokens; if a reducer's output is STRICTLY larger (it added overhead),
+  // passthrough the original verbatim. Equal-token output (e.g. an intentional
+  // small-output passthrough, or a same-length reformat) is left as-is — not worse.
+  if (result.compressedTokens > originalTokens) {
+    return {
+      text: output,
+      originalTokens,
+      compressedTokens: originalTokens,
+      reducerId: "never_worse_passthrough",
+      stagesApplied: [],
+      wasTruncated: false,
+    };
+  }
+  return result;
 }

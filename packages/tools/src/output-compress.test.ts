@@ -167,3 +167,28 @@ describe("output-compress: npm reducer", () => {
     expect(estimateTokens("abcdefgh")).toBe(2);
   });
 });
+
+describe("output-compress: never_worse guard (S3)", () => {
+  // The guard guarantees compression NEVER makes output larger. Verified as a
+  // property across reducers: compressedTokens <= originalTokens always.
+  it("compressedTokens never exceeds originalTokens", () => {
+    const cases = [
+      { cmd: "git status", out: "M file.ts\n", exit: 0 },
+      { cmd: "git log", out: "commit abcdef\nAuthor: X\nDate: Y\n\n    msg\n", exit: 0 },
+      { cmd: "npm test", out: "all good\n", exit: 0 },
+      { cmd: "npm install", out: "added 1 package\n", exit: 0 },
+      { cmd: "echo hi", out: "hi\n", exit: 0 },
+      { cmd: "tsc", out: "file.ts(1,1): error TS1: x\n", exit: 1 },
+      { cmd: "cargo build", out: "Compiling x v0.1\nFinished\n", exit: 0 },
+      // already-minimal generic input (no blanks/ANSI/dups to strip)
+      { cmd: "cat file", out: "unique line one\nunique line two\n", exit: 0 },
+    ];
+    for (const { cmd, out, exit } of cases) {
+      const res = compressCommandOutput(cmd, out, exit);
+      expect(
+        res.compressedTokens,
+        `${cmd} → ${res.reducerId}: ${res.compressedTokens} should be <= ${res.originalTokens}`,
+      ).toBeLessThanOrEqual(res.originalTokens);
+    }
+  });
+});
