@@ -41,3 +41,4 @@ source/*
 !.crew/graphs/
 !.crew/artifacts/.gitkeep
 !.crew/graphs/.gitkeep
+.prompts/
