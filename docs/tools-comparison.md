@@ -219,6 +219,24 @@ Likely **intentional simplifications** (not regressions): `notion`/`jira`/`disco
 
 > These were surfaced by the baseline mapping agent and verified against current source. Several are real correctness/security issues, not style nits. **This is the section worth acting on first.**
 
+> **STATUS (post Round 1 + 1.5 + 2 fixes — commits `70a1ef5` + Round 2):** the CRITICAL +
+> SECURITY + lifecycle cluster is FIXED and 3-reviewed. Remaining items are
+> documented limitations. Summary:
+> - ✅ **B2** (MCP FSM — was completely broken) — FIXED + integration test.
+> - ✅ **B3** (MCP schema discard) — FIXED (`getToolInfos` + `inputSchema` passthrough + size/desc sanitizer).
+> - ✅ **B6** (MCP env lost) — FIXED (`configs` map retains env).
+> - ✅ **S1** (hashline_edit containment), **S2** (glob/grep cwd), **S3** (delegate_task cwd) — FIXED.
+> - ✅ **MCP FSM race** (`Failed→Failed` masking real error) + **stale-proc restart race** + **start-after-stopped** + **stop() cleanup** — FIXED (review-driven, Round 1.5).
+> - ✅ **bundle.mjs** fastembed/onnxruntime external (regression from embeddings) — FIXED.
+> - 🔧 **B4** (LSP cascade no-op) — IMPROVED: now reports the codegraph blast radius (impacted importer files) even without a real LSP server. Full diagnostic wiring (real tsserver) still deferred.
+> - 🔧 **W-ToolImpl** (code/codegraph `run(args)` missing ctx) — FIXED (Round 2).
+> - 📝 **B5** (Composio registration race) — DOCUMENTED: root fix = make `createAgent` async, but that needs an SDK API change (`FullAgentSDK` constructor → async factory) + ~30 call sites. Composio is opt-in + usually resolves before the first turn. Tracked as a separate refactor.
+> - 📝 **B1** (bash in DELEGATE_BLOCKED) — DOCUMENTED: the core `@my-agent/tools` `bashTool` is unreachable via the 7-step path (DELEGATE_BLOCKED is unconditional), but mya production uses pi's own bash, so bash works. Intentional defense-in-depth; the misleading comment is noted.
+> - 📝 **S3-low** (write resolver doesn't realpath final symlink component) + **TOCTOU** on parent-symlink — DOCUMENTED as defense-in-depth residuals.
+> - 📝 Other wiring gaps (W1–W8: tool-search not wired, code/codegraph not in default surface, 2 hashline formats, output-compress bridge-only) — documented below; lower priority.
+>
+> The items below are kept as the original findings for reference.
+
 ### 6.1 Correctness bugs
 
 **🐛 B1 — `bash` is internally contradictory (never escalates).**

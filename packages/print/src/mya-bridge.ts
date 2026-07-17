@@ -1233,12 +1233,13 @@ ${hitLines}`);
           const infos = mcp.getToolInfos(cfg.id);
           for (const info of infos) {
             const toolName = info.name;
+            const safe = sanitizeMcpToolInfo(info); // B3 hardening: cap size/desc
             try {
               pi.registerTool({
                 name: `mcp_${cfg.id}_${toolName}`,
                 label: `MCP: ${toolName}`,
-                description: info.description ?? `MCP tool from server ${cfg.id}: ${toolName}`,
-                parameters: info.inputSchema ?? { type: "object", properties: {} },
+                description: safe.description,
+                parameters: safe.parameters,
                 async execute(_id: string, params: Record<string, unknown>) {
                   const result = await mcp.callTool(cfg.id, toolName, params);
                   return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -1265,12 +1266,13 @@ ${hitLines}`);
             const infos = mcp.getToolInfos(parts[1]!);
             for (const info of infos) {
               const toolName = info.name;
+              const safe = sanitizeMcpToolInfo(info); // B3 hardening: cap size/desc
               try {
                 pi.registerTool({
                   name: `mcp_${parts[1]}_${toolName}`,
                   label: `MCP: ${toolName}`,
-                  description: info.description ?? `MCP tool from server ${parts[1]}: ${toolName}`,
-                  parameters: info.inputSchema ?? { type: "object", properties: {} },
+                  description: safe.description,
+                  parameters: safe.parameters,
                   async execute(_id: string, params: Record<string, unknown>) {
                     const result = await mcp.callTool(parts[1]!, toolName, params);
                     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -1500,11 +1502,41 @@ async function lspCascadeDiagnostics(filePath: string): Promise<void> {
 
   const content = readFileSync(filePath, "utf8");
   const results = await runCascade(filePath, content, _codegraph as never, noopClient);
-  const impacted = results.filter((r: { diagnostics: unknown[] }) => r.diagnostics.length > 0);
-  if (impacted.length > 0) {
-    const files = impacted.map((r: { file: string }) => r.file).join(", ");
-    process.stderr.write(`\n[mya lsp] Diagnostics in impacted files: ${files}\n`);
+  // B4: without a real LSP server (noopClient), diagnostics are always empty —
+  // but runCascade still returns the importer files the codegraph identified as
+  // depending on the edited file. Report that blast radius so the agent knows
+  // what its edit may affect (computeImpact walks the reverse-import graph to
+  // depth 2). Exclude the edited file itself (the agent knows what it changed).
+  const ext = filePath.match(/\.[^.]+$/)?.[0] ?? "";
+  const changedCanonical = ext ? filePath.slice(0, filePath.length - ext.length) : filePath;
+  const importers = results
+    .filter((r: { file: string }) => r.file !== changedCanonical && r.file !== filePath)
+    .map((r: { file: string }) => r.file);
+  if (importers.length > 0) {
+    const list = importers.slice(0, 20).join(", ");
+    const more = importers.length > 20 ? ` (+${importers.length - 20} more)` : "";
+    process.stderr.write(`\n[mya lsp] Files impacted by this edit (codegraph depth-2): ${list}${more}\n`);
   }
+}
+
+/** B3 hardening: cap MCP tool description + inputSchema size (defense-in-depth
+ * against a malicious/compromised MCP server returning a huge schema for
+ * token-DoS, or a long prompt-injection in its description). MCP servers are
+ * user-configured (~/.mya/agent/mcp.json) so this is belt-and-suspenders, not
+ * a full trust boundary. */
+function sanitizeMcpToolInfo(info: { name: string; description?: string; inputSchema?: Record<string, unknown> }): {
+  name: string; description: string; parameters: Record<string, unknown>;
+} {
+  const description = typeof info.description === "string" && info.description.length > 0
+    ? info.description.slice(0, 1000)
+    : `MCP tool: ${info.name}`;
+  let parameters = info.inputSchema ?? { type: "object", properties: {} };
+  try {
+    if (JSON.stringify(parameters).length > 32 * 1024) {
+      parameters = { type: "object", properties: {} }; // oversized → stub to avoid token bloat
+    }
+  } catch { parameters = { type: "object", properties: {} }; } // circular → stub
+  return { name: info.name, description, parameters };
 }
 
 /** Find comma-separated API keys from MYA_API_KEYS_<PROVIDER> env vars. */

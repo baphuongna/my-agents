@@ -288,6 +288,13 @@ export function createAgent(config: AgentConfig = {}): Agent {
   {
     const composioClient = createComposioClient();
     if (composioClient) {
+      // NOTE (B5, documented): Composio registration is fire-and-forget — its
+      // async-fetched tools MAY miss the openAITools + stableTier snapshot below
+      // and not reach the model surface for the first turn. The root fix is to
+      // make createAgent async, but that requires an SDK API change
+      // (FullAgentSDK constructor → async factory) + ~30 call sites — tracked as
+      // a separate refactor, not this batch. Composio is opt-in (COMPOSIO_API_KEY)
+      // and usually resolves before the first user turn, so impact is low.
       registerComposioTools(toolRegistry, composioClient, process.env.COMPOSIO_ACCOUNT_ID ?? "").catch(() => { /* best-effort */ });
     }
   }

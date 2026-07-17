@@ -167,7 +167,7 @@ export function makeCodegraphTool(): ToolImpl & { graphFor(root: string): Promis
       },
       requiredMode: "ReadOnly",
     },
-    async run(args): Promise<ToolResult> {
+    async run(args, _ctx): Promise<ToolResult> {
       if (!isRecord(args) || typeof args.path !== "string")
         return err("codegraph", "path required");
       const cwd = typeof args.cwd === "string" ? args.cwd : process.cwd();

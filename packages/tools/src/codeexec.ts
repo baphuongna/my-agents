@@ -50,7 +50,7 @@ export function makeCodeExecTool(
       },
       requiredMode: "DangerFullAccess", // arbitrary code exec — as dangerous as bash
     },
-    async run(args): Promise<ToolResult> {
+    async run(args, _ctx): Promise<ToolResult> {
       if (!isRecord(args)) return err("code", "args required");
       const language = args.language;
       const script = args.script;
