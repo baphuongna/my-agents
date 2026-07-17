@@ -5,7 +5,7 @@
   "main": "src/main.ts",
   "dependencies": {
     "@my-agent/ai": "*",
-    "@my-agent/agent-core": "*",
-    "@my-agent/tui": "*"
+    "@my-agent/tui": "*",
+    "@my-agent/core": "*"
   }
 }

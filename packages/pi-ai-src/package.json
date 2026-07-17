@@ -4,6 +4,6 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@my-agent/agent-core": "*"
+    "@my-agent/core": "*"
   }
 }

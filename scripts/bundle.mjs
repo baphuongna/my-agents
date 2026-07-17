@@ -76,7 +76,9 @@ await build({
     "node:https", "node:net", "node:tls", "node:zlib", "node:buffer",
     "node:events", "node:string_decoder", "node:readline", "node:worker_threads",
     "node:async_hooks", "node:perf_hooks", "node:assert", "node:querystring",
-    "node:sqlite",
+    // Stable SQLite backend (replaces experimental node:sqlite — native addon,
+    // resolved at runtime via createRequire in sqlite-db.ts)
+    "better-sqlite3",
     // Optional native deps — resolved at runtime via dynamic import()
     "tesseract.js", "chrome-remote-interface", "sharp",
   ],
