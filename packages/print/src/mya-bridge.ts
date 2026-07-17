@@ -1007,6 +1007,53 @@ ${hitLines}`);
       } catch {}
     }
 
+    // ── semantic_search (code search by MEANING — extends embeddings to code) ──
+    // Complements grep/glob (exact text) + codegraph (import relation). Uses the
+    // same opt-in embeddings subsystem as memory recall; degrades to 'use grep'
+    // when fastembed is absent or MYA_NO_EMBEDDINGS is set.
+    try {
+      pi.registerTool({
+        name: "semantic_search",
+        label: "Semantic Code Search",
+        description:
+          "Search code by MEANING (embedding/semantic search). Use when grep/glob " +
+          "can't find code because you don't know the exact identifier/term — e.g. " +
+          "'where do we handle user authentication' finds the auth code even if the " +
+          "words differ. Returns ranked file:line matches. The first query indexes " +
+          "the workspace (may take a moment); later queries are incremental. Needs " +
+          "fastembed (opt-in); reports 'use grep' if unavailable.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "What to find, described by meaning" },
+            top_k: { type: "number", description: "Max results (default 8)" },
+          },
+          required: ["query"],
+        },
+        async execute(_id: string, params: { query: string; top_k?: number }) {
+          const { semanticSearch } = await import("@my-agent/memory");
+          const res = await semanticSearch(params.query, process.cwd(), params.top_k ?? 8);
+          if (!res.ok) {
+            return { content: [{ type: "text", text: `[semantic_search] unavailable: ${res.reason}` }] };
+          }
+          if (res.hits.length === 0) {
+            return {
+              content: [{ type: "text", text: `[semantic_search] no semantic matches (searched ${res.indexedChunks} chunks) — try grep.` }],
+            };
+          }
+          const lines = res.hits.map((h, i) =>
+            `${i + 1}. ${h.filePath}:${h.startLine}-${h.endLine} (score ${h.score.toFixed(3)})\n   ${h.snippet}`,
+          );
+          return {
+            content: [{
+              type: "text",
+              text: `[semantic_search] top ${res.hits.length} of ${res.indexedChunks} chunks:\n\n${lines.join("\n\n")}`,
+            }],
+          };
+        },
+      });
+    } catch {}
+
     // ── hashline_edit (hash-anchored edits, from pi-hashline-edit-pro) ──
     try {
       pi.registerTool({
@@ -1210,6 +1257,40 @@ ${hitLines}`);
           },
         });
       }).catch(() => {});
+    } catch {}
+
+    // ── semantic_search (embedding-based code search) ─────────────────
+    try {
+      pi.registerTool({
+        name: "semantic_search",
+        label: "Semantic Code Search",
+        description:
+          "Search code by MEANING (semantic embedding search). Use when grep/glob " +
+          "can't find what you mean because the query uses different words than the " +
+          "code. Returns ranked file+line ranges.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Natural-language description of what you're looking for" },
+            top_k: { type: "number", description: "Max results (default 10, max 50)" },
+          },
+          required: ["query"],
+        },
+        async execute(_id: string, params: { query: string; top_k?: number }) {
+          try {
+            const { semanticSearch } = await import("@my-agent/tools");
+            return await semanticSearch(params.query, {
+              topK: params.top_k,
+              workspace: process.cwd(),
+            });
+          } catch (e) {
+            return {
+              content: [{ type: "text" as const, text: `[semantic_search] Error: ${(e as Error).message}` }],
+              isError: true,
+            };
+          }
+        },
+      });
     } catch {}
 
     if (opts.registerTools) {

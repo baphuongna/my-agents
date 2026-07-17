@@ -101,6 +101,9 @@ export type { ConsolidateResult, DegradeResult, PurgeResult } from "./sqlite-con
 
 // ── Phase 5: Manager ──
 
+export { indexCodebase, semanticSearch } from "./code-index.js";
+export type { CodeSearchHit, CodeSearchResult, IndexStats } from "./code-index.js";
+
 // ── Action #3: embeddings (opt-in semantic recall) ──
 export {
   embeddingsDisabled, embeddingModel, embeddingDim,
