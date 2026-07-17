@@ -1047,7 +1047,7 @@ ${hitLines}`);
           return {
             content: [{
               type: "text",
-              text: `[semantic_search] top ${res.hits.length} of ${res.indexedChunks} chunks:\n\n${lines.join("\n\n")}`,
+              text: `[semantic_search] top ${res.hits.length} of ${res.indexedChunks} chunks:${res.indexing ? " (PARTIAL — still indexing workspace, retry for more)" : ""}\n\n${lines.join("\n\n")}`,
             }],
           };
         },

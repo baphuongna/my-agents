@@ -133,8 +133,7 @@ describe("code-index real-fastembed smoke (skipped if fastembed absent)", () => 
     if (!fastembedAvailable) { console.log("  [skipped: fastembed not installed]"); return; }
     await writeFile(join(dir, "rust-pref.ts"), "// user prefers rust for systems programming tasks\n");
     await writeFile(join(dir, "weather.ts"), "// weather forecast api for the browser\n");
-    const res = await semanticSearch("memory-safe compiled language choice", dir, 5);
-    expect(res.ok).toBe(true);
+    const res = await semanticSearch("memory-safe compiled language choice", dir, 5);    expect(res.ok).toBe(true);
     if (!res.ok) return;
     const rust = res.hits.find((h) => /rust-pref/.test(h.filePath));
     const weather = res.hits.find((h) => /weather/.test(h.filePath));
@@ -142,5 +141,5 @@ describe("code-index real-fastembed smoke (skipped if fastembed absent)", () => 
       // the paraphrase should score the rust file higher than the weather file
       expect(rust.score).toBeGreaterThan(weather.score);
     }
-  });
+  }, 30_000);
 });

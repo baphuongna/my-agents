@@ -11,6 +11,15 @@
  * Storage: a SEPARATE SQLite DB at ~/.mya/code-index.db (not memory.db), so the
  * code index never bloats the memory store and can be wiped independently.
  *
+ * Performance model: fastembed/ONNX inference runs on the MAIN thread (CPU-bound,
+ * blocks the event loop), so indexing a large workspace in one shot would freeze
+ * the TUI/agent turn for minutes. Instead, each query runs a BOUNDED incremental
+ * index batch (MAX_INDEX_PER_QUERY files) — per-query latency stays ~seconds, and
+ * the full index fills across successive queries (mtime-incremental: unchanged
+ * files are skipped, so re-queries are cheap). `indexing=true` on partial results
+ * signals the caller to retry for more. A worker-thread offload is the future
+ * "index everything fast" path; bounded incremental is the pragmatic v1.
+ *
  * v1 chunks per-file by ~CHUNK_CHARS (line-tracked). Per-symbol chunking (via
  * symbol-extractor.ts) is a documented v2 follow-up.
  */
@@ -28,6 +37,10 @@ const MAX_FILE_BYTES = 1_000_000;
 const MAX_FILES = 50_000;
 /** Safety valve on the brute-force cosine scan (mirrors memory recall's LIMIT). */
 const COSINE_CANDIDATE_LIMIT = 5000;
+/** Per-query index wall-clock budget — bounds turn latency. ONNX inference is
+ * main-thread CPU-bound AND slow on this CPU (~1s/embed), so a file-count cap
+ * would over-/under-shoot; a time budget adapts to the actual embed speed. */
+const INDEX_TIME_BUDGET_MS = 8_000;
 const SUPPORTED_EXT = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".go", ".java", ".rb", ".md",
 ]);
@@ -43,16 +56,20 @@ export interface CodeSearchHit {
   score: number;
 }
 export type CodeSearchResult =
-  | { ok: true; hits: CodeSearchHit[]; indexedChunks: number }
+  | { ok: true; hits: CodeSearchHit[]; indexedChunks: number; indexing?: boolean }
   | { ok: false; reason: string };
 export interface IndexStats {
   filesIndexed: number;
   filesSkipped: number;
   chunksEmbedded: number;
+  /** True when the index batch hit its budget and more files remain un-indexed. */
+  moreRemain?: boolean;
 }
 
 let _db: SqliteDatabase | null = null;
 let _dbPath: string = DEFAULT_DB_PATH;
+/** Set when a full pass (no budget hit) has completed for this root. */
+let _indexedRoot: string | null = null;
 
 /** Test seam: override the DB path (use a temp path in tests) + drop the open handle. */
 export function _setCodeIndexDbPath(path: string): void {
@@ -61,6 +78,7 @@ export function _setCodeIndexDbPath(path: string): void {
     try { _db.close(); } catch { /* ignore */ }
     _db = null;
   }
+  _indexedRoot = null;
 }
 
 function db(): SqliteDatabase {
@@ -129,10 +147,17 @@ function* walkSource(root: string): Generator<string> {
 
 /** Index (or refresh) the codebase at root. Incremental by mtime — unchanged
  * files are skipped (no re-embed). No-op when embeddings are disabled.
- * NOTE: the first call for a large workspace embeds every chunk and may take a
- * while; subsequent calls re-embed only changed files. */
-export async function indexCodebase(root: string): Promise<IndexStats> {
+ *
+ * `opts.maxFiles` bounds the number of NEW files embedded this call (ONNX is
+ * main-thread CPU-bound; bounding keeps turn latency sane on large repos). When
+ * the budget is hit, `moreRemain=true` signals the caller to retry for the rest.
+ * Resilient: one bad chunk (embed/insert error) is skipped, not fatal. */
+export async function indexCodebase(
+  root: string,
+  opts: { timeBudgetMs?: number } = {},
+): Promise<IndexStats> {
   if (embeddingsDisabled()) return { filesIndexed: 0, filesSkipped: 0, chunksEmbedded: 0 };
+  const deadline = opts.timeBudgetMs !== undefined ? Date.now() + opts.timeBudgetMs : undefined;
   const d = db();
   const stats: IndexStats = { filesIndexed: 0, filesSkipped: 0, chunksEmbedded: 0 };
   const selMtime = d.prepare("SELECT mtime FROM code_chunks WHERE file_path = ? LIMIT 1");
@@ -141,17 +166,26 @@ export async function indexCodebase(root: string): Promise<IndexStats> {
     "INSERT INTO code_chunks (file_path, start_line, end_line, content, embedding, mtime) VALUES (?, ?, ?, ?, ?, ?)",
   );
   for (const abs of walkSource(root)) {
+    if (deadline !== undefined && Date.now() > deadline) {
+      stats.moreRemain = true;
+      break;
+    }
     let st: { mtimeMs: number };
     try { st = statSync(abs); } catch { continue; }
     const mtime = Math.floor(st.mtimeMs);
+    if (!Number.isFinite(mtime)) { stats.filesSkipped++; continue; } // guard NaN mtime (special files)
     const existing = selMtime.get(abs) as { mtime: number } | undefined;
     if (existing && existing.mtime === mtime) { stats.filesSkipped++; continue; }
     del.run(abs);
     let content: string;
     try { content = readFileSync(abs, "utf8"); } catch { continue; }
     if (content.length > MAX_FILE_BYTES) { stats.filesSkipped++; continue; }
-    if (!Number.isFinite(mtime)) { stats.filesSkipped++; continue; } // guard NaN mtime (special files)
+    let hitDeadline = false;
     for (const ch of chunkFile(content)) {
+      // Check the deadline per-CHUNK (not per-file): a single large file (up to
+      // MAX_FILE_BYTES ≈ 500 chunks) could otherwise run for many minutes before
+      // the between-files check fires.
+      if (deadline !== undefined && Date.now() > deadline) { stats.moreRemain = true; hitDeadline = true; break; }
       try {
         const vec = await embedContent(ch.text);
         ins.run(abs, ch.startLine, ch.endLine, ch.text, vec ? vecToBuffer(vec) : null, mtime);
@@ -160,14 +194,22 @@ export async function indexCodebase(root: string): Promise<IndexStats> {
         // Resilience: one bad chunk (embed/insert error) must not abort the whole index.
       }
     }
+    if (hitDeadline) break;
     stats.filesIndexed++;
+    // Yield to the event loop periodically so the batch doesn't fully freeze the TUI.
+    if (stats.filesIndexed % 10 === 0) await new Promise<void>((r) => setImmediate(r));
   }
+  if (!stats.moreRemain) _indexedRoot = root;
   return stats;
 }
 
 /** Semantic search: find code chunks whose MEANING matches the query.
  * Returns ranked {file, line range, snippet, score} hits. Degrades to ok:false
- * (with a "use grep" reason) when embeddings are unavailable. */
+ * (with a 'use grep' reason) when embeddings are unavailable.
+ *
+ * Runs a bounded incremental index batch first (MAX_INDEX_PER_QUERY new files),
+ * so a large workspace fills across queries without a multi-minute block.
+ * `indexing=true` on the result means more files remain — retry for fuller results. */
 export async function semanticSearch(
   query: string,
   root: string,
@@ -176,8 +218,7 @@ export async function semanticSearch(
   if (embeddingsDisabled()) {
     return { ok: false, reason: "embeddings disabled (MYA_NO_EMBEDDINGS or fastembed absent) — use grep" };
   }
-  // Refresh the index first (incremental; cheap when nothing changed).
-  await indexCodebase(root);
+  const stats = await indexCodebase(root, { timeBudgetMs: INDEX_TIME_BUDGET_MS });
   const qvec = await embedContent(query);
   if (!qvec) {
     return { ok: false, reason: "embeddings unavailable (fastembed not installed or model not downloaded) — use grep" };
@@ -205,13 +246,20 @@ export async function semanticSearch(
     });
   }
   hits.sort((a, b) => b.score - a.score);
-  return { ok: true, hits: hits.slice(0, topK), indexedChunks: rows.length };
+  const stillIndexing = stats.moreRemain === true;
+  if (hits.length === 0) {
+    return stillIndexing
+      ? { ok: false, reason: "workspace is still being indexed (batch) — retry shortly for results, or use grep" }
+      : { ok: true, hits: [], indexedChunks: rows.length };
+  }
+  return { ok: true, hits: hits.slice(0, topK), indexedChunks: rows.length, indexing: stillIndexing };
 }
 
-/** Test seam: close + drop the open DB handle. */
+/** Test seam: close + drop the open DB handle + reset index state. */
 export function _resetCodeIndex(): void {
   if (_db) {
     try { _db.close(); } catch { /* ignore */ }
     _db = null;
   }
+  _indexedRoot = null;
 }
