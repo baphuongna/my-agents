@@ -50,6 +50,19 @@ import { applyEdits, computeLineHashes } from "@my-agent/tools";
 import { rankedCompact } from "@my-agent/prompts";
 import { adversarialReview } from "@my-agent/council";
 import { commandRegistry } from "./command-registry.js";
+import {
+  stripAvailableSkillsBlock,
+  buildIndex,
+  fingerprintSkills,
+  formatCategorySummary,
+  renderToolDescription,
+  search,
+  formatResults,
+  scanSkillDirectory,
+  type SkillIndex,
+  type PiSkill,
+} from "./skill-search/index.js";
+import { homedir } from "node:os";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -184,14 +197,15 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       }
     });
 
-    // Phase 5 governance: /trust <id> [up|down] — feedback-driven trust (hermes holographic).
+    // Phase 5 governance: /mem-trust <id> [up|down] — feedback-driven trust (hermes holographic).
+    // Named /mem-trust (not /trust) to avoid collision with pi's built-in /trust (project trust).
     // Without this, trust stays 0.5 forever (no authority signal). Wired so Dig 4 is live.
     if (opts.sqliteMemory) {
-      registerSharedCommand(pi, "trust", "Adjust memory trust: /trust <memoryId> [up|down]", async (args) => {
+      registerSharedCommand(pi, "mem-trust", "Adjust memory trust: /mem-trust <memoryId> [up|down]", async (args) => {
         try {
           const { applyFeedback } = await import("@my-agent/memory");
           const [id, dir] = args.trim().split(/\s+/);
-          if (!id) return "[trust] Usage: /trust <memoryId> [up|down]. Find ids via /memory <query>.";
+          if (!id) return "[trust] Usage: /mem-trust <memoryId> [up|down]. Find ids via /memory <query>.";
           const helpful = dir !== "down"; // default up
           const db = opts.sqliteMemory!.getDatabase() as never;
           const w = applyFeedback(db, id, "working_memory", helpful);
@@ -491,13 +505,94 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       });
     }
 
+    // ── pi-skill-search (self-contained): scan corpus ~/.mya/agent/data/ ONCE, then
+    //    per before_agent_start strip pi's <available_skills> (token save), build a
+    //    search index from the corpus (+ any pi skills), register an on-demand
+    //    `skill-search` tool, inject a compact category summary. The CORPUS is the
+    //    skill source (not pi discovery) — pi-skill-search scans it itself. ──
+    const corpusDir = join(homedir(), ".mya", "agent", "data");
+    const corpusSkills = scanSkillDirectory(corpusDir);
+    let skillIndex: SkillIndex | undefined;
+    let lastSkillsFingerprint = "";
+    let skillSearchToolRegistered = false;
+    // Dedupe by name; corpus skills win ties (mergeSkills from pi-skill-search).
+    const mergeSkills = (a: PiSkill[], b: PiSkill[]): PiSkill[] => {
+      const m = new Map<string, PiSkill>();
+      for (const s of a) m.set(s.name, s);
+      for (const s of b) m.set(s.name, s);
+      return [...m.values()];
+    };
+
     // ═══════════════════════════════════════════════════════════════════
-    // BEFORE_AGENT_START: inject brain facts + skills + context note
+    // BEFORE_AGENT_START: skill-search strip+summary+tool, then brain facts + context
     // FIXED: return { systemPrompt } instead of mutating the event
     // ═══════════════════════════════════════════════════════════════════
     pi.on("before_agent_start", (event: unknown) => {
-      const e = event as { systemPrompt?: string; prompt?: string };
+      const e = event as {
+        systemPrompt?: string;
+        prompt?: string;
+        systemPromptOptions?: { skills?: PiSkill[] };
+      };
       const parts: string[] = [];
+
+      // ── Skill strip + summary (replaces inject-all-skills) ──────────
+      // Strip pi's <available_skills> block (token save), build a search index from
+      // the corpus (~/.mya/agent/data/) + any pi-discovered skills, register the
+      // on-demand `skill-search` tool, inject a compact category summary.
+      const stripped = stripAvailableSkillsBlock(e.systemPrompt ?? "");
+      let basePrompt = stripped;
+      const piVisible = (e.systemPromptOptions?.skills ?? []).filter((s) => !s.disableModelInvocation);
+      const merged = piVisible.length > 0 ? mergeSkills(piVisible, corpusSkills) : corpusSkills;
+      if (merged.length > 0) {
+        const fp = fingerprintSkills(merged);
+        if (fp !== lastSkillsFingerprint || !skillIndex) {
+          try {
+            skillIndex = buildIndex(merged);
+            lastSkillsFingerprint = fp;
+          } catch (err) {
+            console.error("[mya skill-search] index build failed", err);
+            skillIndex = undefined;
+          }
+        }
+        if (skillIndex && skillIndex.entries.size > 0) {
+          if (!skillSearchToolRegistered) {
+            pi.registerTool({
+              name: "skill-search",
+              label: "Skill Search",
+              description: renderToolDescription(skillIndex),
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "Search query — 1 to 500 characters" },
+                  limit: { type: "number", description: "Max results (1-20, default 5)" },
+                },
+                required: ["query"],
+              },
+              async execute(_id: string, params: { query?: string; limit?: number }) {
+                const idx = skillIndex;
+                if (!idx || idx.entries.size === 0) {
+                  return { content: [{ type: "text" as const, text: "No skills indexed." }] };
+                }
+                const query = (params.query ?? "").trim();
+                if (query.length === 0) {
+                  return { content: [{ type: "text" as const, text: "Query is required." }] };
+                }
+                if (query.length > 500) {
+                  return { content: [{ type: "text" as const, text: "Query too long (max 500 chars)." }] };
+                }
+                const rawLimit = params.limit != null && Number.isFinite(params.limit) ? params.limit : 5;
+                const limit = Math.max(1, Math.min(20, Math.floor(rawLimit)));
+                const results = search(idx, query, limit);
+                const text = formatResults(query, results, idx.entries.size);
+                return { content: [{ type: "text" as const, text }] };
+              },
+            });
+            skillSearchToolRegistered = true;
+          }
+          basePrompt = `${stripped}\n\n${formatCategorySummary(skillIndex)}`;
+        }
+      }
+
 
       // Inject brain facts via unified RetrievalEngine pipeline.
       // Pipeline: tokenize → stopword → 5 arms (BM25+substring+trigram+vector+graph)
@@ -589,7 +684,7 @@ ${hitLines}`);
       );
 
       if (parts.length > 0 && typeof e.systemPrompt === "string") {
-        return { systemPrompt: e.systemPrompt + parts.join("\n") };
+        return { systemPrompt: basePrompt + parts.join("\n") };
       }
     });
 

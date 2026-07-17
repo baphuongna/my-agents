@@ -199,7 +199,7 @@ export const council: CouncilProvider | undefined = (() => {
 })();
 
 // ── Auto-discover skills + channels ──
-void skillStore.discover(join(homedir(), ".mya", "skills")).catch(() => { /* optional */ });
+void skillStore.discover(join(homedir(), ".mya", "agent", "skills")).catch(() => { /* optional */ });
 
 // ── Auto-configure channels from env/config ──
 let _mcpConfigs: import("@my-agent/gateway").McpServerConfig[] = [];

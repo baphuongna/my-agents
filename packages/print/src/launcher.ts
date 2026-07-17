@@ -14,6 +14,7 @@ import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join, resolve as pathResolve } from "node:path";
 import { nowWallclock } from "@my-agent/core";
+import { scanSkillDirectory } from "./skill-search/scanner.ts";
 
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
@@ -236,6 +237,25 @@ async function deleteRoleFile(name: string): Promise<boolean> {
   } catch { return false; }
 }
 
+/** Create a new skill (frontmatter + template body). Returns the SKILL.md path, or null on failure. */
+async function addSkillFile(name: string, description: string, subTab: "main" | "corpus"): Promise<string | null> {
+  // Validate name — kebab-case, no path traversal (mirror addRoleFile guard).
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) return null;
+  try {
+    const { writeFileSync, mkdirSync, existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const base = join(homedir(), ".mya", "agent", subTab === "main" ? "skills" : "data");
+    const skillDir = join(base, name);
+    const file = join(skillDir, "SKILL.md");
+    if (existsSync(file)) return null; // refuse silent overwrite
+    mkdirSync(skillDir, { recursive: true });
+    const content = `---\nname: ${name}\ndescription: ${description}\ntriggers: []\n---\n# ${name}\n\nDescribe when to use this skill and the instructions to follow.\n`;
+    writeFileSync(file, content);
+    return file;
+  } catch { return null; }
+}
+
 async function configureProvider(id: string, envKey: string, apiKey: string, action: "add" | "remove"): Promise<{ ok: boolean; restart?: boolean }> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/providers/config`, {
@@ -278,6 +298,7 @@ interface LauncherState {
   info: GatewayInfo;
   refreshing: boolean;
   lastRefresh: number;
+  skillSubTab: "main" | "corpus";
 }
 
 /** Inline prompt — user types a single value. Returns undefined on Esc. */
@@ -293,7 +314,11 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       process.stdout.write(`\n  ${A.bold(A.accent("mya"))} ${A.muted(label)}\n`);
       process.stdout.write(`  ${A.dim2("─".repeat(50))}\n\n`);
       process.stdout.write(`  ${A.accent(buf + "_")}\n\n`);
-      process.stdout.write(`  ${A.dim2(hint)}\n`);
+      // Multi-line hint: split on newlines, indent each line in dim.
+      for (const hintLine of hint.split("\n")) {
+        process.stdout.write(`  ${A.dim2(hintLine)}\n`);
+      }
+      process.stdout.write(`\n  ${A.dim2("Enter = confirm  ·  Esc = cancel")}\n`);
     };
     const cleanup = (result?: string) => {
       if (resolved) return;
@@ -413,7 +438,7 @@ async function launchGatewaySession(sessionId: string): Promise<void> {
 }
 
 /** Main launcher UI — fullscreen TUI with tabs, search, status bar, real-time refresh. */
-function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string } | undefined> {
+function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string } | { kind: "view-skill"; path: string; subTab: "main" | "corpus" } | { kind: "edit-skill"; path: string; subTab: "main" | "corpus" } | { kind: "delete-skill"; path: string; name: string; subTab: "main" | "corpus" } | { kind: "add-skill"; subTab: "main" | "corpus" } | undefined> {
   return new Promise((resolve) => {
     const state: LauncherState = {
       tab: initialTab ?? "agents",
@@ -424,6 +449,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
       info: { connected: false, port: GW_PORT, sessions: 0, running: 0 },
       refreshing: false,
       lastRefresh: 0,
+      skillSubTab: "main",
     };
     let resolved = false;
     let refreshTimer: NodeJS.Timeout | undefined;
@@ -619,26 +645,43 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           if (end < servers.length) lines.push(`  ${A.dim2("  ↓ " + (servers.length - end) + " more")}`);
         }
       } else if (state.tab === "skills") {
-        const skills = state.info.skills ?? [];
-        lines.push(`  ${A.green(String(skills.length))} skills loaded ${A.dim2("from ~/.mya/skills/")}`);
+        const mainSkills = state.info.skills ?? [];
+        const corpusDir = join(homedir(), ".mya", "agent", "data");
+        const corpusSkills = scanSkillDirectory(corpusDir);
+        const mainActive = state.skillSubTab === "main";
+
+        // Sub-tab toggle header with counts
+        const mainLabel = `[Main ${mainSkills.length}]`;
+        const corpusLabel = `[Corpus ${corpusSkills.length}]`;
+        const mainPart = mainActive ? A.bold(A.accent(mainLabel)) : A.muted(mainLabel);
+        const corpusPart = !mainActive ? A.bold(A.accent(corpusLabel)) : A.muted(corpusLabel);
+        lines.push(`  ${mainPart}  ${corpusPart}  ${A.dim2("(s to switch)")}`);
+        lines.push(`  ${A.dim2("from ~/.mya/agent/" + (mainActive ? "skills/" : "data/"))}`);
         lines.push("");
-        if (skills.length === 0) {
-          lines.push(`  ${A.muted("No skills installed.")}`);
-          lines.push(`  ${A.dim2("Install to ~/.mya/skills/<name>/SKILL.md")}`);
+
+        // Build display list from active sub-tab
+        const displaySkills: Array<{ name: string; description: string; triggers: string[]; filePath: string }> =
+          mainActive
+            ? mainSkills.map((s) => ({ name: s.name, description: s.description, triggers: s.triggers ?? [], filePath: join(homedir(), ".mya", "agent", "skills", s.name, "SKILL.md") }))
+            : corpusSkills.map((s) => ({ name: s.name, description: s.description, triggers: [], filePath: s.filePath }));
+
+        if (displaySkills.length === 0) {
+          lines.push(`  ${A.muted("No skills found.")}`);
+          lines.push(`  ${A.dim2(mainActive ? "Install to ~/.mya/agent/skills/<name>/SKILL.md" : "Add to ~/.mya/agent/data/<name>/SKILL.md")}`);
         } else {
-          const maxRows = Math.max(3, h - 8);
+          const maxRows = Math.max(3, h - 10);
           const half = Math.floor(maxRows / 2);
-          const start = Math.max(0, Math.min(state.sel - half, Math.max(0, skills.length - maxRows)));
-          const end = Math.min(skills.length, start + maxRows);
+          const start = Math.max(0, Math.min(state.sel - half, Math.max(0, displaySkills.length - maxRows)));
+          const end = Math.min(displaySkills.length, start + maxRows);
           if (start > 0) lines.push(`  ${A.dim2("  ↑ " + start + " above")}`);
           for (let i = start; i < end; i++) {
-            const s = skills[i]!;
+            const s = displaySkills[i]!;
             const is = i === state.sel;
-            const triggers = s.triggers?.length ? A.dim2("  ← " + s.triggers.slice(0, 3).join(", ")) : "";
+            const triggers = s.triggers.length ? A.dim2("  ← " + s.triggers.slice(0, 3).join(", ")) : "";
             const baseLine = `${A.green("●")}  ${A.bold(s.name.padEnd(24))} ${A.dim2(s.description.slice(0, 50))}${triggers}`;
             lines.push(is ? `  ${A.selBg(baseLine + A.clrEol)}` : `  ${baseLine}`);
           }
-          if (end < skills.length) lines.push(`  ${A.dim2("  ↓ " + (skills.length - end) + " more")}`);
+          if (end < displaySkills.length) lines.push(`  ${A.dim2("  ↓ " + (displaySkills.length - end) + " more")}`);
         }
       } else if (state.tab === "memory") {
         const m = state.info.memoryStats;
@@ -758,7 +801,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
               : state.tab === "mcp"
                 ? "1-8 tabs | ↑/↓ | Enter/c = connect | d delete | a add | q quit"
                 : state.tab === "skills"
-                  ? "1-8 tabs | ↑/↓ scroll | q quit"
+                  ? "1-8 tabs | ↑/↓ select | s=sub-tab | a=add | v=view | e=edit | d=delete | q quit"
                   : state.tab === "memory"
                     ? "1-8 tabs | Enter/d = dream now | r refresh | q quit"
                     : state.tab === "roles"
@@ -769,7 +812,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
       process.stdout.write(A.clear + lines.join("\n") + "\n");
     };
 
-    const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string }) => {
+    const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string } | { kind: "view-skill"; path: string; subTab: "main" | "corpus" } | { kind: "edit-skill"; path: string; subTab: "main" | "corpus" } | { kind: "delete-skill"; path: string; name: string; subTab: "main" | "corpus" } | { kind: "add-skill"; subTab: "main" | "corpus" }) => {
       if (resolved) return;
       resolved = true;
       if (refreshTimer) clearInterval(refreshTimer);
@@ -875,9 +918,9 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
           process.stdout.write(A.altScreenOff + A.showCursor);
-          const type = await inlinePrompt("Add Channel", "Type: telegram|discord|slack|whatsapp|signal|matrix|email|webhook", "telegram");
+          const type = await inlinePrompt("Add Channel", "Channel type. One of:\ntelegram | discord | slack | whatsapp | signal | matrix | email | webhook", "telegram");
           if (type) {
-            const token = await inlinePrompt("Channel Token", `Env var name for ${type} (e.g. TELEGRAM_BOT_TOKEN)`);
+            const token = await inlinePrompt("Channel Token", `Env var NAME holding the ${type} token (e.g. TELEGRAM_BOT_TOKEN).\nThe value must be set in your shell environment — not entered here.`);
             if (token) {
               process.stdout.write(`\n  ${A.muted("Set in shell:")} ${A.accent(token)}=xxx && mya serve\n`);
             }
@@ -932,11 +975,11 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
           process.stdout.write(A.altScreenOff + A.showCursor);
-          const name = await inlinePrompt("Cron Job Name", "e.g. daily-standup");
+          const name = await inlinePrompt("Cron Job Name", "Cron job name (kebab-case: e.g. daily-standup, weekly-review)");
           if (name) {
-            const schedule = await inlinePrompt("Schedule", "cron: '0 9 * * MON' or interval-ms: '3600000'", "0 9 * * *");
+            const schedule = await inlinePrompt("Schedule", "When to run. Either:\ncron: '0 9 * * MON'  (min hour day month day-of-week)\ninterval-ms: '3600000'  (milliseconds; 3600000 = every hour)", "0 9 * * *");
             if (schedule) {
-              const prompt = await inlinePrompt("Prompt", "What should the agent do?");
+              const prompt = await inlinePrompt("Prompt", "What the agent should do when this job fires.\nOne line describing the task.");
               if (prompt) {
                 const ok = await addCronJob(name, schedule, prompt);
                 process.stdout.write(`\n  ${ok ? A.green("✓ Job added") : A.red("✗ Failed")}\n  ${A.dim2("Press any key...")}`);
@@ -970,7 +1013,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
             }
           } else {
             // Add API key
-            const apiKey = await inlinePrompt(`Add ${p.id}`, `Enter value for ${p.envKey}:`);
+            const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.\nStored securely in ~/.mya/agent/auth.json.`);
             if (apiKey) {
               const result = await configureProvider(p.id, p.envKey, apiKey, "add");
               process.stdout.write(`\n  ${result.ok ? A.green("✓ Saved to ~/.mya/gateway.env") : A.red("✗ Failed")}\n  ${A.dim2("Restart gateway: systemctl --user restart mya-gateway")}`);
@@ -1015,11 +1058,11 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
           process.stdout.write(A.altScreenOff + A.showCursor);
-          const id = await inlinePrompt("MCP Server ID", "e.g. filesystem, github, slack");
+          const id = await inlinePrompt("MCP Server ID", "MCP server ID (kebab-case: e.g. filesystem, github, slack)");
           if (id) {
-            const command = await inlinePrompt("Command", "e.g. npx, node, python3", "npx");
+            const command = await inlinePrompt("Command", "Executable to run the server (e.g. npx, node, python3)", "npx");
             if (command) {
-              const argsStr = await inlinePrompt("Args", "e.g. @anthropic/mcp-server-filesystem /tmp");
+              const argsStr = await inlinePrompt("Args", "Command arguments, space-separated.\ne.g. @anthropic/mcp-server-filesystem /tmp");
               const args = argsStr ? argsStr.split(/\s+/).filter(Boolean) : [];
               try {
                 await fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers`, {
@@ -1042,9 +1085,38 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           return;
         }
       } else if (state.tab === "skills") {
-        const skills = state.info.skills ?? [];
+        // Build skills list (same logic as render)
+        const mainActive = state.skillSubTab === "main";
+        const mainSkills = state.info.skills ?? [];
+        const skills: Array<{ name: string; filePath: string }> = mainActive
+          ? mainSkills.map((s) => ({ name: s.name, filePath: join(homedir(), ".mya", "agent", "skills", s.name, "SKILL.md") }))
+          : scanSkillDirectory(join(homedir(), ".mya", "agent", "data")).map((s) => ({ name: s.name, filePath: s.filePath }));
+
         if (k === "\x1b[A") { state.sel = Math.max(0, state.sel - 1); render(); return; }
         if (k === "\x1b[B") { state.sel = Math.min(Math.max(0, skills.length - 1), state.sel + 1); render(); return; }
+        if (k === "s") { state.skillSubTab = mainActive ? "corpus" : "main"; state.sel = 0; render(); return; }
+        if (k === "a") { cleanup({ kind: "add-skill", subTab: state.skillSubTab }); return; }
+        if (k === "v" || k === "\r" || k === "\n") {
+          const skill = skills[state.sel];
+          if (skill && /^[a-z0-9][a-z0-9-]*$/.test(skill.name)) {
+            cleanup({ kind: "view-skill", path: skill.filePath, subTab: state.skillSubTab });
+          }
+          return;
+        }
+        if (k === "e") {
+          const skill = skills[state.sel];
+          if (skill && /^[a-z0-9][a-z0-9-]*$/.test(skill.name)) {
+            cleanup({ kind: "edit-skill", path: skill.filePath, subTab: state.skillSubTab });
+          }
+          return;
+        }
+        if (k === "d") {
+          const skill = skills[state.sel];
+          if (skill && /^[a-z0-9][a-z0-9-]*$/.test(skill.name)) {
+            cleanup({ kind: "delete-skill", path: skill.filePath, name: skill.name, subTab: state.skillSubTab });
+          }
+          return;
+        }
       } else if (state.tab === "memory") {
         if (k === "\r" || k === "\n" || k === "d") {
           void fetch(`http://127.0.0.1:${GW_PORT}/memory/dream`, { method: "POST" })
@@ -1108,9 +1180,9 @@ export async function runLauncherLoop(): Promise<void> {
       // External prompt flow (pickDirectory pattern — proven to work)
       const roleName = await promptForRoleName();
       if (roleName) {
-        const description = await inlinePrompt("Description", "What does this role do?");
+        const description = await inlinePrompt("Description", "What does this role do? (one line — shown in the launcher)");
         if (description) {
-          const promptAppend = await inlinePrompt("Prompt (optional)", "Appended to system prompt. Enter to skip");
+          const promptAppend = await inlinePrompt("Prompt (optional)", "Appended to the system prompt when this role is active.\nDescribe the role's persona/constraints. Enter to skip.");
           const ok = await addRoleFile(roleName, description, promptAppend ?? "");
           process.stdout.write(`\n  ${ok ? A.green("✓ Role created") : A.red("✗ Failed")} ${A.dim2("(~/.mya/roles/" + roleName + ".json)")}\n`);
           process.stdout.write(`  ${A.dim2("Edit the file to add tools/model settings. Press any key...")}`);
@@ -1124,6 +1196,66 @@ export async function runLauncherLoop(): Promise<void> {
       process.stdout.write(`  ${A.dim2("Press any key...")}`);
       await waitForKey();
       resumeTab = "roles";
+    } else if (result.kind === "view-skill") {
+      const pager = process.env.PAGER ?? "less";
+      const child = spawn(pager, [result.path], { stdio: "inherit" });
+      await new Promise<void>((r) => { child.on("exit", () => r()); child.on("error", () => r()); });
+      resumeTab = "skills";
+    } else if (result.kind === "edit-skill") {
+      const editor = process.env.VISUAL ?? process.env.EDITOR ?? "vi";
+      const child = spawn(editor, [result.path], { stdio: "inherit" });
+      await new Promise<void>((r) => { child.on("exit", () => r()); child.on("error", () => r()); });
+      resumeTab = "skills";
+    } else if (result.kind === "delete-skill") {
+      const confirm = await inlinePrompt("Delete skill", `Type "${result.name}" to confirm deletion`);
+      if (confirm === result.name) {
+        // SECURITY: derive skillDir from result.path (the real SKILL.md filePath from
+        // scanSkillDirectory) via dirname — NOT from result.name (frontmatter, untrusted,
+        // could be "../.."). Then validate it stays within the expected base dir.
+        const { dirname, resolve } = await import("node:path");
+        const base = join(homedir(), ".mya", "agent", result.subTab === "main" ? "skills" : "data");
+        const skillDir = dirname(result.path);
+        if (!resolve(skillDir).startsWith(resolve(base) + "/") && resolve(skillDir) !== resolve(base)) {
+          process.stdout.write(`\n  ${A.red("✗ Refused")} ${A.dim2("path outside skill dir")}\n`);
+        } else {
+          try {
+            const { rmSync } = await import("node:fs");
+            rmSync(skillDir, { recursive: true, force: true });
+            process.stdout.write(`\n  ${A.green("✓ Deleted")} ${A.dim2(skillDir)}\n`);
+          } catch {
+            process.stdout.write(`\n  ${A.red("✗ Delete failed")}\n`);
+          }
+        }
+      } else {
+        process.stdout.write(`\n  ${A.yellow("⊘ Cancelled")}\n`);
+      }
+      process.stdout.write(`  ${A.dim2("Press any key...")}`);
+      await waitForKey();
+      resumeTab = "skills";
+    } else if (result.kind === "add-skill") {
+      const name = await inlinePrompt("New skill name", "Skill name — kebab-case (lowercase letters, digits, hyphens).\nExample: my-coding-skill\nNo spaces, uppercase, or special chars.\nSaved to the active sub-tab's directory (Main → ~/.mya/agent/skills/, Corpus → ~/.mya/agent/data/).");
+      if (name && /^[a-z0-9][a-z0-9-]*$/.test(name)) {
+        const description = await inlinePrompt("Description", "One-line description — used by skill-search to index + match skills.\nBe specific: domain + purpose.\nExample: 'REST API design patterns — resource naming, status codes, versioning'");
+        if (description) {
+          const path = await addSkillFile(name, description, result.subTab);
+          if (path) {
+            process.stdout.write(`\n  ${A.green("✓ Skill created")} ${A.dim2(path)}\n`);
+            // Open editor so the user can fill the instruction body.
+            const editor = process.env.VISUAL ?? process.env.EDITOR ?? "vi";
+            const child = spawn(editor, [path], { stdio: "inherit" });
+            await new Promise<void>((r) => { child.on("exit", () => r()); child.on("error", () => r()); });
+          } else {
+            process.stdout.write(`\n  ${A.red("✗ Failed")} ${A.dim2("(invalid name or already exists)")}\n`);
+          }
+          process.stdout.write(`  ${A.dim2("Press any key...")}`);
+          await waitForKey();
+        }
+      } else if (name) {
+        process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("use kebab-case (lowercase, digits, hyphens)")}\n`);
+        process.stdout.write(`  ${A.dim2("Press any key...")}`);
+        await waitForKey();
+      }
+      resumeTab = "skills";
     } else {
       const _exhaustive: never = result;
       void _exhaustive;
@@ -1150,7 +1282,7 @@ async function promptForRoleName(): Promise<string | undefined> {
   const { homedir } = await import("node:os");
   const rolesDir = join(homedir(), ".mya", "roles");
   for (let retries = 3; retries > 0; retries--) {
-    const n = await inlinePrompt("Role Name", "kebab-case (e.g. coder, reviewer)");
+    const n = await inlinePrompt("Role Name", "Role name — kebab-case (e.g. coder, reviewer, researcher).\nSaved to ~/.mya/roles/<name>.json");
     if (!n) return undefined; // Escape
     if (!/^[a-z0-9][a-z0-9-]*$/.test(n)) {
       process.stdout.write(`\n  ${A.red("✗ Invalid name")} ${A.dim2("— use kebab-case (lowercase, digits, hyphens, must start with letter/digit)")}\n  ${A.dim2("Press any key to retry...")}`);

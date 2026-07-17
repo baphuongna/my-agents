@@ -7,6 +7,8 @@
  * The bridge injects mya packages into pi's TUI so they are visible during
  * interactive use.
  */
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createMyaBridge } from "./mya-bridge.js";
 import * as shared from "./shared-instances.js";
 
@@ -53,6 +55,12 @@ export async function runPiInteractive(): Promise<void> {
 
   // Pass user args directly to pi — pi handles model selection, thinking level,
   // auth detection, and settings natively. No forced --model or --thinking.
+  // mya scopes skills to ~/.mya/agent/skills/ ONLY: set MYA_SKILL_SOURCE so the
+  // forked resource-loader (updateSkillsFromPaths gate) ignores pi's auto-discovered
+  // skills (~/.agents/skills, project dirs, pi-packages) and loads only this dir.
+  // No --no-skills flag (that hid skills from the loaded-resources panel);
+  // extensions + themes still load normally.
+  process.env.MYA_SKILL_SOURCE = join(homedir(), ".mya", "agent", "skills");
   const piArgs = filterMyaFlags(process.argv.slice(2));
   await main(piArgs, { extensionFactories: [{ name: "mya-bridge", factory: myaBridge }] });
 }
