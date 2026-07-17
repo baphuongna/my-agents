@@ -150,10 +150,15 @@ export async function indexCodebase(root: string): Promise<IndexStats> {
     let content: string;
     try { content = readFileSync(abs, "utf8"); } catch { continue; }
     if (content.length > MAX_FILE_BYTES) { stats.filesSkipped++; continue; }
+    if (!Number.isFinite(mtime)) { stats.filesSkipped++; continue; } // guard NaN mtime (special files)
     for (const ch of chunkFile(content)) {
-      const vec = await embedContent(ch.text);
-      ins.run(abs, ch.startLine, ch.endLine, ch.text, vec ? vecToBuffer(vec) : null, mtime);
-      if (vec) stats.chunksEmbedded++;
+      try {
+        const vec = await embedContent(ch.text);
+        ins.run(abs, ch.startLine, ch.endLine, ch.text, vec ? vecToBuffer(vec) : null, mtime);
+        if (vec) stats.chunksEmbedded++;
+      } catch {
+        // Resilience: one bad chunk (embed/insert error) must not abort the whole index.
+      }
     }
     stats.filesIndexed++;
   }
