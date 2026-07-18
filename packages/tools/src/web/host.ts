@@ -30,19 +30,7 @@
  *     registered by `registerFetchTools` so the 7th TUI case can
  *     exercise it end-to-end without going through the orchestrator.
  */
-import {
-  browserNavigateTool,
-  browserSnapshotTool,
-  browserClickTool,
-  browserTypeTool,
-  browserScrollTool,
-  browserBackTool,
-  browserPressTool,
-  browserScreenshotTool,
-  browserCloseTool,
-  browserSearchTool,
-  BROWSER_DESCRIPTIONS,
-} from "./browser/index.js";
+import { browserTools, BROWSER_DESCRIPTIONS } from "./browser/index.js";
 import {
   webSearchTool,
   webExtractTool,
@@ -72,28 +60,27 @@ export interface MyaHostApi {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Tool → ToolImpl map for the 8 browser_* tools (Phase 1-2 leaf). */
-const BROWSER_IMPLS: ToolImpl[] = [
-  browserNavigateTool,
-  browserSnapshotTool,
-  browserClickTool,
-  browserTypeTool,
-  browserScrollTool,
-  browserBackTool,
-  browserPressTool,
-  browserScreenshotTool,
-];
-
 /** Tool → ToolImpl map for web_search + web_extract (Phase 3 leaf). */
 const SEARCH_IMPLS: ToolImpl[] = [webSearchTool, webExtractTool];
 
 /**
- * Narrow the tool name to the browser_* set. Unknown names fall through to
- * the orchestrator, which returns a typed error — we just forward.
+ * Browser action tools routed through the engine-chain orchestrator
+ * (runBrowserWithFallback → camofox → cloud → local → web_fetch floor).
+ * Others (browser_close = lifecycle, browser_search = composite) are thin
+ * leaves calling impl.run directly. The canonical tool LIST is `browserTools`
+ * (iterated in registerWebTools) — this set only decides the ROUTING.
+ * Add a new action tool here AND to BrowserToolName (orchestrator.ts).
  */
-function isBrowserToolName(name: string): name is BrowserToolName {
-  return BROWSER_IMPLS.some((impl) => impl.meta.name === name);
-}
+const ORCHESTRATOR_ROUTED: ReadonlySet<string> = new Set([
+  "browser_navigate",
+  "browser_snapshot",
+  "browser_click",
+  "browser_type",
+  "browser_scroll",
+  "browser_back",
+  "browser_press",
+  "browser_screenshot",
+]);
 
 /**
  * Adapt a ToolResult into the `{content: [{type:'text', text}]}` envelope
@@ -169,81 +156,30 @@ function toOrchestratorCtx(): OrchestratorCtx {
  * (no chain — it always succeeds locally).
  */
 export function registerWebTools(pi: MyaHostApi): void {
-  // ── Browser tools: route through runBrowserWithFallback ──────────────
-  for (const impl of BROWSER_IMPLS) {
+  // ── Browser tools: iterate the canonical `browserTools` array so adding a
+  //    tool there auto-registers it. Orchestrator-routed action tools go through
+  //    runBrowserWithFallback (engine chain → web_fetch floor); lifecycle/
+  //    composite tools (browser_close, browser_search) are thin leaves (impl.run).
+  for (const impl of browserTools) {
     const name = impl.meta.name;
+    const routed = ORCHESTRATOR_ROUTED.has(name);
     pi.registerTool({
       name,
-      description:
-        BROWSER_DESCRIPTIONS[name] ??
-        // Fallback: rebuild a minimal description from the impl's args.
-        `${name} (web tool)`,
+      description: BROWSER_DESCRIPTIONS[name] ?? `${name} (web tool)`,
       parameters: impl.meta.args,
       async execute(_id: string, params: unknown) {
         try {
-          if (!isBrowserToolName(name)) {
-            return adaptToPi(err(name, `unknown browser tool "${name}"`));
-          }
-          const result = await runBrowserWithFallback(
-            toOrchestratorArgs(name, params),
-            toOrchestratorCtx(),
-          );
+          const result = routed
+            ? await runBrowserWithFallback(
+                toOrchestratorArgs(name as BrowserToolName, params),
+                toOrchestratorCtx(),
+              )
+            : await impl.run(params, undefined as never);
           return adaptToPi(result);
         } catch (e) {
           // Belt-and-suspenders — the orchestrator promises to never throw,
           // but a future bug or downstream edge case shouldn't crash the TUI.
-          return adaptToPi(
-            err(name, e instanceof Error ? e.message : String(e)),
-          );
-        }
-      },
-    });
-  }
-
-  // browser_close is a thin leaf — no chain fallback. Register separately so
-  // the orchestrator can short-circuit (still goes through runBrowserWithFallback
-  // for shape consistency; the orchestrator will resolve it as a known browser
-  // tool and the leaf's `run` always succeeds).
-  {
-    const name = browserCloseTool.meta.name;
-    pi.registerTool({
-      name,
-      description: BROWSER_DESCRIPTIONS[name] ?? `${name} (web tool)`,
-      parameters: browserCloseTool.meta.args,
-      async execute(_id: string, params: unknown) {
-        try {
-          const result = await runBrowserWithFallback(
-            toOrchestratorArgs(name, params),
-            toOrchestratorCtx(),
-          );
-          return adaptToPi(result);
-        } catch (e) {
-          return adaptToPi(
-            err(name, e instanceof Error ? e.message : String(e)),
-          );
-        }
-      },
-    });
-  }
-
-  // browser_search: browser-driven search via Camofox anti-detect (ddgs
-  // replacement). Composite tool — resolves engine + does its own retry
-  // internally, so register as a thin leaf (NOT via runBrowserWithFallback,
-  // whose orchestrator type/dispatch doesn't cover it).
-  {
-    const name = browserSearchTool.meta.name;
-    pi.registerTool({
-      name,
-      description: BROWSER_DESCRIPTIONS[name] ?? `${name} (web tool)`,
-      parameters: browserSearchTool.meta.args,
-      async execute(_id: string, params: unknown) {
-        try {
-          const result = await browserSearchTool.run(params, undefined as never);
-          return adaptToPi(result);
-        } catch (e) {
-          return adaptToPi(
-            err(name, e instanceof Error ? e.message : String(e)),
-          );
+          return adaptToPi(err(name, e instanceof Error ? e.message : String(e)));
         }
       },
     });

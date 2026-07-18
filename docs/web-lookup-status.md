@@ -125,6 +125,13 @@ Env-driven (CAMOFOX_URL, BROWSERBASE_API_KEY/PROJECT_ID, BROWSER_USE_API_KEY, TA
 3. Node ≥20 OK (agent-browser engines says ≥24 but EBADENGINE is a WARNING only — the Rust binary runs on node22; `npm i` succeeds).
 4. Optional engines: Camofox (set `CAMOFOX_URL`), Browserbase (set `BROWSERBASE_API_KEY`+`PROJECT_ID`), search keys as needed (none required — ddgs floor).
 
+## Pitfalls (don't repeat)
+
+- **Two browser-tool registration paths** — `registerBrowserTools` (leaf, iterates `browserTools` array in `web/browser/index.ts`) is NOT what the TUI uses. mya-bridge calls `registerWebTools` (`web/host.ts`, the Phase-5 orchestrator adapter), which had its OWN hardcoded tool list. **When adding a browser tool: update BOTH `browserTools` array (index.ts) AND `host.ts`'s registration** — otherwise the tool is built + unit-tested but never exposed in the TUI function-calling schema (the `c407897` bug). After the host.ts refactor (iterates `browserTools`), this is resolved — adding to `browserTools` auto-registers.
+- **CAMOFOX_URL env propagation** — tmux server holds stale env; shell `export` doesn't reach a new tmux session → the TUI fell back to local Chromium (bot-blocked). Fixed via the generic `auth.json [env]` loader (`main.ts`/`cli.ts`) — put CAMOFOX_URL (and future BROWSERBASE/search keys) in `~/.mya/agent/auth.json` `{"env":{...}}`.
+- **Camofox combobox has no ref** — Camofox's a11y tree assigns NO `[eN]` ref to the search combobox, so ref-based `browser_type` is impossible. `browser_search` uses URL-based search (`engine?q=`) to sidestep this.
+- **Camofox snapshot is racy** on heavy SERP pages (returns empty sometimes) — `browser_search` retries the snapshot.
+
 ## Known gaps / follow-ups (honest)
 
 | Gap | Severity | Note |
