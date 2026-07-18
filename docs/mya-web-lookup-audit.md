@@ -1,5 +1,13 @@
 # mya Web-Lookup Audit
 
+> **IMPLEMENTATION STATUS (2026-07-18): DONE — Phases 1-5 of `docs/PLAN-BROWSER.md`.**
+> The audit below documents the PRE-implementation state. As of commit `d1a56e8` + Phase 6:
+> - **Browser**: agent-browser local engine (navigate/snapshot/click/type/scroll/back/press/screenshot) + cloud (browserbase/browser_use) + Camofox REST — engine chain A (camofox→cloud→local). Truncated `browser_action` REMOVED.
+> - **Search/extract**: ddgs zero-key floor + tavily/exa/parallel/firecrawl/searxng/brave; backend chain B; web_extract→web_fetch fallback.
+> - **web_fetch**: universal HTTP→markdown floor (the "feature never dies" fallback).
+> - **Security**: 6-layer guard (secret-URL percent-decode, SSRF metadata floor UNCONDITIONAL incl. IPv6-mapped `::ffff:`, private/internal, post-redirect, scheme, bot-detect).
+> - **697/697 web tests** + harness 58/58 + TUI-verified (navigate/snapshot/click local+Camofox, web_search ddgs, web_extract→web_fetch, browser→web_fetch fallback, security blocks). See `docs/PLAN-BROWSER.md` + `docs/web-lookup-architecture-deepdive.md`.
+>
 > Audit of mya's web/network information retrieval tooling. 2026-07-18.
 > Verified by reading source + `git ls-files`. Working tree is TypeScript-only + 3 desktop Rust crates (natives, desktop-shell, desktop-ui). The `crates/mya-*` Rust crates in session metadata are NOT materialized in this tree (0 git-tracked, 0 on disk).
 

