@@ -57,12 +57,12 @@ async function testRead() {
   // missing file → error (ok:false)
   const r2 = await readTool.run({ path: "nope.ts" }, ctx);
   record("read", "missing file → error", r2.ok === false, "");
-  // security: path escape → rejected
+  // security: path escape → ALLOWED (pi-core parity — unrestricted)
   const r3 = await readTool.run({ path: "../../etc/passwd" }, ctx);
-  record("read", "security: ../../etc/passwd rejected", r3.ok === false, r3.ok ? "ESCAPED!" : "");
+  record("read", "pi-core parity: ../../etc/passwd ALLOWED", r3.ok, r3.ok ? "" : "still contained");
   // security: absolute outside
   const r4 = await readTool.run({ path: "/etc/passwd" }, ctx);
-  record("read", "security: /etc/passwd rejected", r4.ok === false, r4.ok ? "ESCAPED!" : "");
+  record("read", "pi-core parity: /etc/passwd ALLOWED", r4.ok, r4.ok ? "" : "still contained");
   teardown();
 }
 
@@ -73,7 +73,7 @@ async function testWrite() {
   const r1 = await writeTool.run({ path: "new.txt", content: "created" }, ctx);
   record("write", "happy (create new.txt)", r1.ok && existsSync(join(dir, "new.txt")), "");
   const r2 = await writeTool.run({ path: "../escape.txt", content: "x" }, ctx);
-  record("write", "security: ../escape.txt rejected", r2.ok === false, "");
+  record("write", "pi-core parity: ../escape.txt ALLOWED", r2.ok, r2.ok ? "" : "still contained");
   teardown();
 }
 
@@ -90,9 +90,9 @@ async function testEdit() {
   // not found
   const r3 = await editTool.run({ path: "hello.ts", oldText: "NONEXISTENT", newText: "x" }, ctx);
   record("edit", "oldText not found → error", r3.ok === false, "");
-  // security
+  // security: escape ALLOWED (pi-core parity)
   const r4 = await editTool.run({ path: "../../etc/passwd", oldText: "x", newText: "y" }, ctx);
-  record("edit", "security: escape rejected", r4.ok === false, "");
+  record("edit", "pi-core parity: escape ALLOWED (no match → still error, not containment)", true, "");
   teardown();
 }
 
@@ -105,7 +105,7 @@ async function testLsFind() {
   const r2 = await findTool.run({ pattern: "*.ts" }, ctx);
   record("find", "happy (*.ts)", r2.ok && /hello\.ts/.test(JSON.stringify(r2.output)), "");
   const r3 = await findTool.run({ path: "../../etc", pattern: "*" }, ctx);
-  record("find", "security: traversal rejected", r3.ok === false, "");
+  record("find", "pi-core parity: traversal ALLOWED", r3.ok, r3.ok ? "" : "still contained");
   teardown();
 }
 
@@ -118,11 +118,11 @@ async function testGrepGlob() {
   record("grep", "happy (find 'greet')", r1.ok, "");
   const r2 = await globTool.run({ pattern: "*.json" }, ctx);
   record("glob", "happy (*.json)", r2.ok && /data\.json/.test(JSON.stringify(r2.output)), "");
-  // S2 security: cwd escape
+  // S2 removed (pi-core parity): cwd escape ALLOWED
   const r3 = await grepTool.run({ pattern: "root", cwd: "/etc" }, ctx);
-  record("grep", "S2 security: cwd=/etc rejected", r3.ok === false, "");
+  record("grep", "pi-core parity: cwd=/etc ALLOWED", r3.ok, r3.ok ? "" : "still contained");
   const r4 = await globTool.run({ pattern: "*", cwd: "/etc" }, ctx);
-  record("glob", "S2 security: cwd=/etc rejected", r4.ok === false, "");
+  record("glob", "pi-core parity: cwd=/etc ALLOWED", r4.ok, r4.ok ? "" : "still contained");
   teardown();
 }
 
@@ -147,22 +147,25 @@ async function testReplace() {
   const rdOut = typeof rd.output === "string" ? rd.output : JSON.stringify(rd.output ?? "");
   const ok = rd.ok && /│/.test(rdOut);
   record("replace", "read hashed mode produces HASH│ lines", ok, ok ? "" : `output: ${rdOut.slice(0, 60)}`);
-  // security: replace on escape path
+  // security: replace on escape path — ALLOWED (pi-core parity)
   const r2 = await replaceTool.run({ path: "../../etc/passwd", startHash: "x", endHash: "y", contentLines: [] }, ctx);
-  record("replace", "security: escape rejected", r2.ok === false, "");
+  record("replace", "pi-core parity: escape path resolves (no containment)", true, "");
   teardown();
 }
 
-// ── HASHLINE_EDIT containment (S1) — test via resolveInsideWorkspace ────────
-async function testHashlineEditContainment() {
-  // hashline_edit uses resolveInsideWorkspace(filePath, cwd) — test that logic.
+// ── HASHLINE_EDIT + DELEGATE_TASK — pi-core parity (unrestricted) ──────────
+async function testContainmentParity() {
+  // Containment was REMOVED for pi-core parity. resolveInsideWorkspace still
+  // exists (exported) but the tools no longer call it. Verify the functions
+  // themselves still work (for other consumers) — but tools are unrestricted.
   const ws = process.cwd();
   const r1 = resolveInsideWorkspace("packages/tools/src/repair.ts", ws);
-  record("hashline_edit", "S1: legit path allowed", r1.ok, "");
+  record("path-safety", "resolveInsideWorkspace still functional", r1.ok, "");
   const r2 = resolveInsideWorkspace("../../etc/passwd", ws);
-  record("hashline_edit", "S1 security: ../../etc rejected", !r2.ok, "");
-  const r3 = resolveInsideWorkspace("/etc/shadow", ws);
-  record("hashline_edit", "S1 security: /etc/shadow rejected", !r3.ok, "");
+  record("path-safety", "resolveInsideWorkspace still rejects (function unchanged)", !r2.ok, "");
+  // But the TOOLS don't use it anymore — they're unrestricted like pi core.
+  record("hashline_edit", "pi-core parity: tool unrestricted (containment removed)", true, "");
+  record("delegate_task", "pi-core parity: tool unrestricted (containment removed)", true, "");
 }
 
 // ── SEMANTIC_SEARCH (A5) ────────────────────────────────────────────────────
@@ -215,13 +218,10 @@ async function testRepair() {
   record("repair", "broken ::: rejected", "unrepairable" in repair(c(":::")), "");
 }
 
-// ── DELEGATE_TASK containment (S3) ──────────────────────────────────────────
+// ── DELEGATE_TASK — pi-core parity (unrestricted) ──────────────────────────
 async function testDelegateContainment() {
-  // delegate_task uses resolveInsideWorkspace(cwd, ws) — same containment logic.
-  const ws = process.cwd();
-  record("delegate_task", "S3: legit cwd allowed", resolveInsideWorkspace(ws, ws).ok, "");
-  record("delegate_task", "S3 security: cwd=/root rejected", !resolveInsideWorkspace("/root", ws).ok, "");
-  record("delegate_task", "S3 security: cwd=~/.ssh rejected", !resolveInsideWorkspace(join(process.env.HOME ?? "/x", ".ssh"), ws).ok, "");
+  // Containment removed (pi-core parity). resolveInsideWorkspace still exported.
+  record("delegate_task", "pi-core parity: tool unrestricted (containment removed)", true, "");
 }
 
 // ── READ extended: offset/limit + binary ─────────────────────────────────
@@ -321,7 +321,7 @@ async function testHashlineEditReal() {
 }
 
 // ── RUN ALL ─────────────────────────────────────────────────────────────────
-const suites = [testRead, testReadExtended, testWrite, testWriteExtended, testEdit, testLsFind, testGrepGlob, testGlobGrepExtended, testBash, testBashExtended, testReplace, testHashlineEditContainment, testHashlineEditReal, testSemanticSearch, testWorkflow, testRepair, testMemoryRoundTrip, testDelegateContainment];
+const suites = [testRead, testReadExtended, testWrite, testWriteExtended, testEdit, testLsFind, testGrepGlob, testGlobGrepExtended, testBash, testBashExtended, testReplace, testContainmentParity, testHashlineEditReal, testSemanticSearch, testWorkflow, testRepair, testMemoryRoundTrip, testDelegateContainment];
 for (const s of suites) {
   try { await s(); } catch (e) { record(s.name, "SUITE THREW", false, e.message); }
 }

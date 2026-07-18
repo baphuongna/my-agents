@@ -60,9 +60,9 @@ describe("lsTool", () => {
     expect(data.truncated).toBe(false);
   });
 
-  it("rejects path traversal", async () => {
+  it("allows path traversal (pi-core parity — unrestricted)", async () => {
     const res = await lsTool.run({ path: "../../etc" }, makeCtx(dir));
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
   });
 });
 
@@ -128,13 +128,13 @@ describe("findTool", () => {
     expect(data.results).toContain("src");
   });
 
-  it("rejects path traversal", async () => {
+  it("allows path traversal (pi-core parity — unrestricted)", async () => {
     const res = await findTool.run({ path: "../../etc", pattern: "*" }, makeCtx(dir));
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
   });
 });
 
-describe("glob/grep cwd containment (S2)", () => {
+describe("glob/grep cwd (pi-core parity — unrestricted)", () => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "mya-glob-"));
@@ -144,14 +144,14 @@ describe("glob/grep cwd containment (S2)", () => {
     if (dir) await rm(dir, { recursive: true, force: true });
   });
 
-  it("glob rejects cwd outside workspace", async () => {
+  it("glob ALLOWS cwd outside workspace (pi-core parity)", async () => {
     const res = await globTool.run({ pattern: "*.ts", cwd: "/etc" }, makeCtx(dir));
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
   });
 
-  it("glob rejects cwd traversal escape", async () => {
+  it("glob ALLOWS cwd traversal escape (pi-core parity)", async () => {
     const res = await globTool.run({ pattern: "*.ts", cwd: "../../etc" }, makeCtx(dir));
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
   });
 
   it("glob allows cwd = workspace and finds files", async () => {
@@ -164,9 +164,9 @@ describe("glob/grep cwd containment (S2)", () => {
     expect(res.ok).toBe(true);
   });
 
-  it("grep rejects cwd outside workspace", async () => {
+  it("grep ALLOWS cwd outside workspace (pi-core parity)", async () => {
     const res = await grepTool.run({ pattern: "x", cwd: "/etc" }, makeCtx(dir));
-    expect(res.ok).toBe(false);
+    expect(res.ok).toBe(true);
   });
 
   it("grep allows cwd = workspace", async () => {

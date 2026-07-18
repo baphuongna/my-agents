@@ -1083,14 +1083,12 @@ ${hitLines}`);
         },
         async execute(_id: string, params: { script: string; input?: unknown; timeout_ms?: number }) {
           const { spawnSubagent, trackSubagent } = await import("../../coding-agent/src/core/subagent.js");
-          const { resolveInsideWorkspace } = await import("@my-agent/tools");
-          // S3-style containment: subagent cwd must stay inside the workspace.
+          // Unrestricted (pi-core parity): subagent cwd is NOT bounded to the
+          // workspace — same as pi core's delegate/subagent path.
           const spawn = async (goal: string, o: { allowedTools?: string[]; cwd?: string } = {}): Promise<string> => {
             const ws = process.cwd();
-            const cwdResolved = resolveInsideWorkspace(o.cwd ?? ws, ws);
-            if (!cwdResolved.ok) throw new Error(`workflow agent cwd rejected: ${cwdResolved.reason}: ${cwdResolved.detail}`);
             const sub = await spawnSubagent(parentSessionId, {
-              goal, allowedTools: o.allowedTools, cwd: cwdResolved.abs, parentDepth: 1,
+              goal, allowedTools: o.allowedTools, cwd: o.cwd ?? ws, parentDepth: 1,
             });
             trackSubagent(parentSessionId, sub);
             // Strip the <DONE> sentinel — subagents are prompted to prefix their
@@ -1154,17 +1152,9 @@ ${hitLines}`);
           },
         ) {
           const { readFileSync, writeFileSync } = await import("node:fs");
-          const { resolveInsideWorkspace } = await import("@my-agent/tools");
-          // S1 fix: contain the path inside the workspace. hashline_edit previously
-          // read/wrote params.filePath directly, allowing edits outside the workspace.
-          const ws = process.cwd();
-          const resolved = resolveInsideWorkspace(params.filePath, ws);
-          if (!resolved.ok) {
-            return {
-              content: [{ type: "text", text: `[hashline_edit] rejected: ${resolved.reason}: ${resolved.detail}` }],
-            };
-          }
-          const filePath = resolved.abs;
+          // Unrestricted (pi-core parity): hashline_edit edits any path the agent
+          // targets, same as pi core's edit/write.
+          const filePath = params.filePath;
           const content = readFileSync(filePath, "utf8");
           const hashes = computeLineHashes(content);
           const result = applyEdits(content, params.edits, hashes);
@@ -1291,21 +1281,11 @@ ${hitLines}`);
             _toolCallId: string,
             params: { goal: string; allowed_tools?: string[]; cwd?: string; parent_depth?: number; wait?: boolean },
           ) {
-            // S3 fix: contain the subagent cwd inside the workspace. Previously
-            // params.cwd passed straight through, letting a model spawn a subagent
-            // in /root, ~/.ssh, etc. (expanding the workspace without consent).
-            const { resolveInsideWorkspace } = await import("@my-agent/tools");
+            // Unrestricted (pi-core parity): subagent cwd is NOT bounded.
             const ws = process.cwd();
-            const cwdResolved = resolveInsideWorkspace(params.cwd ?? ws, ws);
-            if (!cwdResolved.ok) {
-              return {
-                content: [{ type: "text", text: `[delegate_task] rejected cwd: ${cwdResolved.reason}: ${cwdResolved.detail}` }],
-                isError: true,
-              };
-            }
             const sub = await spawnSubagent(parentSessionId, {
               goal: params.goal,
-              cwd: cwdResolved.abs,
+              cwd: params.cwd ?? ws,
               allowedTools: params.allowed_tools,
               parentDepth: params.parent_depth ?? 0,
             });

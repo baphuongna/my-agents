@@ -16,21 +16,24 @@ import { join, relative, resolve, dirname } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
-import { resolveInsideWorkspace, resolveExistingInsideWorkspace } from "./path-safety.js";
+// NOTE: containment (resolveInsideWorkspace/resolveExistingInsideWorkspace from
+// ./path-safety.js) is DISABLED for pi-core parity. The functions are still
+// exported from this package (index.ts) for other consumers/tests, but the
+// builtin tools no longer bound paths to the workspace — see `contain()` above.
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
 import { nowWallclock } from "@my-agent/core";
 import { screenCaptureTool, screenFindTool } from "./screen.js";
 import { browserNavigateTool, browserClickTool, browserTypeTool, browserScreenshotTool, browserExtractTool, browserEvalTool, browserCloseTool } from "./browser.js";
 
-/** F1 fix: contain a tool's path inside the ctx workspace. Returns the safe
- * absolute path, or an error result on escape. `mode:"write"` is lexical-only;
- * `mode:"read"` canonicalizes (symlink-escape aware). */
-function contain(ctx: { workspace?: string }, path: string, mode: "write" | "read"):
+/** Containment is DISABLED (pi-core parity). mya trusts the agent + relies on
+ * the host permission model the same way pi core's read/write/edit do. The path
+ * is still resolved to absolute (relative paths join the workspace), but it is
+ * NOT bounded — /etc/passwd, ~/.ssh/config, etc. are reachable by design.
+ * Kept as a thin resolver so the call sites are unchanged. */
+function contain(ctx: { workspace?: string }, path: string, _mode: "write" | "read"):
   | { ok: true; abs: string }
   | { ok: false; err: ReturnType<typeof err> } {
-  const ws = ctx.workspace ?? process.cwd();
-  const r = mode === "write" ? resolveInsideWorkspace(path, ws) : resolveExistingInsideWorkspace(path, ws);
-  return r.ok ? { ok: true, abs: r.abs } : { ok: false, err: err("path", r.reason + ": " + r.detail) };
+  return { ok: true, abs: resolve(ctx.workspace ?? process.cwd(), path) };
 }
 
 /** F8 fix: strip secret-looking env vars before passing to a child process. */
@@ -225,15 +228,9 @@ export const globTool: ToolImpl = {
   async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.pattern !== "string")
       return err("glob", "pattern required");
-    // S2 fix: bound the search root to the turn workspace (path-containment).
-    // Previously glob/grep accepted any caller-supplied cwd, unbounded.
+    // Unrestricted (pi-core parity): cwd is NOT bounded to the workspace.
     const ws = ctx?.workspace ?? process.cwd();
-    let cwd = typeof args.cwd === "string" ? args.cwd : ws;
-    if (cwd !== ws) {
-      const r = resolveExistingInsideWorkspace(cwd, ws);
-      if (!r.ok) return err("glob", `cwd outside workspace: ${r.reason}: ${r.detail}`);
-      cwd = r.abs;
-    }
+    const cwd = typeof args.cwd === "string" ? args.cwd : ws;
     // Tier 4: prefer the Rust native glob (hot loop); fall back to JS walk.
     try {
       const matches = nativeGlob(args.pattern, cwd, { maxResults: 1000 });
@@ -280,14 +277,9 @@ export const grepTool: ToolImpl = {
   async run(args, ctx): Promise<ToolResult> {
     if (!isRecord(args) || typeof args.pattern !== "string")
       return err("grep", "pattern required");
-    // S2 fix: bound the search root to the turn workspace (path-containment).
+    // Unrestricted (pi-core parity): cwd is NOT bounded to the workspace.
     const ws = ctx?.workspace ?? process.cwd();
-    let cwd = typeof args.cwd === "string" ? args.cwd : ws;
-    if (cwd !== ws) {
-      const r = resolveExistingInsideWorkspace(cwd, ws);
-      if (!r.ok) return err("grep", `cwd outside workspace: ${r.reason}: ${r.detail}`);
-      cwd = r.abs;
-    }
+    const cwd = typeof args.cwd === "string" ? args.cwd : ws;
     // Tier 4: prefer the Rust native grep (hot loop); fall back to JS walk.
     try {
       const hits = nativeGrep(args.pattern, cwd, { maxResults: 200, caseInsensitive: true });
