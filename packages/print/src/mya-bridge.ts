@@ -1092,7 +1092,9 @@ ${hitLines}`);
               goal, allowedTools: o.allowedTools, cwd: cwdResolved.abs, parentDepth: 1,
             });
             trackSubagent(parentSessionId, sub);
-            return (await sub.wait()) || "";
+            // Strip the <DONE> sentinel — subagents are prompted to prefix their
+            // final answer with it; it must not leak into workflow parallel()/pipeline() joins.
+            return ((await sub.wait()) || "").replace(/<DONE>/g, "").trim();
           };
           const wfCtx = {
             input: params.input,
@@ -1308,7 +1310,7 @@ ${hitLines}`);
             });
             trackSubagent(parentSessionId, sub);
             if (params.wait !== false) {
-              const output = await sub.wait();
+              const output = ((await sub.wait()) || "").replace(/<DONE>/g, "").trim();
               return { content: [{ type: "text", text: `[Subagent ${sub.id}]\n${output || "(no output)"}` }] };
             }
             return { content: [{ type: "text", text: `[Subagent ${sub.id} spawned fire-and-forget]` }] };

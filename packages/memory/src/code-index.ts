@@ -45,7 +45,11 @@ const SUPPORTED_EXT = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".go", ".java", ".rb", ".md",
 ]);
 const SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", "target", ".next", ".crew", ".mya", "vendor", "coverage",
+  "node_modules", ".git", "dist", "build", "target", ".next", ".crew", ".mya", "vendor", "vendored", "coverage",
+  // Reference clones + vendored deps are NOT the user's code — indexing them
+  // (a) bloats the index + (b) makes the first bounded batch return vendored
+  // noise instead of real source. Skip so the index focuses on actual code.
+  "source",
 ]);
 
 export interface CodeSearchHit {
