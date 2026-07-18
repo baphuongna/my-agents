@@ -38,6 +38,15 @@ function loadAuthConfig(): void {
     if (cfg.openai?.key && !process.env["OPENAI_API_KEY"]) {
       process.env["OPENAI_API_KEY"] = cfg.openai.key;
     }
+    // Generic env overrides: { env: { VAR: "value" } } → process.env (if not preset).
+    // For CAMOFOX_URL, BROWSERBASE_API_KEY, search keys, etc. — so the TUI picks them
+    // up without manual `env VAR=... mya` (tmux server doesn't propagate shell exports).
+    const envCfg = (cfg as Record<string, unknown>)["env"] as Record<string, unknown> | undefined;
+    if (envCfg && typeof envCfg === "object") {
+      for (const [k, v] of Object.entries(envCfg)) {
+        if (typeof v === "string" && !process.env[k]) process.env[k] = v;
+      }
+    }
   } catch { /* auth.json optional */ }
 }
 

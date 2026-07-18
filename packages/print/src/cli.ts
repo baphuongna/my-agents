@@ -33,6 +33,13 @@ function loadAuthConfig(): void {
     if (openai?.["key"] && !process.env["OPENAI_API_KEY"]) {
       process.env["OPENAI_API_KEY"] = String(openai["key"]);
     }
+    // Generic env overrides: { env: { VAR: "value" } } → process.env (if not preset).
+    const envCfg = (auth as Record<string, unknown>)["env"] as Record<string, unknown> | undefined;
+    if (envCfg && typeof envCfg === "object") {
+      for (const [k, v] of Object.entries(envCfg)) {
+        if (typeof v === "string" && !process.env[k]) process.env[k] = v;
+      }
+    }
   } catch { /* auth.json absent or unreadable — fall through to env/mock */ }
 }
 
