@@ -6,7 +6,11 @@ export default defineConfig({
     environment: "node",
     globals: false,
     reporter: "default",
-    pool: "threads",
+    // pool: 'forks' (child processes, not worker_threads) — required because the
+    // embeddings worker_thread offloads ONNX, and spawning a worker_thread from
+    // inside vitest's default worker-thread pool crashes the native ONNX runtime
+    // (Napi::Error / core dump). Child processes avoid the nested-worker crash.
+    pool: "forks",
     isolate: true,
   },
   esbuild: {
