@@ -1,27 +1,24 @@
 /**
  * @my-agent/memory/embeddings — opt-in dense-vector embeddings for semantic recall.
  *
- * Pattern: mnemopi (`source/oh-my-pi/packages/mnemopi/src/core/embeddings.ts`) +
- * openclaw (sqlite-vec brute-force cosine). Ported + simplified for mya's
- * personal scale (brute-force cosine over a BLOB column is sufficient — openhuman
- * notes "fast enough for on-device workloads up to ~100K vectors").
+ * Pattern: mnemopi + openclaw (brute-force cosine). Personal-scale (brute-force
+ * over a BLOB column is fine — openhuman: "fast enough up to ~100K vectors").
  *
- * Design constraints:
- *   - fastembed (ONNX Runtime) is ASYNC-only → recall (sync, called from the sync
- *     `before_agent_start` hook) cannot await. So stored vectors are embedded in
- *     the BACKGROUND on capture (sync-readable as BLOB thereafter), and the QUERY
- *     vector is served from a sync LRU cache (cold query → FTS-only + async warm).
- *   - Opt-in: disabled by `MYA_NO_EMBEDDINGS` or if `fastembed` isn't installed.
- *     Core mya remains zero-new-mandatory-dep; recall degrades to FTS-only (the
- *     current behavior) — never breaks.
- *   - Dynamic `import("fastembed")` (not top-level) — the package eagerly loads
- *     `onnxruntime-node`, which segfaults if imported in some runtimes.
+ * WORKER-THREAD OFFLOAD (critical): fastembed/ONNX inference is CPU-bound AND
+ * ~1.2s/embed on a typical CPU. Running it on the MAIN thread freezes the TUI/Ink
+ * loop + agent turns (and, observed, can deadlock under Ink). So all embedding
+ * happens in a dedicated worker_thread that owns the fastembed model — the main
+ * thread's `embedContent` is just a postMessage round-trip (non-blocking). The
+ * worker is a string spawned with `eval:true`, so it works with the single-file
+ * bundle (no separate worker file); fastembed resolves from node_modules at runtime.
+ *
+ * Opt-in: disabled by MYA_NO_EMBEDDINGS or if fastembed isn't installed. Core
+ * mya stays zero-new-mandatory-dep; recall/search degrade to FTS-only/grep —
+ * never breaks.
  *
  * See docs/embeddings-cross-system.md for the cross-system rationale.
  */
-import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 
 /** A dense embedding vector (Float32). */
 export type Vec = Float32Array;
@@ -34,7 +31,7 @@ const MODEL_DIMS: Record<string, number> = {
 };
 
 /** mya model name → fastembed `StandardEmbeddingModel` enum string. Inlined so
- *  resolving a model never imports fastembed (avoids the onnxruntime eager-load). */
+ *  resolving a model never imports fastembed on the main thread. */
 const FASTEMBED_ENUM: Record<string, string> = {
   "BAAI/bge-small-en-v1.5": "fast-bge-small-en-v1.5",
   "BAAI/bge-small-zh-v1.5": "fast-bge-small-zh-v1.5",
@@ -52,52 +49,92 @@ export function embeddingDim(): number {
   return MODEL_DIMS[embeddingModel()] ?? 384;
 }
 
-// ── Model lifecycle (process-wide singleton, lazily loaded) ───────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let modelPromise: Promise<any> | null = null;
+// ── Embedding worker (owns fastembed + ONNX, off the main thread) ──────────
+// The worker loads the model once, then serves embed requests. Buffering
+// pre-ready requests means the first embedContent (which spawns the worker)
+// waits correctly for model init rather than dropping.
+const WORKER_SRC = [
+  "const { parentPort } = require('worker_threads');",
+  "let model = null, ready = false;",
+  "const queue = [];",
+  "async function processEmbed(msg) {",
+  "  try {",
+  "    for await (const batch of model.embed([msg.text])) {",
+  "      for (const row of batch) { parentPort.postMessage({ id: msg.id, vec: new Float32Array(row) }); return; }",
+  "    }",
+  "    parentPort.postMessage({ id: msg.id, vec: null });",
+  "  } catch (e) { parentPort.postMessage({ id: msg.id, vec: null, error: String((e && e.message) || e) }); }",
+  "}",
+  "parentPort.on('message', (msg) => { if (msg && msg.type === 'embed') { if (ready) processEmbed(msg); else queue.push(msg); } });",
+  "(async () => {",
+  "  try {",
+  "    const { FlagEmbedding } = await import('fastembed');",
+  "    const os = require('os'), path = require('path'), fs = require('fs');",
+  "    const cacheDir = path.join(os.homedir(), '.mya', 'memory', 'fastembed-cache');",
+  "    fs.mkdirSync(cacheDir, { recursive: true });",
+  "    const modelEnv = process.env.MYA_EMBEDDING_MODEL || 'BAAI/bge-small-en-v1.5';",
+  "    const ENUM = { 'BAAI/bge-small-en-v1.5':'fast-bge-small-en-v1.5', 'BAAI/bge-small-zh-v1.5':'fast-bge-small-zh-v1.5', 'sentence-transformers/all-MiniLM-L6-v2':'fast-all-MiniLM-L6-v2' };",
+  "    const enumName = ENUM[modelEnv];",
+  "    if (!enumName) throw new Error('unknown embedding model: ' + modelEnv);",
+  "    model = await FlagEmbedding.init({ model: enumName, cacheDir, showDownloadProgress: false });",
+  "    ready = true;",
+  "    parentPort.postMessage({ type: 'ready' });",
+  "    while (queue.length) processEmbed(queue.shift());",
+  "  } catch (e) { parentPort.postMessage({ type: 'init-failed', error: String((e && e.message) || e) }); }",
+  "})();",
+].join("\n");
 
-async function getModel(): Promise<unknown> {
-  if (embeddingsDisabled()) return null;
-  if (modelPromise) return modelPromise;
-  const enumName = FASTEMBED_ENUM[embeddingModel()];
-  if (!enumName) return null;
-  const cacheDir = join(homedir(), ".mya", "memory", "fastembed-cache");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  modelPromise = (async (): Promise<any> => {
-    try {
-      mkdirSync(cacheDir, { recursive: true });
-      // Dynamic import — fastembed eagerly loads onnxruntime-node.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { FlagEmbedding } = await import("fastembed" as any) as any;
-      return await FlagEmbedding.init({
-        model: enumName, cacheDir, showDownloadProgress: false,
-      });
-    } catch {
-      // fastembed not installed, model download failed, or native addon missing.
-      // Reset so a later install/retry can succeed; return null → FTS-only.
-      modelPromise = null;
-      return null;
-    }
-  })();
-  return modelPromise;
+const EMBED_TIMEOUT_MS = 60_000; // safety: a single embed must not hang forever
+let _worker: Worker | null = null;
+let _workerDead = false; // init failed / errored — stop retrying (degrade to null)
+let _reqId = 0;
+const _pending = new Map<number, { resolve: (v: Vec | null) => void; timer: ReturnType<typeof setTimeout> }>();
+
+function failAllPending(): void {
+  for (const [, p] of _pending) { clearTimeout(p.timer); p.resolve(null); }
+  _pending.clear();
 }
 
-/** Drain the first row from a fastembed async stream. */
-async function drainFirst(model: unknown, text: string): Promise<Vec | null> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for await (const batch of (model as any).embed([text])) {
-      for (const row of batch) return new Float32Array(row as ArrayLike<number>);
+function getWorker(): Worker | null {
+  if (_workerDead) return null;
+  if (!_worker) {
+    try {
+      _worker = new Worker(WORKER_SRC, { eval: true });
+      _worker.on("message", (msg: { type?: string; id?: number; vec?: Vec | null; error?: string }) => {
+        if (msg.type === "init-failed") {
+          _workerDead = true; failAllPending(); return; // fastembed absent/broken → degrade
+        }
+        if (msg.type === "ready") return; // model loaded
+        if (msg.id !== undefined) {
+          const p = _pending.get(msg.id);
+          if (p) { clearTimeout(p.timer); _pending.delete(msg.id); p.resolve(msg.vec ?? null); }
+        }
+      });
+      _worker.on("error", () => { _workerDead = true; failAllPending(); });
+    } catch {
+      _workerDead = true;
+      return null;
     }
-  } catch { /* embedding inference failed → graceful null */ }
-  return null;
+  }
+  return _worker;
+}
+
+async function embedViaWorker(text: string): Promise<Vec | null> {
+  const w = getWorker();
+  if (!w) return null;
+  const id = ++_reqId;
+  return new Promise<Vec | null>((resolve) => {
+    const timer = setTimeout(() => { _pending.delete(id); resolve(null); }, EMBED_TIMEOUT_MS);
+    _pending.set(id, { resolve, timer });
+    w.postMessage({ type: "embed", id, text });
+  });
 }
 
 // ── Test seam: injectable embed function ──────────────────────────────────
-// Tests override this to inject deterministic vectors WITHOUT the fastembed model.
+// Tests override this to inject deterministic vectors WITHOUT fastembed/worker.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let embedImpl: ((text: string) => Promise<Vec | null>) | null = null;
-/** @internal Test seam — inject a deterministic embedder (bypasses fastembed). */
+/** @internal Test seam — inject a deterministic embedder (bypasses the worker). */
 export function _setEmbedImpl(fn: ((text: string) => Promise<Vec | null>) | null): void {
   embedImpl = fn;
   queryCache.clear();
@@ -106,16 +143,13 @@ export function _setEmbedImpl(fn: ((text: string) => Promise<Vec | null>) | null
 async function embedRaw(text: string): Promise<Vec | null> {
   if (!text || !text.trim()) return null;
   if (embeddingsDisabled()) return null; // disabled wins (even with a test impl set)
-  if (embedImpl) return embedImpl(text);
-  const model = await getModel();
-  if (!model) return null;
-  return drainFirst(model, text);
+  if (embedImpl) return embedImpl(text); // test seam bypasses the worker
+  return embedViaWorker(text);
 }
 
 // ── Query LRU cache (sync-read by recall; async-populated) ────────────────
-// recall() is sync and cannot await embed. So the query vector is served from
-// this cache; a cold query returns null (recall runs FTS-only) and fires an
-// async warm so the NEXT identical/similar recall is hybrid.
+// recall() is sync and cannot await. So the query vector is served from this
+// cache; a cold query returns null (recall runs FTS-only) + fires an async warm.
 const QUERY_CACHE_MAX = 512;
 const queryCache = new Map<string, Vec>();
 
@@ -140,7 +174,7 @@ export async function warmQueryVec(text: string): Promise<Vec | null> {
   return v;
 }
 
-/** Embed a memory's content on capture (background). Returns the vector or null. */
+/** Embed a memory's content (background) / a code chunk / a query. Worker-backed. */
 export async function embedContent(text: string): Promise<Vec | null> {
   return embedRaw(text);
 }
@@ -169,3 +203,11 @@ export function cosine(a: Vec, b: Vec): number {
 // ── Conflict-detection thresholds (gbrain two-tier, docs/embeddings-cross-system.md) ─
 /** Cosine ≥ this → near-duplicate (skip; stronger than jaccard). */
 export const CONFLICT_COSINE_DUP = 0.95;
+
+/** @internal Test helper — terminate the worker (between test files). */
+export function _shutdownEmbedWorker(): void {
+  if (_worker) { try { void _worker.terminate(); } catch { /* ignore */ } }
+  _worker = null;
+  _workerDead = false;
+  failAllPending();
+}
