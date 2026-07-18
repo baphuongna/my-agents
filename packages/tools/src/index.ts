@@ -14,7 +14,7 @@ export type { RepairResult } from "./repair.js";
 export { builtinTools, readTool, writeTool, editTool, replaceTool, bashTool, globTool, grepTool, lsTool, findTool } from "./builtin.js";
 export { screenCaptureTool, screenFindTool, captureScreen, extractText, findOnScreen } from "./screen.js";
 export type { ScreenCapture, ScreenTextRegion } from "./screen.js";
-export { browserNavigateTool, browserSnapshotTool, browserClickTool, browserTypeTool, browserScrollTool, browserBackTool, browserPressTool, browserScreenshotTool, browserTools, registerBrowserTools, BROWSER_DESCRIPTIONS } from "./web/browser/index.js";
+export { browserNavigateTool, browserSnapshotTool, browserClickTool, browserTypeTool, browserScrollTool, browserBackTool, browserPressTool, browserScreenshotTool, browserSearchTool, browserTools, registerBrowserTools, BROWSER_DESCRIPTIONS } from "./web/browser/index.js";
 export { webSearchTool, webExtractTool, searchTools, registerSearchTools, SEARCH_DESCRIPTIONS } from "./web/search/index.js";
 export { webFetchTool } from "./web/fetch.js";
 // Phase 5 orchestrator + orchestrator-aware host adapters.

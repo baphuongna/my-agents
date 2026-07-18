@@ -1012,6 +1012,152 @@ export const browserCloseTool: ToolImpl = {
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
+// ── browser_search (browser-driven; Camofox anti-detect bypasses bot-detection) ──
+// ddgs scrape rate-limits + plain headless Chromium is bot-blocked by major engines;
+// a real browser via Camofox bypasses both. Wraps: navigate engine → find input →
+// type → submit → retry-snapshot (Camofox flakiness) → parse SERP. Reuses the engine
+// resolver (camofox→cloud→local) + security guard via the sibling tools.
+
+/** Tolerant ref extraction — Camofox `[eN]` AND agent-browser `[ref=N]` / `ref eN`. */
+function extractRef(line: string): string | null {
+  let m = line.match(/\[(?:ref=)?(e\d+)\]/);
+  if (m && m[1]) return m[1];
+  m = line.match(/\bref=?\s*(e?\d+)/i);
+  if (m && m[1]) return m[1].startsWith("e") ? m[1] : `e${m[1]}`;
+  m = line.match(/\b(e\d{1,4})\b/);
+  if (m && m[1]) return m[1];
+  return null;
+}
+
+const SERP_NAV_FILTER =
+  /duckduckgo|duck\.ai|google|bing|settings|privacy|terms|about|images|news|videos|maps|shopping|sign|log in|log out|more results|next|previous|advert|sponsored|back to|feedback|skip to|cookie|consent|accept|search assist|search domain|continued in|people also|more at/i;
+
+/** Find the search INPUT ref (combobox/searchbox/textbox/input/edit only — NOT links/buttons). */
+function findSearchInput(snapshot: string): string | null {
+  const lines = snapshot.split("\n");
+  for (const line of lines) {
+    if (/combobox|searchbox|textbox|\binput\b|\bedit\b/i.test(line) && /search|query|web|type/i.test(line)) {
+      const r = extractRef(line);
+      if (r) return r;
+    }
+  }
+  for (const line of lines) {
+    if (/combobox|searchbox|textbox/i.test(line)) {
+      const r = extractRef(line);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+/** Find a "Search" submit BUTTON ref (fallback when Enter doesn't submit, e.g. DDG combobox). */
+function findSearchButton(snapshot: string): string | null {
+  for (const line of snapshot.split("\n")) {
+    if (/\bbutton\b/i.test(line) && /"search"/i.test(line)) {
+      const r = extractRef(line);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+/** Parse a SERP snapshot → result titles (+ URLs for Camofox `/url:` format). */
+function parseSerp(snapshot: string): { title: string; url?: string }[] {
+  const lines = snapshot.split("\n");
+  const out: { title: string; url?: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    const m = line.match(/link "([^"]{12,180})"/);
+    if (!m || !m[1]) continue;
+    const title = m[1];
+    if (SERP_NAV_FILTER.test(title)) continue;
+    let url: string | undefined;
+    for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+      const ul = lines[j];
+      if (!ul) continue;
+      const u = ul.match(/\/url:\s*(\S+)/);
+      if (u && u[1]) { url = u[1]; break; }
+    }
+    out.push({ title, url });
+  }
+  const seen = new Set<string>();
+  return out
+    .filter((r) => {
+      // drop DDG ad-redirect URLs (y.js?ad_domain=…)
+      if (r.url && /ad_domain|\/y\.js|ad_provider|ad_type/i.test(r.url)) return false;
+      return seen.has(r.title) ? false : (seen.add(r.title), true);
+    });
+}
+
+/** Retry snapshot until non-empty — Camofox is racy on heavy SERP pages. */
+async function retrySnapshotText(taskId: string, tries = 5, delayMs = 1800): Promise<string> {
+  for (let i = 0; i < tries; i++) {
+    const s = await browserSnapshotTool.run({ taskId }, undefined as never);
+    const snap = (((s.output as Record<string, unknown> | null) ?? {}).snapshot as string) ?? "";
+    if (snap) return snap;
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return "";
+}
+
+/** Browser-driven search: navigate engine → type → submit → read SERP. */
+export async function browserSearch(
+  query: string,
+  opts?: { engineUrl?: string; taskId?: string; maxResults?: number },
+): Promise<{ results: { title: string; url?: string }[]; engine: string; query: string; serpLen: number }> {
+  const taskId = opts?.taskId ?? `search-${Date.now()}`;
+  const engineUrl = opts?.engineUrl ?? "https://duckduckgo.com/";
+  // URL-based search: navigate directly to engine?q=<query> (DDG/Bing/Google support ?q=).
+  // Faster than type+submit AND works on Camofox, whose a11y tree assigns NO ref to
+  // the search combobox (making ref-based type impossible). Bypasses the issue entirely.
+  const sep = engineUrl.includes("?") ? "&" : "?";
+  const searchUrl = `${engineUrl}${sep}q=${encodeURIComponent(query)}`;
+  const nav = await browserNavigateTool.run({ url: searchUrl, taskId }, undefined as never);
+  if (!nav.ok) throw new Error(`navigate failed: ${nav.error ?? "unknown"}`);
+  const navOut = (nav.output as Record<string, unknown> | null) ?? {};
+  const serp = (navOut.snapshot as string) ?? (await retrySnapshotText(taskId));
+  const engine = (navOut.engine as string) ?? "unknown";
+  const results = parseSerp(serp).slice(0, opts?.maxResults ?? 8);
+  return { results, engine, query, serpLen: serp.length };
+}
+
+export const browserSearchTool: ToolImpl = {
+  meta: {
+    name: "browser_search",
+    args: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        engineUrl: { type: "string", description: "Search engine URL (default https://duckduckgo.com/)" },
+        taskId: { type: "string", description: "Browser session id (default: auto)" },
+        maxResults: { type: "number", description: "Max results (default 8)" },
+      },
+      required: ["query"],
+    },
+    requiredMode: PROMPT,
+  },
+  async run(args, _ctx): Promise<ToolResult> {
+    if (!isRecord(args) || typeof args.query !== "string") return err("browser_search", "query required");
+    try {
+      const r = await browserSearch(args.query, {
+        engineUrl: typeof args.engineUrl === "string" ? args.engineUrl : undefined,
+        taskId: typeof args.taskId === "string" ? args.taskId : undefined,
+        maxResults: typeof args.maxResults === "number" ? args.maxResults : undefined,
+      });
+      return ok("browser_search", {
+        results: r.results,
+        engine: r.engine,
+        query: r.query,
+        serpLen: r.serpLen,
+        via: "browser-driven (anti-detect bypasses bot-detection)",
+      });
+    } catch (e) {
+      return err("browser_search", e instanceof Error ? e.message : String(e));
+    }
+  },
+};
+
 export const browserTools: ToolImpl[] = [
   browserNavigateTool,
   browserSnapshotTool,
@@ -1022,6 +1168,7 @@ export const browserTools: ToolImpl[] = [
   browserPressTool,
   browserScreenshotTool,
   browserCloseTool,
+  browserSearchTool,
 ];
 
 // ── host registration adapter ────────────────────────────────────────────────
@@ -1054,6 +1201,12 @@ export const BROWSER_DESCRIPTIONS: Record<string, string> = {
     "agent-browser processes. Returns {ok:true, closed:true}. Useful between tasks " +
     "to release anti-detect session budgets before idle; process-exit signals " +
     "SIGINT/SIGTERM/beforeExit invoke the same cleanup automatically.",
+  browser_search:
+    "Search the web via a REAL browser (Camofox anti-detect when CAMOFOX_URL is set; " +
+    "bypasses the bot-detection that blocks headless Chromium and the ddgs scrape floor). " +
+    "Navigates a search engine, types the query, reads the results page, returns titles " +
+    "(+ URLs). Engine resolves automatically (camofox → cloud → local). Use when " +
+    "web_search (ddgs) is rate-limited/empty or results are bot-blocked.",
 };
 
 /** Register all browser ToolImpls onto a host pi API (mya-bridge). */
