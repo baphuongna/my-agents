@@ -887,16 +887,17 @@ ${hitLines}`);
           required: ["query"],
         },
         async execute(_id: string, params: { query: string; topK?: number }) {
-          const results = mem.recall(params.query, { topK: params.topK ?? 10 });
-          const lines: string[] = [];
-          for (const slice of results) {
-            if (slice.hits.length > 0) {
-              lines.push(`[${slice.domain}]`);
-              for (const h of slice.hits) {
-                lines.push(`  - ${h.content.slice(0, 500)}`);
-              }
-            }
-          }
+          // Read from the SAME store `remember` writes to (sqliteMemory →
+          // working_memory FTS5). The old `mem.recall()` fans out to domains
+          // that read a separate brain/backend NOT wired to remember's writes —
+          // so it always returned empty here. sqliteMemory.recall is the FTS5
+          // reader over working_memory + episodic_memory (also used by the
+          // before_agent_start system-prompt injection at the brain hook).
+          const hits = opts.sqliteMemory
+            ? opts.sqliteMemory.recall(params.query, { topK: params.topK ?? 10 })
+            : mem.recall(params.query, { topK: params.topK ?? 10 })
+                .flatMap((s) => s.hits);
+          const lines = hits.map((h) => `- ${h.content.slice(0, 500)}`);
           return {
             content: [{
               type: "text",
