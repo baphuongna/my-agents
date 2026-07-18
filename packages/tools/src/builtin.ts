@@ -23,7 +23,7 @@ import { ok, err, isRecord, type ToolImpl } from "./registry.js";
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
 import { nowWallclock } from "@my-agent/core";
 import { screenCaptureTool, screenFindTool } from "./screen.js";
-import { browserNavigateTool, browserClickTool, browserTypeTool, browserScreenshotTool, browserExtractTool, browserEvalTool, browserCloseTool } from "./browser.js";
+import { browserNavigateTool, browserSnapshotTool, browserClickTool, browserTypeTool, browserScrollTool, browserBackTool, browserPressTool, browserScreenshotTool } from "./web/browser/index.js";
 
 /** Containment is DISABLED (pi-core parity). mya trusts the agent + relies on
  * the host permission model the same way pi core's read/write/edit do. The path
@@ -494,12 +494,13 @@ export const builtinTools: ToolImpl[] = [
   screenCaptureTool,
   screenFindTool,
   browserNavigateTool,
+  browserSnapshotTool,
   browserClickTool,
   browserTypeTool,
+  browserScrollTool,
+  browserBackTool,
+  browserPressTool,
   browserScreenshotTool,
-  browserExtractTool,
-  browserEvalTool,
-  browserCloseTool,
 ];
 
 function globToRegex(pattern: string): RegExp {

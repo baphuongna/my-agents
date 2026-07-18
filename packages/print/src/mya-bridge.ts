@@ -24,7 +24,13 @@
  * CUSTOM TOOLS:
  * - paid_fetch:       x402 wallet micropayment fetch
  * - hashline_edit:    hash-anchored edits (from pi-hashline-edit-pro)
- * - browser_action:   CDP browser automation (from pi-computer-use)
+ * - browser_*:        agent-browser local engine (navigate/snapshot/click/type/scroll/back/press/screenshot) —
+ *                       routed through `runBrowserWithFallback` (Phase 5 orchestrator: camofox → cloud →
+ *                       local → web_fetch universal floor)
+ * - web_search/web_extract: multi-backend search/extract — routed through
+ *                       `runSearchWithFallback` / `runExtractWithFallback`
+ * - web_fetch:        universal HTTP→markdown floor — registered as standalone
+ *                       first-class tool (always available, no browser/key needed)
  * - delegate_task:    subagent delegation
  * - MCP tools:        auto-registered from connected MCP servers
  *
@@ -45,7 +51,14 @@ import { defaultHarness } from "@my-agent/eval";
 import { speak } from "@my-agent/tts";
 import { runWorkflow, runWorkflowSource, type WorkflowContext } from "@my-agent/workflows";
 import { fileSha256, verifyTarball, type SigstoreBundle } from "@my-agent/signing";
-import { compressCommandOutput, buildCodegraph, runCascade as _rc } from "@my-agent/tools";
+import {
+  compressCommandOutput,
+  buildCodegraph,
+  runCascade as _rc,
+  registerWebTools,
+  registerFetchTools,
+  loadWebConfig,
+} from "@my-agent/tools";
 import { applyEdits, computeLineHashes } from "@my-agent/tools";
 import { rankedCompact } from "@my-agent/prompts";
 import { adversarialReview } from "@my-agent/council";
@@ -679,7 +692,7 @@ ${hitLines}`);
       // Context note
       parts.push(
         "\n[mya] Tools available: paid_fetch (x402), hashline_edit (hash-anchored), " +
-        "browser_action (CDP), delegate_task (subagent). " +
+        "browser_navigate/snapshot/click/type/scroll/back/press/screenshot (agent-browser), delegate_task (subagent). " +
         "Commands: /mya-help for full list.",
       );
 
@@ -970,6 +983,30 @@ ${hitLines}`);
       });
     }
 
+    // ── web tools (Phase 5 — orchestrator-aware registration) ─────────────
+    // Replaces the Phase 2/3 direct leaf registration with the orchestrator-
+    // mediated path. Per-tool surface is preserved (the model still calls
+    // browser_navigate, browser_snapshot, …, web_search, web_extract), but
+    // each dispatch now goes through:
+    //   - runBrowserWithFallback  (camofox → cloud → local → web_fetch floor)
+    //   - runSearchWithFallback  (search chain B, no universal floor)
+    //   - runExtractWithFallback (extract chain B' → web_fetch fallback)
+    // Load the `web.*` config once at startup so the orchestrator's cheap
+    // reads stay cheap (loadWebConfig is pure — re-called per dispatch by the
+    // orchestrator itself; the boot-time read is only for observability).
+    const webCfg = loadWebConfig();
+    if (process.env["MYA_DEBUG_WEB_CONFIG"] === "1") {
+      console.error(`[mya] web config: ${JSON.stringify(webCfg)}`);
+    }
+    registerWebTools(pi);
+
+    // ── web_fetch (Phase 5 — standalone universal floor) ─────────────────
+    // The 7th TUI acceptance gate (browser chain all-fail → web_fetch) needs
+    // `web_fetch` to be directly callable. The orchestrator invokes the same
+    // function internally for the all-fail floor — this registration exposes
+    // it as a first-class tool the model can also choose directly.
+    registerFetchTools(pi);
+
     // ── paid_fetch (x402 wallet) ──────────────────────────────────────
     if (opts.wallet) {
       try {
@@ -1168,91 +1205,6 @@ ${hitLines}`);
                 (result.firstChangedLine !== undefined ? ` lines ${result.firstChangedLine}-${result.lastChangedLine}` : ""),
             }],
           };
-        },
-      });
-    } catch {}
-
-    // ── browser_action (CDP, from pi-computer-use) ────────────────────
-    try {
-      pi.registerTool({
-        name: "browser_action",
-        label: "Browser Action",
-        description:
-          "Execute a browser action via Chrome DevTools Protocol. " +
-          "Actions: press, click, setText, scroll, drag, moveMouse, wait. " +
-          "Requires MYA_CDP_URL env (ws://localhost:9222/devtools/page/ID).",
-        parameters: {
-          type: "object",
-          properties: {
-            action: {
-              type: "object",
-              properties: {
-                action: { type: "string", enum: ["press", "click", "setText", "scroll", "drag", "moveMouse", "wait"] },
-                ref: { type: "string" },
-                text: { type: "string" },
-                x: { type: "number" },
-                y: { type: "number" },
-                scrollX: { type: "number" },
-                scrollY: { type: "number" },
-                ms: { type: "number" },
-              },
-              required: ["action"],
-            },
-          },
-          required: ["action"],
-        },
-        async execute(_id: string, params: { action: Record<string, unknown> }) {
-          const cdpUrl = process.env["MYA_CDP_URL"];
-          if (!cdpUrl) {
-            return {
-              content: [{ type: "text", text: "[browser_action] Set MYA_CDP_URL env to a CDP websocket URL" }],
-              isError: true,
-            };
-          }
-          try {
-            const mod = await import("@my-agent/tools");
-            const { prepareAction, executeAction } = mod;
-            const prepared = prepareAction(params.action as never, []);
-            const { WebSocket } = await import("ws");
-            const ws = new WebSocket(cdpUrl);
-            await new Promise<void>((resolve, reject) => {
-              ws.on("open", resolve);
-              ws.on("error", reject);
-            });
-            let msgId = 0;
-            const cdpCall = (method: string, p: Record<string, unknown>) =>
-              new Promise<unknown>((resolve, reject) => {
-                const id = ++msgId;
-                ws.send(JSON.stringify({ id, method, params: p }));
-                const handler = (data: unknown) => {
-                  try {
-                    const msg = JSON.parse(String(data)) as { id?: number; result?: unknown; error?: unknown };
-                    if (msg.id === id) {
-                      ws.off("message", handler);
-                      msg.error ? reject(new Error(JSON.stringify(msg.error))) : resolve(msg.result);
-                    }
-                  } catch { /* skip */ }
-                };
-                ws.on("message", handler);
-              });
-            const client = {
-              Input: {
-                dispatchMouseEvent: (a: Record<string, unknown>) => cdpCall("Input.dispatchMouseEvent", a),
-                dispatchKeyEvent: (a: Record<string, unknown>) => cdpCall("Input.dispatchKeyEvent", a),
-                insertText: (a: { text: string }) => cdpCall("Input.insertText", a),
-              },
-            };
-            await executeAction(prepared, client);
-            ws.close();
-            return {
-              content: [{ type: "text", text: `[browser_action] ${(params.action["action"] as string) ?? "action"} executed` }],
-            };
-          } catch (e) {
-            return {
-              content: [{ type: "text", text: `[browser_action] Error: ${(e as Error).message}` }],
-              isError: true,
-            };
-          }
         },
       });
     } catch {}
@@ -1531,7 +1483,7 @@ ${hitLines}`);
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
       "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
-      "Tools: paid_fetch, hashline_edit, browser_action, delegate_task, MCP tools");
+      "Tools: paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
     // KEYBOARD SHORTCUTS

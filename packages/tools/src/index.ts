@@ -14,9 +14,41 @@ export type { RepairResult } from "./repair.js";
 export { builtinTools, readTool, writeTool, editTool, replaceTool, bashTool, globTool, grepTool, lsTool, findTool } from "./builtin.js";
 export { screenCaptureTool, screenFindTool, captureScreen, extractText, findOnScreen } from "./screen.js";
 export type { ScreenCapture, ScreenTextRegion } from "./screen.js";
-export { browserNavigateTool, browserClickTool, browserTypeTool, browserScreenshotTool, browserExtractTool, browserEvalTool, browserCloseTool, BrowserAutomation } from "./browser.js";
-export { prepareAction, extractOutline, executeAction } from "./cdp-actions.js";
-export type { UiAction, OutlineNode, PreparedAction, OutlineRect, MouseButtonName, CdpInputClient } from "./cdp-actions.js";
+export { browserNavigateTool, browserSnapshotTool, browserClickTool, browserTypeTool, browserScrollTool, browserBackTool, browserPressTool, browserScreenshotTool, browserTools, registerBrowserTools, BROWSER_DESCRIPTIONS } from "./web/browser/index.js";
+export { webSearchTool, webExtractTool, searchTools, registerSearchTools, SEARCH_DESCRIPTIONS } from "./web/search/index.js";
+export { webFetchTool } from "./web/fetch.js";
+// Phase 5 orchestrator + orchestrator-aware host adapters.
+export {
+  runBrowserWithFallback,
+  runSearchWithFallback,
+  runExtractWithFallback,
+  withResilience,
+  loadWebConfig,
+  loadWebConfigFromEnv,
+  validateWebConfig,
+  DEFAULT_WEB_CONFIG,
+  WEB_CONFIG_ENV,
+  registerWebTools,
+  registerFetchTools,
+} from "./web/host.js";
+export type {
+  BrowserToolName,
+  SearchToolName,
+  OrchestratorArgs,
+  OrchestratorCtx,
+  TriedStep,
+  ResilienceId,
+  ResilienceOpt,
+  ResilienceAction,
+  ResilienceResult,
+  ResilienceOk,
+  ResilienceErr,
+  WebConfig,
+  PreferredEngineName,
+  SearchBackendName,
+  ExtractBackendName,
+  MyaHostApi,
+} from "./web/host.js";
 export { lineHashes, formatHashed, replaceByHash, isValidAnchor, fileFingerprint } from "./hashline.js";
 export { computeLineHashes, canon, mapStableHashes, resolveAnchor, applyEdits, saveUndo, getUndo, clearUndo, HASH_LEN, HASH_SEP, HASH_RE } from "./hashline-edit.js";
 export type { AnchorResult, HashEdit, NoopEdit, ApplyResult, UndoEntry } from "./hashline-edit.js";

@@ -55,15 +55,15 @@ describe("/role fixes", () => {
     mockRoles.set("default", { name: "default", description: "general" });
     mockRoles.set("reviewer", { name: "reviewer", description: "read-only", toolsAllowed: ["read", "grep", "find", "bash"], modelPrefer: "MiniMax-M3" });
 
-    const full = ["read", "write", "edit", "bash", "grep", "find", "browser_action"];
+    const full = ["read", "write", "edit", "bash", "grep", "find", "browser_navigate"];
     const s = makePi({ full });
     createMyaBridge({} as never)(s.pi as never);
 
-    // /role reviewer → restricts to read,grep,find,bash (write/edit/browser_action dropped)
+    // /role reviewer → restricts to read,grep,find,bash (write/edit/browser_navigate dropped)
     await s.roleCmd.handler("reviewer", s.ctx);
     expect(s.calls.at(-1)!.sort()).toEqual(["bash", "find", "grep", "read"]);
     expect(s.calls.at(-1)).not.toContain("write");
-    expect(s.calls.at(-1)).not.toContain("browser_action");
+    expect(s.calls.at(-1)).not.toContain("browser_navigate");
 
     // /role default → original full set RESTORED (pre-fix this would stay restricted)
     await s.roleCmd.handler("default", s.ctx);

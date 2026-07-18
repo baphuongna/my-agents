@@ -20,5 +20,11 @@
     "@my-agent/natives": "*",
     "tesseract.js": "^5",
     "chrome-remote-interface": "^0.3"
+  },
+  "peerDependencies": {
+    "agent-browser": "^0.27"
+  },
+  "peerDependenciesMeta": {
+    "agent-browser": { "optional": true }
   }
 }
