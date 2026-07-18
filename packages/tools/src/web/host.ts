@@ -40,6 +40,7 @@ import {
   browserPressTool,
   browserScreenshotTool,
   browserCloseTool,
+  browserSearchTool,
   BROWSER_DESCRIPTIONS,
 } from "./browser/index.js";
 import {
@@ -215,6 +216,29 @@ export function registerWebTools(pi: MyaHostApi): void {
             toOrchestratorArgs(name, params),
             toOrchestratorCtx(),
           );
+          return adaptToPi(result);
+        } catch (e) {
+          return adaptToPi(
+            err(name, e instanceof Error ? e.message : String(e)),
+          );
+        }
+      },
+    });
+  }
+
+  // browser_search: browser-driven search via Camofox anti-detect (ddgs
+  // replacement). Composite tool — resolves engine + does its own retry
+  // internally, so register as a thin leaf (NOT via runBrowserWithFallback,
+  // whose orchestrator type/dispatch doesn't cover it).
+  {
+    const name = browserSearchTool.meta.name;
+    pi.registerTool({
+      name,
+      description: BROWSER_DESCRIPTIONS[name] ?? `${name} (web tool)`,
+      parameters: browserSearchTool.meta.args,
+      async execute(_id: string, params: unknown) {
+        try {
+          const result = await browserSearchTool.run(params, undefined as never);
           return adaptToPi(result);
         } catch (e) {
           return adaptToPi(
