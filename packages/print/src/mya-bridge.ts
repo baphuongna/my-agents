@@ -692,7 +692,7 @@ ${hitLines}`);
       // Context note
       parts.push(
         "\n[mya] Tools available: paid_fetch (x402), hashline_edit (hash-anchored), " +
-        "browser_navigate/snapshot/click/type/scroll/back/press/screenshot (agent-browser), delegate_task (subagent). " +
+        "browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search (Camofox anti-detect web search) (agent-browser), delegate_task (subagent). " +
         "Commands: /mya-help for full list.",
       );
 
@@ -1483,7 +1483,7 @@ ${hitLines}`);
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
       "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
-      "Tools: paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, delegate_task, MCP tools");
+      "Tools: paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search (Camofox anti-detect web search), delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
     // KEYBOARD SHORTCUTS
