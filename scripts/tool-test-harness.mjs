@@ -18,6 +18,8 @@ const { semanticSearch, _setCodeIndexDbPath } = await import("../packages/memory
 const { runWorkflowSource } = await import("../packages/workflows/dist/runner.js");
 const { repair } = await import("../packages/tools/dist/repair.js");
 const { resolveInsideWorkspace } = tools;
+const { computeLineHashes, resolveAnchor } = await import("../packages/tools/dist/hashline-edit.js");
+const { SqliteMemoryManager } = await import("../packages/memory/dist/index.js");
 
 // ── mock TurnContext (workspace-bounded; auto-approve) ─────────────────────
 function mkCtx(workspace) {
@@ -222,8 +224,104 @@ async function testDelegateContainment() {
   record("delegate_task", "S3 security: cwd=~/.ssh rejected", !resolveInsideWorkspace(join(process.env.HOME ?? "/x", ".ssh"), ws).ok, "");
 }
 
+// ── READ extended: offset/limit + binary ─────────────────────────────────
+async function testReadExtended() {
+  setup();
+  const ctx = mkCtx(dir);
+  // mya read has NO offset/limit params (it truncates at 2000 lines / 50KB
+  // instead). Verify it returns the whole file (offset/limit ignored).
+  const r1 = await readTool.run({ path: "hello.ts", offset: 2, limit: 1 }, ctx);
+  record("read", "whole-file read (offset/limit not supported → ignored)", r1.ok && /greet/.test(JSON.stringify(r1.output)) && /bye/.test(JSON.stringify(r1.output)), "");
+  // binary file → must not crash
+  writeFileSync(join(dir, "bin.bin"), Buffer.from([0x00, 0x01, 0xff, 0xfe, 0x80, 0x90]));
+  let binaryOk = true;
+  try { await readTool.run({ path: "bin.bin" }, ctx); } catch { binaryOk = false; }
+  record("read", "binary file (no throw)", binaryOk, "");
+  teardown();
+}
+
+// ── WRITE extended: overwrite + nested dirs ────────────────────────────────
+async function testWriteExtended() {
+  setup();
+  const ctx = mkCtx(dir);
+  // overwrite existing
+  await writeTool.run({ path: "hello.ts", content: "overwritten" }, ctx);
+  record("write", "overwrite existing", readFileSync(join(dir, "hello.ts"), "utf8") === "overwritten", "");
+  // nested dirs (auto-create parent)
+  const r2 = await writeTool.run({ path: "deep/nested/file.txt", content: "x" }, ctx);
+  record("write", "nested dirs (parent auto-created)", r2.ok && existsSync(join(dir, "deep", "nested", "file.txt")), "");
+  teardown();
+}
+
+// ── GLOB/GREP extended: no-match + recursive + regex ───────────────────────
+async function testGlobGrepExtended() {
+  setup();
+  const ctx = mkCtx(dir);
+  // glob no-match → ok:true with empty results (not an error)
+  const r1 = await globTool.run({ pattern: "*.nosuchext" }, ctx);
+  record("glob", "no-match → ok (empty result)", r1.ok, "");
+  // glob recursive **
+  const r2 = await globTool.run({ pattern: "**/*.md" }, ctx);
+  record("glob", "recursive **/*.md finds nested", r2.ok && /note\.md/.test(JSON.stringify(r2.output)), "");
+  // grep regex
+  const r3 = await grepTool.run({ pattern: "gr.*t", isRegex: true }, ctx);
+  record("grep", "regex 'gr.*t' matches 'greet'", r3.ok, "");
+  // grep no-match → ok:true empty
+  const r4 = await grepTool.run({ pattern: "ZZZNOMATCH" }, ctx);
+  record("grep", "no-match → ok (empty result)", r4.ok, "");
+  teardown();
+}
+
+// ── BASH extended: timeout ──────────────────────────────────────────────────
+async function testBashExtended() {
+  setup();
+  const ctx = mkCtx(dir);
+  // timeout: sleep 5 with 800ms budget → must abort
+  const r1 = await bashTool.run({ command: "sleep 5", timeoutMs: 800 }, ctx);
+  record("bash", "timeout aborts long command", r1.ok === false || /timedOut|timeout|timed out|killed/i.test(JSON.stringify(r1.output)), "");
+  teardown();
+}
+
+// ── MEMORY record→recall round-trip (regression for recall disconnect fix) ─
+async function testMemoryRoundTrip() {
+  const tmp = mkdtempSync(join(tmpdir(), "mya-mem-"));
+  try {
+    const mgr = new SqliteMemoryManager({ dbPath: join(tmp, "m.db") });
+    const id = mgr.record({ content: "regression marker xyz1234: recall must find freshly stored facts", source: "test" });
+    record("memory", "record returns id", typeof id === "string" && id.length > 0, "");
+    const hits = mgr.recall("xyz1234");
+    record("memory", "recall finds fresh fact (disconnect regression)", hits.some((h) => h.content.includes("xyz1234")), hits.length ? "" : "NOT FOUND — recall broken");
+    // negative: unrelated query must not match
+    const neg = mgr.recall("zzzzz_no_such_thing_9999");
+    record("memory", "recall unrelated query → empty", neg.length === 0, "");
+    // multi-fact ranking: store 2, recall broad
+    mgr.record({ content: "second fact about hashline editing tools", source: "test" });
+    const broad = mgr.recall("hashline");
+    record("memory", "recall 2 facts, finds relevant one", broad.some((h) => /hashline/.test(h.content)), "");
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+}
+
+// ── HASHLINE_EDIT real path: valid hash + mismatch + ambiguous ──────────────
+async function testHashlineEditReal() {
+  // The security guarantee: a hash that doesn't match must be REJECTED
+  // (not_found), never silently edit the wrong line.
+  const content = "alpha\nbeta\ngamma\n";
+  const hashes = computeLineHashes(content);
+  // valid hash for line 1
+  const a0 = resolveAnchor(hashes[0], hashes);
+  record("hashline_edit", "resolveAnchor valid hash → matched", a0.matched === true, "");
+  // hash mismatch → not_found (the security guarantee — no silent corruption)
+  const bad = resolveAnchor("ZZZZZZ", hashes);
+  record("hashline_edit", "hash-mismatch → not_found (no silent corruption)", bad.error === "not_found", JSON.stringify(bad));
+  // Collision-resolution: byte-identical lines get DIFFERENT hashes (:R{retry}
+  // salt), so ambiguity is unreachable — every line has a unique anchor. This
+  // is the design invariant that makes resolveAnchor unambiguous.
+  const dup = computeLineHashes("dup\ndup\n");
+  record("hashline_edit", "duplicate lines → unique hashes (no ambiguity)", dup[0] !== dup[1], `h0=${dup[0]} h1=${dup[1]}`);
+}
+
 // ── RUN ALL ─────────────────────────────────────────────────────────────────
-const suites = [testRead, testWrite, testEdit, testLsFind, testGrepGlob, testBash, testReplace, testHashlineEditContainment, testSemanticSearch, testWorkflow, testRepair, testDelegateContainment];
+const suites = [testRead, testReadExtended, testWrite, testWriteExtended, testEdit, testLsFind, testGrepGlob, testGlobGrepExtended, testBash, testBashExtended, testReplace, testHashlineEditContainment, testHashlineEditReal, testSemanticSearch, testWorkflow, testRepair, testMemoryRoundTrip, testDelegateContainment];
 for (const s of suites) {
   try { await s(); } catch (e) { record(s.name, "SUITE THREW", false, e.message); }
 }

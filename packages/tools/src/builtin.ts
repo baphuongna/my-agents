@@ -10,8 +10,9 @@
  */
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { readdir, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, dirname } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { nativeGlob, nativeGrep } from "@my-agent/natives";
 import { ok, err, isRecord, type ToolImpl } from "./registry.js";
@@ -102,6 +103,9 @@ export const writeTool: ToolImpl = {
     const c = contain(ctx, args.path, "write");
     if (!c.ok) return c.err;
     try {
+      // Auto-create parent dirs (matches pi write contract — never ENOENT on a
+      // nested path the agent intentionally targets). Idempotent + safe.
+      await mkdir(dirname(c.abs), { recursive: true });
       await writeFile(c.abs, args.content, "utf8");
       // §11 LSP-on-write: append diagnostics (never a gate — write already succeeded).
       const diags = ctx.lsp?.onWrite(c.abs);
@@ -183,7 +187,8 @@ export const bashTool: ToolImpl = {
         cwd,
         env,
       });
-      const timer = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); }, timeoutMs);
       let stdout = "";
       let stderr = "";
       child.stdout.on("data", (d) => (stdout += d));
@@ -199,6 +204,7 @@ export const bashTool: ToolImpl = {
           stderr,
           exitCode: code ?? -1,
           durationMs: nowWallclock() - start,
+          ...(timedOut ? { timedOut: true, killedAfterMs: timeoutMs } : {}),
         }));
       });
     });
