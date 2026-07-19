@@ -106,6 +106,11 @@ export class CronScheduler {
   } {
     const validate = opts?.validate;
     const stats = { added: 0, updated: 0, removed: 0, quarantined: 0 };
+    // canonical form for change-detection: defaults applied identically to both
+    // sides so a job that round-trips through the file (gaining leaseMs/enabled
+    // defaults) isn't flagged `updated` every sweep.
+    const canon = (j: CronJob): string =>
+      JSON.stringify({ ...j, leaseMs: j.leaseMs ?? 5 * 60_000, enabled: j.enabled ?? true });
     const loadedIds = new Set<string>();
     for (const raw of loaded) {
       if (!raw?.id) continue;
@@ -124,7 +129,7 @@ export class CronScheduler {
       loadedIds.add(job.id);
       const cur = this.jobs.get(job.id);
       if (!cur) { this.jobs.set(job.id, job); stats.added++; }
-      else if (JSON.stringify(cur) !== JSON.stringify(job)) {
+      else if (canon(cur) !== canon(job)) {
         this.jobs.set(job.id, job); // replace config; runs/jobRuns keyed by id survive
         stats.updated++;
       }
@@ -231,6 +236,22 @@ export class CronScheduler {
 
   /** Whether in-memory state has unflushed mutations. */
   get isDirty(): boolean { return this.dirty; }
+
+  /** A control-plane view of a job joined with its last run (for GET /cron/jobs
+   * observability — lastRunAt/lastStatus/lastError otherwise unreachable since
+   * CronJob carries no run fields). Phase 4B persists these to SQLite. */
+  summary(job: CronJob): CronJob & {
+    lastRunAt?: number; lastStatus?: RunRecord["status"]; lastError?: string;
+  } {
+    const runs = this.runsOf(job.id);
+    const last = runs[runs.length - 1];
+    return {
+      ...job,
+      lastRunAt: last?.endedAt ?? last?.startedAt,
+      lastStatus: last?.status,
+      lastError: last?.error,
+    };
+  }
 
   getJob(id: string): CronJob | undefined {
     return this.jobs.get(id);

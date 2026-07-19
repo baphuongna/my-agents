@@ -9,9 +9,7 @@
  *   mya cron run <id>                # Run now
  *   mya cron history <id>            # Show run history
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { readCronJobs, atomicWriteJobs, CRON_FILE } from "./cron-persist.js";
 import { nowWallclock } from "@my-agent/core";
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
@@ -114,13 +112,10 @@ export async function cronAdd(name?: string, schedule?: string, prompt?: string)
   const { trigger, schedule: schedValue } = parseSchedule(schedule);
   const id = `cron-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-  // Persist to cron.json
-  const cronFile = join(homedir(), ".mya", "agent", "cron.json");
-  const arr: Array<{ id: string; name: string; trigger: "cron" | "on-interval" | "once"; schedule: string | number; prompt: string; enabled: boolean; deliveryTarget: string }> = existsSync(cronFile)
-    ? (JSON.parse(readFileSync(cronFile, "utf-8")) as Array<{ id: string; name: string; trigger: "cron" | "on-interval" | "once"; schedule: string | number; prompt: string; enabled: boolean; deliveryTarget: string }>)
-    : [];
+  // Persist to cron.json (atomic, 0600 — same path the gateway reads).
+  const arr = readCronJobs();
   arr.push({ id, name, trigger, schedule: schedValue, prompt: prompt ?? "", enabled: true, deliveryTarget: "_cron" });
-  writeFileSync(cronFile, JSON.stringify(arr, null, 2));
+  atomicWriteJobs(arr);
 
   console.log(`${A.green("✓")} Cron job added:`);
   console.log(`  ID:       ${id}`);
@@ -129,7 +124,7 @@ export async function cronAdd(name?: string, schedule?: string, prompt?: string)
   console.log(`  Schedule: ${schedule}`);
   console.log(`  Prompt:   ${prompt ?? "(none)"}`);
   console.log("");
-  console.log(`${A.muted("Saved to:")} ${cronFile}`);
+  console.log(`${A.muted("Saved to:")} ${CRON_FILE}`);
   console.log(`${A.muted("Restart gateway:")} ${A.accent("mya serve")} ${A.muted("or wait for next sweep (30s)")}`);
 }
 
@@ -138,18 +133,17 @@ export async function cronRemove(id?: string): Promise<void> {
     console.log(`${A.red("Usage:")} mya cron remove <id>`);
     return;
   }
-  const cronFile = join(homedir(), ".mya", "agent", "cron.json");
-  if (!existsSync(cronFile)) {
+  const arr = readCronJobs();
+  if (arr.length === 0) {
     console.log(`${A.red("No cron.json found.")}`);
     return;
   }
-  const arr = JSON.parse(readFileSync(cronFile, "utf-8")) as Array<{ id: string }>;
   const filtered = arr.filter((j) => j.id !== id && !id.startsWith(j.id.slice(0, 8)));
   if (filtered.length === arr.length) {
     console.log(`${A.yellow("Job not found in cron.json:")} ${id}`);
     console.log(`${A.muted("It may only exist in the running gateway. Restart to clear.")}`);
   } else {
-    writeFileSync(cronFile, JSON.stringify(filtered, null, 2));
+    atomicWriteJobs(filtered);
     console.log(`${A.green("✓")} Removed job ${id} from cron.json`);
   }
   // Also try API
@@ -175,14 +169,13 @@ export async function cronToggle(id?: string, action?: "enable" | "disable"): Pr
   } catch (e) {
     console.log(`${A.red("✗")} ${(e as Error).message}`);
   }
-  // Also patch the file
-  const cronFile = join(homedir(), ".mya", "agent", "cron.json");
-  if (existsSync(cronFile)) {
-    const arr = JSON.parse(readFileSync(cronFile, "utf-8")) as Array<{ id: string; enabled: boolean }>;
+  // Also patch the file (atomic, 0600 — same path the gateway reads).
+  const arr = readCronJobs();
+  if (arr.length > 0) {
     for (const j of arr) {
       if (j.id === id || id.startsWith(j.id.slice(0, 8))) j.enabled = action === "enable";
     }
-    writeFileSync(cronFile, JSON.stringify(arr, null, 2));
+    atomicWriteJobs(arr);
   }
 }
 
@@ -209,12 +202,11 @@ export async function cronHistory(id?: string): Promise<void> {
     return;
   }
   console.log(`${A.muted("Run history (from cron.json lastRunAt, no detailed log yet)")}`);
-  const cronFile = join(homedir(), ".mya", "agent", "cron.json");
-  if (!existsSync(cronFile)) {
+  const arr = readCronJobs();
+  if (arr.length === 0) {
     console.log(`${A.muted("No cron.json")}`);
     return;
   }
-  const arr = JSON.parse(readFileSync(cronFile, "utf-8")) as Array<{ id: string; name: string }>;
   const job = arr.find((j) => j.id === id || id.startsWith(j.id.slice(0, 8)));
   if (job) console.log(`  ${A.accent(job.name)} (${job.id})`);
   console.log(`${A.muted("Detailed per-run history will be added in a future update.")}`);

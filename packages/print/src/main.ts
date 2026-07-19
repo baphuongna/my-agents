@@ -325,17 +325,28 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // loader — the gateway's initial cronReload (in start()) loads jobs before the
   // first sweep tick.
   const { readCronJobs, atomicWriteJobs } = await import("./cron-persist.js");
-  cron.setOnDirty((jobs) => {
-    try {
-      atomicWriteJobs(jobs);
-      cron.markPersisted();
-    } catch (e) {
+  const persistCron = (): void => {
+    atomicWriteJobs(cron.listJobs());
+    cron.markPersisted();
+  };
+  cron.setOnDirty(() => {
+    try { persistCron(); } catch (e) {
       console.warn("[gateway] cron persist failed (non-fatal):", (e as Error).message);
     }
   });
   const cronReload = (): void => {
+    // If a prior write failed (dirty stuck), retry BEFORE reconcile — otherwise
+    // reconcile would drop the unflushed job as "memory-only" (silent loss).
+    if (cron.isDirty) {
+      try { persistCron(); } catch (e) {
+        console.warn("[gateway] cron persist retry failed (non-fatal):", (e as Error).message);
+      }
+    }
     // Phase 3B will pass { validate: validateCronPrompt } to scan loaded prompts.
-    cron.reconcile(readCronJobs());
+    const stats = cron.reconcile(readCronJobs());
+    if (stats.quarantined > 0) {
+      console.warn(`[cron] ${stats.quarantined} job(s) quarantined by validate on reload`);
+    }
   };
 
   // MYA_NO_WS_TOKEN: skip the WS auth token for local dev/testing — lets a
@@ -426,6 +437,23 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     poolQueueDepth: (sessionId: string) => {
       const e = pool.get(sessionId);
       return e?.busy ? 1 : 0;
+    },
+    cronAdd: (job) => {
+      // Phase 0B/1B: POST /cron/jobs reaches the scheduler (register → onDirty →
+      // atomicWriteJobs). Previously cronAdd was unwired → HTTP jobs never fired
+      // (D1) and, after 0B moved GET to read the scheduler, vanished entirely
+      // (split-brain). Includes leaseMs + timezone so the file row is complete.
+      cron.register({
+        id: job.id,
+        name: job.name,
+        trigger: job.trigger,
+        schedule: job.schedule,
+        prompt: job.prompt,
+        deliveryTarget: job.deliveryTarget ?? "_cron",
+        enabled: job.enabled,
+        timezone: job.timezone,
+        leaseMs: 5 * 60_000,
+      });
     },
     cronRunNow: async (jobId: string) => {
       const job = cron.getJob(jobId);

@@ -37,7 +37,7 @@
  * LIFECYCLE:
  * - AuditLog:         tool_call/tool_result/turn_start/turn_end → Merkle log
  * - Brain:            turn_end → consolidate()
- * - Cron:             load cron.json + 60s sweep timer
+ * - Cron:             display-only via opts.cron; gateway is sole sweeper
  * - TTS:              message_end → speak() (MYA_TTS=1)
  * - Skills:           discovered from ~/.mya/skills/
  *
@@ -76,7 +76,7 @@ import {
   type PiSkill,
 } from "./skill-search/index.js";
 import { homedir } from "node:os";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { AuditLog } from "@my-agent/audit";

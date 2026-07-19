@@ -818,7 +818,7 @@ export class Gateway {
         }
         // ── Cron management ──
         if (url.pathname === "/cron/jobs") {
-          if (req.method === "GET") return send(200, this.cron ? this.cron.listJobs() : this.control.listCronJobs());
+          if (req.method === "GET") return send(200, this.cron ? this.cron.listJobs().map((j) => this.cron!.summary(j)) : this.control.listCronJobs());
           if (req.method === "POST") {
             let body = "";
             req.on("data", (c) => (body += c));
@@ -856,7 +856,15 @@ export class Gateway {
           req.on("end", () => {
             try {
               const patch = JSON.parse(body || "{}") as Record<string, unknown>;
-              const updated = this.control.updateCronJob(cronPatchMatch[1]!, patch);
+              const id = cronPatchMatch[1]!;
+              // Phase 0B: PATCH writes through to the scheduler (updateJob → onDirty
+              // → atomicWriteJobs) so it persists + reflects in GET. Falls back to
+              // the control plane only when no scheduler is wired.
+              if (this.cron) {
+                const updated = this.cron.updateJob(id, patch);
+                return updated ? send(200, this.cron.summary(updated)) : send(404, { error: "not found" });
+              }
+              const updated = this.control.updateCronJob(id, patch);
               return updated ? send(200, updated) : send(404, { error: "not found" });
             } catch (e) { return send(400, { error: (e as Error).message }); }
           });
