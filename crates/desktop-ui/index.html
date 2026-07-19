@@ -269,6 +269,51 @@
     font-family: ui-monospace, monospace;
   }
 
+  /* ── cost pill + tool rows + dashboard widgets ─────────────────── */
+  .pill.cost        { background: #1f6feb; color: #fff; }
+  .pill.cost.warn   { background: #d29922; }
+  .pill.cost.high   { background: #da3633; }
+  .ev.tool-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    border-left-width: 3px;
+  }
+  .ev.tool-row .tool-icon  { font-size: 14px; line-height: 1.5; flex-shrink: 0; }
+  .ev.tool-row .tool-body  { flex: 1; min-width: 0; }
+  .ev.tool-row .tool-head  { display: flex; align-items: center; gap: 6px; font-size: 12px;
+                              font-family: ui-monospace, monospace; }
+  .ev.tool-row .tool-name  { color: #f0883e; font-weight: 600; }
+  .ev.tool-row .tool-arg   { color: #8b949e; font-size: 11px;
+                              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+  .ev.tool-row .tool-status{ margin-left: auto; font-size: 10px; padding: 1px 6px;
+                              border-radius: 8px; background: #30363d; color: #8b949e; flex-shrink: 0; }
+  .ev.tool-row .tool-status.ok      { background: #238636; color: #fff; }
+  .ev.tool-row .tool-status.err     { background: #da3633; color: #fff; }
+  .ev.tool-row .tool-status.pending { background: #d29922; color: #fff; }
+  .ev.tool-row.t-edit   { border-left-color: #f0883e; }
+  .ev.tool-row.t-shell  { border-left-color: #3fb950; }
+  .ev.tool-row.t-search { border-left-color: #58a6ff; }
+  .ev.tool-row.t-web    { border-left-color: #a371f7; }
+  .ev.tool-row.t-read   { border-left-color: #8b949e; }
+  .ev.tool-row.t-write  { border-left-color: #39c5cf; }
+  .widget { margin-bottom: 14px; }
+  .widget h4 {
+    margin: 0 0 6px; font-size: 11px; color: #8b949e;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .widget .kv { display: flex; justify-content: space-between; gap: 8px;
+    font-size: 12px; font-family: ui-monospace, monospace; padding: 1px 0; }
+  .widget .kv .k { color: #8b949e; }
+  .widget .kv .v { color: #e6edf3; text-align: right; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; max-width: 62%; }
+  .widget .chip { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px;
+    background: #21262d; color: #c9d1d9; margin: 1px 2px 1px 0; font-family: ui-monospace, monospace; }
+  .widget .chip.on  { background: #238636; color: #fff; }
+  .widget .chip.off { background: #30363d; color: #6e7681; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+  .stat-grid .stat { background: #0d1117; border: 1px solid #21262d; border-radius: 4px; padding: 4px 6px; }
+  .stat-grid .stat .n { font-size: 16px; font-weight: 600; color: #58a6ff; font-family: ui-monospace, monospace; }
+  .stat-grid .stat .l { font-size: 9px; color: #8b949e; text-transform: uppercase; }
+
   /* ── input bar ─────────────────────────────────────────────────── */
   #input-bar {
     position: fixed;
@@ -388,6 +433,7 @@
   <span class="pill ws-offline"   id="ws-status"   title="gateway websocket state">offline</span>
   <span class="pill"              id="seq-pill"    title="last event sequence">seq 0</span>
   <span class="pill"              id="port-pill"   title="gateway port">port —</span>
+  <span class="pill cost"         id="cost-pill"   title="running spend (from budget events)">$0.0000</span>
   <span class="spacer"></span>
   <span class="pill tauri-off"    id="tauri-pill"  title="Tauri IPC presence">browser</span>
 </header>
@@ -413,6 +459,10 @@
       <dt>events</dt><dd id="info-events">0</dd>
       <dt>runtime</dt><dd id="info-runtime">browser</dd>
     </dl>
+    <div class="widget" id="w-model"><h4>model · providers</h4><div id="w-providers-body" class="kv"><span class="k">—</span></div></div>
+    <div class="widget" id="w-channels"><h4>channels</h4><div id="w-channels-body"><span class="chip off">none</span></div></div>
+    <div class="widget" id="w-memory"><h4>memory</h4><div class="stat-grid" id="w-memory-body"><div class="stat"><div class="n">—</div><div class="l">facts</div></div></div></div>
+    <div class="widget" id="w-subagents"><h4>subagents</h4><div id="w-sub-body" class="kv"><span class="k">active</span><span class="v">0 / 0</span></div></div>
     <h3 class="list-head">sessions <span><button type="button" id="new-session" title="new session">+</button><button type="button" id="refresh-sessions" title="refresh session list">↻</button></span></h3>
     <ul id="session-list"></ul>
     <div id="session-empty">no sessions</div>
@@ -462,6 +512,11 @@
   const errorBanner  = $("error-banner");
   const errorText    = $("error-text");
   const errorDismiss = $("error-dismiss");
+  const costPill     = $("cost-pill");
+  const wProviders   = $("w-providers-body");
+  const wChannels    = $("w-channels-body");
+  const wMemory      = $("w-memory-body");
+  const wSub         = $("w-sub-body");
 
   // ── Tauri detection ─────────────────────────────────────────────────
   // `window.__TAURI__` is only present when `app.withGlobalTauri: true`
@@ -514,6 +569,7 @@
   let bootState = "booting";
   let readyPollHandle = null;
   let eventsRendered = 0;
+  let totalCost = 0;        // running $ aggregated from budget events
 
   // The Rust side may also inject globals as a fast path (avoids IPC roundtrip).
   if (typeof window.__DESKTOP_GATEWAY_PORT__ === "number" && window.__DESKTOP_GATEWAY_PORT__ > 0) {
@@ -744,6 +800,57 @@
     return div;
   }
 
+  // ── Per-tool categorisation + typed row (openpi conversation-row pattern) ──
+  function toolMeta(name) {
+    const n = String(name || "").toLowerCase();
+    if (n.indexOf("edit") >= 0 || n.indexOf("hashline") >= 0) return { icon: "\u270f\ufe0f", cls: "t-edit",   label: "edit" };
+    if (n.indexOf("bash") >= 0 || n.indexOf("shell") >= 0 || n.indexOf("exec") >= 0 || n.indexOf("run") >= 0) return { icon: "\u25b6", cls: "t-shell",  label: "shell" };
+    if (n.indexOf("search") >= 0 || n.indexOf("grep") >= 0 || n.indexOf("symbol") >= 0 || n.indexOf("graph") >= 0) return { icon: "\uD83D\uDD0D", cls: "t-search", label: "search" };
+    if (n.indexOf("browser") === 0 || n.indexOf("web_") === 0) return { icon: "\uD83C\uDF10", cls: "t-web",    label: "web" };
+    if (n.indexOf("write") >= 0 || n.indexOf("create") >= 0) return { icon: "\u270f\ufe0f", cls: "t-write",  label: "write" };
+    if (n.indexOf("read") >= 0 || n.indexOf("list") >= 0 || n.indexOf("glob") >= 0) return { icon: "\uD83D\uDCC4", cls: "t-read",   label: "read" };
+    return { icon: "\u2699\ufe0f", cls: "", label: "tool" };
+  }
+  function argSummary(args) {
+    if (args == null) return "";
+    if (typeof args === "string") return args.slice(0, 80);
+    const a = (typeof args === "object") ? args : {};
+    const s = a.path || a.command || a.url || a.query || a.pattern || a.file || a.action;
+    if (s) return String(s).slice(0, 80);
+    try { return JSON.stringify(a).slice(0, 80); } catch (_e) { return ""; }
+  }
+  function renderToolRow(env, name, status, argText) {
+    const m = toolMeta(name);
+    const div = document.createElement("div");
+    div.className = "ev tool-row " + m.cls;
+    const icon = document.createElement("span"); icon.className = "tool-icon"; icon.textContent = m.icon; div.appendChild(icon);
+    const body = document.createElement("div"); body.className = "tool-body";
+    const head = document.createElement("div"); head.className = "tool-head";
+    const nm = document.createElement("span"); nm.className = "tool-name"; nm.textContent = String(name || m.label); head.appendChild(nm);
+    if (argText) { const a = document.createElement("span"); a.className = "tool-arg"; a.textContent = argText; head.appendChild(a); }
+    if (status) { const s = document.createElement("span"); s.className = "tool-status " + status; s.textContent = status; head.appendChild(s); }
+    body.appendChild(head);
+    const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = "#" + (env.seq != null ? env.seq : "?"); body.appendChild(meta);
+    div.appendChild(body);
+    stream.appendChild(div);
+    stream.scrollTop = stream.scrollHeight;
+  }
+  // Extract tool calls/results from a turn event (defensive — field shapes vary).
+  function renderTurnTools(env, te, state) {
+    let items = null;
+    if (state === "ToolCalls") items = te.calls || te.toolCalls || te.tool_calls;
+    else if (state === "ToolExec") items = te.results || te.toolResults || te.tool_results;
+    if (!Array.isArray(items) || items.length === 0) return false;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i] || {};
+      const name = it.name || it.tool || it.toolName || (state === "ToolExec" ? "result" : "call");
+      const status = state === "ToolCalls" ? "pending" : (it.ok === false || it.error ? "err" : "ok");
+      const arg = state === "ToolCalls" ? argSummary(it.args || it.input || it.arguments) : "";
+      renderToolRow(env, name, status, arg);
+    }
+    return true;
+  }
+
   function renderEventTile(env, e, kind) {
     const div = document.createElement("div");
     div.className = "ev " + kind;
@@ -811,6 +918,14 @@
           infoEvents.textContent = String(eventsRendered);
           return;
         }
+        // ToolCalls / ToolExec → per-tool typed rows (openpi conversation pattern).
+        if (te.state === "ToolCalls" || te.state === "ToolExec") {
+          if (renderTurnTools(env, te, te.state)) {
+            eventsRendered++;
+            infoEvents.textContent = String(eventsRendered);
+            return;
+          }
+        }
         // Other turn events → render as tile.
         renderEventTile(env, e, kind);
         eventsRendered++;
@@ -828,6 +943,24 @@
       return;
     }
 
+    // ── Budget → update running cost pill (+ default tile below) ──
+    if (kind === "budget") {
+      const spent = Number(e.spentUsd);
+      if (isFinite(spent)) {
+        totalCost = spent;
+        costPill.textContent = "$" + totalCost.toFixed(4);
+        costPill.className = "pill cost" + (totalCost >= 1 ? " high" : totalCost >= 0.25 ? " warn" : "");
+      }
+    }
+    // ── Dedicated tool event → typed row ──────────────────────────
+    if (kind === "tool") {
+      const tName = e.name || e.tool || "tool";
+      const tStatus = e.ok === false || e.error ? "err" : (e.result != null || e.output != null ? "ok" : "pending");
+      renderToolRow(env, tName, tStatus, argSummary(e.args || e.input));
+      eventsRendered++;
+      infoEvents.textContent = String(eventsRendered);
+      return;
+    }
     // ── Default: render as event tile ─────────────────────────────
     renderEventTile(env, e, kind);
     eventsRendered++;
@@ -1133,9 +1266,36 @@
     }
   }
 
+  async function fetchMemoryStats() {
+    let stats = null;
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(function () { ctl.abort(); }, 2000);
+      const res = await fetch("http://127.0.0.1:" + gatewayPort + "/memory/stats", { cache: "no-store", signal: ctl.signal });
+      clearTimeout(timer);
+      if (res.ok) stats = await res.json();
+    } catch (_e) { /* best-effort */ }
+    if (!wMemory || !stats) return;
+    wMemory.innerHTML = "";
+    const facts = Number(stats.facts) || 0;
+    const tomb = Number(stats.tombstones) || 0;
+    const cells = [
+      { n: facts, l: "facts" },
+      { n: tomb, l: "tomb" },
+      { n: stats.dreamRunning ? "on" : "off", l: "dream" },
+      { n: facts + tomb, l: "total" },
+    ];
+    for (let i = 0; i < cells.length; i++) {
+      const s = document.createElement("div"); s.className = "stat";
+      const n = document.createElement("div"); n.className = "n"; n.textContent = String(cells[i].n); s.appendChild(n);
+      const l = document.createElement("div"); l.className = "l"; l.textContent = cells[i].l; s.appendChild(l);
+      wMemory.appendChild(s);
+    }
+  }
+
   // Query the gateway `/status` via the IPC bridge (`get_status` command).
-  // Populates the sidebar with model + version so the user can see what the
-  // sidecar is running. Falls back to a direct fetch in browser dev mode.
+  // Populates the sidebar dashboard widgets (model, providers, channels,
+  // subagents) + kicks a /memory/stats fetch. Falls back to direct fetch.
   async function fetchStatus() {
     let status = await safeInvoke("get_status");
     if (!status) {
@@ -1151,7 +1311,53 @@
       if (typeof status.model === "string") {
         infoRuntime.textContent = (inTauri ? "tauri · " : "browser · ") + status.model;
       }
+      // ── providers widget (active model + configured chips) ──
+      const provs = Array.isArray(status.providers) ? status.providers : [];
+      const configured = provs.filter(function (p) { return p && p.configured; });
+      if (wProviders) {
+        wProviders.innerHTML = "";
+        const kv = document.createElement("div"); kv.className = "kv";
+        const k = document.createElement("span"); k.className = "k"; k.textContent = "active";
+        const v = document.createElement("span"); v.className = "v"; v.textContent = status.model || "?";
+        kv.appendChild(k); kv.appendChild(v); wProviders.appendChild(kv);
+        const wrap = document.createElement("div"); wrap.style.marginTop = "4px";
+        if (configured.length === 0) {
+          const c = document.createElement("span"); c.className = "chip off"; c.textContent = "0 configured"; wrap.appendChild(c);
+        }
+        for (let i = 0; i < configured.length; i++) {
+          const c = document.createElement("span"); c.className = "chip on";
+          c.textContent = configured[i].id + (configured[i].model ? " · " + configured[i].model : "");
+          wrap.appendChild(c);
+        }
+        wProviders.appendChild(wrap);
+      }
+      // ── channels widget ──
+      const chans = Array.isArray(status.channels) ? status.channels : [];
+      if (wChannels) {
+        wChannels.innerHTML = "";
+        if (chans.length === 0) {
+          const c = document.createElement("span"); c.className = "chip off"; c.textContent = "none"; wChannels.appendChild(c);
+        } else {
+          for (let i = 0; i < chans.length; i++) {
+            const ch = chans[i] || {};
+            const c = document.createElement("span");
+            c.className = "chip " + (ch.enabled ? "on" : "off");
+            c.textContent = (ch.type || ch.id || "?") + (ch.alias ? " · " + ch.alias : "");
+            if (ch.health) c.title = "health: " + ch.health;
+            wChannels.appendChild(c);
+          }
+        }
+      }
+      // ── subagents widget ──
+      if (wSub) {
+        const sa = status.subagents || {};
+        wSub.innerHTML = "";
+        const k = document.createElement("span"); k.className = "k"; k.textContent = "active / total";
+        const v = document.createElement("span"); v.className = "v"; v.textContent = (sa.active || 0) + " / " + (sa.total || 0);
+        wSub.appendChild(k); wSub.appendChild(v);
+      }
     }
+    void fetchMemoryStats();
   }
 
   // ── Bootstrap ───────────────────────────────────────────────────────

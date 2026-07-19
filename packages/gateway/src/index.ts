@@ -435,6 +435,23 @@ export class Gateway {
 
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url ?? "/", `http://${this.host}`);
+    // ── CORS (localhost-only): lets the desktop dashboard / web UI reach the
+    //    gateway from a browser origin (e.g. dev index.html on another loopback
+    //    port). Only localhost origins are reflected — never arbitrary origins,
+    //    so this does not expose the gateway to the wider network.
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "content-type, authorization");
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     const send = (code: number, body: unknown, headers: Record<string, string> = {}) => {
       res.writeHead(code, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
