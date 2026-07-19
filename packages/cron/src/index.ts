@@ -41,17 +41,99 @@ export interface RunRecord {
 }
 
 /** A scheduler with atomic claim + TTL lease + run-log. Single-process; the
- * atomicity is over the job's `claimedBy` field (compare-and-swap). */
+ * atomicity is over the job's `claimedBy` field (compare-and-swap).
+ *
+ * Persistence (Phase 0B): the scheduler stays fs-free (minimal-core). The
+ * gateway layer wires `onDirty` to atomically persist the full job list, and
+ * calls `reconcile()` each sweep to pick up external (CLI) file edits. The
+ * `jobs` Map is the in-memory cache; `cron.json` is the single source of truth.
+ * Run records (`runs`/`jobRuns`) are in-memory only (history → Phase 4A SQLite). */
 export class CronScheduler {
   private readonly jobs = new Map<string, CronJob>();
   private readonly runs = new Map<string, RunRecord>(); // runId → record
   private readonly jobRuns = new Map<string, string[]>(); // jobId → runIds
+  /** Persist hook: gateway atomically writes the full job list. */
+  private onDirty?: (jobs: CronJob[]) => void;
+  /** True when in-memory state has unflushed mutations (cleared by markPersisted). */
+  private dirty = false;
+
+  constructor(opts: { onDirty?: (jobs: CronJob[]) => void } = {}) {
+    this.onDirty = opts.onDirty;
+  }
+  /** Wire persistence post-construction (the shared-instance singleton is built
+   * before the gateway/fs layer exists). Idempotent. */
+  setOnDirty(cb: (jobs: CronJob[]) => void): void { this.onDirty = cb; }
+  /** Gateway calls this after a successful atomic write to clear the dirty flag. */
+  markPersisted(): void { this.dirty = false; }
+  private markDirty(): void {
+    this.dirty = true;
+    if (this.onDirty) this.onDirty(this.listJobs());
+  }
 
   register(job: Omit<CronJob, "id"> & { id?: string }): CronJob {
     const id = job.id ?? randomUUID();
     const full: CronJob = { ...job, id };
     this.jobs.set(id, full);
+    this.markDirty();
     return full;
+  }
+
+  /** Remove a job (write-through via onDirty). Replaces the old private-Map cast
+   * hack in main.ts (D10). Run records are retained for history. */
+  removeJob(id: string): boolean {
+    const existed = this.jobs.delete(id);
+    if (existed) this.markDirty();
+    return existed;
+  }
+
+  /** Patch a job's config (write-through). */
+  updateJob(id: string, patch: Partial<Omit<CronJob, "id">>): CronJob | undefined {
+    const cur = this.jobs.get(id);
+    if (!cur) return undefined;
+    const updated: CronJob = { ...cur, ...patch, id: cur.id };
+    this.jobs.set(id, updated);
+    this.markDirty();
+    return updated;
+  }
+
+  /** Reconcile the in-memory `jobs` Map with a file-loaded set. The file is
+   * authoritative for job *config*; in-memory run records (`runs`/`jobRuns`) are
+   * preserved across reconcile for history. Does NOT trigger onDirty (the file is
+   * the source — no write-back loop). `validate`, when provided, rejects a job
+   * (quarantine) instead of loading it (Phase 3B wires validateCronPrompt). */
+  reconcile(loaded: ReadonlyArray<Partial<CronJob> & { id: string }>, opts?: { validate?: (job: Partial<CronJob>) => string | null }): {
+    added: number; updated: number; removed: number; quarantined: number;
+  } {
+    const validate = opts?.validate;
+    const stats = { added: 0, updated: 0, removed: 0, quarantined: 0 };
+    const loadedIds = new Set<string>();
+    for (const raw of loaded) {
+      if (!raw?.id) continue;
+      if (validate) {
+        const err = validate(raw);
+        if (err) { stats.quarantined++; continue; }
+      }
+      // ensure required fields have safe defaults (old/minimal cron.json rows);
+      // explicit `raw.x ?? default` so TS doesn't flag a duplicated key.
+      const job: CronJob = {
+        ...raw,
+        id: raw.id,
+        leaseMs: raw.leaseMs ?? 5 * 60_000,
+        enabled: raw.enabled ?? true,
+      } as CronJob;
+      loadedIds.add(job.id);
+      const cur = this.jobs.get(job.id);
+      if (!cur) { this.jobs.set(job.id, job); stats.added++; }
+      else if (JSON.stringify(cur) !== JSON.stringify(job)) {
+        this.jobs.set(job.id, job); // replace config; runs/jobRuns keyed by id survive
+        stats.updated++;
+      }
+    }
+    // drop jobs no longer in the file (external edit / CLI remove); keep run history
+    for (const id of [...this.jobs.keys()]) {
+      if (!loadedIds.has(id)) { this.jobs.delete(id); stats.removed++; }
+    }
+    return stats;
   }
 
   /** Atomic claim: a job is claimed by exactly one worker. Returns the run
@@ -146,6 +228,9 @@ export class CronScheduler {
     if (runs.length === 0) return undefined;
     return Math.max(...runs.map((r) => r.startedAt));
   }
+
+  /** Whether in-memory state has unflushed mutations. */
+  get isDirty(): boolean { return this.dirty; }
 
   getJob(id: string): CronJob | undefined {
     return this.jobs.get(id);

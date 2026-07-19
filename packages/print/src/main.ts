@@ -318,52 +318,25 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     return result?.output ?? null;
   };
 
-  // Sync cron jobs from scheduler to control plane (2-way: add new, remove deleted).
-  // Called after `gw` is created.
-  function syncCronJobs() {
-    const inScheduler = new Set(cron.listJobs().map((j) => j.id));
-    // Add or update jobs that exist in the scheduler
-    for (const job of cron.listJobs()) {
-      gw.control.registerCronJob({
-        id: job.id,
-        name: job.name,
-        trigger: job.trigger,
-        schedule: String(job.schedule),
-        prompt: job.prompt,
-        deliveryTarget: job.deliveryTarget,
-        enabled: job.enabled,
-      });
+  // Phase 0B: cron.json is the single source of truth. The scheduler stays
+  // fs-free (minimal-core); this layer wires atomic persistence (onDirty) + a
+  // sweep-time reconcile (cronReload) that picks up CLI/external file edits.
+  // Replaces the old syncCronJobs 5s overwrite (C14) + the startup cron.json
+  // loader — the gateway's initial cronReload (in start()) loads jobs before the
+  // first sweep tick.
+  const { readCronJobs, atomicWriteJobs } = await import("./cron-persist.js");
+  cron.setOnDirty((jobs) => {
+    try {
+      atomicWriteJobs(jobs);
+      cron.markPersisted();
+    } catch (e) {
+      console.warn("[gateway] cron persist failed (non-fatal):", (e as Error).message);
     }
-    // Remove jobs that no longer exist in the scheduler (were deleted via CLI / API)
-    for (const existing of gw.control.listCronJobs()) {
-      if (!inScheduler.has(existing.id)) {
-        gw.control.removeCronJob(existing.id);
-      }
-    }
-  }
-
-  // Load cron jobs from ~/.mya/agent/cron.json (if exists)
-  try {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const os = await import("node:os");
-    const cronFile = path.join(os.homedir(), ".mya", "agent", "cron.json");
-    if (fs.existsSync(cronFile)) {
-      const data = JSON.parse(fs.readFileSync(cronFile, "utf-8")) as Array<{ id: string; name: string; schedule: string | number; prompt: string; enabled?: boolean; deliveryTarget?: string; trigger?: "cron" | "on-interval" | "once"; timezone?: string }>;
-      for (const j of data) {
-        cron.register({
-          id: j.id,
-          name: j.name,
-          trigger: j.trigger ?? "cron",
-          schedule: j.schedule,
-          prompt: j.prompt,
-          enabled: j.enabled ?? true,
-          deliveryTarget: j.deliveryTarget ?? "_cron",
-          leaseMs: 5 * 60_000,
-        });
-      }
-    }
-  } catch { /* ignore */ }
+  });
+  const cronReload = (): void => {
+    // Phase 3B will pass { validate: validateCronPrompt } to scan loaded prompts.
+    cron.reconcile(readCronJobs());
+  };
 
   // MYA_NO_WS_TOKEN: skip the WS auth token for local dev/testing — lets a
   // browser dashboard connect without ?token=. Production keeps the token
@@ -384,6 +357,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     wsToken,
     hooks,
     cron,
+    cronReload,
     sync,
     collab,
     channels,
@@ -467,22 +441,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       }
     },
     cronRemove: (jobId: string) => {
-      // Remove from underlying CronScheduler
-      const job = cron.getJob(jobId);
-      if (!job) return false;
-      // CronScheduler exposes `jobs` as private; access via cast for removal.
-      const sched = cron as unknown as { jobs?: Map<string, unknown> };
-      if (sched.jobs) sched.jobs.delete(jobId);
-      // Patch cron.json
-      const cronFile = join(homedir(), ".mya", "agent", "cron.json");
-      if (existsSync(cronFile)) {
-        try {
-          const arr = JSON.parse(readFileSync(cronFile, "utf-8")) as Array<{ id: string }>;
-          const filtered = arr.filter((j) => j.id !== jobId);
-          writeFileSync(cronFile, JSON.stringify(filtered, null, 2));
-        } catch { /* ignore */ }
-      }
-      return true;
+      // Phase 0B: removeJob write-throughs to cron.json via onDirty (replaces the
+      // old private-Map cast hack — D10).
+      return cron.removeJob(jobId);
     },
     wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {
@@ -502,9 +463,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   });
   const { port: actualPort } = await gw.start();
 
-  // Now gw is created — sync cron jobs to control plane + start periodic sync.
-  syncCronJobs();
-  setInterval(syncCronJobs, 5000).unref?.();
+  // Phase 0B: the control plane now reads the scheduler directly (listCronJobs
+  // → cron.listJobs() joined with runsOf on the gateway side). The old
+  // syncCronJobs 5s overwrite (which reverted PATCHes — C14) is removed.
 
   // Phase 3-6: activate sync + collab (was stored-only). Each starts an
   // unref'd background timer (collab: stale-room sweep; sync: heartbeat +

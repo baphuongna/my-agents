@@ -152,6 +152,10 @@ export interface GatewayOptions {
   cron?: CronScheduler;
   /** Optional sweep interval in ms. Defaults to 30_000. */
   cronIntervalMs?: number;
+  /** Phase 0B: reconcile the scheduler from cron.json at the top of each sweep
+   * (picks up external/CLI file edits). Called once at start() too so jobs load
+   * before the first sweep tick. */
+  cronReload?: () => void;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -229,6 +233,8 @@ export class Gateway {
   private readonly cronIntervalMs: number;
   /** Cron sweep timer handle; tracked so stop() can clear it. */
   private cronTimer?: NodeJS.Timeout;
+  /** Phase 0B: reconcile scheduler from cron.json each sweep. */
+  private readonly cronReload?: () => void;
   /** §12 sync server (optional — Phase 6 wiring). Stored; no auto-start. */
   private readonly sync?: SyncServer;
   /** §12 collaboration relay (optional — Phase 6 wiring). Stored; no auto-start. */
@@ -404,8 +410,17 @@ export class Gateway {
       // upgrades.
       if (this.cron) {
         const workerId = `gateway:${this.host}:${this.port}`;
+        // Phase 0B: reconcile from cron.json once at start so CLI/external edits
+        // load before the first sweep tick (no 30s delay on startup).
+        try { this.cronReload?.(); } catch (e) {
+          console.warn("[gateway] cron initial reload failed (non-fatal):", (e as Error).message);
+        }
         this.cronTimer = setInterval(() => {
           try {
+            // Phase 0B: pick up external cron.json edits each sweep.
+            try { this.cronReload?.(); } catch (e) {
+              console.warn("[gateway] cron reload failed (non-fatal):", (e as Error).message);
+            }
             const due = this.cron!.due();
             for (const job of due) {
               const run = this.cron!.claim(job.id, workerId);
@@ -803,7 +818,7 @@ export class Gateway {
         }
         // ── Cron management ──
         if (url.pathname === "/cron/jobs") {
-          if (req.method === "GET") return send(200, this.control.listCronJobs());
+          if (req.method === "GET") return send(200, this.cron ? this.cron.listJobs() : this.control.listCronJobs());
           if (req.method === "POST") {
             let body = "";
             req.on("data", (c) => (body += c));
@@ -831,7 +846,7 @@ export class Gateway {
         }
         const cronJobMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)$/);
         if (cronJobMatch && req.method === "GET") {
-          const job = this.control.getCronJob(cronJobMatch[1]!);
+          const job = this.cron?.getJob(cronJobMatch[1]!) ?? this.control.getCronJob(cronJobMatch[1]!);
           return job ? send(200, job) : send(404, { error: "not found" });
         }
         const cronPatchMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)\/patch$/);

@@ -351,21 +351,11 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       parentSessionId = c?.sessionManager?.getSessionId?.() ?? `session-${nowWallclock().toString(36)}`;
     });
 
-    // Load cron jobs from disk (previously gateway-only)
-    if (opts.cron) {
-      try {
-        const cron = opts.cron;
-        const cronPath = join(process.env["HOME"] ?? "~", ".mya", "cron.json");
-        if (existsSync(cronPath)) {
-          const jobs = JSON.parse(readFileSync(cronPath, "utf8"));
-          if (Array.isArray(jobs)) {
-            for (const job of jobs) {
-              try { cron.register(job); } catch { /* already exists */ }
-            }
-          }
-        }
-      } catch { /* cron loading is best-effort */ }
-    }
+    // Phase 0B: cron store ownership is gateway-only. The TUI no longer loads
+    // its own cron.json (the divergent ~/.mya/cron.json loader was dead — wrong
+    // path) nor runs a sweep timer (dual-sweep hazard with the gateway). The
+    // gateway is the single sweeper/persister; the TUI's `/cron` display will
+    // query the gateway over HTTP in Phase 0C (auth).
 
     // ═══════════════════════════════════════════════════════════════════
     // AUDIT LOG: every tool call + result + turn boundary
@@ -1497,15 +1487,10 @@ ${hitLines}`);
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // CRON SWEEP TIMER
+    // CRON SWEEP TIMER — removed (Phase 0B). The gateway is the sole sweeper;
+    // a second sweep here (on the TUI's own scheduler singleton) was a
+    // dual-instance hazard. Lease expiry is handled by the gateway sweep.
     // ═══════════════════════════════════════════════════════════════════
-    if (opts.cron) {
-      const cron = opts.cron;
-      const timer = setInterval(() => {
-        try { cron.sweepExpired(); } catch {}
-      }, 60_000);
-      timer.unref?.();
-    }
   };
 }
 
