@@ -383,7 +383,12 @@ export class Gateway {
           const allowed = new Set([
             `http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`,
           ]);
-          if (origin && !allowed.has(origin)) {
+          // Allow any localhost origin (e.g. a browser dashboard served on a
+          // different loopback port) — consistent with the HTTP CORS policy.
+          // Arbitrary internet origins are still blocked (HIGH-1 CSWSH defense).
+          const localhostOrigin = typeof origin === "string"
+            && /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
+          if (origin && !allowed.has(origin) && !localhostOrigin) {
             socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
             socket.destroy();
             return;

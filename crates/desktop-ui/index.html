@@ -569,7 +569,7 @@
   let bootState = "booting";
   let readyPollHandle = null;
   let eventsRendered = 0;
-  let totalCost = 0;        // running $ aggregated from budget events
+  let totalCost = 0;        // running $ accumulated from message_end.usage.cost.total
 
   // The Rust side may also inject globals as a fast path (avoids IPC roundtrip).
   if (typeof window.__DESKTOP_GATEWAY_PORT__ === "number" && window.__DESKTOP_GATEWAY_PORT__ > 0) {
@@ -819,7 +819,10 @@
     if (s) return String(s).slice(0, 80);
     try { return JSON.stringify(a).slice(0, 80); } catch (_e) { return ""; }
   }
-  function renderToolRow(env, name, status, argText) {
+  // ── Per-tool typed row (openpi conversation-row pattern) ─────────
+  // Returns the row element so callers can update status live (pending→ok/err).
+  const toolRows = {};  // toolCallId → { div, statusEl } for live status updates
+  function renderToolRow(env, name, status, argText, toolCallId) {
     const m = toolMeta(name);
     const div = document.createElement("div");
     div.className = "ev tool-row " + m.cls;
@@ -828,26 +831,20 @@
     const head = document.createElement("div"); head.className = "tool-head";
     const nm = document.createElement("span"); nm.className = "tool-name"; nm.textContent = String(name || m.label); head.appendChild(nm);
     if (argText) { const a = document.createElement("span"); a.className = "tool-arg"; a.textContent = argText; head.appendChild(a); }
-    if (status) { const s = document.createElement("span"); s.className = "tool-status " + status; s.textContent = status; head.appendChild(s); }
+    const s = document.createElement("span"); s.className = "tool-status " + (status || "pending"); s.textContent = status || "pending"; head.appendChild(s);
     body.appendChild(head);
     const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = "#" + (env.seq != null ? env.seq : "?"); body.appendChild(meta);
     div.appendChild(body);
     stream.appendChild(div);
     stream.scrollTop = stream.scrollHeight;
+    if (toolCallId) toolRows[toolCallId] = { div: div, statusEl: s };
+    return div;
   }
-  // Extract tool calls/results from a turn event (defensive — field shapes vary).
-  function renderTurnTools(env, te, state) {
-    let items = null;
-    if (state === "ToolCalls") items = te.calls || te.toolCalls || te.tool_calls;
-    else if (state === "ToolExec") items = te.results || te.toolResults || te.tool_results;
-    if (!Array.isArray(items) || items.length === 0) return false;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i] || {};
-      const name = it.name || it.tool || it.toolName || (state === "ToolExec" ? "result" : "call");
-      const status = state === "ToolCalls" ? "pending" : (it.ok === false || it.error ? "err" : "ok");
-      const arg = state === "ToolCalls" ? argSummary(it.args || it.input || it.arguments) : "";
-      renderToolRow(env, name, status, arg);
-    }
+  function setToolStatus(toolCallId, status) {
+    const row = toolRows[toolCallId];
+    if (!row || !row.statusEl) return false;
+    row.statusEl.className = "tool-status " + status;
+    row.statusEl.textContent = status;
     return true;
   }
 
@@ -868,106 +865,91 @@
     stream.scrollTop = stream.scrollHeight;
   }
 
+  // ── Event rendering for pi's streaming protocol ──────────────────
+  // The gateway broadcasts pi's raw protocol events as {seq, event:{type,...}}.
+  // Key types: agent_start/end/settled, turn_start/end, message_start/end,
+  // message_update (assistantMessageEvent: text_delta/toolcall_*/thinking_*),
+  // tool_execution_start/update/end. Cost lives in message_end.usage.cost.total.
   function renderEvent(env) {
     if (!env || typeof env !== "object") return;
     const e = env.event || {};
-    const kind = (typeof e.kind === "string") ? e.kind : "";
+    const type = (typeof e.type === "string") ? e.type : (typeof e.kind === "string") ? e.kind : "";
+    const bump = function () { eventsRendered++; infoEvents.textContent = String(eventsRendered); };
 
-    // ── Streaming text aggregation ────────────────────────────────
-    // Group consecutive text chunks for the same turn into a single
-    // response block instead of one tile per token.
-    if (kind === "turn") {
-      if (e.stage === "start") {
-        currentResponse = null; // new turn → reset
-        return;
+    // ── Cost: accumulate message_end.usage.cost.total ─────────────
+    if (type === "message_end") {
+      if (e.message && e.message.usage && e.message.usage.cost) {
+        const t = Number(e.message.usage.cost.total);
+        if (isFinite(t) && t > 0) {
+          totalCost += t;
+          costPill.textContent = "$" + totalCost.toFixed(4);
+          costPill.className = "pill cost" + (totalCost >= 1 ? " high" : totalCost >= 0.25 ? " warn" : "");
+        }
       }
-      if (e.stage === "end") {
-        if (currentResponse) {
-          currentResponse.classList.remove("streaming");
-          currentResponse = null;
-        }
-        eventsRendered++;
-        infoEvents.textContent = String(eventsRendered);
-        return;
-      }
-      if (e.stage === "event" && e.turnEvent) {
-        const te = e.turnEvent;
-        // Text chunk → append to current response block.
-        if (te.state === "Streaming" && te.chunk && te.chunk.kind === "text") {
-          if (!currentResponse) {
-            currentResponse = createResponseElement(env.seq, "assistant");
-            stream.appendChild(currentResponse);
-          }
-          const textEl = currentResponse.querySelector(".response-text");
-          textEl.textContent += te.chunk.text || "";
-          stream.scrollTop = stream.scrollHeight;
-          eventsRendered++;
-          infoEvents.textContent = String(eventsRendered);
-          return;
-        }
-        // Non-text chunk (tool_calls, done, error) → finalize current response.
-        if (currentResponse && (te.state === "ToolCalls" || te.state === "Completed" || te.state === "Failed" || te.state === "Cancelled")) {
-          currentResponse.classList.remove("streaming");
-          currentResponse = null;
-        }
-        // Failed / Recoverable → show as error tile.
-        if (te.state === "Failed" || te.state === "Recoverable") {
-          renderEventTile(env, e, "error");
-          if (te.error && te.error.message) showError(te.error.message);
-          eventsRendered++;
-          infoEvents.textContent = String(eventsRendered);
-          return;
-        }
-        // ToolCalls / ToolExec → per-tool typed rows (openpi conversation pattern).
-        if (te.state === "ToolCalls" || te.state === "ToolExec") {
-          if (renderTurnTools(env, te, te.state)) {
-            eventsRendered++;
-            infoEvents.textContent = String(eventsRendered);
-            return;
-          }
-        }
-        // Other turn events → render as tile.
-        renderEventTile(env, e, kind);
-        eventsRendered++;
-        infoEvents.textContent = String(eventsRendered);
-        return;
-      }
+      return; // message_end is metadata — never a tile (user/toolResult/assistant)
     }
 
-    // ── Log events with error level → error banner ────────────────
-    if (kind === "log" && e.level === "error") {
+    // ── Turn / agent lifecycle boundaries ─────────────────────────
+    if (type === "turn_start" || type === "agent_start") { currentResponse = null; return; }
+    if (type === "turn_end" || type === "agent_end" || type === "agent_settled") {
+      if (currentResponse) { currentResponse.classList.remove("streaming"); currentResponse = null; }
+      return;
+    }
+    if (type === "message_start") return; // metadata only
+
+    // ── message_update: streaming text + tool-call decisions ──────
+    if (type === "message_update" && e.assistantMessageEvent) {
+      const ae = e.assistantMessageEvent;
+      // Streaming assistant text → aggregate into one response block.
+      if (ae.type === "text_delta" && typeof ae.delta === "string") {
+        if (!currentResponse) { currentResponse = createResponseElement(env.seq, "assistant"); stream.appendChild(currentResponse); }
+        currentResponse.querySelector(".response-text").textContent += ae.delta;
+        stream.scrollTop = stream.scrollHeight;
+        bump();
+        return;
+      }
+      if (ae.type === "text_end") { if (currentResponse) { currentResponse.classList.remove("streaming"); currentResponse = null; } return; }
+      // Tool-call decision (model emits toolCall) → render a pending row.
+      if (ae.type === "toolcall_end" && ae.toolCall) {
+        if (currentResponse) { currentResponse.classList.remove("streaming"); currentResponse = null; }
+        renderToolRow(env, ae.toolCall.name, "pending", argSummary(ae.toolCall.arguments), ae.toolCall.id);
+        bump();
+        return;
+      }
+      // thinking_*, toolcall_start/delta — internal progress, no tile.
+      return;
+    }
+
+    // ── Tool execution lifecycle (matched by toolCallId) ──────────
+    if (type === "tool_execution_start" && e.toolName) {
+      // Reuse the row created by toolcall_end (matched by toolCallId) — avoid a duplicate.
+      if (!toolRows[e.toolCallId]) renderToolRow(env, e.toolName, "pending", argSummary(e.args), e.toolCallId);
+      bump();
+      return;
+    }
+    if (type === "tool_execution_end" && e.toolName) {
+      const ok = !(e.result && e.result.isError);
+      if (!setToolStatus(e.toolCallId, ok ? "ok" : "err")) {
+        renderToolRow(env, e.toolName, ok ? "ok" : "err", argSummary(e.args), e.toolCallId);
+      }
+      bump();
+      return;
+    }
+
+    // ── Error events → error banner ───────────────────────────────
+    if (type === "error" || (type === "log" && e.level === "error")) {
       renderEventTile(env, e, "error");
-      if (e.message) showError(e.message);
-      eventsRendered++;
-      infoEvents.textContent = String(eventsRendered);
+      const msg = e.message || (e.error && e.error.message) || "";
+      if (msg) showError(String(msg).slice(0, 200));
+      bump();
       return;
     }
-
-    // ── Budget → update running cost pill (+ default tile below) ──
-    if (kind === "budget") {
-      const spent = Number(e.spentUsd);
-      if (isFinite(spent)) {
-        totalCost = spent;
-        costPill.textContent = "$" + totalCost.toFixed(4);
-        costPill.className = "pill cost" + (totalCost >= 1 ? " high" : totalCost >= 0.25 ? " warn" : "");
-      }
-    }
-    // ── Dedicated tool event → typed row ──────────────────────────
-    if (kind === "tool") {
-      const tName = e.name || e.tool || "tool";
-      const tStatus = e.ok === false || e.error ? "err" : (e.result != null || e.output != null ? "ok" : "pending");
-      renderToolRow(env, tName, tStatus, argSummary(e.args || e.input));
-      eventsRendered++;
-      infoEvents.textContent = String(eventsRendered);
-      return;
-    }
-    // ── Default: render as event tile ─────────────────────────────
-    renderEventTile(env, e, kind);
-    eventsRendered++;
-    infoEvents.textContent = String(eventsRendered);
 
     // ── Approval requests ─────────────────────────────────────────
-    if (e.kind === "approval" && e.stage === "requested") showApproval(e);
+    if (type === "approval" || (e.kind === "approval" && e.stage === "requested")) { showApproval(e); return; }
+
+    // ── Unknown event → skip (avoid JSON-dump spam; most are internal progress) ─
+    if (e.message || e.text || e.error) { renderEventTile(env, e, type || "event"); bump(); }
   }
 
   // ── Approval modal ───────────────────────────────────────────────
