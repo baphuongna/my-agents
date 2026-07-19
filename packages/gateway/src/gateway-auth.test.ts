@@ -78,4 +78,38 @@ describe("gateway auth gate (Phase 0C)", () => {
     expect(r.status).toBe(200); // no auth configured
     await stop();
   });
+
+  it("CSRF: a state-changing POST with a cross-port localhost Origin → 403", async () => {
+    const { port, stop } = await start({ wsToken: "secret" });
+    // authed (cookie) but Origin is a DIFFERENT localhost port → blocked
+    const r = await fetch(`${base(port)}/cron/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: "mya_ws=secret", origin: `http://localhost:${port + 1}` },
+      body: JSON.stringify({ name: "x", schedule: "* * * * *", prompt: "p" }),
+    });
+    expect(r.status).toBe(403);
+    await stop();
+  });
+
+  it("CSRF: a state-changing POST with the gateway's OWN origin → passes the CSRF check", async () => {
+    const { port, stop } = await start({ wsToken: "secret" });
+    // own origin + cookie → passes CSRF (then 201 or 400 depending on body; not 403)
+    const r = await fetch(`${base(port)}/cron/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: "mya_ws=secret", origin: `http://127.0.0.1:${port}` },
+      body: JSON.stringify({ name: "x", schedule: "* * * * *", prompt: "p" }),
+    });
+    expect(r.status).not.toBe(403);
+    expect(r.status).not.toBe(401);
+    await stop();
+  });
+
+  it("/ws-info is Bearer-only (cookie alone → 401, defeating HttpOnly bypass via XSS)", async () => {
+    const { port, stop } = await start({ wsToken: "secret" });
+    const cookieOnly = await fetch(`${base(port)}/ws-info`, { headers: { cookie: "mya_ws=secret" } });
+    expect(cookieOnly.status).toBe(401);
+    const bearer = await fetch(`${base(port)}/ws-info`, { headers: { authorization: "Bearer secret" } });
+    expect(bearer.status).toBe(200);
+    await stop();
+  });
 });

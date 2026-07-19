@@ -6,6 +6,8 @@
  *   mya channels test <id>         # Send test message to verify config
  *   mya channels add <type> [alias]  # Setup wizard for a channel
  */
+import { authHeaders, withAuth } from "./gw-auth.js";
+
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
 
 const A = {
@@ -29,7 +31,7 @@ interface ChannelInfo {
 
 async function fetchChannels(): Promise<ChannelInfo[]> {
   try {
-    const r = await fetch(`http://127.0.0.1:${GW_PORT}/status`, { signal: AbortSignal.timeout(2000) });
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/status`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
     if (!r.ok) return [];
     const data = (await r.json()) as { channels?: ChannelInfo[] };
     return data.channels ?? [];
@@ -80,7 +82,7 @@ export async function channelsTest(id?: string): Promise<void> {
     try {
       const r = await fetch(`http://127.0.0.1:${GW_PORT}/channel/webhook/webhook`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: withAuth({ "content-type": "application/json" }),
         body: JSON.stringify({ from: "test", text: "🧪 mya channels test", target: "test" }),
       });
       console.log(r.ok ? `${A.green("✓ Webhook OK")}` : `${A.red("✗ Webhook failed:")} ${r.status}`);

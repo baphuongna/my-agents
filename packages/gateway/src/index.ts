@@ -12,6 +12,7 @@
  * Source: §12 Channels & Gateway, §13 Observability readiness, §25.6 contract.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, extname, resolve as pathResolve, sep as pathSep, dirname } from "node:path";
@@ -410,19 +411,17 @@ export class Gateway {
               return;
             }
           }
-          // HIGH-1 fix: enforce the Origin allowlist (defends against cross-site
-          // WebSocket hijacking — a visited website could otherwise read all events).
+          // HIGH-1 / 0C CSRF fix: enforce Origin == the gateway's OWN origin (same
+          // port). A malicious localhost page on a different port could otherwise
+          // plant the auth cookie (same-site across localhost ports) + open a WS
+          // (CSWSH). No-Origin clients (the cookie-authed dashboard is same-origin
+          // and sends Origin; native/CLI WS send none) are allowed.
           const origin = req.headers.origin;
           const port = (this.http?.address() as { port?: number } | null)?.port ?? this.port;
           const allowed = new Set([
             `http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`,
           ]);
-          // Allow any localhost origin (e.g. a browser dashboard served on a
-          // different loopback port) — consistent with the HTTP CORS policy.
-          // Arbitrary internet origins are still blocked (HIGH-1 CSWSH defense).
-          const localhostOrigin = typeof origin === "string"
-            && /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
-          if (origin && !allowed.has(origin) && !localhostOrigin) {
+          if (origin && !allowed.has(origin)) {
             socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
             socket.destroy();
             return;
@@ -507,39 +506,66 @@ export class Gateway {
     }
   }
 
-  /** Phase 0C: paths exempt from the auth gate (health probes, PWA assets, and
-   * GET / which sets the auth cookie). Everything else (incl. /ws-info,
-   * /cron/jobs*, /sessions/*) requires the token. */
+  /** Phase 0C: paths exempt from the auth gate (health probes, PWA assets,
+   * GET / which sets the auth cookie, channel webhooks + pairing which carry
+   * their OWN auth via adapter verify() / MYA_PAIRING_TOKEN). Everything else
+   * (incl. /ws-info, /cron/jobs*, /sessions/*) requires the ws token. */
   private isAuthAllowlisted(url: URL, method: string | undefined): boolean {
     const p = url.pathname;
     if (p === "/health/live" || p === "/ready" || p === "/manifest.json" || p === "/sw.js") return true;
     if (p.startsWith("/icons/")) return true;
+    // channel webhooks carry their own auth (adapter verify() / signature);
+    // gating them with wsToken would block external webhook delivery.
+    if (/^\/channel\/([^/]+)\/webhook$/.test(p) && method === "POST") return true;
+    // device pairing uses MYA_PAIRING_TOKEN (checked in the handler); the wsToken
+    // gate would reject a pairing client that has only the pairing token.
+    if (p === "/pair/request" || p === "/pair/accept" || p === "/pair/devices" || /^\/pair\/devices\//.test(p)) return true;
     if ((p === "/" || p === "/index.html") && method === "GET") return true;
     return false;
   }
 
   /** Phase 0C: a request is authed if it carries the WS token as a Bearer header
-   * or in the HttpOnly mya_ws cookie. */
+   * or in the HttpOnly mya_ws cookie. Constant-time compare (defense-in-depth). */
   private isAuthed(req: IncomingMessage): boolean {
     if (!this.wsToken) return true; // no token configured (dev) → open
+    const tok = this.wsToken;
+    const same = (v: string | undefined): boolean => {
+      if (typeof v !== "string") return false;
+      const a = Buffer.from(v);
+      const b = Buffer.from(tok);
+      return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+    };
     const auth = req.headers.authorization;
-    if (typeof auth === "string" && auth.startsWith("Bearer ") && auth.slice(7) === this.wsToken) return true;
+    if (typeof auth === "string" && auth.startsWith("Bearer ") && same(auth.slice(7))) return true;
     const cookie = req.headers.cookie;
     if (typeof cookie === "string") {
       for (const part of cookie.split(";")) {
         const [k, ...v] = part.trim().split("=");
-        if (k === "mya_ws" && v.join("=") === this.wsToken) return true;
+        if (k === "mya_ws" && same(v.join("="))) return true;
       }
     }
     return false;
   }
 
+  /** Phase 0C (CSRF): the request's Origin (if present) must be the gateway's own
+   * origin (same port). Blocks a malicious localhost page on a different port.
+   * Absent Origin (curl/CLI) is allowed. */
+  private isOwnOrigin(req: IncomingMessage): boolean {
+    const origin = req.headers.origin;
+    if (typeof origin !== "string" || !origin) return true; // non-browser caller
+    const port = (this.http?.address() as { port?: number } | null)?.port ?? this.port;
+    const own = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`]);
+    return own.has(origin);
+  }
+
   /** Phase 0C: set the HttpOnly SameSite=Strict auth cookie when serving the
-   * dashboard from a loopback origin. HttpOnly → JS/XSS can't read it;
-   * SameSite=Strict → CSRF-resistant. (Same-user process isolation is deferred
-   * to a Unix-socket binding — a loopback curl still receives the cookie.) */
-  private setAuthCookie(res: ServerResponse): void {
+   * dashboard from the gateway's OWN origin (blocks a cross-port localhost page
+   * from planting the cookie). HttpOnly → JS/XSS can't read it; SameSite=Strict →
+   * CSRF-resistant. (Same-user process isolation is deferred to a Unix-socket
+   * binding — a loopback curl with no Origin still receives it.) */
+  private setAuthCookie(req: IncomingMessage, res: ServerResponse): void {
     if (!this.wsToken) return;
+    if (!this.isOwnOrigin(req)) return; // don't set the cookie for cross-origin GET /
     res.setHeader("Set-Cookie", `mya_ws=${this.wsToken}; HttpOnly; SameSite=Strict; Path=/`);
   }
 
@@ -568,10 +594,19 @@ export class Gateway {
     };
     // Phase 0C: auth gate. Non-allowlist routes require the WS token (Bearer
     // header OR HttpOnly cookie). Allowlist: health/ready probes, PWA assets
-    // (manifest/icons/sw), and GET / (rootHtml — which SETS the cookie). When
-    // wsToken is unset (MYA_NO_WS_TOKEN dev mode) everything is open.
+    // (manifest/icons/sw), GET / (rootHtml — which SETS the cookie), channel
+    // webhooks + pairing (own auth). When wsToken is unset (MYA_NO_WS_TOKEN dev)
+    // everything is open.
     if (this.wsToken && !this.isAuthAllowlisted(url, req.method)) {
       if (!this.isAuthed(req)) return send(401, { error: "unauthorized" });
+      // CSRF defense: a state-changing request carrying an Origin header must
+      // come from the gateway's OWN origin (same port). SameSite=Strict is the
+      // same registrable site across localhost ports, so it alone can't stop a
+      // malicious localhost page on another port. No-Origin callers (curl/CLI)
+      // are unaffected.
+      if (req.method && req.method !== "GET" && !this.isOwnOrigin(req)) {
+        return send(403, { error: "cross-origin state change blocked" });
+      }
     }
     // §12 parametric control-plane route: /sessions/:id
     const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
@@ -740,7 +775,7 @@ export class Gateway {
           if (existsSync(indexPath)) {
             try {
               const content = readFileSync(indexPath, "utf-8");
-              this.setAuthCookie(res);
+              this.setAuthCookie(req, res);
               res.writeHead(200, {
                 "content-type": "text/html; charset=utf-8",
                 "x-frame-options": "DENY",
@@ -759,7 +794,7 @@ export class Gateway {
           // session-cookie + CSRF double-submit lands when the dashboard grows
           // mutating routes; for the read-only SPA these headers close the
           // clickjacking/XSS-MIME vectors.
-          this.setAuthCookie(res);
+          this.setAuthCookie(req, res);
           res.writeHead(200, {
             "content-type": "text/html; charset=utf-8",
             "x-frame-options": "DENY",
@@ -1224,6 +1259,13 @@ export class Gateway {
         }
         // WS connection info (for launcher to get token)
         if (url.pathname === "/ws-info" && this.wsInfo) {
+          // 0C: /ws-info returns the raw token in a JS-readable body, so it must
+          // NOT be reachable via the HttpOnly cookie (that would defeat HttpOnly
+          // — XSS could read the token). Require a Bearer header explicitly.
+          const auth = req.headers.authorization;
+          if (this.wsToken && !(typeof auth === "string" && auth.startsWith("Bearer ") && auth.slice(7) === this.wsToken)) {
+            return send(401, { error: "unauthorized" });
+          }
           return send(200, this.wsInfo());
         }
         // Serve static files from dist/web/ if available

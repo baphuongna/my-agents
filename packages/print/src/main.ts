@@ -376,6 +376,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // token-baked URL). Threat model: blocks browsers (SameSite=Strict, HttpOnly)
   // + cross-user; same-user isolation is deferred to a Unix-socket binding.
   const wsToken = process.env.MYA_NO_WS_TOKEN ? undefined : cryptoRandomToken();
+  if (process.env.MYA_NO_WS_TOKEN) {
+    console.warn("[SECURITY] MYA_NO_WS_TOKEN is set — gateway HTTP/WS auth is DISABLED. Use only for local dev.");
+  }
   // Write the token to a 0600 file BEFORE listen() so the CLI / TUI can read it
   // (no /ws-info open leak). Best-effort: a missing token file just means the
   // CLI falls back to MYA_NO_WS_TOKEN / unauthenticated attempts (which 401).

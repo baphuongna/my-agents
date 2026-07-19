@@ -12,6 +12,7 @@
  */
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
+import { authHeaders, withAuth } from "./gw-auth.js";
 import { join, resolve as pathResolve } from "node:path";
 import { nowWallclock } from "@my-agent/core";
 import { scanSkillDirectory } from "./skill-search/scanner.ts";
@@ -82,7 +83,7 @@ function fmt(ts: number): string {
 
 async function fetchJson<T>(url: string, timeoutMs = 1000): Promise<T | undefined> {
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const r = await fetch(url, { headers: authHeaders(), signal: AbortSignal.timeout(timeoutMs) });
     if (!r.ok) return undefined;
     return (await r.json()) as T;
   } catch { return undefined; }
@@ -140,7 +141,7 @@ async function acquireGatewaySession(cwd: string): Promise<string | undefined> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/pool/acquire`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withAuth({ "Content-Type": "application/json" }),
       body: JSON.stringify({ cwd }),
       signal: AbortSignal.timeout(3000),
     });
@@ -154,6 +155,7 @@ async function killGatewaySession(id: string): Promise<boolean> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/pool/kill/${id}`, {
       method: "POST",
+      headers: authHeaders(),
       signal: AbortSignal.timeout(1000),
     });
     return r.ok;
@@ -164,7 +166,7 @@ async function toggleChannel(id: string, enabled: boolean): Promise<boolean> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/channels/${id}/config`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withAuth({ "content-type": "application/json" }),
       body: JSON.stringify({ enabled }),
       signal: AbortSignal.timeout(2000),
     });
@@ -176,6 +178,7 @@ async function testChannel(id: string): Promise<{ ok: boolean; error?: string }>
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/channels/${id}/test`, {
       method: "POST",
+      headers: authHeaders(),
       signal: AbortSignal.timeout(5000),
     });
     const data = await r.json() as { ok: boolean; error?: string };
@@ -187,7 +190,7 @@ async function addCronJob(name: string, schedule: string, prompt: string): Promi
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withAuth({ "content-type": "application/json" }),
       body: JSON.stringify({ name, schedule, prompt, trigger: "cron" }),
       signal: AbortSignal.timeout(2000),
     });
@@ -260,7 +263,7 @@ async function configureProvider(id: string, envKey: string, apiKey: string, act
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/providers/config`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withAuth({ "content-type": "application/json" }),
       body: JSON.stringify({ id, envKey, apiKey, action }),
       signal: AbortSignal.timeout(2000),
     });
@@ -273,6 +276,7 @@ async function killSubagent(sessionId: string): Promise<boolean> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/pool/kill/${sessionId}`, {
       method: "POST",
+      headers: authHeaders(),
       signal: AbortSignal.timeout(1000),
     });
     return r.ok;
@@ -949,7 +953,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           if (job) {
             void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}/patch`, {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              headers: withAuth({ "content-type": "application/json" }),
               body: JSON.stringify({ enabled: !job.enabled }),
             }).then(() => refresh());
           }
@@ -958,14 +962,14 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         if (k === "r" || k === "\r" || k === "\n") {
           const job = jobs[state.cronSel];
           if (job) {
-            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}/run`, { method: "POST" });
+            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}/run`, { method: "POST", headers: authHeaders() });
           }
           return;
         }
         if (k === "d") {
           const job = jobs[state.cronSel];
           if (job) {
-            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}`, { method: "DELETE" })
+            void fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${job.id}`, { method: "DELETE", headers: authHeaders() })
               .then(() => refresh());
           }
           return;
@@ -1042,15 +1046,15 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         if (k === "\r" || k === "\n" || k === "c") {
           const s = servers[state.sel];
           if (s) {
-            void fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}/connect`, { method: "POST" })
-              .then(() => fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}/discover`, { method: "POST" }))
+            void fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}/connect`, { method: "POST", headers: authHeaders() })
+              .then(() => fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}/discover`, { method: "POST", headers: authHeaders() }))
               .then(() => refresh());
           }
           return;
         }
         if (k === "d") {
           const s = servers[state.sel];
-          if (s) { void fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}`, { method: "DELETE" }).then(() => refresh()); }
+          if (s) { void fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers/${s.id}`, { method: "DELETE", headers: authHeaders() }).then(() => refresh()); }
           return;
         }
         if (k === "a") {
@@ -1067,7 +1071,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
               try {
                 await fetch(`http://127.0.0.1:${GW_PORT}/mcp/servers`, {
                   method: "POST",
-                  headers: { "content-type": "application/json" },
+                  headers: withAuth({ "content-type": "application/json" }),
                   body: JSON.stringify({ id, command, args }),
                   signal: AbortSignal.timeout(2000),
                 });
@@ -1119,7 +1123,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         }
       } else if (state.tab === "memory") {
         if (k === "\r" || k === "\n" || k === "d") {
-          void fetch(`http://127.0.0.1:${GW_PORT}/memory/dream`, { method: "POST" })
+          void fetch(`http://127.0.0.1:${GW_PORT}/memory/dream`, { method: "POST", headers: authHeaders() })
             .then((r) => r.json())
             .then((result: unknown) => {
               const consolidated = String((result as { memoriesConsolidated?: number })?.memoriesConsolidated ?? 0);

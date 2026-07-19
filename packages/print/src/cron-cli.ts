@@ -10,25 +10,10 @@
  *   mya cron history <id>            # Show run history
  */
 import { readCronJobs, atomicWriteJobs, CRON_FILE } from "./cron-persist.js";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { authHeaders } from "./gw-auth.js";
 import { nowWallclock } from "@my-agent/core";
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
-
-/** Phase 0C: read the gateway WS token (written 0600 at gateway start) so the
- * CLI can authenticate HTTP calls. Returns undefined if absent (the call will
- * then 401 unless MYA_NO_WS_TOKEN is set server-side). */
-function readGwToken(): string | undefined {
-  try { return readFileSync(join(homedir(), ".mya", "agent", "gw.token"), "utf8").trim() || undefined; }
-  catch { return undefined; }
-}
-/** Auth headers for gateway HTTP calls (Bearer token). Empty if no token file. */
-function authHeaders(): Record<string, string> {
-  const token = readGwToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
 
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
