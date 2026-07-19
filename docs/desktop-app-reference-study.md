@@ -179,7 +179,10 @@ the TUI rather than duplicating it as a second IDE. Implemented in
 - **Streaming assistant text**: aggregated into one response block per turn.
 - **Gateway CORS + WS localhost-origin**: enables browser/remote dashboard access.
 
-### Gotchas (don't repeat — each cost a debug cycle)
+### Gotchas (all 5 FIXED — documented so we don't re-hit them)
+
+Each was found during real-browser verification + resolved in code (commits
+`9a50c2c` for #1/#2/#4, `39c1996` for #3/#5).
 
 1. **Gateway broadcasts pi's RAW streaming protocol, not `{kind}`.** The dashboard
    was first written assuming events like `{kind:"turn"|"budget"|"tool"}` (copied
@@ -201,9 +204,11 @@ the TUI rather than duplicating it as a second IDE. Implemented in
 3. **wsToken is required + random per start.** `mya serve` generates a token
    (`cryptoRandomToken()` → `randomBytes(16).hex`) and the WS upgrade 403s without
    it. In **production (Tauri)** the dashboard gets it via IPC `gateway_info`
-   (`{port, ws_token}`). In **browser dev-mode** there's no IPC → must pass
-   `?token=<hex>` in the dashboard URL. Extract the token from the gateway's own
-   root HTML (`GET /` → `wsPath=/events?token=<hex>` is embedded).
+   (`{port, ws_token}`). In **browser dev-mode** there's no IPC → ✅ **FIXED:** run
+   `MYA_NO_WS_TOKEN=1 mya serve` to skip the token (local dev/testing only —
+   production keeps it to block other local processes). Then the dashboard
+   connects with no `?token=`. (Pre-fix fallback: extract the token from the
+   gateway root HTML `GET /` → `wsPath=/events?token=<hex>`.)
 
 4. **WS Origin allowlist (HIGH-1) is same-port only.** The cross-site WS
    hijacking defense allows only `http://127.0.0.1:${port}` etc. A browser
@@ -213,17 +218,22 @@ the TUI rather than duplicating it as a second IDE. Implemented in
    consistent with the HTTP CORS policy. Arbitrary internet origins stay blocked.
 
 5. **bundle imports `@my-agent/gateway` from compiled `dist`, not source.**
-   `npm run bundle` (esbuild) resolves `@my-agent/gateway` →
-   `packages/gateway/dist/index.js` (compiled output), NOT `src/index.ts`. So
-   editing gateway **source** then running only `npm run bundle` ships STALE code.
-   **Fix:** `npx tsc -b packages/gateway --force` (recompile dist) → THEN
-   `npm run bundle`. Same applies to any package whose source you edit.
+   `npm run bundle` (esbuild) resolved `@my-agent/gateway` →
+   `packages/gateway/dist/index.js` (compiled output), NOT `src/index.ts` — the
+   source-resolve plugin only mapped 4 packages. So editing gateway source then
+   running only `npm run bundle` shipped STALE code. ✅ **FIXED:** made the plugin
+   GENERIC — any `@my-agent/*` resolves from `packages/*/src` (.ts), falling back
+   to dist only if the source file is absent. Now `npm run bundle` always builds
+   from source; no `tsc -b` needed first. (Verified: stale gateway dist with a
+   feature removed → `npm run bundle` → bundle has the feature, pulled from source.)
 
 ### How to verify the dashboard (no Tauri/X display needed)
 The dashboard has a **browser dev fallback** (no Tauri IPC required). Recipe:
-1. `mya serve --port 3949` (gateway with CORS + WS localhost-origin).
+1. `MYA_NO_WS_TOKEN=1 mya serve --port 3949` (gateway with CORS + WS localhost-origin;
+   the env skips the WS token so the browser dashboard needs no `?token=`).
 2. Serve the dashboard statically: `python3 -m http.server 8087 --directory crates/desktop-ui`.
-3. Extract the wsToken: `curl -s http://127.0.0.1:3949/ | grep -oE 'token=[a-f0-9]+'`.
+3. (Token no longer needed with `MYA_NO_WS_TOKEN=1`.) If you skipped it, extract
+   the wsToken: `curl -s http://127.0.0.1:3949/ | grep -oE 'token=[a-f0-9]+'`.
 4. Open in a real browser (plain Chromium hangs on the open WS; **Camofox** at
    `localhost:9377` renders reliably): navigate to
    `http://127.0.0.1:8087/index.html?port=3949&token=<hex>`.
