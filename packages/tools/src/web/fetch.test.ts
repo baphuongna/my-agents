@@ -151,6 +151,27 @@ describe("webFetch", () => {
     expect(calls).toEqual(["https://example.com/redirect"]);
   });
 
+  it("blocks redirect to a private IP via per-hop check (target never connected)", async () => {
+    const fetchSpy = vi.fn().mockImplementation((u: string) =>
+      Promise.resolve(
+        mockResponse({
+          status: 302,
+          location: "http://10.0.0.5/internal",
+          url: String(u),
+        }),
+      ),
+    );
+    globalThis.fetch = fetchSpy;
+
+    const result = await webFetch("https://example.com/redirect");
+
+    expect(result.ok).toBe(false);
+    expect(result.guardBlock?.category).toBe("ssrf-private");
+    const calls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(calls).not.toContain("http://10.0.0.5/internal");
+    expect(calls).toEqual(["https://example.com/redirect"]);
+  });
+
   it("follows a safe redirect and returns the final content", async () => {
     const fetchSpy = vi.fn().mockImplementation((u: string) => {
       if (String(u).includes("/redirect")) {
