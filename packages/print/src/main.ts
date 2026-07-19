@@ -50,6 +50,18 @@ function loadAuthConfig(): void {
   } catch { /* auth.json optional */ }
 }
 
+/** Phase 0A: tools denied for cron-fired turns (anti-recursion / deny-default).
+ * Empty by default — Phase 3C (approval_mode: deny) populates it with the
+ * re-entry vectors (`bash` → `mya cron add` CLI; `write`/`edit` → edit cron.json
+ * directly, which the file-as-store now loads). mya has no agent-callable
+ * scheduling tool, so the recursion surface is shell + file-edit, gated by 3C. */
+export const CRON_ROLE_DENIED_TOOLS: string[] = [];
+/** Returns the excludeTools list for a session id, or undefined if it isn't a
+ * cron-fired session. (Testable seam for the pool factory.) */
+export function cronSessionExcludeTools(sessionId: string): string[] | undefined {
+  return sessionId.startsWith("_cron:") ? CRON_ROLE_DENIED_TOOLS : undefined;
+}
+
 async function main(): Promise<void> {
   loadAuthConfig();
 
@@ -250,9 +262,18 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // Phase 2: respect per-agent agentDir (multi-agent isolation).
       // @ts-expect-error — resolved by esbuild from project source
       const { createAgentSession } = await import("../../coding-agent/src/index.ts");
+      // Phase 0A: cron-fired turns (_cron:<jobId> sessions) get the cron role's
+      // excluded tools (anti-recursion / deny-default). createAgentSession already
+      // accepts excludeTools (sdk.ts). The denied set is empty by default; Phase 3C
+      // (approval_mode) populates it (bash/write/edit → can't modify cron.json or
+      // run the CLI to recurse).
+      const cronOpts = sessionId.startsWith("_cron:")
+        ? { excludeTools: CRON_ROLE_DENIED_TOOLS }
+        : {};
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
+        ...cronOpts,
       });
       return result.session as unknown as AgentSession;
     },
@@ -377,6 +398,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     hooks,
     cron,
     cronReload,
+    onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),
     sync,
     collab,
     channels,
@@ -470,7 +492,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       if (!run) return;
       cron.start(run.runId);
       try {
-        await runOnSession("_cron", job.prompt, (e: unknown) => gw.broadcast("_cron", e));
+        // Phase 0A: per-job session (_cron:<jobId>) — matches the sweep, so manual
+        // runs use the same isolated session + cron-role toolset.
+        await runOnSession(`_cron:${jobId}`, job.prompt, (e: unknown) => gw.broadcast("_cron", e));
         cron.complete(run.runId, "succeeded");
       } catch (e) {
         cron.complete(run.runId, "failed", (e as Error).message);
@@ -483,11 +507,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     },
     wsInfo: () => ({ port, token: wsToken }),
     onWsMessage: (session: string, data: unknown) => {
-      const msg = data as { text?: string; kind?: string; prompt?: string };
-      const prompt = msg.kind === "cron-fire" ? msg.prompt : msg.text;
-      if (prompt) {
-        // Route to pi AgentSession (same as TUI).
-        runOnSession(session, prompt, (e: unknown) => gw.broadcast(session, e))
+      // Phase 1A: cron firing now goes through onRunOnSession (awaited, real
+      // status). This handler serves interactive WS prompts from clients only.
+      const msg = data as { text?: string };
+      if (msg.text) {
+        runOnSession(session, msg.text, (e: unknown) => gw.broadcast(session, e))
           .catch((e) => console.warn(`[gateway] WS message handler failed: ${(e as Error).message}`));
       }
     },

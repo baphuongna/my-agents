@@ -156,6 +156,9 @@ export interface GatewayOptions {
    * (picks up external/CLI file edits). Called once at start() too so jobs load
    * before the first sweep tick. */
   cronReload?: () => void;
+  /** Phase 1A: run a cron-fired prompt on a pooled session and return its text.
+   * The sweep awaits this before recording the run's outcome (D2 fix). */
+  onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -235,6 +238,8 @@ export class Gateway {
   private cronTimer?: NodeJS.Timeout;
   /** Phase 0B: reconcile scheduler from cron.json each sweep. */
   private readonly cronReload?: () => void;
+  /** Phase 1A: run a cron-fired prompt, returning the response text. */
+  private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
   /** §12 sync server (optional — Phase 6 wiring). Stored; no auto-start. */
   private readonly sync?: SyncServer;
   /** §12 collaboration relay (optional — Phase 6 wiring). Stored; no auto-start. */
@@ -347,6 +352,8 @@ export class Gateway {
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
     this.cronAdd = opts.cronAdd;
+    this.cronReload = opts.cronReload;
+    this.onRunOnSession = opts.onRunOnSession;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
@@ -415,31 +422,7 @@ export class Gateway {
         try { this.cronReload?.(); } catch (e) {
           console.warn("[gateway] cron initial reload failed (non-fatal):", (e as Error).message);
         }
-        this.cronTimer = setInterval(() => {
-          try {
-            // Phase 0B: pick up external cron.json edits each sweep.
-            try { this.cronReload?.(); } catch (e) {
-              console.warn("[gateway] cron reload failed (non-fatal):", (e as Error).message);
-            }
-            const due = this.cron!.due();
-            for (const job of due) {
-              const run = this.cron!.claim(job.id, workerId);
-              if (!run) continue;
-              // Minimal delivery: forward to WS as a prompt event via the existing
-              // onWsMessage channel (one-way fire-and-forget). A richer Protocol
-              // lands Tier-2.
-              if (this.onWsMessage) {
-                this.onWsMessage("_cron", { kind: "cron-fire", jobId: job.id, runId: run.runId, prompt: job.prompt });
-              }
-              this.cron!.start(run.runId);
-              this.cron!.complete(run.runId, "succeeded");
-            }
-            this.cron!.sweepExpired();
-          } catch (e) {
-            // cron loop must NEVER crash the gateway.
-            console.warn("[gateway] cron sweep failed (non-fatal):", (e as Error).message);
-          }
-        }, this.cronIntervalMs);
+        this.cronTimer = setInterval(() => { void this.cronSweep(workerId); }, this.cronIntervalMs);
         // Don't keep the process alive solely for the cron sweep.
         this.cronTimer.unref?.();
       }
@@ -451,6 +434,50 @@ export class Gateway {
         resolve({ port, wsPath: `ws://${this.host}:${port}/events` });
       });
     });
+  }
+
+  /** Phase 1A: one cron sweep — reconcile, claim due jobs, run each on its own
+   * `_cron:<jobId>` session (parallelism), and record the REAL outcome after the
+   * agent turn resolves (D2 fix — was synchronously 'succeeded' before execution).
+   * Public so the D2 outcome behavior is testable without a live sweep timer. */
+  async cronSweep(workerId: string): Promise<void> {
+    if (!this.cron) return;
+    try {
+      // Phase 0B: pick up external cron.json edits each sweep.
+      try { this.cronReload?.(); } catch (e) {
+        console.warn("[gateway] cron reload failed (non-fatal):", (e as Error).message);
+      }
+      const due = this.cron.due();
+      if (due.length === 0) { this.cron.sweepExpired(); return; }
+      // Fire due jobs in parallel — each on a distinct _cron:<jobId> session so a
+      // slow job doesn't block others (C3 fix; bounded by AgentPool concurrency).
+      await Promise.allSettled(due.map(async (job) => {
+        const run = this.cron!.claim(job.id, workerId);
+        if (!run) return; // another worker holds an unexpired lease
+        this.cron!.start(run.runId);
+        try {
+          if (!this.onRunOnSession) {
+            // No runner wired — can't execute. Fail (not silent 'succeeded').
+            this.cron!.complete(run.runId, "failed", "no cron session runner wired");
+            return;
+          }
+          const sessionId = `_cron:${job.id}`;
+          const text = await this.onRunOnSession(sessionId, job.prompt, (e: unknown) => this.broadcast("_cron", e));
+          // D2 / hermes empty-response soft-fail: success but no text → failed.
+          if (text == null || text.trim() === "") {
+            this.cron!.complete(run.runId, "failed", "agent produced empty response");
+          } else {
+            this.cron!.complete(run.runId, "succeeded");
+          }
+        } catch (e) {
+          this.cron!.complete(run.runId, "failed", (e as Error).message);
+        }
+      }));
+      this.cron.sweepExpired();
+    } catch (e) {
+      // cron loop must NEVER crash the gateway.
+      console.warn("[gateway] cron sweep failed (non-fatal):", (e as Error).message);
+    }
   }
 
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
