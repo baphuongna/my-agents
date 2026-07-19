@@ -183,7 +183,8 @@ export class CronScheduler {
       const job = this.jobs.get(rec.jobId);
       if (job && job.trigger === "cron" && typeof job.schedule === "string") {
         const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
-        if (next != null) job.nextRunAt = next;
+        if (next != null) { job.nextRunAt = next; this.dirty = true; }
+        else { job.enabled = false; this.dirty = true; } // impossible expr post-fire — disable
       }
     }
   }
@@ -266,18 +267,25 @@ export class CronScheduler {
         const succeeded = this.runsOf(job.id).some((r) => r.status === "succeeded");
         if (now >= job.schedule && !succeeded) out.push(job);
       } else if (job.trigger === "cron" && typeof job.schedule === "string") {
-        // recovery: a legacy/loaded row without nextRunAt — if it matches NOW,
-        // fire this minute (C13); else seed from the next future fire.
+        // recovery: a legacy/loaded row without nextRunAt.
         if (job.nextRunAt == null) {
-          job.nextRunAt = matchesCronExpr(job.schedule, new Date(now), job.timezone)
-            ? now
-            : (computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime() ?? now);
+          if (matchesCronExpr(job.schedule, new Date(now), job.timezone)) {
+            job.nextRunAt = now; // C13: matches now → fire this minute
+          } else {
+            const seed = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
+            if (seed == null) { job.enabled = false; this.dirty = true; continue; } // impossible/rare expr
+            job.nextRunAt = seed;
+          }
         }
         if (job.nextRunAt <= now) {
-          // DUE — fire once + advance to the next future fire (collapses any
-          // backlog; closes D8 same-minute double-fire + D3 silent-skip).
+          // DUE — fire once + advance to the next future fire (collapses backlog;
+          // closes D8 same-minute double-fire + D3 silent-skip). An expr with no
+          // future match is DISABLED (hermes state="error") so it doesn't re-fire
+          // every sweep (computeNextFire-null hazard).
           const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
-          if (next != null) job.nextRunAt = next;
+          if (next == null) { job.enabled = false; this.dirty = true; continue; }
+          job.nextRunAt = next;
+          this.dirty = true; // Phase 2C: the gateway persists this before firing
           out.push(job);
         }
       }

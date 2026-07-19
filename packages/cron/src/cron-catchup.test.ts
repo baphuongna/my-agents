@@ -120,4 +120,38 @@ describe("dueAndAdvance catch-up (Phase 2B/2C — D3 + D8)", () => {
     // re-anchored off completion → nextRunAt is the 09:00 strictly after completion
     expect(job.nextRunAt!).toBeGreaterThanOrEqual(advancedAt);
   });
+
+  it("an impossible expression (no future match) is DISABLED, not perpetual-re-fired (P1 fix)", () => {
+    const sched = new CronScheduler();
+    // Feb 31 never exists → computeNextFire returns null within the cap.
+    sched.register(mkCron("impossible", "0 0 31 2 *"));
+    const due1 = sched.dueAndAdvance();
+    expect(due1.map((j) => j.id)).not.toContain("impossible"); // never fires
+    expect(sched.getJob("impossible")!.enabled).toBe(false);    // disabled
+    // subsequent sweeps: still disabled, never fires
+    const due2 = sched.dueAndAdvance(Date.now() + 120_000);
+    const due3 = sched.dueAndAdvance(Date.now() + 240_000);
+    expect([...due2, ...due3].map((j) => j.id)).not.toContain("impossible");
+  });
+
+  it("an out-of-range expression (month 13) is DISABLED, not perpetual-re-fired", () => {
+    const sched = new CronScheduler();
+    sched.register(mkCron("bad", "0 0 1 13 *"));
+    sched.dueAndAdvance();
+    expect(sched.getJob("bad")!.enabled).toBe(false);
+  });
+
+  it("dueAndAdvance sets the dirty flag so reconcile won't clobber an unflushed advance (P1 fix)", () => {
+    // If the gateway's pre-fire persist fails, the advanced nextRunAt must
+    // survive in memory (dirty=true → cronReload skips reconcile). This test
+    // pins the precondition: advancing sets dirty (independent of register's dirty).
+    const sched = new CronScheduler();
+    sched.register(mkCron("d", "* * * * *"));
+    sched.markPersisted(); // clear the register-induced dirty
+    expect(sched.isDirty).toBe(false);
+    sched.dueAndAdvance();
+    expect(sched.isDirty).toBe(true); // advance mutated nextRunAt
+    sched.markPersisted();
+    expect(sched.isDirty).toBe(false);
+  });
 });

@@ -477,9 +477,12 @@ export class Gateway {
       }
       const due = this.cron.dueAndAdvance();
       // Phase 2C: persist the advanced nextRunAt BEFORE firing — at-most-once
-      // across crashes (a crash during fire leaves a future nextRunAt on disk).
+      // across crashes. If the persist FAILS, skip the fire this sweep (the safe
+      // degradation is a missed fire, not a potential double-fire on crash).
       try { this.cronPersist?.(); } catch (e) {
-        console.warn("[gateway] cron persist (pre-fire) failed (non-fatal):", (e as Error).message);
+        console.warn("[gateway] cron persist (pre-fire) failed — skipping fire this sweep (at-most-once):", (e as Error).message);
+        this.cron.sweepExpired();
+        return;
       }
       if (due.length === 0) { this.cron.sweepExpired(); return; }
       // Phase 3A stopgap: cap concurrent full-cred turns per sweep.
