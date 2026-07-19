@@ -117,6 +117,36 @@ function extractTitle(html: string): string {
  * Intentionally simple: strips noise tags, converts common structural tags,
  * decodes entities, collapses whitespace. No CSS selector engine, no DOM.
  */
+/** Best-effort removal of HIDDEN DOM elements (anti prompt-injection: a page can
+ *  hide malicious instructions via `display:none` / `aria-hidden` / the `hidden`
+ *  attribute — invisible to humans but extracted into markdown for the model).
+ *  Regex-based (no DOM parser — §18 minimal core), so it handles the common
+ *  non-nested case; deeply-nested hidden trees may partially survive. Mirrors
+ *  openclaw's hidden-DOM sanitization at the fidelity this stack allows. */
+function stripHiddenDom(html: string): string {
+  // An opening tag carrying a hidden marker, its content, and the matching
+  // close tag. Non-greedy content match (`[\s\S]*?`) removes element + text.
+  // The bare `hidden` attribute is anchored (`\shidden(?=\s*[=/>])`) so it
+  // matches only a standalone attribute (followed by =/>/>), NOT "hidden"
+  // appearing inside a quoted value (`title="the hidden truth"`) or another
+  // attribute name (`data-hidden`). `opacity:0` uses a negative lookahead
+  // `(?![\d.])` so it does not match `opacity:0.5`.
+  return html.replace(
+    /<(\w[\w-]*)\b[^>]*?(?:\shidden(?=\s*[=/>])|aria-hidden\s*=\s*["']true["']|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?![\d.]))[^"']*["'])[^>]*>[\s\S]*?<\/\1\s*>/gi,
+    "",
+  );
+}
+
+/** Remove invisible / bidi-override Unicode that can hide prompt-injection
+ *  instructions in otherwise-visible text (openclaw anti-injection pattern).
+ *  Strips: zero-width (U+200B-200F), bidi controls (U+202A-202E, U+2066-2069),
+ *  BOM (U+FEFF), and Unicode tag chars (U+E0000-E007F). Applied to ALL content
+ *  types, not just HTML. */
+const INVISIBLE_UNICODE_RE = /[\u061C\u115F\u1160\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\u3164\uFEFF\uFFA0\u{E0000}-\u{E007F}]/gu;
+function stripInvisibleUnicode(s: string): string {
+  return s.replace(INVISIBLE_UNICODE_RE, "");
+}
+
 function htmlToMarkdown(html: string): string {
   let out = html;
 
@@ -129,6 +159,11 @@ function htmlToMarkdown(html: string): string {
 
   // 2. Remove <head> block (metadata, not visible content).
   out = out.replace(/<head\b[\s\S]*?<\/head>/gi, "");
+
+  // 2b. Anti-injection: remove hidden DOM elements + their content (display:none,
+  //     visibility:hidden, aria-hidden, `hidden` attr) so concealed instructions
+  //     don't leak into the markdown the model reads.
+  out = stripHiddenDom(out);
 
   // 3. <pre> → fenced code block (strip inner <code> wrapper if present).
   out = out.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_m, content: string) => {
@@ -442,6 +477,12 @@ export async function webFetch(
     markdown =
       body + `\n\n[... unsupported content type: ${contentType} — returned raw ...]`;
   }
+
+  // ── 5b. ANTI-INJECTION — strip invisible / bidi-override Unicode from the
+  //      final markdown (applies to ALL content types, not just HTML). Defeats
+  //      concealed-instruction attacks hidden in zero-width / bidi chars.
+  markdown = stripInvisibleUnicode(markdown);
+  title = stripInvisibleUnicode(title);
 
   // ── 6. BOT DETECTION ────────────────────────────────────────────────
   const bot = detectBot(title);

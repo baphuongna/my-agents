@@ -197,19 +197,34 @@ SSRF + claw-code's mode-tiered allow/deny rules) would be strongest.
   cold-verifier caught the initial TTL-on-dead-code defect). A downed Camofox
   server is re-detected within the TTL window.
   *(was: cache set once, never invalidated; downed server not detected until restart.)*
-- **G4. Module-level session caches never evicted.** `sessionCache`,
-  `camofoxSessionCache`, `engineCache`, `cloudSessionCache` persist for process
-  lifetime; only `browser_close`/exit clears them. Long-running daemons leak.
-  Fix: TTL sweep or LRU cap (hermes reaps inactive sessions every 120s).
+- **G4. Module-level session caches never evicted.** ✅ **FIXED.** Added
+  `trimCache(map)` (LRU-ish: evicts oldest via Map insertion order when size >
+  `CACHE_MAX_ENTRIES=32`) called after every cache `.set()`. Bounds all 4 caches
+  (sessionCache, camofoxSessionCache, engineCache, cloudSessionCache) so
+  long-running daemons no longer leak.
+  *(was: caches persisted for process lifetime; long-running daemons leaked.)*
 
 ### P2 — Capability (feature gaps vs hermes)
-- **G5. No `browser_vision` (screenshot → vision Q&A).** hermes annotates
-  screenshots with `[N]` ref overlays + routes to vision model. mya returns raw
-  base64 PNG only.
-- **G6. No orphan reaping.** Crashed agent-browser daemons leave stale socket
-  dirs. hermes `_reap_orphaned_browser_sessions` scans + identity-verifies kill.
-- **G7. No content anti-injection sanitization** (openclaw hidden-DOM + invisible-
-  unicode strip). Lower priority if web_fetch output is treated as untrusted data.
+- **G5. No `browser_vision` (screenshot → vision Q&A).** ⏳ **DEFERRED.** Requires
+  vision-model routing (no vision-capable model in `packages/ai` today) + image
+  annotation (no image lib — §18 minimal core). hermes annotates screenshots with
+  `[N]` ref overlays + routes to a vision model. A multi-day feature needing a
+  design decision (which vision provider, annotation approach) — not a contained
+  hardening pass like G1–G4/G6/G7.
+- **G6. No orphan reaping.** ✅ **FIXED.** Added `reapOrphanedBrowserSessions()` —
+  scans `tmpdir()` for stale `mya-browser-*` socket dirs, identity-verifies the
+  owner PID (`process.kill(pid,0)`; **ESRCH-only reap** — EPERM/other treated as
+  alive so a root daemon never deletes another user's live session), `lstatSync`
+  symlink guard, skips own PID. Called fire-and-forget from `registerWebTools`.
+  *(was: crashed agent-browser daemons left stale socket dirs.)*
+- **G7. No content anti-injection sanitization.** ✅ **FIXED.** Added `stripHiddenDom`
+  (regex removes hidden elements + content: `display:none`/`visibility:hidden`/
+  `opacity:0`/`aria-hidden`/bare `hidden` attr — anchored to avoid false positives
+  on `data-hidden`/`title="…hidden…"`/`opacity:0.5`) + `stripInvisibleUnicode`
+  (zero-width + bidi controls incl. U+061C ALM + Hangul fillers + word-joiner +
+  Tags block) applied to ALL web_fetch output. 3-review-hardened. Known regex
+  limitation: external-CSS class hiding + nested same-tag trees (no DOM parser —
+  §18) — documented.
 
 ---
 

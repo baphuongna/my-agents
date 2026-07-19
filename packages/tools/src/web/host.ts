@@ -31,6 +31,7 @@
  *     exercise it end-to-end without going through the orchestrator.
  */
 import { browserTools, BROWSER_DESCRIPTIONS } from "./browser/index.js";
+import { reapOrphanedBrowserSessions } from "./browser/session.js";
 import {
   webSearchTool,
   webExtractTool,
@@ -156,6 +157,11 @@ function toOrchestratorCtx(): OrchestratorCtx {
  * (no chain — it always succeeds locally).
  */
 export function registerWebTools(pi: MyaHostApi): void {
+  // G6: reap orphaned `mya-browser-*` socket dirs left by CRASHED mya processes.
+  // Run once at tool-registration (the proper init point — NOT at module import,
+  // which would break tests that mock session.js). Fire-and-forget; best-effort.
+  void reapOrphanedBrowserSessions();
+
   // ── Browser tools: iterate the canonical `browserTools` array so adding a
   //    tool there auto-registers it. Orchestrator-routed action tools go through
   //    runBrowserWithFallback (engine chain → web_fetch floor); lifecycle/

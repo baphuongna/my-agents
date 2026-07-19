@@ -126,6 +126,7 @@ const engineCache = new Map<string, EngineResolution>();
  *  after the first successful resolution. */
 function setEngineCache(taskId: string, resolution: EngineResolution): void {
   engineCache.set(taskId, resolution);
+  trimCache(engineCache);
 }
 
 /** Build the {@link RunBrowserOptions} for a given engine resolution.
@@ -166,6 +167,20 @@ interface CloudSessionCacheEntry {
   createdAt: number;
 }
 const cloudSessionCache = new Map<string, CloudSessionCacheEntry>();
+
+/** Cap on each module-level cache's size. Long-running daemons accumulate
+ *  entries across many tasks; without a bound the maps grow unbounded (G4). Maps
+ *  iterate in insertion order, so evicting the oldest entry is an LRU-ish
+ *  approximation. Session handles dropped here are consistent with browser_close
+ *  (the agent-browser daemon self-terminates on its idle timeout). */
+export const CACHE_MAX_ENTRIES = 32;
+export function trimCache<K, V>(map: Map<K, V>): void {
+  while (map.size > CACHE_MAX_ENTRIES) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
 
 /** Default cloud-session TTL: 5 minutes. A cloud browser session can become
  *  invalid (server restart, idle-kill, network partition); reusing a stale
@@ -220,6 +235,7 @@ async function ensureCloudCdpUrl(
     return { ok: false, error: result.error };
   }
   cloudSessionCache.set(taskId, { meta: result.session, createdAt: Date.now() });
+  trimCache(cloudSessionCache);
   return {
     ok: true,
     resolution: { ...resolution, cdpUrl: result.session.cdpUrl },
@@ -276,6 +292,7 @@ function getSession(taskId: string): BrowserSession {
   if (!session) {
     session = createBrowserSession({ taskId });
     sessionCache.set(taskId, session);
+    trimCache(sessionCache);
   }
   return session;
 }
@@ -293,6 +310,7 @@ async function getOrCreateCamofoxSession(
     return { ok: false, error: created.error ?? "camofox createSession failed" };
   }
   camofoxSessionCache.set(taskId, created.data);
+  trimCache(camofoxSessionCache);
   return { ok: true, session: created.data };
 }
 

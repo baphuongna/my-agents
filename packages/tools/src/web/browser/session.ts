@@ -15,7 +15,14 @@
  *
  * Constraints: TS strict + noUncheckedIndexedAccess + ESM; node builtins only.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -228,4 +235,61 @@ export function closeBrowserSession(session: BrowserSession): void {
   } catch {
     // Best-effort cleanup.
   }
+}
+
+/** Scan `tmpdir()` for stale `mya-browser-*` socket dirs left by CRASHED mya
+ *  processes and remove the ones whose owner PID is no longer alive (G6).
+ *  Identity-verified: the dir name embeds the owner PID
+ *  (`mya-browser-<taskId>-<pid>`); we only remove dirs whose PID is dead, so a
+ *  live process's active session is never touched. Our own PID's dirs are
+ *  skipped (active or cleaned on exit). Never throws — best-effort cleanup.
+ *  Returns the number of dirs removed. */
+export function reapOrphanedBrowserSessions(): number {
+  let removed = 0;
+  let entries: string[];
+  try {
+    entries = readdirSync(tmpdir());
+  } catch {
+    return 0;
+  }
+  for (const name of entries) {
+    if (!name.startsWith("mya-browser-")) continue;
+    // The taskId segment may itself contain '-', so the owner PID is the
+    // segment after the LAST '-'.
+    const dashIdx = name.lastIndexOf("-");
+    if (dashIdx < 0) continue;
+    const pid = Number(name.slice(dashIdx + 1));
+    if (!Number.isInteger(pid) || pid <= 0) continue;
+    if (pid === process.pid) continue; // our own — active
+    // `process.kill(pid, 0)` throws if the process is not alive — but for TWO
+    // reasons: ESRCH (dead → reap) and EPERM (alive but we lack permission to
+    // signal it, e.g. another user's process). Only reap on ESRCH; EPERM/other
+    // means the owner is still alive (skip — a root daemon must not delete
+    // another user's live session dir).
+    try {
+      process.kill(pid, 0);
+      continue; // owner still alive — leave its session alone
+    } catch (e) {
+      if (!(e instanceof Error && (e as NodeJS.ErrnoException).code === "ESRCH")) {
+        continue; // EPERM / unknown → treat as alive, skip
+      }
+      /* ESRCH — owner dead, reap below */
+    }
+    const target = join(tmpdir(), name);
+    // Defense-in-depth: only remove a real directory (skip symlinks / files so a
+    // planted symlink can never redirect the rmSync, even if a future Node.js
+    // release regresses symlink handling).
+    try {
+      if (!lstatSync(target).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    try {
+      rmSync(target, { recursive: true, force: true });
+      removed++;
+    } catch {
+      /* best-effort */
+    }
+  }
+  return removed;
 }
