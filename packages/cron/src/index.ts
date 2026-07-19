@@ -222,6 +222,9 @@ export class CronScheduler {
         if (now >= job.schedule && !succeeded) out.push(job);
       }
       else if (job.trigger === "cron" && typeof job.schedule === "string") {
+        // D8 (Phase 2B): no nextRunAt advance yet — a `* * * * *` job can fire
+        // twice in one minute under a 30s sweep (the per-sweep cap + lease limit
+        // the blast radius; nextRunAt tracking in 2B closes it).
         if (matchesCronExpr(job.schedule, new Date(now), job.timezone)) out.push(job);
       }
     }

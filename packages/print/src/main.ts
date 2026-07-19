@@ -50,17 +50,9 @@ function loadAuthConfig(): void {
   } catch { /* auth.json optional */ }
 }
 
-/** Phase 0A: tools denied for cron-fired turns (anti-recursion / deny-default).
- * Empty by default — Phase 3C (approval_mode: deny) populates it with the
- * re-entry vectors (`bash` → `mya cron add` CLI; `write`/`edit` → edit cron.json
- * directly, which the file-as-store now loads). mya has no agent-callable
- * scheduling tool, so the recursion surface is shell + file-edit, gated by 3C. */
-export const CRON_ROLE_DENIED_TOOLS: string[] = [];
-/** Returns the excludeTools list for a session id, or undefined if it isn't a
- * cron-fired session. (Testable seam for the pool factory.) */
-export function cronSessionExcludeTools(sessionId: string): string[] | undefined {
-  return sessionId.startsWith("_cron:") ? CRON_ROLE_DENIED_TOOLS : undefined;
-}
+/** Phase 0A: cron-fired-turn tool policy lives in ./cron-role.ts (testable,
+ * no main() side effects). Imported here for the pool factory. */
+import { CRON_ROLE_DENIED_TOOLS, cronSessionExcludeTools } from "./cron-role.js";
 
 async function main(): Promise<void> {
   loadAuthConfig();
@@ -267,9 +259,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // accepts excludeTools (sdk.ts). The denied set is empty by default; Phase 3C
       // (approval_mode) populates it (bash/write/edit → can't modify cron.json or
       // run the CLI to recurse).
-      const cronOpts = sessionId.startsWith("_cron:")
-        ? { excludeTools: CRON_ROLE_DENIED_TOOLS }
-        : {};
+      const excludeTools = cronSessionExcludeTools(sessionId);
+      const cronOpts = excludeTools != null ? { excludeTools } : {};
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
@@ -492,10 +483,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       if (!run) return;
       cron.start(run.runId);
       try {
-        // Phase 0A: per-job session (_cron:<jobId>) — matches the sweep, so manual
-        // runs use the same isolated session + cron-role toolset.
-        await runOnSession(`_cron:${jobId}`, job.prompt, (e: unknown) => gw.broadcast("_cron", e));
-        cron.complete(run.runId, "succeeded");
+        // Phase 0A: per-job session + D2 empty-response soft-fail (mirrors the
+        // sweep so a manual run records the same real outcome).
+        const text = await runOnSession(`_cron:${jobId}`, job.prompt, (e: unknown) => gw.broadcast(`_cron:${jobId}`, e));
+        if (text == null || text.trim() === "") cron.complete(run.runId, "failed", "agent produced empty response");
+        else cron.complete(run.runId, "succeeded");
       } catch (e) {
         cron.complete(run.runId, "failed", (e as Error).message);
       }

@@ -159,6 +159,9 @@ export interface GatewayOptions {
   /** Phase 1A: run a cron-fired prompt on a pooled session and return its text.
    * The sweep awaits this before recording the run's outcome (D2 fix). */
   onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
+  /** Phase 3A stopgap: max due jobs fired per sweep (bounds concurrent full-cred
+   * turns / cost amplification until the full scheduler.max_concurrent lands). */
+  cronMaxConcurrent?: number;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -240,6 +243,11 @@ export class Gateway {
   private readonly cronReload?: () => void;
   /** Phase 1A: run a cron-fired prompt, returning the response text. */
   private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
+  /** Phase 3A stopgap: max due jobs fired per sweep. */
+  private readonly cronMaxConcurrent: number;
+  /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
+   * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
+  private cronSweeping = false;
   /** §12 sync server (optional — Phase 6 wiring). Stored; no auto-start. */
   private readonly sync?: SyncServer;
   /** §12 collaboration relay (optional — Phase 6 wiring). Stored; no auto-start. */
@@ -354,14 +362,17 @@ export class Gateway {
     this.cronAdd = opts.cronAdd;
     this.cronReload = opts.cronReload;
     this.onRunOnSession = opts.onRunOnSession;
+    this.cronMaxConcurrent = opts.cronMaxConcurrent ?? 4;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
     this.webAuthn = opts.webAuthn;
     this.voiceCall = opts.voiceCall;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
-    if (this.cron && !this.onWsMessage && !this.cronDeliveredWarned) {
-      console.warn("[gateway] cron is configured but no onWsMessage channel exists; due jobs will be claimed + completed but not delivered.");
+    // Phase 1A: delivery is now via onRunOnSession (the sweep runs + records real
+    // outcome). Warn only if NEITHER is wired (truly no way to execute).
+    if (this.cron && !this.onWsMessage && !this.onRunOnSession && !this.cronDeliveredWarned) {
+      console.warn("[gateway] cron is configured but neither onWsMessage nor onRunOnSession is wired; due jobs cannot execute.");
       this.cronDeliveredWarned = true;
     }
   }
@@ -442,6 +453,8 @@ export class Gateway {
    * Public so the D2 outcome behavior is testable without a live sweep timer. */
   async cronSweep(workerId: string): Promise<void> {
     if (!this.cron) return;
+    if (this.cronSweeping) return; // overlapping sweep (a prior job > interval) — skip
+    this.cronSweeping = true;
     try {
       // Phase 0B: pick up external cron.json edits each sweep.
       try { this.cronReload?.(); } catch (e) {
@@ -449,9 +462,11 @@ export class Gateway {
       }
       const due = this.cron.due();
       if (due.length === 0) { this.cron.sweepExpired(); return; }
+      // Phase 3A stopgap: cap concurrent full-cred turns per sweep.
+      const batch = due.slice(0, this.cronMaxConcurrent);
       // Fire due jobs in parallel — each on a distinct _cron:<jobId> session so a
       // slow job doesn't block others (C3 fix; bounded by AgentPool concurrency).
-      await Promise.allSettled(due.map(async (job) => {
+      await Promise.allSettled(batch.map(async (job) => {
         const run = this.cron!.claim(job.id, workerId);
         if (!run) return; // another worker holds an unexpired lease
         this.cron!.start(run.runId);
@@ -462,7 +477,7 @@ export class Gateway {
             return;
           }
           const sessionId = `_cron:${job.id}`;
-          const text = await this.onRunOnSession(sessionId, job.prompt, (e: unknown) => this.broadcast("_cron", e));
+          const text = await this.onRunOnSession(sessionId, job.prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
           // D2 / hermes empty-response soft-fail: success but no text → failed.
           if (text == null || text.trim() === "") {
             this.cron!.complete(run.runId, "failed", "agent produced empty response");
@@ -477,6 +492,8 @@ export class Gateway {
     } catch (e) {
       // cron loop must NEVER crash the gateway.
       console.warn("[gateway] cron sweep failed (non-fatal):", (e as Error).message);
+    } finally {
+      this.cronSweeping = false;
     }
   }
 
