@@ -163,6 +163,9 @@ export interface GatewayOptions {
   /** Phase 3A stopgap: max due jobs fired per sweep (bounds concurrent full-cred
    * turns / cost amplification until the full scheduler.max_concurrent lands). */
   cronMaxConcurrent?: number;
+  /** Phase 2C: persist the scheduler state (advanced nextRunAt) to cron.json.
+   * Called before firing (at-most-once across crashes) + after complete (re-anchor). */
+  cronPersist?: () => void;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -246,6 +249,8 @@ export class Gateway {
   private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
   /** Phase 3A stopgap: max due jobs fired per sweep. */
   private readonly cronMaxConcurrent: number;
+  /** Phase 2C: persist scheduler state (atomic cron.json write). */
+  private readonly cronPersist?: () => void;
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
@@ -364,6 +369,7 @@ export class Gateway {
     this.cronReload = opts.cronReload;
     this.onRunOnSession = opts.onRunOnSession;
     this.cronMaxConcurrent = opts.cronMaxConcurrent ?? 4;
+    this.cronPersist = opts.cronPersist;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
@@ -469,7 +475,12 @@ export class Gateway {
       try { this.cronReload?.(); } catch (e) {
         console.warn("[gateway] cron reload failed (non-fatal):", (e as Error).message);
       }
-      const due = this.cron.due();
+      const due = this.cron.dueAndAdvance();
+      // Phase 2C: persist the advanced nextRunAt BEFORE firing — at-most-once
+      // across crashes (a crash during fire leaves a future nextRunAt on disk).
+      try { this.cronPersist?.(); } catch (e) {
+        console.warn("[gateway] cron persist (pre-fire) failed (non-fatal):", (e as Error).message);
+      }
       if (due.length === 0) { this.cron.sweepExpired(); return; }
       // Phase 3A stopgap: cap concurrent full-cred turns per sweep.
       const batch = due.slice(0, this.cronMaxConcurrent);
@@ -497,6 +508,8 @@ export class Gateway {
           this.cron!.complete(run.runId, "failed", (e as Error).message);
         }
       }));
+      // complete() re-anchored nextRunAt off completion time — persist for accuracy.
+      try { this.cronPersist?.(); } catch { /* best-effort */ }
       this.cron.sweepExpired();
     } catch (e) {
       // cron loop must NEVER crash the gateway.

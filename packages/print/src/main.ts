@@ -418,6 +418,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     hooks,
     cron,
     cronReload,
+    cronPersist: persistCron,
     onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),
     sync,
     collab,

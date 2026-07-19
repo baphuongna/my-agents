@@ -27,6 +27,11 @@ export interface CronJob {
   /** Optional IANA timezone for schedule evaluation (e.g. "America/New_York").
    * Falls back to process.env.MYA_TZ, then system local time. */
   timezone?: string;
+  /** Phase 2 (D3): the next fire time (epoch ms) for cron-trigger jobs. The
+   * scheduler advances this BEFORE firing (at-most-once across crashes) and
+   * re-anchors it off completion time. Absent on legacy rows → recovered on the
+   * next dueAndAdvance(). */
+  nextRunAt?: number;
 }
 
 export interface RunRecord {
@@ -165,12 +170,21 @@ export class CronScheduler {
   }
 
   /** Complete a run (succeeded/failed). Releases the claim. */
-  complete(runId: string, status: "succeeded" | "failed", error?: string): void {
+  /** Complete a run (succeeded/failed). Releases the claim. Phase 2C: re-anchors
+   * the cron job's nextRunAt off the COMPLETION time (the dueAndAdvance advance
+   * was provisional; this corrects it so slow execution doesn't drift the
+   * schedule). now is injectable for tests. */
+  complete(runId: string, status: "succeeded" | "failed", error?: string, now = nowWallclock()): void {
     const rec = this.runs.get(runId);
     if (rec) {
       rec.status = status;
-      rec.endedAt = nowWallclock();
+      rec.endedAt = now;
       if (error) rec.error = error;
+      const job = this.jobs.get(rec.jobId);
+      if (job && job.trigger === "cron" && typeof job.schedule === "string") {
+        const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
+        if (next != null) job.nextRunAt = next;
+      }
     }
   }
 
@@ -226,6 +240,46 @@ export class CronScheduler {
         // twice in one minute under a 30s sweep (the per-sweep cap + lease limit
         // the blast radius; nextRunAt tracking in 2B closes it).
         if (matchesCronExpr(job.schedule, new Date(now), job.timezone)) out.push(job);
+      }
+    }
+    return out;
+  }
+
+  /** Phase 2 (D3): the production due path. Returns due jobs AND advances each
+   * due cron job's nextRunAt to the next future fire (at-most-once: the advance
+   * is persisted by the gateway BEFORE firing, so a crash during fire doesn't
+   * re-fire). `due()` stays read-only for display callers (mya-bridge).
+   *
+   * Catch-up model (hermes fire-once + fast-forward): a job whose nextRunAt is
+   * in the past fires EXACTLY ONCE this sweep, then nextRunAt advances to the
+   * next future occurrence — downtime collapses the backlog instead of
+   * burst-firing. complete() re-anchors nextRunAt off completion time. */
+  dueAndAdvance(now = nowWallclock()): CronJob[] {
+    const out: CronJob[] = [];
+    for (const job of this.jobs.values()) {
+      if (!job.enabled) continue;
+      if (this.activeRun(job.id, now)) continue;
+      if (job.trigger === "on-interval" && typeof job.schedule === "number") {
+        const last = this.lastRunAt(job.id);
+        if (last == null || now - last >= job.schedule) out.push(job);
+      } else if (job.trigger === "once" && typeof job.schedule === "number") {
+        const succeeded = this.runsOf(job.id).some((r) => r.status === "succeeded");
+        if (now >= job.schedule && !succeeded) out.push(job);
+      } else if (job.trigger === "cron" && typeof job.schedule === "string") {
+        // recovery: a legacy/loaded row without nextRunAt — if it matches NOW,
+        // fire this minute (C13); else seed from the next future fire.
+        if (job.nextRunAt == null) {
+          job.nextRunAt = matchesCronExpr(job.schedule, new Date(now), job.timezone)
+            ? now
+            : (computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime() ?? now);
+        }
+        if (job.nextRunAt <= now) {
+          // DUE — fire once + advance to the next future fire (collapses any
+          // backlog; closes D8 same-minute double-fire + D3 silent-skip).
+          const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
+          if (next != null) job.nextRunAt = next;
+          out.push(job);
+        }
       }
     }
     return out;
@@ -395,11 +449,37 @@ export function matchesCronExpr(expr: string, date: Date, timezone?: string): bo
 
   const parts = getCronParts(date, timezone);
 
+  // Standard Vixie-cron DOW/DOM OR semantics (C12): when BOTH day-of-month and
+  // day-of-week are restricted (not `*`), the job fires if EITHER matches (not
+  // both). When either is `*`, the other governs (AND with the rest).
+  const domMatch = doms.includes(parts.dom);
+  const dowMatch = dows.includes(parts.dow);
+  const dayMatch = domF !== "*" && dowF !== "*" ? domMatch || dowMatch : domMatch && dowMatch;
+
   return (
     minutes.includes(parts.minute) &&
     hours.includes(parts.hour) &&
-    doms.includes(parts.dom) &&
-    months.includes(parts.month) &&
-    dows.includes(parts.dow)
+    dayMatch &&
+    months.includes(parts.month)
   );
+}
+
+/** Phase 2 (D3): compute the next fire time strictly AFTER `base`. Uses bounded
+ * minute-iteration reusing the tested `matchesCronExpr` (so DOW/DOM OR + tz are
+ * handled identically). Cap = one year (527040 min) → returns null for an
+ * expression with no future match (e.g. `0 0 31 2 *`). */
+export function computeNextFire(
+  expr: string,
+  base: Date,
+  timezone?: string,
+  cap = 366 * 24 * 60,
+): Date | null {
+  const d = new Date(base.getTime());
+  d.setSeconds(0, 0); // align to the start of the minute
+  d.setMinutes(d.getMinutes() + 1); // strictly after base
+  for (let i = 0; i < cap; i++) {
+    if (matchesCronExpr(expr, d, timezone)) return new Date(d.getTime());
+    d.setMinutes(d.getMinutes() + 1);
+  }
+  return null;
 }
