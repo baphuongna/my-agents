@@ -10,9 +10,25 @@
  *   mya cron history <id>            # Show run history
  */
 import { readCronJobs, atomicWriteJobs, CRON_FILE } from "./cron-persist.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { nowWallclock } from "@my-agent/core";
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+
+/** Phase 0C: read the gateway WS token (written 0600 at gateway start) so the
+ * CLI can authenticate HTTP calls. Returns undefined if absent (the call will
+ * then 401 unless MYA_NO_WS_TOKEN is set server-side). */
+function readGwToken(): string | undefined {
+  try { return readFileSync(join(homedir(), ".mya", "agent", "gw.token"), "utf8").trim() || undefined; }
+  catch { return undefined; }
+}
+/** Auth headers for gateway HTTP calls (Bearer token). Empty if no token file. */
+function authHeaders(): Record<string, string> {
+  const token = readGwToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
 
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,
@@ -41,7 +57,7 @@ interface CronJob {
 
 async function fetchJobs(): Promise<CronJob[]> {
   try {
-    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs`, { signal: AbortSignal.timeout(2000) });
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
     if (!r.ok) return [];
     return (await r.json()) as CronJob[];
   } catch { return []; }
@@ -148,7 +164,7 @@ export async function cronRemove(id?: string): Promise<void> {
   }
   // Also try API
   try {
-    await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}`, { method: "DELETE", signal: AbortSignal.timeout(1000) });
+    await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}`, { method: "DELETE", headers: authHeaders(), signal: AbortSignal.timeout(1000) });
   } catch { /* gateway may not be running */ }
 }
 
@@ -160,7 +176,7 @@ export async function cronToggle(id?: string, action?: "enable" | "disable"): Pr
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/patch`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({ enabled: action === "enable" }),
       signal: AbortSignal.timeout(2000),
     });
@@ -187,6 +203,7 @@ export async function cronRun(id?: string): Promise<void> {
   try {
     const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/run`, {
       method: "POST",
+      headers: authHeaders(),
       signal: AbortSignal.timeout(2000),
     });
     if (r.ok) console.log(`${A.green("✓")} Job ${id} triggered`);

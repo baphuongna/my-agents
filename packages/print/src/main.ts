@@ -369,10 +369,33 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     }
   };
 
-  // MYA_NO_WS_TOKEN: skip the WS auth token for local dev/testing — lets a
-  // browser dashboard connect without ?token=. Production keeps the token
-  // (defends against other local processes reading the event stream).
+  // Phase 0C auth: the WS token gates ALL non-allowlist HTTP routes + the WS
+  // upgrade (Bearer header OR HttpOnly cookie). MYA_NO_WS_TOKEN remains an
+  // explicit DEV bypass (disables auth entirely) — production no longer needs it
+  // because the dashboard authenticates via a cookie set on GET / (not a
+  // token-baked URL). Threat model: blocks browsers (SameSite=Strict, HttpOnly)
+  // + cross-user; same-user isolation is deferred to a Unix-socket binding.
   const wsToken = process.env.MYA_NO_WS_TOKEN ? undefined : cryptoRandomToken();
+  // Write the token to a 0600 file BEFORE listen() so the CLI / TUI can read it
+  // (no /ws-info open leak). Best-effort: a missing token file just means the
+  // CLI falls back to MYA_NO_WS_TOKEN / unauthenticated attempts (which 401).
+  if (wsToken) {
+    try {
+      const tokenFile = join(homedir(), ".mya", "agent", "gw.token");
+      const { writeFileSync, mkdirSync, chmodSync } = await import("node:fs");
+      mkdirSync(join(homedir(), ".mya", "agent"), { recursive: true, mode: 0o700 });
+      writeFileSync(tokenFile, wsToken, { mode: 0o600, flag: "wx" });
+      try { chmodSync(tokenFile, 0o600); } catch { /* best-effort */ }
+    } catch (e) {
+      // EEXIST (stale token from a prior run) is fine — overwrite atomically below.
+      try {
+        const { writeFileSync, mkdirSync, chmodSync } = await import("node:fs");
+        mkdirSync(join(homedir(), ".mya", "agent"), { recursive: true, mode: 0o700 });
+        writeFileSync(join(homedir(), ".mya", "agent", "gw.token"), wsToken, { mode: 0o600 });
+        try { chmodSync(join(homedir(), ".mya", "agent", "gw.token"), 0o600); } catch { /* best-effort */ }
+      } catch (e2) { console.warn("[gateway] could not write gw.token:", (e2 as Error).message); }
+    }
+  }
   // Persistent DreamCycle: tracks whether the periodic memory consolidation
   // timer is armed. memoryStats() reflects its real running state instead of
   // a hardcoded false.
@@ -383,7 +406,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
 
   const gw = new Gateway({
     port,
-    rootHtml: dashboardHtml({ title: "mya", wsPath: wsToken ? `/events?token=${wsToken}` : "/events" }),
+    // Phase 0C: token-free rootHtml. The dashboard obtains the token via an
+    // HttpOnly SameSite=Strict cookie set on GET / (localhost origin), not via
+    // a token baked into the URL/HTML source.
+    rootHtml: dashboardHtml({ title: "mya", wsPath: "/events" }),
     staticDir: join(process.cwd(), "packages/web/dist/web"),
     wsToken,
     hooks,

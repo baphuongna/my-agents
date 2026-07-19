@@ -391,10 +391,20 @@ export class Gateway {
       this.http.on("upgrade", (req, socket, head) => {
         const url = new URL(req.url ?? "/", `http://${this.host}`);
         if (url.pathname === "/events") {
-          // Phase 15 M2: check the local WS token (if configured) — blocks other local processes.
+          // Phase 15 M2 / 0C: check the WS token (if configured) via query param
+          // OR the HttpOnly mya_ws cookie (token-free dashboard connects via cookie).
           if (this.wsToken) {
             const token = url.searchParams.get("token");
-            if (token !== this.wsToken) {
+            const cookieOk = (() => {
+              const c = req.headers.cookie;
+              if (typeof c !== "string") return false;
+              for (const part of c.split(";")) {
+                const [k, ...v] = part.trim().split("=");
+                if (k === "mya_ws" && v.join("=") === this.wsToken) return true;
+              }
+              return false;
+            })();
+            if (token !== this.wsToken && !cookieOk) {
               socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
               socket.destroy();
               return;
@@ -497,6 +507,42 @@ export class Gateway {
     }
   }
 
+  /** Phase 0C: paths exempt from the auth gate (health probes, PWA assets, and
+   * GET / which sets the auth cookie). Everything else (incl. /ws-info,
+   * /cron/jobs*, /sessions/*) requires the token. */
+  private isAuthAllowlisted(url: URL, method: string | undefined): boolean {
+    const p = url.pathname;
+    if (p === "/health/live" || p === "/ready" || p === "/manifest.json" || p === "/sw.js") return true;
+    if (p.startsWith("/icons/")) return true;
+    if ((p === "/" || p === "/index.html") && method === "GET") return true;
+    return false;
+  }
+
+  /** Phase 0C: a request is authed if it carries the WS token as a Bearer header
+   * or in the HttpOnly mya_ws cookie. */
+  private isAuthed(req: IncomingMessage): boolean {
+    if (!this.wsToken) return true; // no token configured (dev) → open
+    const auth = req.headers.authorization;
+    if (typeof auth === "string" && auth.startsWith("Bearer ") && auth.slice(7) === this.wsToken) return true;
+    const cookie = req.headers.cookie;
+    if (typeof cookie === "string") {
+      for (const part of cookie.split(";")) {
+        const [k, ...v] = part.trim().split("=");
+        if (k === "mya_ws" && v.join("=") === this.wsToken) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Phase 0C: set the HttpOnly SameSite=Strict auth cookie when serving the
+   * dashboard from a loopback origin. HttpOnly → JS/XSS can't read it;
+   * SameSite=Strict → CSRF-resistant. (Same-user process isolation is deferred
+   * to a Unix-socket binding — a loopback curl still receives the cookie.) */
+  private setAuthCookie(res: ServerResponse): void {
+    if (!this.wsToken) return;
+    res.setHeader("Set-Cookie", `mya_ws=${this.wsToken}; HttpOnly; SameSite=Strict; Path=/`);
+  }
+
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url ?? "/", `http://${this.host}`);
     // ── CORS (localhost-only): lets the desktop dashboard / web UI reach the
@@ -520,6 +566,13 @@ export class Gateway {
       res.writeHead(code, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
     };
+    // Phase 0C: auth gate. Non-allowlist routes require the WS token (Bearer
+    // header OR HttpOnly cookie). Allowlist: health/ready probes, PWA assets
+    // (manifest/icons/sw), and GET / (rootHtml — which SETS the cookie). When
+    // wsToken is unset (MYA_NO_WS_TOKEN dev mode) everything is open.
+    if (this.wsToken && !this.isAuthAllowlisted(url, req.method)) {
+      if (!this.isAuthed(req)) return send(401, { error: "unauthorized" });
+    }
     // §12 parametric control-plane route: /sessions/:id
     const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
     if (sessionMatch) {
@@ -687,6 +740,7 @@ export class Gateway {
           if (existsSync(indexPath)) {
             try {
               const content = readFileSync(indexPath, "utf-8");
+              this.setAuthCookie(res);
               res.writeHead(200, {
                 "content-type": "text/html; charset=utf-8",
                 "x-frame-options": "DENY",
@@ -705,6 +759,7 @@ export class Gateway {
           // session-cookie + CSRF double-submit lands when the dashboard grows
           // mutating routes; for the read-only SPA these headers close the
           // clickjacking/XSS-MIME vectors.
+          this.setAuthCookie(res);
           res.writeHead(200, {
             "content-type": "text/html; charset=utf-8",
             "x-frame-options": "DENY",
