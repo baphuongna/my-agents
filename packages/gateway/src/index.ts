@@ -517,20 +517,21 @@ export class Gateway {
           if (!this.onRunOnSession) {
             // No runner wired — can't execute. Fail (not silent 'succeeded').
             this.cron!.complete(run.runId, "failed", "no cron session runner wired");
-            return;
-          }
-          const sessionId = `_cron:${job.id}`;
-          const text = await this.onRunOnSession(sessionId, job.prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
-          // D2 / hermes empty-response soft-fail: success but no text → failed.
-          if (text == null || text.trim() === "") {
-            this.cron!.complete(run.runId, "failed", "agent produced empty response");
           } else {
-            this.cron!.complete(run.runId, "succeeded");
+            const sessionId = `_cron:${job.id}`;
+            const text = await this.onRunOnSession(sessionId, job.prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
+            // D2 / hermes empty-response soft-fail: success but no text → failed.
+            if (text == null || text.trim() === "") {
+              this.cron!.complete(run.runId, "failed", "agent produced empty response");
+            } else {
+              this.cron!.complete(run.runId, "succeeded");
+            }
           }
         } catch (e) {
           this.cron!.complete(run.runId, "failed", (e as Error).message);
         }
-        // Phase 4A: mirror the run outcome to durable history.
+        // Phase 4A: mirror the run outcome to durable history (runs for EVERY
+        // outcome incl. no-runner — the early-return bug left rows stuck 'claimed').
         const rec = this.cron!.runsOf(job.id).at(-1);
         if (rec) {
           try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now()); } catch { /* best-effort */ }
@@ -538,7 +539,12 @@ export class Gateway {
       }));
       // complete() re-anchored nextRunAt off completion time — persist for accuracy.
       try { this.cronPersist?.(); } catch { /* best-effort */ }
-      this.cron.sweepExpired();
+      // Phase 4A: mirror lease-expired runs (a crashed worker's run flips to
+      // 'lease-expired' in memory; mirror it so the durable row isn't stuck 'claimed').
+      const expired = this.cron.sweepExpired();
+      for (const runId of expired) {
+        try { this.cronRunEnd?.(runId, "lease-expired", null, Date.now()); } catch { /* best-effort */ }
+      }
       // Phase 4C: success marker (clean sweep).
       try { this.cronHeartbeat?.(true); } catch { /* best-effort */ }
     } catch (e) {

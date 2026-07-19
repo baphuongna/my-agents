@@ -534,6 +534,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       if (!job) return;
       const run = cron.claim(jobId, `gateway:${port}`);
       if (!run) return;
+      // Phase 4A: mirror manual runs to durable history too (so 'mya cron history'
+      // covers manual triggers, not just sweep-fired ones).
+      try { recordRunStart({ runId: run.runId, jobId, startedAt: run.startedAt, status: "claimed", claimedBy: run.claimedBy }); } catch { /* best-effort */ }
       cron.start(run.runId);
       try {
         // Phase 0A: per-job session + D2 empty-response soft-fail (mirrors the
@@ -544,6 +547,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       } catch (e) {
         cron.complete(run.runId, "failed", (e as Error).message);
       }
+      const rec = cron.runsOf(jobId).at(-1);
+      if (rec) { try { recordRunEnd(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now()); } catch { /* best-effort */ } }
     },
     cronRemove: (jobId: string) => {
       // Phase 0B: removeJob write-throughs to cron.json via onDirty (replaces the

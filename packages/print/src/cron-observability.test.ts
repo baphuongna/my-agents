@@ -2,16 +2,18 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { _resetDbForTest } from "./cron-observability.js";
 
 let realHome: string | undefined;
 let dir: string;
 
 beforeEach(() => {
+  _resetDbForTest(); // drop the cached db handle so this test's HOME/path is used
   realHome = process.env.HOME;
   dir = mkdtempSync(join(tmpdir(), "mya-cronobs-"));
   process.env.HOME = dir;
 });
-afterEach(() => {
+afterEach(async () => {
   process.env.HOME = realHome;
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
 });

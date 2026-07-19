@@ -6,21 +6,30 @@
  * distinguish a dead ticker (both stale) from an alive-but-failing one (heartbeat
  * fresh, success stale). */
 import Database from "better-sqlite3";
-import { writeFileSync, mkdirSync, existsSync, statSync, openSync, closeSync, fsyncSync, renameSync } from "node:fs";
+import { writeFileSync, mkdirSync, statSync, openSync, closeSync, fsyncSync, renameSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
-const AGENT_DIR = join(homedir(), ".mya", "agent");
-const DB_FILE = join(AGENT_DIR, "cron.db");
-const HEARTBEAT_FILE = join(AGENT_DIR, "cron_heartbeat");
-const SUCCESS_FILE = join(AGENT_DIR, "cron_last_success");
+// Paths are computed lazily (not at module load) so tests overriding $HOME get a
+// fresh path per test (ESM caches the module namespace, not these calls).
+const agentDir = (): string => join(homedir(), ".mya", "agent");
+const dbFile = (): string => join(agentDir(), "cron.db");
+const heartbeatFile = (): string => join(agentDir(), "cron_heartbeat");
+const successFile = (): string => join(agentDir(), "cron_last_success");
 const MAX_ROWS = 500;
 
 let db: Database.Database | null = null;
+/** @internal test seam: close + drop the cached db handle so a new HOME/path
+ * takes effect (ESM caches the module namespace). */
+export function _resetDbForTest(): void {
+  try { db?.close(); } catch { /* best-effort */ }
+  db = null;
+}
 function getDb(): Database.Database {
   if (!db) {
-    try { mkdirSync(AGENT_DIR, { recursive: true }); } catch { /* best-effort */ }
-    db = new Database(DB_FILE);
+    try { mkdirSync(agentDir(), { recursive: true, mode: 0o700 }); } catch { /* best-effort */ }
+    db = new Database(dbFile());
+    try { chmodSync(dbFile(), 0o600); } catch { /* best-effort — 0700 dir protects it */ }
     db.pragma("journal_mode = WAL");
     db.exec(`CREATE TABLE IF NOT EXISTS cron_runs (
       runId TEXT PRIMARY KEY, jobId TEXT NOT NULL, startedAt INTEGER NOT NULL,
@@ -73,31 +82,33 @@ export function getRunHistory(jobId: string, limit = 50): RunRow[] {
  * Atomic (tmpfile + rename). epoch ms is the file's mtime/content. */
 function writeEpoch(path: string, epochMs: number): void {
   try {
-    mkdirSync(dirname(path), { recursive: true });
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const tmp = `${path}.${process.pid}.tmp`;
     writeFileSync(tmp, String(epochMs));
     try { const fd = openSync(tmp, "r"); fsyncSync(fd); closeSync(fd); } catch { /* best-effort */ }
+    try { chmodSync(tmp, 0o600); } catch { /* best-effort */ }
     renameSync(tmp, path);
   } catch { /* best-effort */ }
 }
 
 /** Called at the top of every cron sweep (alive marker). */
 export function recordHeartbeat(): void {
-  writeEpoch(HEARTBEAT_FILE, Date.now());
+  writeEpoch(heartbeatFile(), Date.now());
 }
 
-/** Called after a clean sweep (success marker). */
+/** Called after a clean sweep. NOTE: "success" means the sweep LOOP completed
+ * without crashing — NOT that every job succeeded (a job can fail while the
+ * ticker is healthy; check run history for per-job outcomes). */
 export function recordHeartbeatSuccess(): void {
-  writeEpoch(SUCCESS_FILE, Date.now());
+  writeEpoch(successFile(), Date.now());
 }
 
 /** Heartbeat freshness for `mya cron status` / monitoring. Returns ages in ms
- * (undefined if a marker file is absent). */
+ * (undefined if a marker file is absent). heartbeat-fresh + success-stale =
+ * alive-but-failing ticker. */
 export function heartbeatAge(): { heartbeatAgeMs?: number; successAgeMs?: number } {
   const age = (p: string): number | undefined => {
     try { return Date.now() - statSync(p).mtimeMs; } catch { return undefined; }
   };
-  return { heartbeatAgeMs: age(HEARTBEAT_FILE), successAgeMs: age(SUCCESS_FILE) };
+  return { heartbeatAgeMs: age(heartbeatFile()), successAgeMs: age(successFile()) };
 }
-
-export const CRON_HISTORY_DB = DB_FILE;
