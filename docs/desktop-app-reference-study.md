@@ -162,7 +162,85 @@ per-tool rendering, no panes.
   pickers). This is the single biggest leap toward openpi-quality.
 - **Later:** #6/#7/#8 only if the desktop surface is promoted above the TUI.
 
+---
+
+## 5. Implementation status & gotchas (dashboard built — option A)
+
+**Decision taken:** option **(A) monitor/dashboard** — the desktop app complements
+the TUI rather than duplicating it as a second IDE. Implemented in
+`crates/desktop-ui/index.html` (vanilla JS, no build step) + a gateway change.
+
+### What was built
+- **Sidebar widgets** (from `/status` + `/memory/stats`): model + configured
+  providers, channels, memory stats (facts/tomb/dream/total), subagents active/total.
+- **Header cost pill**: running spend, color-graded.
+- **Per-tool conversation rows** (openpi pattern): typed icon/color per category
+  (edit/shell/search/web/read/write) with live status pending→ok/err.
+- **Streaming assistant text**: aggregated into one response block per turn.
+- **Gateway CORS + WS localhost-origin**: enables browser/remote dashboard access.
+
+### Gotchas (don't repeat — each cost a debug cycle)
+
+1. **Gateway broadcasts pi's RAW streaming protocol, not `{kind}`.** The dashboard
+   was first written assuming events like `{kind:"turn"|"budget"|"tool"}` (copied
+   from the old minimal dashboard). The gateway actually broadcasts pi's protocol
+   keyed by `type`: `agent_start/end`, `turn_start/end`, `message_start/end`,
+   `message_update` (with `assistantMessageEvent.type`: `text_delta`/`toolcall_*`/
+   `thinking_*`), `tool_execution_start/update/end`. **Symptom:** all events
+   dumped as one JSON text blob. **Fix:** renderEvent discriminates on `e.type`;
+   streaming text from `message_update`/`text_delta`; tool rows from
+   `toolcall_end` + `tool_execution_*` matched by `toolCallId`; cost from
+   `message_end.message.usage.cost.total`.
+
+2. **Cost is NOT a separate event.** There is no `budget`/`kind:"budget"` event.
+   Cost lives in `message_end.message.usage.cost = {input,output,cacheRead,
+   cacheWrite,total}`. Accumulate `.total` across `message_end` events for the
+   running spend. (Pre-existing `kind:"budget"` handling is dead code for this
+   gateway — keep only if a different broadcaster emits it.)
+
+3. **wsToken is required + random per start.** `mya serve` generates a token
+   (`cryptoRandomToken()` → `randomBytes(16).hex`) and the WS upgrade 403s without
+   it. In **production (Tauri)** the dashboard gets it via IPC `gateway_info`
+   (`{port, ws_token}`). In **browser dev-mode** there's no IPC → must pass
+   `?token=<hex>` in the dashboard URL. Extract the token from the gateway's own
+   root HTML (`GET /` → `wsPath=/events?token=<hex>` is embedded).
+
+4. **WS Origin allowlist (HIGH-1) is same-port only.** The cross-site WS
+   hijacking defense allows only `http://127.0.0.1:${port}` etc. A browser
+   dashboard served on a *different* loopback port (e.g. a dev `http.server` on
+   8087) sends Origin `http://127.0.0.1:8087` → 403. **Fix:** also allow any
+   localhost origin (regex `http://(localhost|127.0.0.1|[::1])(:\d+)?`),
+   consistent with the HTTP CORS policy. Arbitrary internet origins stay blocked.
+
+5. **bundle imports `@my-agent/gateway` from compiled `dist`, not source.**
+   `npm run bundle` (esbuild) resolves `@my-agent/gateway` →
+   `packages/gateway/dist/index.js` (compiled output), NOT `src/index.ts`. So
+   editing gateway **source** then running only `npm run bundle` ships STALE code.
+   **Fix:** `npx tsc -b packages/gateway --force` (recompile dist) → THEN
+   `npm run bundle`. Same applies to any package whose source you edit.
+
+### How to verify the dashboard (no Tauri/X display needed)
+The dashboard has a **browser dev fallback** (no Tauri IPC required). Recipe:
+1. `mya serve --port 3949` (gateway with CORS + WS localhost-origin).
+2. Serve the dashboard statically: `python3 -m http.server 8087 --directory crates/desktop-ui`.
+3. Extract the wsToken: `curl -s http://127.0.0.1:3949/ | grep -oE 'token=[a-f0-9]+'`.
+4. Open in a real browser (plain Chromium hangs on the open WS; **Camofox** at
+   `localhost:9377` renders reliably): navigate to
+   `http://127.0.0.1:8087/index.html?port=3949&token=<hex>`.
+5. Trigger an agent turn: a node `ws` client sends `{text:"..."}` to
+   `ws://127.0.0.1:3949/events?session=default&token=<hex>` (Origin
+   `http://127.0.0.1:3949`) → `onWsMessage` → `runOnSession` → events broadcast.
+6. Camofox `GET /tabs/<id>/snapshot?userId=..&listItemId=..` → aria tree shows
+   the rendered dashboard (widgets + tool rows + streaming text + cost pill).
+
+**Verified:** widgets populate from real `/status`+`/memory/stats`; per-tool rows
+(`▶ bash ls -la ok`, `📄 read README.md ok`) + streaming text render from pi's
+actual protocol; cost pill accumulates live (`$0.0012 → $0.0018` across turns).
+
+---
+
 **Bottom line:** openpi is the UI reference to chase for a coding agent; openhuman
 is the reference for native polish + companion/voice + status dashboards. mya's
-desktop app is a solid foundation (Tauri shell + working runtime) — the gap is
-frontend richness, and openpi shows exactly what "rich" looks like for this product class.
+desktop app chose **option A (monitor/dashboard)** — built + verified end-to-end
+through a real browser. The remaining richness gap (composer pickers, code
+editor, git panel) is deferred unless the desktop surface is promoted above the TUI.
