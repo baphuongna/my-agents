@@ -337,6 +337,22 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // loader — the gateway's initial cronReload (in start()) loads jobs before the
   // first sweep tick.
   const { readCronJobs, atomicWriteJobs } = await import("./cron-persist.js");
+  // Phase 3B/3A: wire the prompt validator (register/updateJob reject) + the
+  // job cap. The validator also runs on every reconciled (file-loaded) job so
+  // CLI/external cron.json edits are scanned (R2-4 file-layer gate).
+  const { validateCronPrompt } = await import("@my-agent/cron");
+  cron.setValidator(validateCronPrompt);
+  cron.setMaxJobs(parseInt(process.env.MYA_CRON_MAX_JOBS ?? "50", 10));
+  // Phase 3C: approval_mode. Default DENY — cron-fired turns run read-only
+  // (bash/write/edit excluded via the cron-role denylist → a cron job can't
+  // recurse via `mya cron add` or edit cron.json directly). Operators who need
+  // full tools set MYA_CRON_APPROVAL_MODE=approve (unattended full-cred).
+  const { CRON_ROLE_DENIED_TOOLS } = await import("./cron-role.js");
+  const cronApprovalMode = (process.env.MYA_CRON_APPROVAL_MODE ?? "deny").toLowerCase();
+  if (cronApprovalMode === "deny") {
+    CRON_ROLE_DENIED_TOOLS.push("bash", "write", "edit", "replace");
+    console.warn("[cron] approval_mode=deny — cron-fired turns are read-only (bash/write/edit/replace disabled). Set MYA_CRON_APPROVAL_MODE=approve for full tools (UNATTENDED FULL-CREDENTIAL — trust the prompt).");
+  }
   const persistCron = (): void => {
     atomicWriteJobs(cron.listJobs());
     cron.markPersisted();
@@ -363,7 +379,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       return;
     }
     // Phase 3B will pass { validate: validateCronPrompt } to scan loaded prompts.
-    const stats = cron.reconcile(readCronJobs());
+    const stats = cron.reconcile(readCronJobs(), { validate: (j) => validateCronPrompt(j.prompt) });
     if (stats.quarantined > 0) {
       console.warn(`[cron] ${stats.quarantined} job(s) quarantined by validate on reload`);
     }

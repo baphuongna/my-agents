@@ -10,6 +10,9 @@
 import { randomUUID } from "node:crypto";
 import { nowWallclock } from "@my-agent/core";
 
+// Phase 3B/3D: prompt-injection / lifecycle scanner (re-exported for the gateway).
+export { validateCronPrompt, THREAT_IDS } from "./scan.js";
+
 export type TriggerType = "cron" | "on-interval" | "once";
 
 export interface CronJob {
@@ -61,13 +64,23 @@ export class CronScheduler {
   private onDirty?: (jobs: CronJob[]) => void;
   /** True when in-memory state has unflushed mutations (cleared by markPersisted). */
   private dirty = false;
+  /** Phase 3A: max registered jobs (DoS / cost-amplification bound). */
+  private maxJobs = 50;
+  /** Phase 3B: prompt validator (rejects injection/exfil/destructive prompts). */
+  private validator?: (prompt: string | undefined | null) => string | null;
 
-  constructor(opts: { onDirty?: (jobs: CronJob[]) => void } = {}) {
+  constructor(opts: { onDirty?: (jobs: CronJob[]) => void; maxJobs?: number } = {}) {
     this.onDirty = opts.onDirty;
+    if (opts.maxJobs != null) this.maxJobs = opts.maxJobs;
   }
   /** Wire persistence post-construction (the shared-instance singleton is built
    * before the gateway/fs layer exists). Idempotent. */
   setOnDirty(cb: (jobs: CronJob[]) => void): void { this.onDirty = cb; }
+  /** Phase 3A: configure the max-jobs cap at runtime. */
+  setMaxJobs(n: number): void { this.maxJobs = n; }
+  /** Phase 3B: wire a prompt validator (validateCronPrompt). register/updateJob
+   * reject prompts it flags. */
+  setValidator(v: (prompt: string | undefined | null) => string | null): void { this.validator = v; }
   /** Gateway calls this after a successful atomic write to clear the dirty flag. */
   markPersisted(): void { this.dirty = false; }
   private markDirty(): void {
@@ -76,7 +89,16 @@ export class CronScheduler {
   }
 
   register(job: Omit<CronJob, "id"> & { id?: string }): CronJob {
+    // Phase 3A: cap the job count (DoS / cost bound).
     const id = job.id ?? randomUUID();
+    if (this.jobs.size >= this.maxJobs && !this.jobs.has(id)) {
+      throw new Error(`cron job cap reached (${this.maxJobs})`);
+    }
+    // Phase 3B: validate the prompt.
+    if (this.validator) {
+      const err = this.validator(job.prompt);
+      if (err) throw new Error(`cron prompt rejected: ${err}`);
+    }
     const full: CronJob = { ...job, id };
     this.jobs.set(id, full);
     this.markDirty();
@@ -91,10 +113,14 @@ export class CronScheduler {
     return existed;
   }
 
-  /** Patch a job's config (write-through). */
+  /** Patch a job's config (write-through). Phase 3B: validates a changed prompt. */
   updateJob(id: string, patch: Partial<Omit<CronJob, "id">>): CronJob | undefined {
     const cur = this.jobs.get(id);
     if (!cur) return undefined;
+    if (this.validator && patch.prompt != null) {
+      const err = this.validator(patch.prompt);
+      if (err) throw new Error(`cron prompt rejected: ${err}`);
+    }
     const updated: CronJob = { ...cur, ...patch, id: cur.id };
     this.jobs.set(id, updated);
     this.markDirty();
