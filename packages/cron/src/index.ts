@@ -149,6 +149,12 @@ export class CronScheduler {
         const err = validate(raw);
         if (err) { stats.quarantined++; continue; }
       }
+      // Phase 3A: cap the loaded job count too (a planted/huge cron.json can't
+      // bypass the register cap). Excess jobs are quarantined.
+      if (!this.jobs.has(raw.id) && loadedIds.size >= this.maxJobs) {
+        stats.quarantined++;
+        continue;
+      }
       // ensure required fields have safe defaults (old/minimal cron.json rows);
       // explicit `raw.x ?? default` so TS doesn't flag a duplicated key.
       const job: CronJob = {

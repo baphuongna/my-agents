@@ -30,7 +30,7 @@ const THREAT_PATTERNS: ThreatPattern[] = [
   { id: "read_secrets", re: /cat\s+[^\n]*(?:\.env|credentials|\.netrc|\.pgpass|id_rsa|id_ed25519)/i },
   { id: "ssh_backdoor", re: /authorized_keys/i },
   { id: "sudoers_mod", re: /(?:\/etc\/sudoers|visudo)/i },
-  { id: "destructive_root_rm", re: /rm\s+-rf\s+\/(?=\s|$)/i },
+  { id: "destructive_root_rm", re: /rm\s+-rf\s+\/(?!(?:tmp|private|var\/tmp)(?:\/|$|\s))/i },
   // exfil: curl/wget posting/URLing a secret, or an Authorization header
   { id: "exfil_curl_url", re: new RegExp(`curl\\s+[^\\n]*https?://[^\\s\"'` + "`" + `]*${SECRET_VAR.source}`, "i") },
   { id: "exfil_wget_url", re: new RegExp(`wget\\s+[^\\n]*https?://[^\\s\"'` + "`" + `]*${SECRET_VAR.source}`, "i") },

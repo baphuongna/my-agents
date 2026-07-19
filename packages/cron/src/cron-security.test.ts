@@ -28,6 +28,16 @@ describe("CronScheduler max-jobs cap (Phase 3A)", () => {
     for (let i = 0; i < 50; i++) sched.register(mk(`j${i}`));
     expect(() => sched.register(mk("over"))).toThrow(/cap reached/);
   });
+
+  it("reconcile also caps (a planted/huge cron.json can't bypass the register cap)", () => {
+    const sched = new CronScheduler({ maxJobs: 3 });
+    const loaded = [mk("a"), mk("b"), mk("c"), mk("d"), mk("e")];
+    const stats = sched.reconcile(loaded);
+    // only 3 loaded; the rest quarantined
+    expect(stats.added).toBe(3);
+    expect(stats.quarantined).toBe(2);
+    expect(sched.listJobs()).toHaveLength(3);
+  });
 });
 
 describe("CronScheduler validator (Phase 3B)", () => {

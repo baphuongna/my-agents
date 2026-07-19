@@ -21,9 +21,15 @@ describe("validateCronPrompt (Phase 3B/3D)", () => {
     expect(validateCronPrompt("edit /etc/sudoers")).toMatch(/sudoers_mod/);
   });
 
-  it("blocks destructive root rm", () => {
-    expect(validateCronPrompt("cleanup: rm -rf /tmp/old")).toBeNull(); // /tmp not /
-    expect(validateCronPrompt("cleanup: rm -rf /")).toMatch(/destructive_root_rm/);
+  it("blocks destructive root rm (bare /, /*, /home, /etc — but NOT /tmp /var/tmp)", () => {
+    expect(validateCronPrompt("cleanup: rm -rf /tmp/old")).toBeNull();
+    expect(validateCronPrompt("rm -rf /var/tmp/x")).toBeNull();
+    expect(validateCronPrompt("rm -rf /private/tmp/y")).toBeNull();
+    expect(validateCronPrompt("rm -rf /")).toMatch(/destructive_root_rm/);
+    expect(validateCronPrompt("rm -rf /*")).toMatch(/destructive_root_rm/);
+    expect(validateCronPrompt("rm -rf /home")).toMatch(/destructive_root_rm/);
+    expect(validateCronPrompt("rm -rf /etc /var")).toMatch(/destructive_root_rm/);
+    expect(validateCronPrompt("rm -rf /var/log")).toMatch(/destructive_root_rm/);
   });
 
   it("blocks exfil (curl/wget with a secret var or auth header)", () => {

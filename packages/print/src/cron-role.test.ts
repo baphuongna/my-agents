@@ -1,30 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { CRON_ROLE_DENIED_TOOLS, cronSessionExcludeTools } from "./cron-role.js";
+import {
+  CRON_ROLE_ALLOWED_TOOLS,
+  CRON_DENY_MODE_TOOLS,
+  cronSessionToolConfig,
+  setCronApprovalMode,
+  getCronApprovalMode,
+} from "./cron-role.js";
 
-describe("cron role tool policy (Phase 0A seam)", () => {
-  it("returns the deny list for _cron:<id> sessions, undefined otherwise", () => {
-    expect(cronSessionExcludeTools("_cron:job1")).toBe(CRON_ROLE_DENIED_TOOLS);
-    expect(cronSessionExcludeTools("s-interactive")).toBeUndefined();
-    expect(cronSessionExcludeTools("_cron")).toBeUndefined(); // needs the colon
-    expect(cronSessionExcludeTools("")).toBeUndefined();
+describe("cron role tool policy (Phase 0A/3C — allowlist)", () => {
+  it("deny-mode (default): _cron: sessions get the read-only allowlist; bash/write excluded", () => {
+    setCronApprovalMode("deny");
+    const cfg = cronSessionToolConfig("_cron:daily-report");
+    expect(cfg.tools).toEqual(CRON_DENY_MODE_TOOLS);
+    expect(cfg.tools).toEqual(["read", "glob", "grep", "ls", "find"]);
+    expect(cfg.tools).not.toContain("bash");
+    expect(cfg.tools).not.toContain("write");
   });
 
-  it("populating the deny list propagates to cron sessions (3C sets bash/write/edit)", () => {
-    // Phase 3C (approval_mode: deny) will push the re-entry vectors here. This
-    // test proves the seam propagates a populated list to _cron: sessions only.
-    const before = CRON_ROLE_DENIED_TOOLS.length;
-    CRON_ROLE_DENIED_TOOLS.push("bash", "write", "edit");
-    try {
-      const denied = cronSessionExcludeTools("_cron:daily-report");
-      expect(denied).toContain("bash");
-      expect(denied).toContain("write");
-      expect(denied).toContain("edit");
-      // non-cron session is unaffected (interactive keeps full tools)
-      expect(cronSessionExcludeTools("s-normal")).toBeUndefined();
-    } finally {
-      // restore the module singleton (other tests expect empty default)
-      CRON_ROLE_DENIED_TOOLS.splice(before, CRON_ROLE_DENIED_TOOLS.length - before);
-    }
-    expect(CRON_ROLE_DENIED_TOOLS).toHaveLength(0);
+  it("approve-mode: _cron: sessions get NO restriction (full tools)", () => {
+    setCronApprovalMode("approve");
+    expect(cronSessionToolConfig("_cron:x")).toEqual({});
+    setCronApprovalMode("deny"); // restore default for other tests
+  });
+
+  it("non-cron sessions are never restricted", () => {
+    setCronApprovalMode("deny");
+    expect(cronSessionToolConfig("s-interactive")).toEqual({});
+    expect(cronSessionToolConfig("")).toEqual({});
+  });
+
+  it("default mode is deny", () => {
+    setCronApprovalMode("deny");
+    expect(getCronApprovalMode()).toBe("deny");
   });
 });

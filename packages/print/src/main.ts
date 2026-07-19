@@ -52,7 +52,7 @@ function loadAuthConfig(): void {
 
 /** Phase 0A: cron-fired-turn tool policy lives in ./cron-role.ts (testable,
  * no main() side effects). Imported here for the pool factory. */
-import { CRON_ROLE_DENIED_TOOLS, cronSessionExcludeTools } from "./cron-role.js";
+import { cronSessionToolConfig } from "./cron-role.js";
 
 async function main(): Promise<void> {
   loadAuthConfig();
@@ -259,8 +259,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // accepts excludeTools (sdk.ts). The denied set is empty by default; Phase 3C
       // (approval_mode) populates it (bash/write/edit → can't modify cron.json or
       // run the CLI to recurse).
-      const excludeTools = cronSessionExcludeTools(sessionId);
-      const cronOpts = excludeTools != null ? { excludeTools } : {};
+      const cronOpts = cronSessionToolConfig(sessionId);
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
@@ -347,11 +346,14 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // (bash/write/edit excluded via the cron-role denylist → a cron job can't
   // recurse via `mya cron add` or edit cron.json directly). Operators who need
   // full tools set MYA_CRON_APPROVAL_MODE=approve (unattended full-cred).
-  const { CRON_ROLE_DENIED_TOOLS } = await import("./cron-role.js");
+  const { setCronApprovalMode } = await import("./cron-role.js");
   const cronApprovalMode = (process.env.MYA_CRON_APPROVAL_MODE ?? "deny").toLowerCase();
-  if (cronApprovalMode === "deny") {
-    CRON_ROLE_DENIED_TOOLS.push("bash", "write", "edit", "replace");
-    console.warn("[cron] approval_mode=deny — cron-fired turns are read-only (bash/write/edit/replace disabled). Set MYA_CRON_APPROVAL_MODE=approve for full tools (UNATTENDED FULL-CREDENTIAL — trust the prompt).");
+  // Phase 3C: FAIL-CLOSED — only an explicit "approve" grants full tools. Any
+  // other value (typo, "deny", absent) → read-only allowlist (the security
+  // boundary; scan is best-effort defense-in-depth).
+  setCronApprovalMode(cronApprovalMode === "approve" ? "approve" : "deny");
+  if (cronApprovalMode !== "approve") {
+    console.warn("[cron] approval_mode=deny (default) — cron-fired turns are read-only (allowlist: read/glob/grep/ls/find). Set MYA_CRON_APPROVAL_MODE=approve for full tools (UNATTENDED FULL-CREDENTIAL — trust the prompt).");
   }
   const persistCron = (): void => {
     atomicWriteJobs(cron.listJobs());
