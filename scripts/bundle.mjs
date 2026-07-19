@@ -19,38 +19,32 @@ const sourceResolve = {
   name: "source-resolve",
   setup(b) {
     // Map @my-agent/* to packages/ source (.ts files, not .js dist)
-    const srcMap = {
-      "@my-agent/coding-agent": "packages/coding-agent/src/index.ts",
-      "@my-agent/pi-ai": "packages/pi-ai-src/src/index.ts",
-      "@my-agent/pi-agent-core": "packages/pi-agent-src/src/index.ts",
-      "@my-agent/tui": "packages/tui/src/index.ts",
-    };
-
-    // Subpath imports
+    // Package-name → source-dir remap (when package name ≠ directory).
+    const dirRemap = { "pi-ai": "pi-ai-src", "pi-agent-core": "pi-agent-src" };
+    // Explicit subpath overrides (file not derivable by convention).
     const srcSubpaths = {
       "@my-agent/pi-ai/compat": "packages/pi-ai-src/src/compat.ts",
       "@my-agent/pi-ai/oauth": "packages/pi-ai-src/src/oauth.ts",
     };
 
-    // Resolve @my-agent/* from source packages
-    // coding-agent is bundled (not external) — builds from project source
-    b.onResolve({ filter: /^@my-agent\/(coding-agent|pi-ai|pi-agent-core|tui)/ }, (args) => {
-      // Exact match
-      if (srcMap[args.path]) {
-        return { path: path.resolve(srcMap[args.path]) };
+    // Resolve ALL @my-agent/* from packages/ SOURCE (.ts), not compiled dist.
+    // This means editing ANY package's source is picked up by `npm run bundle`
+    // directly — no `tsc -b` needed first (the former gotcha). Falls through to
+    // esbuild default resolution (compiled dist) if the source file is absent,
+    // so unmapped/odd packages keep working unchanged.
+    b.onResolve({ filter: /^@my-agent\// }, (args) => {
+      if (srcSubpaths[args.path]) return { path: path.resolve(srcSubpaths[args.path]) };
+      const pkg = args.path.replace(/^@my-agent\//, "").replace(/\/.*$/, "");
+      const dir = dirRemap[pkg] || pkg;
+      const stripped = args.path.slice(("@my-agent/" + pkg).length).replace(/^\//, "");
+      const base = `packages/${dir}/src`;
+      const candidates = stripped
+        ? [`${base}/${stripped}.ts`, `${base}/${stripped}/index.ts`]
+        : [`${base}/index.ts`, `${base}/main.ts`];
+      for (const c of candidates) {
+        if (fs.existsSync(path.resolve(c))) return { path: path.resolve(c) };
       }
-      // Subpath match
-      if (srcSubpaths[args.path]) {
-        return { path: path.resolve(srcSubpaths[args.path]) };
-      }
-      // Try as package + subpath (e.g. @my-agent/ai/oauth)
-      for (const [pkg, src] of Object.entries(srcMap)) {
-        if (args.path.startsWith(pkg + "/")) {
-          const sub = args.path.slice(pkg.length + 1);
-          const resolved = src.replace("/index.ts", "/" + sub + ".ts").replace("/main.ts", "/" + sub + ".ts");
-          return { path: path.resolve(resolved) };
-        }
-      }
+      // No source found → fall through to esbuild default (compiled dist).
     });
 
     // Stub react-devtools-core (not needed)

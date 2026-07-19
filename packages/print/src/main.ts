@@ -365,7 +365,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     }
   } catch { /* ignore */ }
 
-  const wsToken = cryptoRandomToken();
+  // MYA_NO_WS_TOKEN: skip the WS auth token for local dev/testing — lets a
+  // browser dashboard connect without ?token=. Production keeps the token
+  // (defends against other local processes reading the event stream).
+  const wsToken = process.env.MYA_NO_WS_TOKEN ? undefined : cryptoRandomToken();
   // Persistent DreamCycle: tracks whether the periodic memory consolidation
   // timer is armed. memoryStats() reflects its real running state instead of
   // a hardcoded false.
@@ -376,7 +379,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
 
   const gw = new Gateway({
     port,
-    rootHtml: dashboardHtml({ title: "mya", wsPath: `/events?token=${wsToken}` }),
+    rootHtml: dashboardHtml({ title: "mya", wsPath: wsToken ? `/events?token=${wsToken}` : "/events" }),
     staticDir: join(process.cwd(), "packages/web/dist/web"),
     wsToken,
     hooks,
