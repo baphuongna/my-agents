@@ -57,6 +57,10 @@ export interface WebConfig {
   allowPrivateUrls: boolean;
   /** When true, browser chain all-fail → fall back to web_fetch (the floor). */
   fallbackToFetch: boolean;
+  /** Operator-managed host deny-list (fnmatch patterns, e.g. `"*.evil.com"`).
+   *  Populated from `MYA_WEB_BLOCKLIST` (comma-separated). Always applies to
+   *  every guard call — the model cannot override it via tool args. */
+  blocklist: string[];
 }
 
 /** Hardcoded defaults. */
@@ -66,6 +70,7 @@ export const DEFAULT_WEB_CONFIG: WebConfig = {
   extractBackend: "auto",
   allowPrivateUrls: false,
   fallbackToFetch: true,
+  blocklist: [],
 };
 
 /** Env-var names the loader reads (exported for tests + observability). */
@@ -75,6 +80,7 @@ export const WEB_CONFIG_ENV = {
   extractBackend: "MYA_WEB_EXTRACT_BACKEND",
   allowPrivateUrls: "MYA_WEB_ALLOW_PRIVATE_URLS",
   fallbackToFetch: "MYA_WEB_FALLBACK_TO_FETCH",
+  blocklist: "MYA_WEB_BLOCKLIST",
 } as const;
 
 // ─── Type-narrowing helpers ─────────────────────────────────────────────────
@@ -101,6 +107,20 @@ function parseBool(raw: string | undefined, fallback: boolean): boolean {
     return false;
   }
   return fallback;
+}
+
+/** Parse a comma-separated list env var into a trimmed, non-empty string[]
+ *  (e.g. `"*.evil.com, *.malware.net"` → `["*.evil.com", "*.malware.net"]`).
+ *  Empty / undefined → `[]`. */
+function parseList(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  const parts = raw.split(",");
+  const out: string[] = [];
+  for (const p of parts) {
+    const trimmed = p.trim();
+    if (trimmed) out.push(trimmed);
+  }
+  return out;
 }
 
 /**
@@ -161,6 +181,7 @@ export function loadWebConfig(overrides?: Partial<WebConfig>): WebConfig {
     process.env[WEB_CONFIG_ENV.fallbackToFetch],
     DEFAULT_WEB_CONFIG.fallbackToFetch,
   );
+  const envBlocklist = parseList(process.env[WEB_CONFIG_ENV.blocklist]);
 
   const cfg: WebConfig = {
     preferredEngine: envPreferred,
@@ -168,6 +189,7 @@ export function loadWebConfig(overrides?: Partial<WebConfig>): WebConfig {
     extractBackend: envExtract,
     allowPrivateUrls: envAllowPrivate,
     fallbackToFetch: envFallback,
+    blocklist: envBlocklist,
   };
 
   // Override layer — narrow each supplied field against its allowed set.
@@ -192,6 +214,12 @@ export function loadWebConfig(overrides?: Partial<WebConfig>): WebConfig {
     }
     if (typeof overrides.fallbackToFetch === "boolean") {
       cfg.fallbackToFetch = overrides.fallbackToFetch;
+    }
+    if (
+      Array.isArray(overrides.blocklist) &&
+      overrides.blocklist.every((p) => typeof p === "string")
+    ) {
+      cfg.blocklist = [...cfg.blocklist, ...overrides.blocklist];
     }
   }
 
@@ -226,6 +254,12 @@ export function validateWebConfig(cfg: WebConfig): string[] {
   }
   if (typeof cfg.fallbackToFetch !== "boolean") {
     issues.push("fallbackToFetch: must be a boolean");
+  }
+  if (
+    !Array.isArray(cfg.blocklist) ||
+    !cfg.blocklist.every((p) => typeof p === "string")
+  ) {
+    issues.push("blocklist: must be an array of strings");
   }
   return issues;
 }

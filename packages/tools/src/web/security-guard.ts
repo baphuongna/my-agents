@@ -37,15 +37,39 @@ import { lookup as dnsLookup } from "node:dns/promises";
 
 // ─── DNS resolver seam (dependency-injected for testing) ────────────────────
 /** Resolves a hostname to a list of {address, family} records. Defaults to the
- *  OS resolver (`node:dns/promises` lookup, respects `/etc/hosts`). Overridable
- *  via {@link _setDnsResolverForTest} so unit tests can simulate DNS-rebinding
- *  without real network DNS. */
+ *  OS resolver (`node:dns/promises` lookup, respects `/etc/hosts`) with a
+ *  {@link DNS_TIMEOUT_MS} cap so a malicious slow-DNS server cannot stall the
+ *  guard indefinitely. Overridable via {@link _setDnsResolverForTest} so unit
+ *  tests can simulate DNS-rebinding without real network DNS. */
 type DnsResolver = (host: string) => Promise<{ address: string; family: number }[]>;
-let resolveDns: DnsResolver = (host) => dnsLookup(host, { all: true });
+/** Per-call DNS lookup timeout. On expiry the lookup rejects and checkUrlAsync
+ *  fails CLOSED (the host cannot be verified safe). Bounds total time across
+ *  redirect hops so a malicious slow-DNS server cannot stall the guard. */
+const DNS_TIMEOUT_MS = 5_000;
+/** Default resolver: OS lookup with a {@link DNS_TIMEOUT_MS} cap (timer cleared
+ *  on resolution so no pending timers leak). */
+const defaultDnsResolver: DnsResolver = (host) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("DNS lookup timed out")),
+      DNS_TIMEOUT_MS,
+    );
+    dnsLookup(host, { all: true }).then(
+      (addrs) => {
+        clearTimeout(timer);
+        resolve(addrs);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+let resolveDns: DnsResolver = defaultDnsResolver;
 /** @internal Test seam — override the DNS resolver, or pass null to restore the
  *  default OS resolver. */
 export function _setDnsResolverForTest(r: DnsResolver | null): void {
-  resolveDns = r ?? ((host) => dnsLookup(host, { all: true }));
+  resolveDns = r ?? defaultDnsResolver;
 }
 
 // ─── Public interface (fetch.ts depends on this exact shape) ────────────────
@@ -276,6 +300,10 @@ function fnmatchToRegex(pattern: string): RegExp {
     if (c === "*") {
       out += ".*";
       i++;
+      // Collapse runs of consecutive '*' → a single '.*' (ReDoS defense: N
+      // stars would otherwise emit '.*.*.*…', causing catastrophic backtracking
+      // against long non-matching hostnames — event-loop-blocking DoS).
+      while (pattern[i] === "*") i++;
     } else if (c === "?") {
       out += ".";
       i++;

@@ -112,6 +112,12 @@ function stripRefPrefix(ref: string): string {
 // ─── Availability probe (cached per-process) ───────────────────────────────
 
 let cachedHealthResult: boolean | null = null;
+/** When the cache was populated (ms epoch). The cache is considered STALE after
+ *  {@link HEALTH_CACHE_TTL_MS} so a Camofox server going down mid-process is
+ *  re-detected within the TTL window (G3) — previously the cache was set once
+ *  and never invalidated in production. */
+let cachedHealthAt = 0;
+const HEALTH_CACHE_TTL_MS = 60_000;
 
 /**
  * Check if the Camofox server is available: `GET {baseUrl}/health` with a 5s
@@ -127,13 +133,13 @@ export async function isCamofoxAvailable(
   config?: CamofoxConfig,
   forceRecheck = false,
 ): Promise<boolean> {
-  if (!forceRecheck && cachedHealthResult !== null) {
+  if (!forceRecheck && cachedHealthResult !== null && !isHealthCacheStale()) {
     return cachedHealthResult;
   }
 
   const baseUrl = config?.baseUrl ?? process.env.CAMOFOX_URL;
   if (!baseUrl) {
-    cachedHealthResult = false;
+    setHealthCache(false);
     return false;
   }
 
@@ -148,17 +154,29 @@ export async function isCamofoxAvailable(
       signal: controller.signal,
     });
     const result = resp.status === 200;
-    cachedHealthResult = result;
+    setHealthCache(result);
     return result;
   } catch {
-    cachedHealthResult = false;
+    setHealthCache(false);
     return false;
   }
+}
+
+/** Set the cached health result + its timestamp. */
+function setHealthCache(result: boolean): void {
+  cachedHealthResult = result;
+  cachedHealthAt = Date.now();
+}
+
+/** True if the cache is populated AND older than the TTL (should re-probe). */
+function isHealthCacheStale(): boolean {
+  return cachedHealthAt === 0 || Date.now() - cachedHealthAt > HEALTH_CACHE_TTL_MS;
 }
 
 /** Reset the cached health result (for testing). */
 export function resetCamofoxHealthCache(): void {
   cachedHealthResult = null;
+  cachedHealthAt = 0;
 }
 
 /**
@@ -183,7 +201,12 @@ export function isCamofoxConfigured(config?: CamofoxConfig): boolean {
  * health probe without re-running it.
  */
 export function getCachedCamofoxHealth(): boolean | undefined {
-  return cachedHealthResult === null ? undefined : cachedHealthResult;
+  // TTL-aware: a stale (or empty) cache yields `undefined` so the sync resolver
+  // falls to its optimistic phase AND triggers a re-probe (G3). Previously the
+  // cache was returned indefinitely, so a downed server was never re-detected.
+  return cachedHealthResult === null || isHealthCacheStale()
+    ? undefined
+    : cachedHealthResult;
 }
 
 /**
@@ -198,6 +221,27 @@ export function getCachedCamofoxHealth(): boolean | undefined {
 export function primeCamofoxHealth(config?: CamofoxConfig): void {
   // Intentionally not awaited — callers can fire-and-forget on startup.
   void isCamofoxAvailable(config);
+}
+
+/** Whether an async health probe is currently in flight (re-entrancy guard for
+ *  {@link maybeProbeCamofoxHealth}). */
+let healthProbeInFlight = false;
+
+/** Fire-and-forget a health probe to (re)populate the cache, UNLESS one is
+ *  already in flight. Called by the sync engine-resolver when the cache is
+ *  empty/stale, so the cache actually populates + refreshes in production
+ *  (making the TTL effective — G3). Uses `forceRecheck` to bypass the cache
+ *  read and re-probe. */
+export function maybeProbeCamofoxHealth(config?: CamofoxConfig): void {
+  if (healthProbeInFlight) return;
+  healthProbeInFlight = true;
+  void isCamofoxAvailable(config, true)
+    .catch(() => {
+      /* errors absorbed into the cached false result */
+    })
+    .finally(() => {
+      healthProbeInFlight = false;
+    });
 }
 
 // ─── Session management ─────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ import { isAnyCloudProviderAvailable, getCloudProviders } from "./cloud-provider
 import {
   isCamofoxConfigured,
   getCachedCamofoxHealth,
+  maybeProbeCamofoxHealth,
 } from "./camofox-client.js";
 import type { AgentBrowserResult, BrowserEngineName } from "./agent-browser-runner.js";
 
@@ -109,12 +110,15 @@ export function isCamofoxAvailable(config?: EngineResolutionConfig): boolean {
     : undefined;
   if (!isCamofoxConfigured(probeConfig)) return false;
 
-  // Phase 2 — cached health result (honors async probe from camofox-client).
+  // Phase 2 — cached health result (honors async probe + TTL from camofox-client).
   const cached = getCachedCamofoxHealth();
   if (cached !== undefined) return cached;
 
-  // Phase 3 — no cache yet → optimistic (env var set → trust the signal).
-  // The async probe will populate the cache; subsequent calls honor it.
+  // Phase 3 — cache empty OR stale → optimistic THIS call, but kick off an async
+  // probe (fire-and-forget, re-entrancy-guarded) to (re)populate the cache so
+  // subsequent calls honor fresh health. This makes the TTL effective in
+  // production (G3): a downed Camofox server is re-detected within the TTL window.
+  maybeProbeCamofoxHealth(probeConfig);
   return true;
 }
 

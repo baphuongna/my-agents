@@ -253,6 +253,18 @@ describe("security-guard — layer 5: domain blocklist", () => {
   it("ignores an empty blocklist", () => {
     expect(checkUrl("https://example.com/x", { blocklist: [] }).ok).toBe(true);
   });
+
+  it("collapses consecutive '*' to avoid ReDoS (fast on long non-match)", () => {
+    // 10 consecutive '*' against a 60-char host would emit '.*.*.*…' and hang
+    // the event loop (catastrophic backtracking) pre-fix. Collapsed → single .*
+    const longHost = "a".repeat(60) + ".example.com";
+    const start = Date.now();
+    const d = checkUrl(`https://${longHost}/x`, {
+      blocklist: ["**********.evil.com"],
+    });
+    expect(Date.now() - start).toBeLessThan(500);
+    expect(d.ok).toBe(true); // long host does not match *.evil.com
+  });
 });
 
 // ─── Invalid URL / scheme ───────────────────────────────────────────────────

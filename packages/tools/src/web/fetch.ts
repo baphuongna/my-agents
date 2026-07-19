@@ -25,6 +25,7 @@ import {
   detectBot,
   type SecurityGuardOptions,
 } from "./security-guard.js";
+import { loadWebConfig } from "./config.js";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { ok, err, isRecord, type ToolImpl } from "../registry.js";
 
@@ -223,6 +224,32 @@ function mainContentType(header: string | null): string {
  * Security guard is applied before the request and after redirects.
  * Never throws — errors are returned as { ok:false, error }.
  */
+/** Strip Authorization + Cookie headers when the target URL's origin differs
+ *  from the original request origin. This restores the Fetch-spec / undici
+ *  `redirect: "follow"` behavior that manual redirect following would otherwise
+ *  lose (F2: prevents forwarding credentials to an attacker-controlled
+ *  cross-origin redirect target). */
+function stripCrossOriginHeaders(
+  headers: Record<string, string>,
+  targetUrl: string,
+  originalOrigin: string,
+): Record<string, string> {
+  if (!originalOrigin) return headers;
+  let targetOrigin: string;
+  try {
+    targetOrigin = new URL(targetUrl).origin;
+  } catch {
+    return headers;
+  }
+  if (targetOrigin === originalOrigin) return headers;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    const lk = k.toLowerCase();
+    if (lk !== "authorization" && lk !== "cookie") out[k] = v;
+  }
+  return out;
+}
+
 export async function webFetch(
   url: string,
   opts?: WebFetchOptions,
@@ -240,9 +267,13 @@ export async function webFetch(
   }
 
   // Guard options forwarded to security-guard.
+  // Merge the operator deny-list (MYA_WEB_BLOCKLIST, from config) with any
+  // explicit per-call blocklist. The config blocklist ALWAYS applies (the model
+  // cannot override it); explicit opts.blocklist adds to it (G2).
+  const cfg = loadWebConfig();
   const guardOpts: SecurityGuardOptions = {
-    allowPrivateUrls: opts?.allowPrivateUrls,
-    blocklist: opts?.blocklist,
+    allowPrivateUrls: opts?.allowPrivateUrls ?? cfg.allowPrivateUrls,
+    blocklist: [...cfg.blocklist, ...(opts?.blocklist ?? [])],
   };
 
   // ── 1. PRE-FETCH GUARD ──────────────────────────────────────────────
@@ -258,33 +289,106 @@ export async function webFetch(
     };
   }
 
-  // ── 2. HTTP GET ─────────────────────────────────────────────────────
-  let response: Response;
+  // ── 2. HTTP GET (manual redirect following — each hop checked BEFORE connect) ──
+  //  `redirect: "manual"` returns 3xx responses as-is; we resolve the Location,
+  //  run the FULL async guard (incl. DNS) on the target, and only THEN follow.
+  //  This closes the connection-before-check gap that `redirect: "follow"` had
+  //  (where Node connected to a private/metadata redirect target before the
+  //  post-redirect guard ran). A SINGLE shared deadline bounds TOTAL time across
+  //  all hops + DNS (F1); cross-origin hops strip Authorization/Cookie (F2).
+  const MAX_REDIRECTS = 10;
+  const deadline = Date.now() + timeoutMs;
+  let originalOrigin = "";
   try {
-    response = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(timeoutMs),
-      headers,
-    });
-  } catch (err) {
-    const isTimeout =
-      err instanceof Error &&
-      (err.name === "TimeoutError" ||
-        err.name === "AbortError" ||
-        /timeout|abort/i.test(err.message));
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      ok: false,
-      markdown: "",
-      finalUrl: url,
-      title: "",
-      contentType: "",
-      error: isTimeout ? `request timed out after ${timeoutMs}ms` : msg,
-    };
+    originalOrigin = new URL(url).origin;
+  } catch {
+    /* keep empty */
+  }
+  let currentUrl = url;
+  let response: Response;
+  let redirects = 0;
+  for (;;) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      return {
+        ok: false,
+        markdown: "",
+        finalUrl: currentUrl,
+        title: "",
+        contentType: "",
+        error: `request timed out after ${timeoutMs}ms (redirect chain)`,
+      };
+    }
+    const hopHeaders = stripCrossOriginHeaders(headers, currentUrl, originalOrigin);
+    try {
+      response = await fetch(currentUrl, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(Math.min(timeoutMs, remaining)),
+        headers: hopHeaders,
+      });
+    } catch (err) {
+      const isTimeout =
+        err instanceof Error &&
+        (err.name === "TimeoutError" ||
+          err.name === "AbortError" ||
+          /timeout|abort/i.test(err.message));
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        markdown: "",
+        finalUrl: currentUrl,
+        title: "",
+        contentType: "",
+        error: isTimeout ? `request timed out after ${timeoutMs}ms` : msg,
+      };
+    }
+    // 3xx with a Location → check the target before following.
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) break; // malformed redirect (no Location) → treat as final
+      if (++redirects > MAX_REDIRECTS) {
+        return {
+          ok: false,
+          markdown: "",
+          finalUrl: currentUrl,
+          title: "",
+          contentType: "",
+          error: `too many redirects (>${MAX_REDIRECTS})`,
+        };
+      }
+      let nextUrl: string;
+      try {
+        nextUrl = new URL(location, currentUrl).toString();
+      } catch {
+        return {
+          ok: false,
+          markdown: "",
+          finalUrl: currentUrl,
+          title: "",
+          contentType: "",
+          error: `invalid redirect Location header: ${location}`,
+        };
+      }
+      // Pre-check the redirect target (DNS + gauntlet) BEFORE connecting.
+      const hopCheck = await checkUrlAsync(nextUrl, guardOpts);
+      if (!hopCheck.ok) {
+        return {
+          ok: false,
+          markdown: "",
+          finalUrl: nextUrl,
+          title: "",
+          contentType: "",
+          guardBlock: { reason: hopCheck.reason, category: hopCheck.category },
+        };
+      }
+      currentUrl = nextUrl;
+      continue;
+    }
+    break; // non-redirect response → final
   }
 
-  // ── 3. POST-REDIRECT GUARD ──────────────────────────────────────────
-  const finalUrl = response.url || url;
+  // ── 3. POST-REDIRECT GUARD (defense-in-depth — each hop was pre-checked) ──
+  const finalUrl = response.url || currentUrl;
   const postCheck = await checkRedirectAsync(finalUrl, guardOpts);
   if (!postCheck.ok) {
     return {

@@ -6,8 +6,9 @@
  * end-to-end. Only global fetch is mocked per-test to return controlled
  * responses.
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { webFetch } from "./fetch.js";
+import { _setDnsResolverForTest } from "./security-guard.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — build mock Response objects
@@ -18,10 +19,14 @@ function mockResponse(opts: {
   url?: string;
   contentType?: string;
   status?: number;
+  location?: string;
 }): Response {
   const headers = new Map<string, string>();
   if (opts.contentType !== undefined) {
     headers.set("content-type", opts.contentType);
+  }
+  if (opts.location !== undefined) {
+    headers.set("location", opts.location);
   }
   return {
     url: opts.url ?? "https://example.com/page",
@@ -40,9 +45,18 @@ function mockResponse(opts: {
 describe("webFetch", () => {
   const originalFetch = globalThis.fetch;
 
+  // Stub the DNS resolver so checkUrlAsync does NOT make real network DNS
+  // (hostnames resolve to a public IP → passes the SSRF range check).
+  beforeEach(() => {
+    _setDnsResolverForTest(async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]);
+  });
+
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
+    _setDnsResolverForTest(null);
   });
 
   // ── Happy path: HTML → markdown ────────────────────────────────────
@@ -112,6 +126,122 @@ describe("webFetch", () => {
     expect(result.guardBlock?.category).toBe("ssrf-metadata");
     // Body must NOT be returned when redirect is blocked
     expect(result.markdown).toBe("");
+  });
+
+  // ── Manual redirect following: per-hop check (G1 residual MEDIUM) ─────
+  it("blocks redirect to metadata via per-hop check (target never connected)", async () => {
+    const fetchSpy = vi.fn().mockImplementation((u: string) =>
+      Promise.resolve(
+        mockResponse({
+          status: 302,
+          location: "http://169.254.169.254/latest/meta-data/",
+          url: String(u),
+        }),
+      ),
+    );
+    globalThis.fetch = fetchSpy;
+
+    const result = await webFetch("https://example.com/redirect");
+
+    expect(result.ok).toBe(false);
+    expect(result.guardBlock?.category).toBe("ssrf-metadata");
+    // The metadata target must NOT have been fetched (per-hop check blocked it).
+    const calls = fetchSpy.mock.calls.map((c) => String(c[0]));
+    expect(calls).not.toContain("http://169.254.169.254/latest/meta-data/");
+    expect(calls).toEqual(["https://example.com/redirect"]);
+  });
+
+  it("follows a safe redirect and returns the final content", async () => {
+    const fetchSpy = vi.fn().mockImplementation((u: string) => {
+      if (String(u).includes("/redirect")) {
+        return Promise.resolve(
+          mockResponse({
+            status: 302,
+            location: "https://safe.example.org/real",
+            url: "https://example.com/redirect",
+          }),
+        );
+      }
+      return Promise.resolve(
+        mockResponse({
+          text: "<html><body><h1>Real</h1></body></html>",
+          contentType: "text/html",
+          url: "https://safe.example.org/real",
+        }),
+      );
+    });
+    globalThis.fetch = fetchSpy;
+
+    const result = await webFetch("https://example.com/redirect");
+
+    expect(result.ok).toBe(true);
+    expect(result.markdown).toContain("# Real");
+    expect(result.finalUrl).toBe("https://safe.example.org/real");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("caps redirect chains at MAX_REDIRECTS", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      mockResponse({
+        status: 302,
+        location: "https://example.com/loop",
+        url: "https://example.com/loop",
+      }),
+    );
+    globalThis.fetch = fetchSpy;
+
+    const result = await webFetch("https://example.com/loop-start");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/too many redirects/);
+    // MAX_REDIRECTS = 10 → 11 fetch calls before the cap trips (initial + 10 hops).
+    expect(fetchSpy.mock.calls.length).toBe(11);
+  });
+
+  // ── G2: operator deny-list from config (MYA_WEB_BLOCKLIST) ──────────
+  it("applies MYA_WEB_BLOCKLIST from config (operator deny-list)", async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy;
+    process.env.MYA_WEB_BLOCKLIST = "*.evil.com,blockthis.test";
+    try {
+      const result = await webFetch("https://blockthis.test/page");
+      expect(result.ok).toBe(false);
+      expect(result.guardBlock?.category).toBe("blocklist");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.MYA_WEB_BLOCKLIST;
+    }
+  });
+
+  // ── F2: strip Authorization/Cookie on cross-origin redirect ─────────
+  it("strips Authorization on cross-origin redirect (keeps same-origin)", async () => {
+    const sentHeaders = new Map<string, Record<string, string>>();
+    const fetchSpy = vi.fn().mockImplementation((u: string, init?: { headers?: Record<string, string> }) => {
+      sentHeaders.set(String(u), init?.headers ?? {});
+      if (String(u).includes("/redirect")) {
+        return Promise.resolve(
+          mockResponse({
+            status: 302,
+            location: "https://other.example.org/real",
+            url: String(u),
+          }),
+        );
+      }
+      return Promise.resolve(
+        mockResponse({ text: "<html>ok</html>", contentType: "text/html", url: String(u) }),
+      );
+    });
+    globalThis.fetch = fetchSpy;
+
+    const result = await webFetch("https://example.com/redirect", {
+      headers: { Authorization: "Bearer secret" },
+    });
+
+    expect(result.ok).toBe(true);
+    // Same-origin first hop → Authorization kept.
+    expect(sentHeaders.get("https://example.com/redirect")?.Authorization).toBe("Bearer secret");
+    // Cross-origin redirect target → Authorization stripped (F2).
+    expect(sentHeaders.get("https://other.example.org/real")?.Authorization).toBeUndefined();
   });
 
   // ── Content type: JSON → pretty-printed ────────────────────────────

@@ -172,18 +172,31 @@ SSRF + claw-code's mode-tiered allow/deny rules) would be strongest.
   + `browser_navigate` (guard + 2 post-redirect spots). 12 regression tests
   (private/metadata/loopback/IPv6/multi-record/DNS-fail/empty-array/IP-literal
   short-circuit/allowPrivateUrls/secret-before-DNS). Security review: 8/8 checks
-  PASS, no exploitable bypass. Residual MEDIUM (redirect-connection-before-check,
-  mitigated by body-withholding) documented — future: `redirect: "manual"`.
+  PASS, no exploitable bypass. Residual MEDIUM (redirect-connection-before-check)
+  ✅ **CLOSED:** `webFetch` now uses `redirect: "manual"` with per-hop
+  `checkUrlAsync` (DNS + gauntlet) BEFORE following — a redirect to a private /
+  metadata target is blocked before connecting. 3-review cycle hardened it:
+  shared deadline bounds total time across hops, DNS lookup capped at 5s
+  (fail-closed), cross-origin redirects strip Authorization/Cookie.
   *(was: mya checked IP ranges against the hostname without resolving; hermes
   resolves + fails-closed.)*
-- **G2. `blocklist` not wired to config/env.** `checkUrl` accepts `opts.blocklist`
-  but no production path reads it. hermes has `website_blocklist` config. Fix:
-  wire `MYA_WEB_BLOCKLIST` env / config.
+- **G2. `blocklist` not wired to config/env.** ✅ **FIXED.** Added
+  `blocklist: string[]` to `WebConfig` (parsed from `MYA_WEB_BLOCKLIST`, comma-
+  separated fnmatch patterns). Wired into `webFetch` + `browser_navigate` guards
+  — the operator deny-list ALWAYS applies; the model cannot override it (no
+  `blocklist` tool arg exposed). 3-review cycle hardened it further: ReDoS
+  defense (`fnmatchToRegex` collapses consecutive `*` → single `.*`).
+  *(was: `checkUrl` accepted `opts.blocklist` but no production path read it.)*
 
 ### P1 — Robustness
-- **G3. Camofox health cache never invalidated in production.** `cachedHealthResult`
-  set once; a Camofox server going down mid-process isn't detected until restart.
-  Fix: TTL (e.g. 60s) or re-probe on REST failure.
+- **G3. Camofox health cache never invalidated in production.** ✅ **FIXED.**
+  Added 60s TTL: `getCachedCamofoxHealth` returns `undefined` when stale (so the
+  sync resolver doesn't trust a stale cache), and `maybeProbeCamofoxHealth`
+  (re-entrancy-guarded fire-and-forget) is called from the engine-resolver's
+  Phase 3 so the cache POPULATES + REFRESHES in production (was dead code —
+  cold-verifier caught the initial TTL-on-dead-code defect). A downed Camofox
+  server is re-detected within the TTL window.
+  *(was: cache set once, never invalidated; downed server not detected until restart.)*
 - **G4. Module-level session caches never evicted.** `sessionCache`,
   `camofoxSessionCache`, `engineCache`, `cloudSessionCache` persist for process
   lifetime; only `browser_close`/exit clears them. Long-running daemons leak.
