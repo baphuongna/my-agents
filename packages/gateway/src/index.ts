@@ -166,6 +166,14 @@ export interface GatewayOptions {
   /** Phase 2C: persist the scheduler state (advanced nextRunAt) to cron.json.
    * Called before firing (at-most-once across crashes) + after complete (re-anchor). */
   cronPersist?: () => void;
+  /** Phase 4A: mirror a run to durable history (SQLite) on claim. */
+  cronRunStart?: (rec: { runId: string; jobId: string; startedAt: number; status: string; claimedBy?: string }) => void;
+  /** Phase 4A: update durable history on completion. */
+  cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number) => void;
+  /** Phase 4A: read a job's durable run history for GET /cron/jobs/:id/runs. */
+  cronRuns?: (jobId: string) => unknown[];
+  /** Phase 4C: heartbeat (alive each sweep; success on a clean sweep). */
+  cronHeartbeat?: (success: boolean) => void;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -251,6 +259,10 @@ export class Gateway {
   private readonly cronMaxConcurrent: number;
   /** Phase 2C: persist scheduler state (atomic cron.json write). */
   private readonly cronPersist?: () => void;
+  private readonly cronRunStart?: (rec: { runId: string; jobId: string; startedAt: number; status: string; claimedBy?: string }) => void;
+  private readonly cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number) => void;
+  private readonly cronRuns?: (jobId: string) => unknown[];
+  private readonly cronHeartbeat?: (success: boolean) => void;
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
@@ -370,6 +382,10 @@ export class Gateway {
     this.onRunOnSession = opts.onRunOnSession;
     this.cronMaxConcurrent = opts.cronMaxConcurrent ?? 4;
     this.cronPersist = opts.cronPersist;
+    this.cronRunStart = opts.cronRunStart;
+    this.cronRunEnd = opts.cronRunEnd;
+    this.cronRuns = opts.cronRuns;
+    this.cronHeartbeat = opts.cronHeartbeat;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
@@ -471,6 +487,8 @@ export class Gateway {
     if (this.cronSweeping) return; // overlapping sweep (a prior job > interval) — skip
     this.cronSweeping = true;
     try {
+      // Phase 4C: heartbeat — alive marker (every sweep).
+      try { this.cronHeartbeat?.(false); } catch { /* best-effort */ }
       // Phase 0B: pick up external cron.json edits each sweep.
       try { this.cronReload?.(); } catch (e) {
         console.warn("[gateway] cron reload failed (non-fatal):", (e as Error).message);
@@ -492,6 +510,8 @@ export class Gateway {
       await Promise.allSettled(batch.map(async (job) => {
         const run = this.cron!.claim(job.id, workerId);
         if (!run) return; // another worker holds an unexpired lease
+        // Phase 4A: mirror the run start to durable history.
+        try { this.cronRunStart?.({ runId: run.runId, jobId: job.id, startedAt: run.startedAt, status: "claimed", claimedBy: run.claimedBy }); } catch { /* best-effort */ }
         this.cron!.start(run.runId);
         try {
           if (!this.onRunOnSession) {
@@ -510,10 +530,17 @@ export class Gateway {
         } catch (e) {
           this.cron!.complete(run.runId, "failed", (e as Error).message);
         }
+        // Phase 4A: mirror the run outcome to durable history.
+        const rec = this.cron!.runsOf(job.id).at(-1);
+        if (rec) {
+          try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now()); } catch { /* best-effort */ }
+        }
       }));
       // complete() re-anchored nextRunAt off completion time — persist for accuracy.
       try { this.cronPersist?.(); } catch { /* best-effort */ }
       this.cron.sweepExpired();
+      // Phase 4C: success marker (clean sweep).
+      try { this.cronHeartbeat?.(true); } catch { /* best-effort */ }
     } catch (e) {
       // cron loop must NEVER crash the gateway.
       console.warn("[gateway] cron sweep failed (non-fatal):", (e as Error).message);
@@ -1032,6 +1059,11 @@ export class Gateway {
         if (cronRunMatch && req.method === "POST" && this.cronRunNow) {
           void this.cronRunNow(cronRunMatch[1]!);
           return send(200, { ok: true });
+        }
+        // Phase 4A: durable run history for a job.
+        const cronRunsMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)\/runs$/);
+        if (cronRunsMatch && req.method === "GET" && this.cronRuns) {
+          return send(200, this.cronRuns(cronRunsMatch[1]!));
         }
         // AgentPool sessions
         if (url.pathname === "/pool/sessions" && this.poolStatus) {

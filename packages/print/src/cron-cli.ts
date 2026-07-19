@@ -203,13 +203,20 @@ export async function cronHistory(id?: string): Promise<void> {
     console.log(`${A.red("Usage:")} mya cron history <id>`);
     return;
   }
-  console.log(`${A.muted("Run history (from cron.json lastRunAt, no detailed log yet)")}`);
-  const arr = readCronJobs();
-  if (arr.length === 0) {
-    console.log(`${A.muted("No cron.json")}`);
-    return;
+  // Phase 4A: fetch durable run history from the gateway (SQLite-backed).
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/runs`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
+    if (r.status === 401) { console.log(`${A.red("✗")} unauthorized (gateway has wsToken; run on the same host)`); return; }
+    if (!r.ok) { console.log(`${A.red("✗")} ${r.status} (is the gateway running?)`); return; }
+    const runs = await r.json() as Array<{ status: string; startedAt: number; endedAt?: number; error?: string }>;
+    if (runs.length === 0) { console.log(`${A.muted("No runs recorded yet.")}`); return; }
+    for (const run of runs) {
+      const t = new Date(run.startedAt).toISOString().replace("T", " ").slice(0, 19);
+      const dur = run.endedAt ? ` (${Math.round((run.endedAt - run.startedAt) / 1000)}s)` : "";
+      const mark = run.status === "succeeded" ? A.green("✓") : run.status === "failed" ? A.red("✗") : A.muted("·");
+      console.log(`  ${mark} ${A.muted(t)} ${run.status}${dur}${run.error ? ` — ${run.error.slice(0, 80)}` : ""}`);
+    }
+  } catch (e) {
+    console.log(`${A.red("✗")} ${(e as Error).message} (is the gateway running?)`);
   }
-  const job = arr.find((j) => j.id === id || id.startsWith(j.id.slice(0, 8)));
-  if (job) console.log(`  ${A.accent(job.name)} (${job.id})`);
-  console.log(`${A.muted("Detailed per-run history will be added in a future update.")}`);
 }

@@ -336,6 +336,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // loader — the gateway's initial cronReload (in start()) loads jobs before the
   // first sweep tick.
   const { readCronJobs, atomicWriteJobs } = await import("./cron-persist.js");
+  const { recordRunStart, recordRunEnd, getRunHistory, recordHeartbeat, recordHeartbeatSuccess } = await import("./cron-observability.js");
   // Phase 3B/3A: wire the prompt validator (register/updateJob reject) + the
   // job cap. The validator also runs on every reconciled (file-loaded) job so
   // CLI/external cron.json edits are scanned (R2-4 file-layer gate).
@@ -437,6 +438,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     cron,
     cronReload,
     cronPersist: persistCron,
+    cronRunStart: (rec) => recordRunStart(rec),
+    cronRunEnd: (runId, status, error, endedAt) => recordRunEnd(runId, status, error, endedAt),
+    cronRuns: (jobId) => getRunHistory(jobId),
+    cronHeartbeat: (success) => { recordHeartbeat(); if (success) recordHeartbeatSuccess(); },
     onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),
     sync,
     collab,
