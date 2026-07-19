@@ -1,5 +1,9 @@
 # Cron Hardening — Implementation Plan (rev 3, post Round-2 review)
 
+> **STATUS: COMPLETE ✅** — all phases (0B, 0A+1A, 0C, 2, 3, 4) implemented,
+> each 3-reviewed + fixed. 255 tests, tsc clean, bundle rebuilt, TUI launches.
+> See the commit log (017a9cc → daca4c1) for the per-phase review iterations.
+
 Port hermes cron correctness + security into mya. Fixes D1–D10 per
 `docs/cron-comparison.md`, guided by `docs/hermes-cron-deepdive.md`.
 
