@@ -342,6 +342,14 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         console.warn("[gateway] cron persist retry failed (non-fatal):", (e as Error).message);
       }
     }
+    // If writes are STILL failing (persistent: read-only FS / disk full), skip
+    // reconcile this cycle — reconcile would otherwise drop our unflushed jobs as
+    // "memory-only". The scheduler keeps them in memory; reconcile resumes once
+    // writes recover. External CLI edits wait too (degraded-state tradeoff).
+    if (cron.isDirty) {
+      console.warn("[gateway] cron persist still failing; skipping reconcile this sweep");
+      return;
+    }
     // Phase 3B will pass { validate: validateCronPrompt } to scan loaded prompts.
     const stats = cron.reconcile(readCronJobs());
     if (stats.quarantined > 0) {

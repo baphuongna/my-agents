@@ -28,6 +28,17 @@ describe("CronScheduler persistence hooks (Phase 0B)", () => {
     expect(sched.isDirty).toBe(false);
   });
 
+  it("isDirty stays true when persist fails (markPersisted skipped)", () => {
+    // Model the gateway's failed-write path: onDirty runs but markPersisted is
+    // NOT called (atomicWriteJobs threw before it, caught by the gateway wrapper).
+    // isDirty stays true → the gateway's cronReload skips reconcile to avoid
+    // dropping the unflushed job as "memory-only".
+    const sched = new CronScheduler({ onDirty: () => { /* write failed; markPersisted skipped */ } });
+    sched.register(mkJob({ id: "stuck" }));
+    expect(sched.isDirty).toBe(true);
+    expect(sched.getJob("stuck")).toBeDefined();
+  });
+
   it("setOnDirty wires persistence post-construction", () => {
     const sched = new CronScheduler(); // no onDirty
     const dirty = vi.fn();

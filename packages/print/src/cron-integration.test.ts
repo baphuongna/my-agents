@@ -104,21 +104,19 @@ describe("cron file ↔ scheduler integration (Phase 0B)", () => {
     expect(s2.updated).toBe(0); // no churn — defaults normalize identically
   });
 
-  it("atomicWriteJobs refuses a pre-planted symlink (flag wx)", () => {
-    // attacker pre-creates the tmp path as a symlink → write must EEXIST, not follow
+  it("atomicWriteJobs replaces a destination symlink atomically (rename, no follow)", () => {
+    // flag:wx on the (unpredictable, Date.now-based) tmp path blocks a pre-planted
+    // tmp symlink at the code level (cron-persist.ts:81). This test covers the
+    // destination: if `file` is a symlink, renameSync atomically REPLACES it (does
+    // NOT write through it), so an attacker's redirect target is untouched.
     const target = join(dir, "evil-target");
     writeFileSync(target, "");
-    const tmpName = `.cron.${process.pid}.${Date.now()}.tmp`;
-    // we can't predict Date.now() exactly, but flag:wx on ANY existing path fails;
-    // plant a symlink at a candidate and assert the write mechanism is safe by
-    // confirming a second write to the same file (rename) doesn't follow a symlink
-    // placed AT the destination:
     symlinkSync(target, file); // file → evil-target
     expect(() => atomicWriteJobs([], file)).not.toThrow();
     // renameSync atomically replaces the symlink (does NOT write through it);
     // the evil-target file remains empty:
     expect(readFileSync(target, "utf8")).toBe("");
-    // and file is now a real file:
+    // and file is now a real file (replaced, not written-through):
     expect(statSync(file).isFile()).toBe(true);
   });
 
