@@ -107,6 +107,24 @@ Agent: *"All three titles, point counts, and authors came straight from the page
 
 Browser is a **working research tool**: navigate → ariaSnapshot → read dynamic current content → answer from real data.
 
+### Full TUI sweep (post-refactor `a3ecc33`, MiniMax-M3 via tmux)
+
+After the `host.ts` refactor (iterate `browserTools` array), a 9-case sweep verified **all 13 tools** still expose + work — both routing paths (orchestrator-routed action tools + thin-leaf close/search):
+
+| # | Test | Path | Result |
+|---|------|------|--------|
+| 1 | Exposure count | registration | ✅ 10 browser + 3 web + paid_fetch (refactor lost no tool) |
+| 2 | `browser_search` | thin-leaf → Camofox | ✅ engine:camofox, "python async" → Real Python (organic, 0 ad) |
+| 3 | `browser_navigate` + `snapshot` | orchestrator | ✅ HN top stories, ariaSnapshot refs (e205+) |
+| 4 | scroll→back→screenshot→close | orchestrator + thin-leaf | ✅ b64 PNG + `"closed":true` |
+| 5 | `browser_type` + `browser_press` | orchestrator | ✅ type @e4 searchbox → press Enter → AI article |
+| 6 | `web_fetch` + `web_extract` | floor + fallback chain | ✅ `triedChain: extract-chain ✗ → web_fetch_fallback ✓` |
+| 7 | `web_search` | ddgs zero-key | ✅ backend:ddgs (rate-limited → empty, documented) |
+| 8 | security | guard (pre-IO) | ✅ SSRF `169.254.169.254` blocked + secret-URL (AKIA + %enc) blocked |
+| 9 | `browser_click` | orchestrator | ✅ click @e10 accepted, engine:camofox |
+
+Camofox stable across all 9 (0 bot-block). The expose bug is fixed at the root — adding a tool to `browserTools` auto-registers it.
+
 ## Config (`web.*` in config.ts)
 
 ```
@@ -155,5 +173,16 @@ Env-driven (CAMOFOX_URL, BROWSERBASE_API_KEY/PROJECT_ID, BROWSER_USE_API_KEY, TA
 - Docs: `docs/PLAN-BROWSER.md`, `docs/web-lookup-architecture-deepdive.md`, `docs/mya-web-lookup-audit.md`, this file
 
 ## Commits
+
+**browser_search + refactor saga (reverse-chronological):**
+- `a3ecc33` refactor(web): host.ts iterates `browserTools` array — root fix for the expose bug (no second list to sync)
+- `c407897` fix(web): expose `browser_search` in TUI (host.ts registerWebTools thin-leaf)
+- `604c52e` feat(print): generic `auth.json [env]` loader → process.env (CAMOFOX_URL auto-config)
+- `08e99e4` fix(web): `browser_search` refinements + tool-list string + dist recovery
+- `7072a3e` feat(web): `browser_search` — Camofox anti-detect search (ddgs replacement)
+
+**Foundation stack:**
+- `bfa9f5a` docs(web): detailed current-state reference for web-lookup
+- `40aba5a` test(web): Phase 6 — harness web cases + audit status + dist
 - `d1a56e8` feat(web): resilient web-lookup stack (browser-first + fallback) — Phases 1-5
-- `40aba5a` test(web): Phase 6 — harness web cases + audit status
+- `0ff8420` revert(tools): remove path containment for pi-core parity (unrestricted)
