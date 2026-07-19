@@ -57,7 +57,7 @@ export interface WebFetchOptions extends SecurityGuardOptions {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_TIMEOUT_MS = 15_000;
-const DEFAULT_MAX_CHARS = 50_000;
+export const DEFAULT_MAX_CHARS = 15_000;
 const DEFAULT_USER_AGENT = "mya-web-fetch/1.0";
 
 // ---------------------------------------------------------------------------
@@ -370,7 +370,6 @@ export async function webFetch(
 
 const PROMPT: Mode = "Prompt";
 const DEFAULT_WEB_FETCH_TIMEOUT_MS = 15_000;
-const DEFAULT_WEB_FETCH_MAX_CHARS = 15_000;
 
 /**
  * The `web_fetch` ToolImpl. Exposes the HTTP→markdown floor as a
@@ -427,7 +426,7 @@ export const webFetchTool: ToolImpl = {
     const maxChars =
       typeof args.maxChars === "number" && args.maxChars > 0
         ? args.maxChars
-        : DEFAULT_WEB_FETCH_MAX_CHARS;
+        : DEFAULT_MAX_CHARS;
     const allowPrivateUrls = args.allowPrivateUrls === true;
 
     const result = await webFetch(args.url, {

@@ -71,6 +71,7 @@ vi.mock("./search/backend-resolver.js", async () => {
 // fetch.ts: stub webFetch so tests don't hit the network.
 vi.mock("./fetch.js", () => ({
   webFetch: vi.fn(),
+  DEFAULT_MAX_CHARS: 15_000,
 }));
 
 // search/index.ts: stub the search + extract leaf tools (the orchestrator
@@ -635,6 +636,11 @@ describe("runBrowserWithFallback — fallbackToFetch=false respected", () => {
       expect(out.triedChain as string).toMatch(/tried/);
     }
     expect(mockWebFetch).toHaveBeenCalledTimes(1);
+    // B3 regression: the universal web_fetch floor must pass the unified maxChars.
+    expect(mockWebFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ maxChars: 15_000 }),
+    );
   });
 });
 
@@ -840,6 +846,11 @@ describe("runExtractWithFallback", () => {
       expect(out.engine).toBe("web_fetch_fallback");
     }
     expect(mockWebFetch).toHaveBeenCalledTimes(1);
+    // B3 regression: the extract web_fetch floor must pass the unified maxChars.
+    expect(mockWebFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ maxChars: 15_000 }),
+    );
   });
 
   it("blocks metadata URL in the extract path", async () => {

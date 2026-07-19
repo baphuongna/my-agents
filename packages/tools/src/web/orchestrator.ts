@@ -57,7 +57,7 @@ import type { Mode, ToolResult, TurnContext } from "@my-agent/core";
 import { nowMonotonic } from "@my-agent/core";
 import { ok, err, type ToolImpl } from "../registry.js";
 import { checkUrl, checkRedirect } from "./security-guard.js";
-import { webFetch } from "./fetch.js";
+import { webFetch, DEFAULT_MAX_CHARS } from "./fetch.js";
 import {
   loadWebConfig,
   type WebConfig,
@@ -383,7 +383,7 @@ function extractErrorString(value: unknown): string {
  *      chrome→lightpanda fallback (D4) on chrome failure. Wrap in try/catch
  *      (D2).
  *   3. If ALL engines fail and `cfg.fallbackToFetch === true`, call
- *      `webFetch(url, { maxChars: 15_000 })` — D8 / universal floor.
+ *      `webFetch(url, { maxChars: DEFAULT_MAX_CHARS })` — D8 / universal floor.
  *   4. Otherwise return a typed error with the full tried-chain note.
  *
  * The function does NOT perform 402-fallback retries (D3) directly — that
@@ -514,7 +514,7 @@ export async function runBrowserWithFallback(
   // All-fail → web_fetch floor (D8 / cross-cutting).
   if (url !== undefined && cfg.fallbackToFetch) {
     const fetchResult = await webFetch(url, {
-      maxChars: 15_000,
+      maxChars: DEFAULT_MAX_CHARS,
       allowPrivateUrls: cfg.allowPrivateUrls,
     });
     tried.push({
@@ -705,7 +705,7 @@ export async function runExtractWithFallback(
       return err("web_extract", `URL blocked (${guard.category}): ${guard.reason}`);
     }
     const fetchResult = await webFetch(url, {
-      maxChars: 15_000,
+      maxChars: DEFAULT_MAX_CHARS,
       allowPrivateUrls: cfg.allowPrivateUrls,
     });
     if (!fetchResult.ok) {

@@ -71,7 +71,7 @@ import {
 } from "./camofox-client.js";
 import { getAvailableCloudProvider, type CloudSessionMeta } from "./cloud-provider.js";
 import { loadWebConfig } from "../config.js";
-import { webFetch } from "../fetch.js";
+import { webFetch, DEFAULT_MAX_CHARS } from "../fetch.js";
 
 /** The "feature never dies" floor: when all browser engines are unavailable
  *  (or the navigate throws at runtime), degrade to a plain HTTP fetch so the
@@ -81,7 +81,7 @@ async function fallbackToFetchOrFail(url: string, reason: string): Promise<ToolR
   const cfg = loadWebConfig();
   if (cfg.fallbackToFetch) {
     try {
-      const f = await webFetch(url, { allowPrivateUrls: cfg.allowPrivateUrls });
+      const f = await webFetch(url, { maxChars: DEFAULT_MAX_CHARS, allowPrivateUrls: cfg.allowPrivateUrls });
       if (f.ok) {
         return ok("browser_navigate", {
           engine: "web_fetch_fallback",
@@ -850,7 +850,7 @@ export const browserBackTool: ToolImpl = {
     try {
       const engineResult = resolveEffectiveEngine(taskId, undefined, argsObj);
       if (!engineResult.resolved) {
-        return err("browser_snapshot", "no browser engine available");
+        return err("browser_back", "no browser engine available");
       }
       const { effective, envCfg } = engineResult;
 
@@ -947,7 +947,7 @@ export const browserScreenshotTool: ToolImpl = {
     try {
       const engineResult = resolveEffectiveEngine(taskId, undefined, argsObj);
       if (!engineResult.resolved) {
-        return err("browser_snapshot", "no browser engine available");
+        return err("browser_screenshot", "no browser engine available");
       }
       const { effective, envCfg } = engineResult;
 
