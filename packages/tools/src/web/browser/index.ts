@@ -34,7 +34,7 @@
  */
 import type { Mode, ToolResult } from "@my-agent/core";
 import { ok, err, isRecord, type ToolImpl } from "../../registry.js";
-import { checkUrl, checkRedirect, detectBot } from "../security-guard.js";
+import { checkUrl, checkUrlAsync, checkRedirectAsync, detectBot } from "../security-guard.js";
 import {
   createBrowserSession,
   closeBrowserSession,
@@ -475,7 +475,7 @@ export const browserNavigateTool: ToolImpl = {
     //    browser is trusted to access RFC1918 / loopback). The cloud-metadata
     //    floor (ssrf-metadata) is UNCONDITIONAL — guarded by checkUrl itself
     //    which ignores the flag for metadata hosts.
-    const guard = checkUrl(url, { allowPrivateUrls: hybridForceLocal });
+    const guard = await checkUrlAsync(url, { allowPrivateUrls: hybridForceLocal });
     if (!guard.ok) {
       return err("browser_navigate", `URL blocked (${guard.category}): ${guard.reason}`);
     }
@@ -524,7 +524,7 @@ export const browserNavigateTool: ToolImpl = {
         // Post-redirect security guard (layer 4).
         const finalUrl = nav.data?.url ?? url;
         const title = nav.data?.title ?? "";
-        const redirectGuard = checkRedirect(finalUrl, { allowPrivateUrls: hybridForceLocal });
+        const redirectGuard = await checkRedirectAsync(finalUrl, { allowPrivateUrls: hybridForceLocal });
         if (!redirectGuard.ok) {
           // Navigate to about:blank on camofox to scrub blocked-page state.
           const scrub = await camofoxNavigate("about:blank", sessResult.session, cfg).catch(
@@ -576,7 +576,7 @@ export const browserNavigateTool: ToolImpl = {
       // 8c. Post-redirect security guard (layer 4).
       const finalUrl = openResult.data?.url ?? url;
       const title = openResult.data?.title ?? "";
-      const redirectGuard = checkRedirect(finalUrl, { allowPrivateUrls: hybridForceLocal });
+      const redirectGuard = await checkRedirectAsync(finalUrl, { allowPrivateUrls: hybridForceLocal });
       if (!redirectGuard.ok) {
         // For local: navigate to about:blank to prevent snapshot leaks of the
         // blocked page. Cloud servers manage their own tabs.

@@ -16,18 +16,37 @@
  *   5. DOMAIN BLOCKLIST HOOK    — fnmatch-style host patterns (in-memory).
  *   6. BOT-DETECTION AWARENESS  — returns a WARNING (never a block).
  *
- * Phase 1 scope: NO DNS resolution is performed before the IP-range checks.
- * The hostname is inspected directly (is it an IP literal in a blocked range?
- * is it a known metadata hostname?). DNS-rebinding TOCTOU (resolve-to-private
- * between check and fetch) is a documented caveat; full resolve-then-check is
- * deferred to a hardening pass. The metadata floor is hostname+IP based, so the
- * most dangerous deterministic endpoints are still blocked unconditionally.
+ * DNS resolution: the sync {@link checkUrl} inspects the hostname directly (is it
+ * an IP literal in a blocked range? a known metadata hostname?) — it does NOT
+ * resolve DNS. {@link checkUrlAsync} adds resolve-then-check: a DNS hostname is
+ * resolved via the OS resolver and every resolved address is checked against the
+ * metadata floor + private/internal ranges (fail-closed on DNS error). This
+ * closes the common DNS-rebinding case (a hostname that DIRECTLY resolves to a
+ * private/metadata IP). The full split-resolution TOCTOU (public-at-check,
+ * private-at-connect with attacker-controlled fast-TTL DNS) still requires
+ * connection-level IP pinning (Smokescreen-style) — documented, deferred. The
+ * metadata floor is hostname+IP based, so the most dangerous deterministic
+ * endpoints are blocked unconditionally even by the sync path.
  *
  * Constraints: TS strict + noUncheckedIndexedAccess + ESM; only `node:net`
  * is imported (no external deps — §18 minimal core). Never throws — every
  * failure is a typed {@link GuardDecision}.
  */
 import { isIP } from "node:net";
+import { lookup as dnsLookup } from "node:dns/promises";
+
+// ─── DNS resolver seam (dependency-injected for testing) ────────────────────
+/** Resolves a hostname to a list of {address, family} records. Defaults to the
+ *  OS resolver (`node:dns/promises` lookup, respects `/etc/hosts`). Overridable
+ *  via {@link _setDnsResolverForTest} so unit tests can simulate DNS-rebinding
+ *  without real network DNS. */
+type DnsResolver = (host: string) => Promise<{ address: string; family: number }[]>;
+let resolveDns: DnsResolver = (host) => dnsLookup(host, { all: true });
+/** @internal Test seam — override the DNS resolver, or pass null to restore the
+ *  default OS resolver. */
+export function _setDnsResolverForTest(r: DnsResolver | null): void {
+  resolveDns = r ?? ((host) => dnsLookup(host, { all: true }));
+}
 
 // ─── Public interface (fetch.ts depends on this exact shape) ────────────────
 
@@ -438,6 +457,103 @@ export function checkUrl(rawUrl: string, opts?: SecurityGuardOptions): GuardDeci
  */
 export function checkRedirect(finalUrl: string, opts?: SecurityGuardOptions): GuardDecision {
   return checkUrl(finalUrl, opts);
+}
+
+/** Check a single RESOLVED IP literal against the metadata floor + private /
+ *  internal ranges. Returns a blocking decision, or null if the IP is
+ *  acceptable. The metadata floor is UNCONDITIONAL (allowPrivateUrls cannot
+ *  bypass it). */
+function checkResolvedIp(ip: string, opts?: SecurityGuardOptions): GuardDecision | null {
+  if (isMetadataHost(ip)) {
+    return {
+      ok: false,
+      reason: `hostname resolved to cloud metadata endpoint: ${ip}`,
+      category: "ssrf-metadata",
+    };
+  }
+  if (!opts?.allowPrivateUrls && isPrivateInternal(ip)) {
+    return {
+      ok: false,
+      reason: `hostname resolved to private/internal address: ${ip}`,
+      category: "ssrf-private",
+    };
+  }
+  return null;
+}
+
+/**
+ * The full security gauntlet WITH DNS resolution. Runs the sync {@link checkUrl}
+ * first (lexical checks + IP-literal ranges + metadata hostnames + blocklist),
+ * then — if the host is a DNS name rather than an IP literal — resolves it via
+ * the OS resolver (`node:dns/promises` lookup, respects `/etc/hosts`) and checks
+ * EVERY resolved address against the metadata floor + private/internal ranges.
+ *
+ * **Fail-closed:** a DNS resolution error blocks the request — we cannot verify
+ * the host is not private/metadata. (The fetch would fail anyway on an
+ * unresolvable host, so there is no real availability cost.)
+ *
+ * Closes the common DNS-rebinding case: a hostname that DIRECTLY resolves to a
+ * blocked IP. The full split-resolution TOCTOU (public-at-check,
+ * private-at-connect) still requires connection-level IP pinning — see the file
+ * header. Use this at connection boundaries (webFetch, browser_navigate); use
+ * the sync {@link checkUrl} for routing decisions that must stay synchronous.
+ */
+export async function checkUrlAsync(
+  rawUrl: string,
+  opts?: SecurityGuardOptions,
+): Promise<GuardDecision> {
+  // 1. Full sync gauntlet (scheme, secret, metadata-hostname, IP-literal, blocklist).
+  const syncDecision = checkUrl(rawUrl, opts);
+  if (!syncDecision.ok) return syncDecision;
+
+  // 2. Only DNS names need resolution (IP literals already checked by checkUrl).
+  let host: string;
+  try {
+    host = normalizeHost(new URL(rawUrl).hostname);
+  } catch {
+    return { ok: true }; // sync check already passed; defensive.
+  }
+  if (isIP(host) !== 0) return { ok: true }; // IP literal — no DNS needed.
+
+  // 3. Resolve via the OS resolver. Fail-closed on error.
+  let addrs: { address: string; family: number }[];
+  try {
+    addrs = await resolveDns(host);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      reason: `DNS resolution failed for '${host}' (fail-closed): ${msg}`,
+      category: "ssrf-private",
+    };
+  }
+
+  // 4. ANY blocked resolved address blocks the request (an attacker controlling
+  //    DNS can return multiple records; a single private/metadata hit suffices).
+  //    Defense-in-depth: an empty answer is treated as fail-closed too.
+  if (addrs.length === 0) {
+    return {
+      ok: false,
+      reason: `DNS returned no records for '${host}' (fail-closed)`,
+      category: "ssrf-private",
+    };
+  }
+  for (const { address } of addrs) {
+    const ipDecision = checkResolvedIp(address, opts);
+    if (ipDecision && !ipDecision.ok) return ipDecision;
+  }
+
+  return { ok: true };
+}
+
+/** Async post-redirect re-check (layer 4) — delegates to {@link checkUrlAsync}
+ *  so a redirect onto a private/metadata DNS name is caught and the body is
+ *  withheld. */
+export async function checkRedirectAsync(
+  finalUrl: string,
+  opts?: SecurityGuardOptions,
+): Promise<GuardDecision> {
+  return checkUrlAsync(finalUrl, opts);
 }
 
 /**

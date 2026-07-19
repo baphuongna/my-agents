@@ -20,8 +20,8 @@
  *         docs/web-lookup-architecture-deepdive.md (Security gauntlet).
  */
 import {
-  checkUrl,
-  checkRedirect,
+  checkUrlAsync,
+  checkRedirectAsync,
   detectBot,
   type SecurityGuardOptions,
 } from "./security-guard.js";
@@ -246,7 +246,7 @@ export async function webFetch(
   };
 
   // ── 1. PRE-FETCH GUARD ──────────────────────────────────────────────
-  const preCheck = checkUrl(url, guardOpts);
+  const preCheck = await checkUrlAsync(url, guardOpts);
   if (!preCheck.ok) {
     return {
       ok: false,
@@ -285,7 +285,7 @@ export async function webFetch(
 
   // ── 3. POST-REDIRECT GUARD ──────────────────────────────────────────
   const finalUrl = response.url || url;
-  const postCheck = checkRedirect(finalUrl, guardOpts);
+  const postCheck = await checkRedirectAsync(finalUrl, guardOpts);
   if (!postCheck.ok) {
     return {
       ok: false,

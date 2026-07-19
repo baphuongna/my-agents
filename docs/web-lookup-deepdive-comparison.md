@@ -164,10 +164,18 @@ SSRF + claw-code's mode-tiered allow/deny rules) would be strongest.
 ## 5. mya gaps (prioritized)
 
 ### P0 — Security correctness
-- **G1. No DNS resolution in SSRF (DNS-rebinding TOCTOU).** mya checks IP ranges
-  against the *hostname* without resolving. hermes resolves + fails-closed.
-  A `my-evil.com` → public-at-DNS-check, private-at-fetch bypasses. Fix: resolve
-  hostname → check all resolved IPs against ranges (fail-closed on DNS error).
+- **G1. No DNS resolution in SSRF (DNS-rebinding TOCTOU).** ✅ **FIXED.** Added
+  `checkUrlAsync` (resolve-then-check): runs the sync gauntlet, then resolves the
+  hostname via the OS resolver (`node:dns/promises`) and checks EVERY resolved
+  address against the metadata floor (unconditional) + private/internal ranges.
+  **Fail-closed** on DNS error AND empty answer. Wired into `webFetch` (pre/post)
+  + `browser_navigate` (guard + 2 post-redirect spots). 12 regression tests
+  (private/metadata/loopback/IPv6/multi-record/DNS-fail/empty-array/IP-literal
+  short-circuit/allowPrivateUrls/secret-before-DNS). Security review: 8/8 checks
+  PASS, no exploitable bypass. Residual MEDIUM (redirect-connection-before-check,
+  mitigated by body-withholding) documented — future: `redirect: "manual"`.
+  *(was: mya checked IP ranges against the hostname without resolving; hermes
+  resolves + fails-closed.)*
 - **G2. `blocklist` not wired to config/env.** `checkUrl` accepts `opts.blocklist`
   but no production path reads it. hermes has `website_blocklist` config. Fix:
   wire `MYA_WEB_BLOCKLIST` env / config.
