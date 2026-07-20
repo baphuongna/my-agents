@@ -56,4 +56,3 @@ export async function resolveProjectTrusted(options) {
     }
     return false;
 }
-//# sourceMappingURL=project-trust.js.map

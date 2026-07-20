@@ -226,4 +226,3 @@ export function killAllSubagents(parentId) {
     subagentCountListener?.(totalActiveSubagents());
     return n;
 }
-//# sourceMappingURL=subagent.js.map

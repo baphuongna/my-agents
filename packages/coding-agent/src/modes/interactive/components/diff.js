@@ -130,4 +130,3 @@ export function renderDiff(diffText, _options = {}) {
     }
     return result.join("\n");
 }
-//# sourceMappingURL=diff.js.map

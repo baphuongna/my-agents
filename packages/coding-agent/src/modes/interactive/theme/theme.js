@@ -1060,4 +1060,3 @@ export function getSettingsListTheme() {
         hint: (text) => theme.fg("dim", text),
     };
 }
-//# sourceMappingURL=theme.js.map

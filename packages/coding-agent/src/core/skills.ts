@@ -336,6 +336,7 @@ const PROMPT_DESCRIPTION_MAX_CHARS = 80;
  * Full description is still on the Skill object; the model reads SKILL.md
  * for the long version.
  */
+// mya fork: compact skill descriptions to ≤80 chars + elide <location> tag for slimmer prompt
 function compactDescription(description: string): string {
 	const trimmed = description.trim();
 	// Match first sentence boundary: . ? ! followed by whitespace or end-of-string.

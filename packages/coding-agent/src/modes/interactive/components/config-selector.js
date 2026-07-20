@@ -758,4 +758,3 @@ export class ConfigSelectorComponent extends Container {
         return this.resourceList;
     }
 }
-//# sourceMappingURL=config-selector.js.map

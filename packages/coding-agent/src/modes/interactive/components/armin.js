@@ -330,4 +330,3 @@ export class ArminComponent {
         this.stopAnimation();
     }
 }
-//# sourceMappingURL=armin.js.map

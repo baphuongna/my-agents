@@ -88,4 +88,3 @@ export class TrustSelectorComponent extends Container {
         }
     }
 }
-//# sourceMappingURL=trust-selector.js.map

@@ -164,4 +164,3 @@ export function createLsToolDefinition(cwd, options) {
 export function createLsTool(cwd, options) {
     return wrapToolDefinition(createLsToolDefinition(cwd, options));
 }
-//# sourceMappingURL=ls.js.map

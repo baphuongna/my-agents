@@ -181,4 +181,3 @@ export async function showStartupInput(settingsManager, title, placeholder) {
         startStartupTui(ui, settingsManager);
     });
 }
-//# sourceMappingURL=startup-ui.js.map

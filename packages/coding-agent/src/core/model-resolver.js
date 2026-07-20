@@ -528,4 +528,3 @@ export async function restoreModelFromSession(savedProvider, savedModelId, curre
     // No models available
     return { model: undefined, fallbackMessage: undefined };
 }
-//# sourceMappingURL=model-resolver.js.map

@@ -126,4 +126,3 @@ export class AssistantMessageComponent extends Container {
         }
     }
 }
-//# sourceMappingURL=assistant-message.js.map

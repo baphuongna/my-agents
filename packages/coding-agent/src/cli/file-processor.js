@@ -67,4 +67,3 @@ export async function processFileArguments(fileArgs, options) {
     }
     return { text, images };
 }
-//# sourceMappingURL=file-processor.js.map

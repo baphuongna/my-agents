@@ -173,4 +173,3 @@ export class OAuthSelectorComponent extends Container {
         }
     }
 }
-//# sourceMappingURL=oauth-selector.js.map

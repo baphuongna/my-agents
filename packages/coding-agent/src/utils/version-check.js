@@ -56,4 +56,3 @@ export async function checkForNewPiVersion(currentVersion) {
         return undefined;
     }
 }
-//# sourceMappingURL=version-check.js.map

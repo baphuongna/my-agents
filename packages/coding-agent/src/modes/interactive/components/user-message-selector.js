@@ -111,4 +111,3 @@ export class UserMessageSelectorComponent extends Container {
         return this.messageList;
     }
 }
-//# sourceMappingURL=user-message-selector.js.map

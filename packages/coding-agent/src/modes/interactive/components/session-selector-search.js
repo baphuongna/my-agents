@@ -152,4 +152,3 @@ export function filterAndSortSessions(sessions, query, sortMode, nameFilter = "a
     });
     return scored.map((r) => r.session);
 }
-//# sourceMappingURL=session-selector-search.js.map

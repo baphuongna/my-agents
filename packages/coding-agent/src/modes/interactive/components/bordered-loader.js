@@ -51,4 +51,3 @@ export class BorderedLoader extends Container {
         }
     }
 }
-//# sourceMappingURL=bordered-loader.js.map

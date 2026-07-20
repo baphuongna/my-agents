@@ -278,4 +278,3 @@ export function runMigrations(cwd) {
     const deprecationWarnings = migrateExtensionSystem(cwd);
     return { migratedAuthProviders, deprecationWarnings };
 }
-//# sourceMappingURL=migrations.js.map

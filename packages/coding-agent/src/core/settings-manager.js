@@ -926,4 +926,3 @@ export class SettingsManager {
         this.save();
     }
 }
-//# sourceMappingURL=settings-manager.js.map

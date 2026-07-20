@@ -44,4 +44,3 @@ export { convertToPng } from "./utils/image-convert.ts";
 export { formatDimensionNote, resizeImage } from "./utils/image-resize.ts";
 // Shell utilities
 export { getShellConfig } from "./utils/shell.ts";
-//# sourceMappingURL=index.js.map

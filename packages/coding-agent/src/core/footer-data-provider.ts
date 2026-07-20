@@ -110,6 +110,7 @@ export class FooterDataProvider {
 	private reftableTablesListWatcher: FSWatcher | null = null;
 	private reftableTablesListPath: string | null = null;
 	private branchChangeCallbacks = new Set<() => void>();
+	// mya fork: subagent count for footer display (no pi equivalent)
 	private subagentCount = 0;
 
 	private availableProviderCount = 0;

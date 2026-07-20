@@ -62,4 +62,3 @@ export function renderToolPath(rawPath, theme, cwd, options) {
         return theme.fg("toolOutput", "...");
     return linkPath(theme.fg("accent", shortenPath(value)), value, cwd);
 }
-//# sourceMappingURL=render-utils.js.map

@@ -108,4 +108,3 @@ Pi docs (only when working on pi): ${docsPath}/, ${examplesPath}/, ${readmePath}
     prompt += `\nCurrent working directory: ${promptCwd}`;
     return prompt;
 }
-//# sourceMappingURL=system-prompt.js.map

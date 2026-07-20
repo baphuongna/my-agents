@@ -172,4 +172,3 @@ export class BashExecutionComponent extends Container {
         return this.command;
     }
 }
-//# sourceMappingURL=bash-execution.js.map

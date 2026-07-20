@@ -35,4 +35,3 @@ export function assertSessionCwdExists(sessionManager, fallbackCwd) {
         throw new MissingSessionCwdError(issue);
     }
 }
-//# sourceMappingURL=session-cwd.js.map

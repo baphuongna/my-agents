@@ -155,4 +155,3 @@ export function applyExifOrientation(photon, image, originalBytes) {
             return image;
     }
 }
-//# sourceMappingURL=exif-orientation.js.map

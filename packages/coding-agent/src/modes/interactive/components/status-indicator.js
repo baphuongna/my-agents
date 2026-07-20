@@ -57,4 +57,3 @@ export class IdleStatus {
         return [emptyLine, emptyLine];
     }
 }
-//# sourceMappingURL=status-indicator.js.map

@@ -19,4 +19,3 @@ export function openBrowser(target) {
         .on("error", () => { })
         .unref();
 }
-//# sourceMappingURL=open-browser.js.map

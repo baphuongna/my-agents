@@ -710,4 +710,3 @@ export async function handlePackageCommand(args, runtimeOptions = {}) {
         return true;
     }
 }
-//# sourceMappingURL=package-manager-cli.js.map

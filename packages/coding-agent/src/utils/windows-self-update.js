@@ -74,4 +74,3 @@ export function quarantineWindowsNativeDependencies(packageDir) {
         copyFileSync(quarantinePath, loadedFile);
     }
 }
-//# sourceMappingURL=windows-self-update.js.map

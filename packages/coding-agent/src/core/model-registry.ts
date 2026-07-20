@@ -140,6 +140,7 @@ const OpenAIResponsesCompatSchema = Type.Object({
 	supportsDeveloperRole: Type.Optional(Type.Boolean()),
 	sendSessionIdHeader: Type.Optional(Type.Boolean()),
 	supportsLongCacheRetention: Type.Optional(Type.Boolean()),
+	// mya fork: tool-search / tool-references capability flags
 	supportsToolSearch: Type.Optional(Type.Boolean()),
 });
 
@@ -149,6 +150,7 @@ const AnthropicMessagesCompatSchema = Type.Object({
 	sendSessionAffinityHeaders: Type.Optional(Type.Boolean()),
 	supportsCacheControlOnTools: Type.Optional(Type.Boolean()),
 	forceAdaptiveThinking: Type.Optional(Type.Boolean()),
+	// mya fork: tool-references capability flag (Anthropic compat)
 	supportsToolReferences: Type.Optional(Type.Boolean()),
 });
 

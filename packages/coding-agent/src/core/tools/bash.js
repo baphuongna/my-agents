@@ -358,4 +358,3 @@ export function createBashToolDefinition(cwd, options) {
 export function createBashTool(cwd, options) {
     return wrapToolDefinition(createBashToolDefinition(cwd, options));
 }
-//# sourceMappingURL=bash.js.map

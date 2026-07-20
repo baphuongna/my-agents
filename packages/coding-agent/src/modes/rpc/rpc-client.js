@@ -478,4 +478,3 @@ export class RpcClient {
         return successResponse.data;
     }
 }
-//# sourceMappingURL=rpc-client.js.map

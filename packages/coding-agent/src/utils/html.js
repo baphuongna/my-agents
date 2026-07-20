@@ -37,4 +37,3 @@ export function decodeHtmlEntityAt(html, index) {
     }
     return { text: decoded, length: semicolonIndex - index + 1 };
 }
-//# sourceMappingURL=html.js.map

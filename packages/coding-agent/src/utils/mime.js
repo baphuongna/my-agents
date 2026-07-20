@@ -107,4 +107,3 @@ function startsWithAscii(buffer, offset, text) {
     }
     return true;
 }
-//# sourceMappingURL=mime.js.map

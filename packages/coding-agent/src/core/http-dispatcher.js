@@ -88,4 +88,3 @@ export function configureHttpDispatcher(timeoutMs = DEFAULT_HTTP_IDLE_TIMEOUT_MS
         installedGlobalFetch = globalThis.fetch;
     }
 }
-//# sourceMappingURL=http-dispatcher.js.map

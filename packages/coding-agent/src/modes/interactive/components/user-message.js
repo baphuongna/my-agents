@@ -39,4 +39,3 @@ export class UserMessageComponent extends Container {
         return lines;
     }
 }
-//# sourceMappingURL=user-message.js.map

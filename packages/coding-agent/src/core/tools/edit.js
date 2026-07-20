@@ -278,4 +278,3 @@ export function createEditToolDefinition(cwd, options) {
 export function createEditTool(cwd, options) {
     return wrapToolDefinition(createEditToolDefinition(cwd, options));
 }
-//# sourceMappingURL=edit.js.map

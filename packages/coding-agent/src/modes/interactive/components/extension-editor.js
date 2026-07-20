@@ -125,4 +125,3 @@ export class ExtensionEditorComponent extends Container {
         }
     }
 }
-//# sourceMappingURL=extension-editor.js.map

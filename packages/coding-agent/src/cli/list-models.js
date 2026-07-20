@@ -95,4 +95,3 @@ export async function listModels(modelRegistry, searchPattern) {
         console.log(line);
     }
 }
-//# sourceMappingURL=list-models.js.map

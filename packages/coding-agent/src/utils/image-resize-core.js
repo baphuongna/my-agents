@@ -121,4 +121,3 @@ export async function resizeImageInProcess(inputBytes, mimeType, options) {
         }
     }
 }
-//# sourceMappingURL=image-resize-core.js.map

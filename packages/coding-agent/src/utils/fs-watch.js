@@ -22,4 +22,3 @@ export function watchWithErrorHandler(path, listener, onError) {
         return null;
     }
 }
-//# sourceMappingURL=fs-watch.js.map

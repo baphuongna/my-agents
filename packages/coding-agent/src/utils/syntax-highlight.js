@@ -115,4 +115,3 @@ export function highlight(code, options = {}) {
 export function supportsLanguage(name) {
     return hljs.getLanguage(name) !== undefined;
 }
-//# sourceMappingURL=syntax-highlight.js.map

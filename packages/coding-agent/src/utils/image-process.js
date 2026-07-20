@@ -80,4 +80,3 @@ export async function processImage(bytes, mimeType, options) {
         hints,
     };
 }
-//# sourceMappingURL=image-process.js.map

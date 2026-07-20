@@ -486,6 +486,7 @@ try {
 
 const piConfigName: string | undefined = pkg.piConfig?.name;
 export const PACKAGE_NAME: string = pkg.name || "@my-agent/coding-agent";
+// mya fork: branding constants (pi uses "pi" / ".pi")
 export const APP_NAME: string = "mya";
 export const APP_TITLE: string = "mya";
 export const CONFIG_DIR_NAME: string = ".mya";

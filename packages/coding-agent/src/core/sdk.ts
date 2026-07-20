@@ -326,7 +326,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (headerRunner?.hasHandlers("before_provider_headers")) {
 				headers = await headerRunner.emitBeforeProviderHeaders(headers ?? {});
 			}
-			// Convention: extensions can rotate API keys via x-mya-rotated-key header.
+			// mya fork: extensions can rotate API keys via x-mya-rotated-key header.
 			const rotatedKey = headers?.["x-mya-rotated-key"];
 			const effectiveApiKey = rotatedKey ?? auth.apiKey;
 			if (rotatedKey) delete headers["x-mya-rotated-key"];

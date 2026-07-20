@@ -787,6 +787,7 @@ export class InteractiveMode {
 			);
 			const onboarding = theme.fg(
 				"dim",
+				// mya fork: branding — help text references mya instead of pi
 				`mya can explain its own features and look up its docs. Ask it how to use or extend mya.`,
 			);
 			this.builtInHeader = new ExpandableText(

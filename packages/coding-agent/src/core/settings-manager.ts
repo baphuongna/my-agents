@@ -704,6 +704,7 @@ export class SettingsManager {
 		this.save();
 	}
 
+	// mya fork: systemPrompt / appendSystemPrompt accessors (slim-prompt feature)
 	getSystemPrompt(): string | undefined {
 		return this.settings.systemPrompt;
 	}

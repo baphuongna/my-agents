@@ -33,4 +33,3 @@ export function keyHint(keybinding, description) {
 export function rawKeyHint(key, description) {
     return theme.fg("dim", formatKeyText(key)) + theme.fg("muted", ` ${description}`);
 }
-//# sourceMappingURL=keybinding-hints.js.map

@@ -538,4 +538,3 @@ export async function discoverAndLoadExtensions(configuredPaths, cwd, agentDir =
     }
     return loadExtensions(allPaths, resolvedCwd, eventBus);
 }
-//# sourceMappingURL=loader.js.map

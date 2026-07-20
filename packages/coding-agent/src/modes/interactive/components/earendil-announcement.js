@@ -37,4 +37,3 @@ export class EarendilAnnouncementComponent extends Container {
         this.addChild(new DynamicBorder((text) => theme.fg("accent", text)));
     }
 }
-//# sourceMappingURL=earendil-announcement.js.map

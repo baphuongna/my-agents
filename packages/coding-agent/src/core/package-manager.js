@@ -2127,4 +2127,3 @@ export class DefaultPackageManager {
         return (result.stdout || result.stderr || "").trim();
     }
 }
-//# sourceMappingURL=package-manager.js.map

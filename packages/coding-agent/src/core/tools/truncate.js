@@ -212,4 +212,3 @@ export function truncateLine(line, maxChars = GREP_MAX_LINE_LENGTH) {
     }
     return { text: `${line.slice(0, maxChars)}... [truncated]`, wasTruncated: true };
 }
-//# sourceMappingURL=truncate.js.map

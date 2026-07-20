@@ -33,4 +33,3 @@ export async function selectSession(currentSessionsLoader, allSessionsLoader, se
         startStartupTui(ui, settingsManager);
     });
 }
-//# sourceMappingURL=session-picker.js.map

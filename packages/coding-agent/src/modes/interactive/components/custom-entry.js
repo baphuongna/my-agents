@@ -49,4 +49,3 @@ export class CustomEntryComponent extends Container {
         this.addChild(component);
     }
 }
-//# sourceMappingURL=custom-entry.js.map

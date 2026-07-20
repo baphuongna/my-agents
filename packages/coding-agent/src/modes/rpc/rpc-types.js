@@ -5,4 +5,3 @@
  * Responses and events are emitted as JSON lines on stdout.
  */
 export {};
-//# sourceMappingURL=rpc-types.js.map

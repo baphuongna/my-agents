@@ -223,4 +223,3 @@ export class FooterComponent {
         return lines;
     }
 }
-//# sourceMappingURL=footer.js.map

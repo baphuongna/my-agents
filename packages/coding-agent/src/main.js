@@ -758,4 +758,3 @@ export async function main(args, options) {
         return;
     }
 }
-//# sourceMappingURL=main.js.map

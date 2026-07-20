@@ -96,4 +96,3 @@ export async function resolveReadPathAsync(filePath, cwd) {
     }
     return resolved;
 }
-//# sourceMappingURL=path-utils.js.map

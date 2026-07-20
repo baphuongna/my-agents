@@ -293,4 +293,3 @@ export class KeybindingsManager extends TuiKeybindingsManager {
         return toKeybindingsConfig(migrateKeybindingsConfig(rawConfig).config);
     }
 }
-//# sourceMappingURL=keybindings.js.map

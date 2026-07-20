@@ -452,4 +452,3 @@ export function getSessionsDir() {
 export function getDebugLogPath() {
     return join(getAgentDir(), `${APP_NAME}-debug.log`);
 }
-//# sourceMappingURL=config.js.map

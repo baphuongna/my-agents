@@ -192,4 +192,3 @@ export function parseGitUrl(source) {
     }
     return parseGenericGitUrl(url);
 }
-//# sourceMappingURL=git.js.map

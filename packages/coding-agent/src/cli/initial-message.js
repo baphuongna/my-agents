@@ -19,4 +19,3 @@ export function buildInitialMessage({ parsed, fileText, fileImages, stdinContent
         initialImages: fileImages && fileImages.length > 0 ? fileImages : undefined,
     };
 }
-//# sourceMappingURL=initial-message.js.map

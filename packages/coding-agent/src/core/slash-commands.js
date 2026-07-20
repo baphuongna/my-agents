@@ -24,4 +24,3 @@ export const BUILTIN_SLASH_COMMANDS = [
     { name: "quit", description: `Quit ${APP_NAME}` },
     { name: "subagents", description: "List active subagents (delegated tasks)" },
 ];
-//# sourceMappingURL=slash-commands.js.map

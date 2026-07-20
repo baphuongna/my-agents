@@ -127,4 +127,3 @@ export async function copyToClipboard(text) {
         throw new Error("Failed to copy to clipboard");
     }
 }
-//# sourceMappingURL=clipboard.js.map

@@ -342,4 +342,3 @@ export class FooterDataProvider {
         }
     }
 }
-//# sourceMappingURL=footer-data-provider.js.map

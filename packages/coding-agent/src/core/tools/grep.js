@@ -301,4 +301,3 @@ export function createGrepToolDefinition(cwd, options) {
 export function createGrepTool(cwd, options) {
     return wrapToolDefinition(createGrepToolDefinition(cwd, options));
 }
-//# sourceMappingURL=grep.js.map

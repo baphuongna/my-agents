@@ -46,4 +46,3 @@ export function attachJsonlLineReader(stream, onLine) {
         stream.off("end", onEnd);
     };
 }
-//# sourceMappingURL=jsonl.js.map

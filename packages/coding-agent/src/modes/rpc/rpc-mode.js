@@ -632,4 +632,3 @@ export async function runRpcMode(runtimeHost) {
     // Keep process alive forever
     return new Promise(() => { });
 }
-//# sourceMappingURL=rpc-mode.js.map

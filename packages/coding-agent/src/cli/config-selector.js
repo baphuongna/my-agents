@@ -28,4 +28,3 @@ export async function selectConfig(options) {
         ui.start();
     });
 }
-//# sourceMappingURL=config-selector.js.map

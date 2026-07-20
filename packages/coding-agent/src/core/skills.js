@@ -411,4 +411,3 @@ export function loadSkills(options) {
         diagnostics: [...allDiagnostics, ...collisionDiagnostics],
     };
 }
-//# sourceMappingURL=skills.js.map

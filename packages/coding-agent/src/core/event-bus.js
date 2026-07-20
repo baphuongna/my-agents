@@ -22,4 +22,3 @@ export function createEventBus() {
         },
     };
 }
-//# sourceMappingURL=event-bus.js.map

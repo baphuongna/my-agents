@@ -233,4 +233,3 @@ export function expandPromptTemplate(text, templates) {
     }
     return text;
 }
-//# sourceMappingURL=prompt-templates.js.map

@@ -162,4 +162,3 @@ export function getNewEntries(entries, lastVersion) {
 }
 // Re-export getChangelogPath from paths.ts for convenience
 export { getChangelogPath } from "../config.ts";
-//# sourceMappingURL=changelog.js.map

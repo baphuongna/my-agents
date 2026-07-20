@@ -58,4 +58,3 @@ export class ExtensionInputComponent extends Container {
         this.countdown?.dispose();
     }
 }
-//# sourceMappingURL=extension-input.js.map

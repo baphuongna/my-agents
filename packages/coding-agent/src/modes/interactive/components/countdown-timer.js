@@ -30,4 +30,3 @@ export class CountdownTimer {
         }
     }
 }
-//# sourceMappingURL=countdown-timer.js.map

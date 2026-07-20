@@ -49,6 +49,7 @@ import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
+// mya fork: extension failure hint references mya CLI name
 const EXTENSION_LOAD_FAILURE_HINT = 'Hint: Start without extensions using "mya -ne".';
 
 /** Normalize a settings-stored appendSystemPrompt (string|string[]|undefined) to the

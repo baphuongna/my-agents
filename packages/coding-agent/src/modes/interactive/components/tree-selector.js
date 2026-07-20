@@ -1242,4 +1242,3 @@ export class TreeSelectorComponent extends Container {
         return this.treeList;
     }
 }
-//# sourceMappingURL=tree-selector.js.map
