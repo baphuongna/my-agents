@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateCronPrompt, THREAT_IDS } from "./scan.js";
+import { validateCronPrompt, THREAT_IDS, validateCronBaseUrl, snapshotDrifted, isSilenceResponse } from "./scan.js";
 
 describe("validateCronPrompt (Phase 3B/3D)", () => {
   it("accepts a benign prompt", () => {
@@ -65,5 +65,49 @@ describe("validateCronPrompt (Phase 3B/3D)", () => {
     expect(THREAT_IDS).toContain("prompt_injection");
     expect(THREAT_IDS).toContain("gateway_lifecycle");
     expect(THREAT_IDS).toContain("exfil_curl_url");
+  });
+});
+
+describe("validateCronBaseUrl (Phase 5 exfil guard)", () => {
+  it("rejects a base_url without an explicit provider", () => {
+    expect(validateCronBaseUrl(undefined, "https://evil.com")).toMatch(/explicit provider/);
+  });
+  it("allows 'custom' provider (BYOK — no stored named secret)", () => {
+    expect(validateCronBaseUrl("custom", "https://my-endpoint.com")).toBeNull();
+  });
+  it("allows a named provider (host-match enforced in the gateway)", () => {
+    expect(validateCronBaseUrl("openai", "https://api.openai.com")).toBeNull();
+  });
+  it("no base_url → always ok", () => {
+    expect(validateCronBaseUrl(undefined, undefined)).toBeNull();
+    expect(validateCronBaseUrl("openai", undefined)).toBeNull();
+  });
+});
+
+describe("snapshotDrifted (Phase 5)", () => {
+  it("no snapshot → no drift", () => {
+    expect(snapshotDrifted({}, { provider: "openai" })).toBe(false);
+  });
+  it("detects provider drift", () => {
+    expect(snapshotDrifted({ providerSnapshot: "openai" }, { provider: "anthropic" })).toBe(true);
+  });
+  it("no drift when current default unset", () => {
+    expect(snapshotDrifted({ modelSnapshot: "gpt-4" }, {})).toBe(false);
+  });
+});
+
+describe("isSilenceResponse (Phase 5 [SILENT]/NO_REPLY)", () => {
+  it("detects the exact tokens", () => {
+    expect(isSilenceResponse("[SILENT]")).toBe(true);
+    expect(isSilenceResponse("NO_REPLY")).toBe(true);
+    expect(isSilenceResponse("  silent  ")).toBe(true);
+  });
+  it("detects token as first/last line", () => {
+    expect(isSilenceResponse("[SILENT]\nnothing to report")).toBe(true);
+    expect(isSilenceResponse("all good\nNO_REPLY")).toBe(true);
+  });
+  it("does not silence a real response", () => {
+    expect(isSilenceResponse("Here is the daily report: ...")).toBe(false);
+    expect(isSilenceResponse("")).toBe(false);
   });
 });

@@ -337,7 +337,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // loader — the gateway's initial cronReload (in start()) loads jobs before the
   // first sweep tick.
   const { readCronJobs, atomicWriteJobs } = await import("./cron-persist.js");
-  const { recordRunStart, recordRunEnd, getRunHistory, recordHeartbeat, recordHeartbeatSuccess } = await import("./cron-observability.js");
+  const { recordRunStart, recordRunEnd, getRunHistory, getLastOutput, recordHeartbeat, recordHeartbeatSuccess } = await import("./cron-observability.js");
   // Phase 3B/3A: wire the prompt validator (register/updateJob reject) + the
   // job cap. The validator also runs on every reconciled (file-loaded) job so
   // CLI/external cron.json edits are scanned (R2-4 file-layer gate).
@@ -443,8 +443,39 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     cronReload,
     cronPersist: persistCron,
     cronRunStart: (rec) => recordRunStart(rec),
-    cronRunEnd: (runId, status, error, endedAt) => recordRunEnd(runId, status, error, endedAt),
+    cronRunEnd: (runId, status, error, endedAt, output) => recordRunEnd(runId, status, error, endedAt, output),
     cronRuns: (jobId) => getRunHistory(jobId),
+    cronJobOutput: (jobId) => getLastOutput(jobId),
+    cronCurrentDefault: () => ({
+      provider: process.env["MYA_PROVIDER"],
+      model: process.env["MYA_MODEL"],
+    }),
+    onRunShell: async (job) => {
+      // Phase 5: shell/script jobs (no LLM — watchdogs). Script paths confined to
+      // ~/.mya/agent/scripts/; commands run via `sh -c` (cwd = workdir).
+      const cwd = job.workdir ?? process.cwd();
+      let cmd: string | undefined;
+      if (job.script) {
+        const scriptsDir = join(homedir(), ".mya", "agent", "scripts");
+        const resolved = (await import("node:path")).resolve(scriptsDir, job.script);
+        if (!resolved.startsWith(scriptsDir + "/") && !resolved.startsWith(scriptsDir + \\"\\")) {
+          return { ok: false, output: "", error: "script path escapes ~/.mya/agent/scripts" };
+        }
+        const isSh = /\.(sh|bash)$/.test(job.script);
+        cmd = `${isSh ? "bash" : "python3"} ${JSON.stringify(resolved)}`;
+      } else if (job.command) {
+        cmd = job.command;
+      }
+      if (!cmd) return { ok: false, output: "", error: "shell job has no command/script" };
+      try {
+        const { execFileSync } = await import("node:child_process");
+        const out = execFileSync("sh", ["-c", cmd], { cwd, timeout: 120_000, maxBuffer: 1_000_000, encoding: "utf8" });
+        return { ok: true, output: out };
+      } catch (e) {
+        const er = e as { stdout?: string; message?: string };
+        return { ok: false, output: er.stdout ?? "", error: er.message ?? "shell failed" };
+      }
+    },
     cronHeartbeat: (success) => { recordHeartbeat(); if (success) recordHeartbeatSuccess(); },
     cronSetApprovalMode: (mode) => setCronApprovalMode(mode),
     onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),

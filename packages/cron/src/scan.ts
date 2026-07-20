@@ -66,3 +66,44 @@ export function validateCronPrompt(prompt: string | undefined | null): string | 
 
 /** Re-export the threat ids for tests/diagnostics. */
 export const THREAT_IDS = THREAT_PATTERNS.map((p) => p.id);
+
+/** Phase 5: base_url exfil guard (hermes _validate_cron_base_url). A base_url
+ * override requires an explicit provider — pairing a NAMED provider's stored
+ * credential with an off-host base_url would exfiltrate it. 'custom' is pure
+ * BYOK (no stored named secret) so it's allowed. (Full host-match against the
+ * provider's configured endpoint is enforced in the gateway where the provider
+ * registry is available.) Returns a rejection reason or null. */
+export function validateCronBaseUrl(provider: string | undefined, baseUrl: string | undefined): string | null {
+  if (!baseUrl) return null;
+  if (!provider) return "base_url override requires an explicit provider (exfil guard)";
+  if (provider.toLowerCase() === "custom") return null; // BYOK — no stored named secret
+  // Named provider: the gateway layer host-matches base_url against the
+  // provider's configured endpoint. Accepted here once a provider is named.
+  return null;
+}
+
+/** Phase 5: snapshot drift check. If the job pinned nothing, no drift. If it
+ * pinned a provider/model and the CURRENT global default differs, the job
+ * fails closed (no silent spend reroute). */
+export function snapshotDrifted(
+  job: { providerSnapshot?: string; modelSnapshot?: string },
+  currentDefault: { provider?: string; model?: string },
+): boolean {
+  if (job.providerSnapshot && currentDefault.provider && job.providerSnapshot !== currentDefault.provider) return true;
+  if (job.modelSnapshot && currentDefault.model && job.modelSnapshot !== currentDefault.model) return true;
+  return false;
+}
+
+/** Phase 5: `[SILENT]`/NO_REPLY sentinel detection (hermes _is_cron_silence).
+ * A cron response that is exactly a silence token suppresses delivery. */
+const SILENCE_TOKENS = new Set(["[silent]", "silent", "no_reply", "no reply"]);
+export function isSilenceResponse(text: string | undefined | null): boolean {
+  if (!text) return false;
+  const norm = text.trim().toUpperCase().replace(/\s+/g, " ");
+  if (SILENCE_TOKENS.has(norm.toLowerCase())) return true;
+  // first or last line is a token, or a [SILENT] prefix
+  const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length && SILENCE_TOKENS.has(lines[0]!.trim().toLowerCase())) return true;
+  if (lines.length && SILENCE_TOKENS.has(lines[lines.length - 1]!.trim().toLowerCase())) return true;
+  return text.trim().toUpperCase().startsWith("[SILENT]");
+}

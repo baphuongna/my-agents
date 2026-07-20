@@ -33,8 +33,10 @@ function getDb(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.exec(`CREATE TABLE IF NOT EXISTS cron_runs (
       runId TEXT PRIMARY KEY, jobId TEXT NOT NULL, startedAt INTEGER NOT NULL,
-      endedAt INTEGER, status TEXT NOT NULL, error TEXT, claimedBy TEXT
+      endedAt INTEGER, status TEXT NOT NULL, error TEXT, claimedBy TEXT, output TEXT
     )`);
+    // Phase 5: add output column to legacy tables (no-op if present).
+    try { db.exec("ALTER TABLE cron_runs ADD COLUMN output TEXT"); } catch { /* already present */ }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON cron_runs(jobId, startedAt DESC)`);
   }
   return db;
@@ -48,6 +50,7 @@ export interface RunRow {
   status: string;
   error?: string;
   claimedBy?: string;
+  output?: string;
 }
 
 /** Insert/replace a run row (on claim). Best-effort (DB unavailable → no-op). */
@@ -60,10 +63,10 @@ export function recordRunStart(rec: RunRow): void {
 }
 
 /** Update a run row on completion. */
-export function recordRunEnd(runId: string, status: string, error: string | null, endedAt: number): void {
+export function recordRunEnd(runId: string, status: string, error: string | null, endedAt: number, output?: string): void {
   try {
-    getDb().prepare("UPDATE cron_runs SET status=?, error=?, endedAt=? WHERE runId=?")
-      .run(status, error, endedAt, runId);
+    getDb().prepare("UPDATE cron_runs SET status=?, error=?, endedAt=?, output=? WHERE runId=?")
+      .run(status, error, endedAt, output ? output.slice(0, 100_000) : null, runId);
     // prune to the most-recent MAX_ROWS
     getDb().prepare(
       "DELETE FROM cron_runs WHERE runId NOT IN (SELECT runId FROM cron_runs ORDER BY startedAt DESC LIMIT ?)",
@@ -76,6 +79,14 @@ export function getRunHistory(jobId: string, limit = 50): RunRow[] {
   try {
     return getDb().prepare("SELECT * FROM cron_runs WHERE jobId=? ORDER BY startedAt DESC LIMIT ?").all(jobId, limit) as RunRow[];
   } catch { return []; }
+}
+
+/** Phase 5: the latest non-empty output of a job (for context_from chaining). */
+export function getLastOutput(jobId: string): string | undefined {
+  try {
+    const row = getDb().prepare("SELECT output FROM cron_runs WHERE jobId=? AND output IS NOT NULL AND output!='' ORDER BY startedAt DESC LIMIT 1").get(jobId) as { output?: string } | undefined;
+    return row?.output;
+  } catch { return undefined; }
 }
 
 /** Phase 4C: write the heartbeat (every sweep) + success (clean sweep) markers.

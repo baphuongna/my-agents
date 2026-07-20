@@ -69,6 +69,34 @@ describe("gateway cron sweep — D2 real-outcome (Phase 1A)", () => {
     expect(seen.sort()).toEqual(["_cron:a", "_cron:b"]);
   });
 
+  it("Phase 5: a shell job runs via onRunShell (no LLM)", async () => {
+    const cron = new CronScheduler();
+    cron.register({ ...dueJob("sh"), jobType: "shell", command: "echo hello" } as never);
+    let shellCalled = false;
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron,
+      onRunShell: (async (job: { command?: string; script?: string; workdir?: string }) => {
+        shellCalled = true;
+        expect(job.command).toBe("echo hello");
+        return { ok: true, output: "hello\n" };
+      }) as never,
+    });
+    await gw.cronSweep("test-worker");
+    expect(shellCalled).toBe(true);
+    expect(lastStatus(cron, "sh")).toBe("succeeded");
+  });
+
+  it("Phase 5: a shell job with a non-zero exit → failed", async () => {
+    const cron = new CronScheduler();
+    cron.register({ ...dueJob("shf"), jobType: "shell", command: "exit 1" } as never);
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron,
+      onRunShell: (async () => ({ ok: false, output: "", error: "exit 1" })) as never,
+    });
+    await gw.cronSweep("test-worker");
+    expect(lastStatus(cron, "shf")).toBe("failed");
+  });
+
   it("calls cronReload (reconcile) before due — guards the constructor wiring", async () => {
     // Regression guard: cronReload must be ASSIGNED from opts (a prior version
     // declared the field but never assigned it → reconcile was a no-op → CLI

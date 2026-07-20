@@ -169,13 +169,19 @@ export interface GatewayOptions {
   /** Phase 4A: mirror a run to durable history (SQLite) on claim. */
   cronRunStart?: (rec: { runId: string; jobId: string; startedAt: number; status: string; claimedBy?: string }) => void;
   /** Phase 4A: update durable history on completion. */
-  cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number) => void;
+  cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number, output?: string) => void;
   /** Phase 4A: read a job's durable run history for GET /cron/jobs/:id/runs. */
   cronRuns?: (jobId: string) => unknown[];
   /** Phase 4C: heartbeat (alive each sweep; success on a clean sweep). */
   cronHeartbeat?: (success: boolean) => void;
   /** Phase 3C/G8: runtime-flip the cron approval mode (deny/approve). */
   cronSetApprovalMode?: (mode: "deny" | "approve") => void;
+  /** Phase 5: run a shell/script cron job (no LLM). */
+  onRunShell?: (job: { command?: string; script?: string; workdir?: string }) => Promise<{ ok: boolean; output: string; error?: string }>;
+  /** Phase 5: the current global default provider/model (for snapshot drift check). */
+  cronCurrentDefault?: () => { provider?: string; model?: string };
+  /** Phase 5: fetch a prior job's latest output (context_from chaining). */
+  cronJobOutput?: (jobId: string) => string | undefined;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -262,10 +268,13 @@ export class Gateway {
   /** Phase 2C: persist scheduler state (atomic cron.json write). */
   private readonly cronPersist?: () => void;
   private readonly cronRunStart?: (rec: { runId: string; jobId: string; startedAt: number; status: string; claimedBy?: string }) => void;
-  private readonly cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number) => void;
+  private readonly cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number, output?: string) => void;
   private readonly cronRuns?: (jobId: string) => unknown[];
   private readonly cronHeartbeat?: (success: boolean) => void;
   private readonly cronSetApprovalMode?: (mode: "deny" | "approve") => void;
+  private readonly onRunShell?: (job: { command?: string; script?: string; workdir?: string }) => Promise<{ ok: boolean; output: string; error?: string }>;
+  private readonly cronCurrentDefault?: () => { provider?: string; model?: string };
+  private readonly cronJobOutput?: (jobId: string) => string | undefined;
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
@@ -390,6 +399,9 @@ export class Gateway {
     this.cronRuns = opts.cronRuns;
     this.cronHeartbeat = opts.cronHeartbeat;
     this.cronSetApprovalMode = opts.cronSetApprovalMode;
+    this.onRunShell = opts.onRunShell;
+    this.cronCurrentDefault = opts.cronCurrentDefault;
+    this.cronJobOutput = opts.cronJobOutput;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
@@ -517,28 +529,62 @@ export class Gateway {
         // Phase 4A: mirror the run start to durable history.
         try { this.cronRunStart?.({ runId: run.runId, jobId: job.id, startedAt: run.startedAt, status: "claimed", claimedBy: run.claimedBy }); } catch { /* best-effort */ }
         this.cron!.start(run.runId);
+        let runOutput: string | undefined;
         try {
-          if (!this.onRunOnSession) {
-            // No runner wired — can't execute. Fail (not silent 'succeeded').
+          // Phase 5: snapshot drift — fail closed if the global default changed
+          // since the job was created (no silent spend reroute).
+          if (this.cronCurrentDefault) {
+            const { snapshotDrifted } = await import("@my-agent/cron");
+            if (snapshotDrifted(job, this.cronCurrentDefault())) {
+              this.cron!.complete(run.runId, "failed", "provider/model snapshot drift — global default changed since job creation");
+              throw new Error("drift");
+            }
+          }
+          // Phase 5: context_from — inject prior job outputs into the prompt.
+          let prompt = job.prompt;
+          if (job.contextFrom?.length && this.cronJobOutput) {
+            const parts: string[] = [];
+            for (const src of job.contextFrom) {
+              const out = this.cronJobOutput(src);
+              if (out) parts.push(`## Output from job '${src}'\n\n\`\`\`\n${out.slice(0, 8000)}\n\`\`\``);
+            }
+            if (parts.length) prompt = `${parts.join("\n\n")}\n\n${prompt}`;
+          }
+          // Phase 5: shell jobs (no LLM — watchdogs).
+          if (job.jobType === "shell") {
+            if (!this.onRunShell) {
+              this.cron!.complete(run.runId, "failed", "no shell runner wired");
+            } else {
+              const res = await this.onRunShell({ command: job.command, script: job.script, workdir: job.workdir });
+              runOutput = res.output;
+              if (!res.ok) this.cron!.complete(run.runId, "failed", res.error ?? "shell exit non-zero");
+              else this.cron!.complete(run.runId, "succeeded"); // empty stdout = silent success (watchdog)
+            }
+          } else if (!this.onRunOnSession) {
+            // No agent runner wired — can't execute. Fail (not silent 'succeeded').
             this.cron!.complete(run.runId, "failed", "no cron session runner wired");
           } else {
             const sessionId = `_cron:${job.id}`;
-            const text = await this.onRunOnSession(sessionId, job.prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
-            // D2 / hermes empty-response soft-fail: success but no text → failed.
+            const text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
+            runOutput = text ?? undefined;
+            // Phase 5: [SILENT]/NO_REPLY — succeeded but suppresses delivery.
+            const { isSilenceResponse } = await import("@my-agent/cron");
             if (text == null || text.trim() === "") {
               this.cron!.complete(run.runId, "failed", "agent produced empty response");
+            } else if (isSilenceResponse(text)) {
+              this.cron!.complete(run.runId, "succeeded"); // silent — no broadcast of content
             } else {
               this.cron!.complete(run.runId, "succeeded");
             }
           }
         } catch (e) {
-          this.cron!.complete(run.runId, "failed", (e as Error).message);
+          if ((e as Error).message !== "drift") this.cron!.complete(run.runId, "failed", (e as Error).message);
         }
         // Phase 4A: mirror the run outcome to durable history (runs for EVERY
         // outcome incl. no-runner — the early-return bug left rows stuck 'claimed').
         const rec = this.cron!.runsOf(job.id).at(-1);
         if (rec) {
-          try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now()); } catch { /* best-effort */ }
+          try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now(), runOutput); } catch { /* best-effort */ }
         }
       }));
       // complete() re-anchored nextRunAt off completion time — persist for accuracy.

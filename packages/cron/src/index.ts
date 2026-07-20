@@ -11,7 +11,8 @@ import { randomUUID } from "node:crypto";
 import { nowWallclock } from "@my-agent/core";
 
 // Phase 3B/3D: prompt-injection / lifecycle scanner (re-exported for the gateway).
-export { validateCronPrompt, THREAT_IDS } from "./scan.js";
+export { validateCronPrompt, THREAT_IDS, validateCronBaseUrl, snapshotDrifted, isSilenceResponse } from "./scan.js";
+import { validateCronBaseUrl as _validateBaseUrl } from "./scan.js";
 
 export type TriggerType = "cron" | "on-interval" | "once";
 
@@ -30,11 +31,33 @@ export interface CronJob {
   /** Optional IANA timezone for schedule evaluation (e.g. "America/New_York").
    * Falls back to process.env.MYA_TZ, then system local time. */
   timezone?: string;
-  /** Phase 2 (D3): the next fire time (epoch ms) for cron-trigger jobs. The
-   * scheduler advances this BEFORE firing (at-most-once across crashes) and
-   * re-anchors it off completion time. Absent on legacy rows → recovered on the
-   * next dueAndAdvance(). */
+  /** Phase 2 (D3): the next fire time (epoch ms) for cron-trigger jobs. */
   nextRunAt?: number;
+  // ── Phase 5 (capability) ────────────────────────────────────────────────
+  /** Execution kind: 'agent' (default, LLM turn) or 'shell' (run a script/command,
+   * no LLM — watchdogs). */
+  jobType?: "agent" | "shell";
+  /** For jobType 'shell': a command to run via `sh -c` (cwd = workdir). */
+  command?: string;
+  /** For jobType 'shell': a script path (relative to ~/.mya/agent/scripts/).
+   * If set, run instead of `command`. */
+  script?: string;
+  /** Per-job working directory (agent cwd / shell cwd). */
+  workdir?: string;
+  /** Per-job provider/base_url/model overrides (Phase 5). base_url requires an
+   * explicit provider (exfil guard — see validateCronBaseUrl). */
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  /** Drift guard: snapshot of the global default provider/model at create time.
+   * On fire, if the global default changed, the job fails closed (no silent
+   * spend reroute). */
+  providerSnapshot?: string;
+  modelSnapshot?: string;
+  /** Job chaining: IDs whose latest output is injected into the prompt. */
+  contextFrom?: string[];
+  /** Per-job skills to load (names). */
+  skills?: string[];
 }
 
 export interface RunRecord {
@@ -105,6 +128,9 @@ export class CronScheduler {
       const err = this.validator(job.prompt);
       if (err) throw new Error(`cron prompt rejected: ${err}`);
     }
+    // Phase 5: base_url exfil guard.
+    const buErr = _validateBaseUrl(job.provider, job.base_url);
+    if (buErr) throw new Error(`cron base_url rejected: ${buErr}`);
     const full: CronJob = { ...job, id };
     this.jobs.set(id, full);
     this.markDirty();
@@ -127,6 +153,11 @@ export class CronScheduler {
       const err = this.validator(patch.prompt);
       if (err) throw new Error(`cron prompt rejected: ${err}`);
     }
+    // Phase 5: base_url exfil guard on update too.
+    const effProvider = patch.provider ?? cur.provider;
+    const effBaseUrl = patch.base_url ?? cur.base_url;
+    const buErr = _validateBaseUrl(effProvider, effBaseUrl);
+    if (buErr) throw new Error(`cron base_url rejected: ${buErr}`);
     const updated: CronJob = { ...cur, ...patch, id: cur.id };
     this.jobs.set(id, updated);
     this.markDirty();

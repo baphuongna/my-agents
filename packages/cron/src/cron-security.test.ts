@@ -2,6 +2,18 @@ import { describe, it, expect } from "vitest";
 import { CronScheduler } from "./index.js";
 import type { CronJob } from "./index.js";
 
+describe("base_url exfil guard (Phase 5)", () => {
+  it("register rejects a base_url without an explicit provider", () => {
+    const sched = new CronScheduler();
+    expect(() => sched.register({ ...mk("x"), base_url: "https://evil.com" } as never)).toThrow(/base_url/);
+  });
+  it("register accepts a base_url with a named provider", () => {
+    const sched = new CronScheduler();
+    sched.register({ ...mk("y"), provider: "openai", base_url: "https://api.openai.com" } as never);
+    expect(sched.getJob("y")).toBeDefined();
+  });
+});
+
 describe("min-interval floor (C10/G10)", () => {
   function mkCron(id: string, schedule: string): CronJob {
     return { id, name: id, trigger: "cron", schedule, deliveryTarget: "_cron", prompt: "p", enabled: true, leaseMs: 5 * 60_000 };
