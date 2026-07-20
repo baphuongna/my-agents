@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Gateway } from "@my-agent/gateway";
 
 const started: Array<{ stop: () => Promise<void> | void }> = [];
-async function start(opts: { wsToken?: string; wsInfo?: () => unknown }): Promise<{ port: number; stop: () => Promise<void> }> {
+async function start(opts: { wsToken?: string; wsInfo?: () => unknown; cronSetApprovalMode?: (mode: "deny" | "approve") => void }): Promise<{ port: number; stop: () => Promise<void> }> {
   const gw = new Gateway({ host: "127.0.0.1", port: 0, rootHtml: "<html></html>", wsInfo: () => ({ ok: true }), ...opts });
   const { port } = await gw.start();
   const stop = async () => { try { await gw.stop(); } catch { /* best-effort */ } };
@@ -110,6 +110,70 @@ describe("gateway auth gate (Phase 0C)", () => {
     expect(cookieOnly.status).toBe(401);
     const bearer = await fetch(`${base(port)}/ws-info`, { headers: { authorization: "Bearer secret" } });
     expect(bearer.status).toBe(200);
+    await stop();
+  });
+
+  it("G1/2 (C11): cron MUTATIONS are NOT opened by MYA_NO_WS_TOKEN — require wsToken or MYA_CRON_UNSAFE_NO_AUTH", async () => {
+    // wsToken unset (dev MYA_NO_WS_TOKEN) + no MYA_CRON_UNSAFE_NO_AUTH → cron POST blocked.
+    const orig = process.env["MYA_CRON_UNSAFE_NO_AUTH"];
+    delete process.env["MYA_CRON_UNSAFE_NO_AUTH"];
+    try {
+      const { port, stop } = await start({ wsToken: undefined });
+      const post = await fetch(`${base(port)}/cron/jobs`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
+      });
+      expect(post.status).toBe(401); // not implicitly open
+      await stop();
+    } finally {
+      if (orig !== undefined) process.env["MYA_CRON_UNSAFE_NO_AUTH"] = orig;
+    }
+  });
+
+  it("G1/2: cron mutations allowed with MYA_CRON_UNSAFE_NO_AUTH=1 (explicit dev bypass)", async () => {
+    const orig = process.env["MYA_CRON_UNSAFE_NO_AUTH"];
+    process.env["MYA_CRON_UNSAFE_NO_AUTH"] = "1";
+    try {
+      const { port, stop } = await start({ wsToken: undefined });
+      const post = await fetch(`${base(port)}/cron/jobs`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
+      });
+      expect(post.status).not.toBe(401); // explicitly allowed
+      await stop();
+    } finally {
+      if (orig !== undefined) process.env["MYA_CRON_UNSAFE_NO_AUTH"] = orig;
+      else delete process.env["MYA_CRON_UNSAFE_NO_AUTH"];
+    }
+  });
+
+  it("G8: POST /cron/approval-mode runtime-flips deny↔approve", async () => {
+    const { port, stop } = await start({ wsToken: "secret", cronSetApprovalMode: () => {} });
+    const r = await fetch(`${base(port)}/cron/approval-mode`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret" },
+      body: JSON.stringify({ mode: "approve" }),
+    });
+    expect(r.status).toBe(200);
+    const bad = await fetch(`${base(port)}/cron/approval-mode`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret" },
+      body: JSON.stringify({ mode: "bogus" }),
+    });
+    expect(bad.status).toBe(400);
+    await stop();
+  });
+
+  it("D9: POST /cron/jobs forwards the timezone field", async () => {
+    const { port, stop } = await start({ wsToken: "secret" });
+    const r = await fetch(`${base(port)}/cron/jobs`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret" },
+      body: JSON.stringify({ name: "tz", schedule: "0 9 * * *", prompt: "p", timezone: "America/New_York" }),
+    });
+    expect(r.status).toBe(201);
+    const created = (await r.json()) as { timezone?: string };
+    expect(created.timezone).toBe("America/New_York");
     await stop();
   });
 });

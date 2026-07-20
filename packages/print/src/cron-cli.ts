@@ -94,15 +94,16 @@ export async function cronList(): Promise<void> {
   }
 }
 
-export async function cronAdd(name?: string, schedule?: string, prompt?: string): Promise<void> {
+export async function cronAdd(name?: string, schedule?: string, prompt?: string, timezone?: string): Promise<void> {
   if (!name || !schedule) {
-    console.log(`${A.bold("Usage:")} mya cron add <name> <schedule> [prompt]`);
+    console.log(`${A.bold("Usage:")} mya cron add <name> <schedule> [prompt] [timezone]`);
     console.log("");
     console.log(`${A.bold("Schedules:")}`);
     console.log(`  ${A.accent("* * * * *")}            ${A.muted("cron expression (5 fields, UTC)")}`);
     console.log(`  ${A.accent("every 5m")}             ${A.muted("every 5 minutes (s|m|h|d)")}`);
     console.log(`  ${A.accent("every 1h")}             ${A.muted("every hour")}`);
     console.log(`  ${A.accent("1735689600000")}        ${A.muted("once at epoch ms (10-13 digits)")}`);
+    console.log(`  ${A.accent("... America/New_York")}  ${A.muted("optional 4th arg: IANA timezone")}`);
     console.log("");
     console.log(`${A.bold("Examples:")}`);
     console.log(`  mya cron add daily-check "0 9 * * *" "Check git status and report"`);
@@ -115,7 +116,7 @@ export async function cronAdd(name?: string, schedule?: string, prompt?: string)
 
   // Persist to cron.json (atomic, 0600 — same path the gateway reads).
   const arr = readCronJobs();
-  arr.push({ id, name, trigger, schedule: schedValue, prompt: prompt ?? "", enabled: true, deliveryTarget: "_cron" });
+  arr.push({ id, name, trigger, schedule: schedValue, prompt: prompt ?? "", enabled: true, deliveryTarget: "_cron", ...(timezone ? { timezone } : {}) });
   atomicWriteJobs(arr);
 
   console.log(`${A.green("✓")} Cron job added:`);
@@ -219,4 +220,29 @@ export async function cronHistory(id?: string): Promise<void> {
   } catch (e) {
     console.log(`${A.red("✗")} ${(e as Error).message} (is the gateway running?)`);
   }
+}
+
+/** Phase 4C/G5: cron ticker health (heartbeat freshness) + job count. */
+export async function cronStatus(): Promise<void> {
+  const { heartbeatAge } = await import("./cron-observability.js");
+  const ages = heartbeatAge();
+  const hb = ages.heartbeatAgeMs;
+  const su = ages.successAgeMs;
+  if (hb == null) {
+    console.log(`${A.muted("No heartbeat yet (gateway not running, or no sweeps since start).")}`);
+  } else {
+    const hbStr = hb < 60_000 ? `${Math.round(hb / 1000)}s ago` : `${Math.round(hb / 60_000)}m ago`;
+    // heartbeat fresh + success fresh = healthy; heartbeat fresh + success stale = alive-but-failing;
+    // both stale = dead ticker.
+    const state = su != null && su < 120_000 ? A.green("healthy") : su != null ? A.yellow("alive but sweeps failing") : A.red("alive but no clean sweep");
+    console.log(`${A.bold("Cron ticker:")} ${state} (last heartbeat ${hbStr})`);
+  }
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
+    if (r.ok) {
+      const jobs = (await r.json()) as Array<{ enabled?: boolean }>;
+      const enabled = jobs.filter((j) => j.enabled !== false).length;
+      console.log(`${A.bold("Jobs:")} ${jobs.length} (${enabled} enabled)`);
+    }
+  } catch { /* gateway not running — heartbeat section already reported */ }
 }

@@ -94,6 +94,12 @@ export class CronScheduler {
     if (this.jobs.size >= this.maxJobs && !this.jobs.has(id)) {
       throw new Error(`cron job cap reached (${this.maxJobs})`);
     }
+    // C10/3A min-interval floor: refuse every-minute cron (cost amplification).
+    // Operators needing high frequency set MYA_CRON_ALLOW_HIGH_FREQUENCY=1 or use
+    // an on-interval trigger with an explicit ms cadence.
+    if (job.trigger === "cron" && job.schedule === "* * * * *" && !process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"]) {
+      throw new Error("refusing '* * * * *' (every-minute cron) — set MYA_CRON_ALLOW_HIGH_FREQUENCY=1 or use a less frequent schedule / on-interval");
+    }
     // Phase 3B: validate the prompt.
     if (this.validator) {
       const err = this.validator(job.prompt);

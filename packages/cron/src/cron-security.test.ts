@@ -2,6 +2,39 @@ import { describe, it, expect } from "vitest";
 import { CronScheduler } from "./index.js";
 import type { CronJob } from "./index.js";
 
+describe("min-interval floor (C10/G10)", () => {
+  function mkCron(id: string, schedule: string): CronJob {
+    return { id, name: id, trigger: "cron", schedule, deliveryTarget: "_cron", prompt: "p", enabled: true, leaseMs: 5 * 60_000 };
+  }
+  it("refuses '* * * * *' (every-minute) without the allow flag", () => {
+    const orig = process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"];
+    delete process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"];
+    try {
+      const sched = new CronScheduler();
+      expect(() => sched.register(mkCron("h", "* * * * *"))).toThrow(/refusing/);
+    } finally {
+      if (orig !== undefined) process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"] = orig;
+    }
+  });
+  it("allows '* * * * *' with MYA_CRON_ALLOW_HIGH_FREQUENCY=1", () => {
+    const orig = process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"];
+    process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"] = "1";
+    try {
+      const sched = new CronScheduler();
+      sched.register(mkCron("h", "* * * * *"));
+      expect(sched.getJob("h")).toBeDefined();
+    } finally {
+      if (orig !== undefined) process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"] = orig;
+      else delete process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"];
+    }
+  });
+  it("allows a less-frequent schedule (*/5 * * * *)", () => {
+    const sched = new CronScheduler();
+    sched.register(mkCron("f", "*/5 * * * *"));
+    expect(sched.getJob("f")).toBeDefined();
+  });
+});
+
 function mk(id: string): CronJob {
   return { id, name: id, trigger: "cron", schedule: "0 9 * * *", deliveryTarget: "_cron", prompt: "p", enabled: true, leaseMs: 5 * 60_000 };
 }

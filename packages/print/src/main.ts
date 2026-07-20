@@ -87,15 +87,16 @@ async function main(): Promise<void> {
     return;
   }
   if (args[0] === "cron") {
-    const { cronList, cronAdd, cronRemove, cronToggle, cronRun, cronHistory } = await import("./cron-cli.js");
+    const { cronList, cronAdd, cronRemove, cronToggle, cronRun, cronHistory, cronStatus } = await import("./cron-cli.js");
     const sub = args[1];
     if (sub === "list" || sub === undefined) return cronList();
-    if (sub === "add") return cronAdd(args[2], args[3], args[4]);
+    if (sub === "add") return cronAdd(args[2], args[3], args[4], args[5]);
     if (sub === "remove" || sub === "rm") return cronRemove(args[2]);
     if (sub === "enable" || sub === "disable") return cronToggle(args[2], sub);
     if (sub === "run") return cronRun(args[2]);
     if (sub === "history") return cronHistory(args[2]);
-    console.log("Usage: mya cron {list|add|remove|enable|disable|run|history}");
+    if (sub === "status") return cronStatus();
+    console.log("Usage: mya cron {list|add|remove|enable|disable|run|history|status}");
     return;
   }
 
@@ -354,7 +355,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // boundary; scan is best-effort defense-in-depth).
   setCronApprovalMode(cronApprovalMode === "approve" ? "approve" : "deny");
   if (cronApprovalMode !== "approve") {
-    console.warn("[cron] approval_mode=deny (default) — cron-fired turns are read-only (allowlist: read/glob/grep/ls/find). Set MYA_CRON_APPROVAL_MODE=approve for full tools (UNATTENDED FULL-CREDENTIAL — trust the prompt).");
+    console.warn("[cron] approval_mode=deny (default) — cron-fired turns are read-only (allowlist: read/glob/grep/ls/find). Set MYA_CRON_APPROVAL_MODE=approve for full tools (UNATTENDED FULL-CREDENTIAL — trust the prompt). Runtime-flip via POST /cron/approval-mode.");
+  }
+  if (process.env.MYA_CRON_UNSAFE_NO_AUTH) {
+    console.warn("[SECURITY] MYA_CRON_UNSAFE_NO_AUTH set — cron mutations are UNAUTHENTICATED. Dev only.");
   }
   const persistCron = (): void => {
     atomicWriteJobs(cron.listJobs());
@@ -442,6 +446,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     cronRunEnd: (runId, status, error, endedAt) => recordRunEnd(runId, status, error, endedAt),
     cronRuns: (jobId) => getRunHistory(jobId),
     cronHeartbeat: (success) => { recordHeartbeat(); if (success) recordHeartbeatSuccess(); },
+    cronSetApprovalMode: (mode) => setCronApprovalMode(mode),
     onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),
     sync,
     collab,

@@ -1,3 +1,5 @@
+// Test fixtures use * * * * * (always-due); bypass the every-minute floor.
+process.env.MYA_CRON_ALLOW_HIGH_FREQUENCY = "1";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, statSync, symlinkSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";

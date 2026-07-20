@@ -174,6 +174,8 @@ export interface GatewayOptions {
   cronRuns?: (jobId: string) => unknown[];
   /** Phase 4C: heartbeat (alive each sweep; success on a clean sweep). */
   cronHeartbeat?: (success: boolean) => void;
+  /** Phase 3C/G8: runtime-flip the cron approval mode (deny/approve). */
+  cronSetApprovalMode?: (mode: "deny" | "approve") => void;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -263,6 +265,7 @@ export class Gateway {
   private readonly cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number) => void;
   private readonly cronRuns?: (jobId: string) => unknown[];
   private readonly cronHeartbeat?: (success: boolean) => void;
+  private readonly cronSetApprovalMode?: (mode: "deny" | "approve") => void;
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
@@ -386,6 +389,7 @@ export class Gateway {
     this.cronRunEnd = opts.cronRunEnd;
     this.cronRuns = opts.cronRuns;
     this.cronHeartbeat = opts.cronHeartbeat;
+    this.cronSetApprovalMode = opts.cronSetApprovalMode;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
@@ -656,6 +660,13 @@ export class Gateway {
       if (req.method && req.method !== "GET" && !this.isOwnOrigin(req)) {
         return send(403, { error: "cross-origin state change blocked" });
       }
+    }
+    // C11: cron MUTATIONS require auth (wsToken) OR an explicit
+    // MYA_CRON_UNSAFE_NO_AUTH=1 — never implicitly opened by MYA_NO_WS_TOKEN
+    // (the dashboard dev bypass). Closes the D6 re-opening in dev deployments.
+    const isCronMutation = req.method !== "GET" && req.method !== "OPTIONS" && /^\/cron\/jobs/.test(url.pathname);
+    if (isCronMutation && !this.wsToken && !process.env["MYA_CRON_UNSAFE_NO_AUTH"]) {
+      return send(401, { error: "cron mutations require wsToken auth (or MYA_CRON_UNSAFE_NO_AUTH=1)" });
     }
     // §12 parametric control-plane route: /sessions/:id
     const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
@@ -1007,7 +1018,7 @@ export class Gateway {
             req.on("data", (c) => (body += c));
             req.on("end", () => {
               try {
-                const job = JSON.parse(body || "{}") as { id?: string; name?: string; schedule?: string; prompt?: string; trigger?: string };
+                const job = JSON.parse(body || "{}") as { id?: string; name?: string; schedule?: string; prompt?: string; trigger?: string; timezone?: string };
                 if (!job.name) return send(400, { error: "name required" });
                 const id = job.id ?? `job-${nowWallclock().toString(36)}`;
                 const created: ControlCronJob = {
@@ -1018,6 +1029,7 @@ export class Gateway {
                   prompt: job.prompt ?? "",
                   deliveryTarget: "_cron",
                   enabled: true,
+                  timezone: job.timezone, // D9: forward timezone (parser already supports it)
                 };
                 this.control.registerCronJob(created);
                 if (this.cronAdd) this.cronAdd(created);
@@ -1070,6 +1082,22 @@ export class Gateway {
         const cronRunsMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)\/runs$/);
         if (cronRunsMatch && req.method === "GET" && this.cronRuns) {
           return send(200, this.cronRuns(cronRunsMatch[1]!));
+        }
+        // G8: runtime-flip the cron approval mode (deny/approve). Auth-gated +
+        // C11 cron-mutation check apply (it's a /cron/jobs* non-GET route).
+        if (url.pathname === "/cron/approval-mode" && req.method === "POST" && this.cronSetApprovalMode) {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const { mode } = JSON.parse(body || "{}") as { mode?: string };
+              if (mode !== "deny" && mode !== "approve") return send(400, { error: "mode must be 'deny' or 'approve'" });
+              this.cronSetApprovalMode!(mode);
+              console.warn(`[cron] approval_mode runtime-flipped to ${mode}`);
+              return send(200, { ok: true, mode });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
         }
         // AgentPool sessions
         if (url.pathname === "/pool/sessions" && this.poolStatus) {

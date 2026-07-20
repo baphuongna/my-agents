@@ -1464,11 +1464,23 @@ ${hitLines}`);
     });
 
     registerSharedCommand(pi, "cron", "List cron jobs", async () => {
-      if (!opts.cron) return "CronScheduler not configured";
+      // G3/R2-7: query the GATEWAY (the single source of truth) over HTTP instead
+      // of the TUI's own vestigial CronScheduler singleton (which is a separate
+      // process + empty). Falls back to opts.cron if the gateway isn't reachable.
+      const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+      try {
+        const { authHeaders } = await import("./gw-auth.js");
+        const r = await fetch(`http://127.0.0.1:${port}/cron/jobs`, { headers: authHeaders(), signal: AbortSignal.timeout(1000) });
+        if (r.ok) {
+          const jobs = (await r.json()) as Array<{ name: string; trigger: string; schedule: string | number; enabled?: boolean; lastStatus?: string }>;
+          if (jobs.length === 0) return "[mya] Cron: 0 jobs";
+          return `[mya] Cron: ${jobs.length} job(s) — ${jobs.map((j) => `${j.name}(${j.trigger}:${j.schedule})${j.lastStatus ? ` ·${j.lastStatus}` : ""}${j.enabled === false ? " ·off" : ""}`).join(", ")}`;
+        }
+      } catch { /* gateway not running — fall back */ }
+      if (!opts.cron) return "CronScheduler not configured (and gateway unreachable)";
       const jobs = opts.cron.listJobs();
-      if (jobs.length === 0) return "[mya] Cron: 0 jobs";
-      const due = new Set(opts.cron.due().map((j) => j.id));
-      return `[mya] Cron: ${jobs.length} job(s) — ${jobs.map((j) => `${j.name}(${j.trigger}:${j.schedule})${due.has(j.id) ? " ·DUE" : ""}${j.enabled ? "" : " ·off"}`).join(", ")}`;
+      if (jobs.length === 0) return "[mya] Cron: 0 jobs (gateway unreachable; TUI has no local jobs)";
+      return `[mya] Cron: ${jobs.length} job(s) — ${jobs.map((j) => `${j.name}(${j.trigger}:${j.schedule})${j.enabled ? "" : " ·off"}`).join(", ")}`;
     });
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
