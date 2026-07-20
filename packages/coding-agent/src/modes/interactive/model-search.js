@@ -12,3 +12,4 @@ export function getModelSelectorSearchText(item) {
     const name = item.name ? ` ${item.name}` : "";
     return `${provider} ${provider}/${id} ${provider} ${id}${name}`;
 }
+//# sourceMappingURL=model-search.js.map

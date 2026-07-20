@@ -89,3 +89,4 @@ export function markPathIgnoredByCloudSync(path) {
         }
     }
 }
+//# sourceMappingURL=paths.js.map

@@ -194,3 +194,4 @@ export function createWriteToolDefinition(cwd, options) {
 export function createWriteTool(cwd, options) {
     return wrapToolDefinition(createWriteToolDefinition(cwd, options));
 }
+//# sourceMappingURL=write.js.map

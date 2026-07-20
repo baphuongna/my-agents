@@ -67,3 +67,4 @@ export class CustomEditor extends Editor {
         super.handleInput(data);
     }
 }
+//# sourceMappingURL=custom-editor.js.map

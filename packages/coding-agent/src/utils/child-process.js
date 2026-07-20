@@ -103,3 +103,4 @@ export function waitForChildProcess(child) {
         child.once("close", onClose);
     });
 }
+//# sourceMappingURL=child-process.js.map

@@ -38,3 +38,4 @@ export function printTimings() {
         printTimingGroup(`Startup Timings: ${namespace}`, timingNamespace.timings);
     }
 }
+//# sourceMappingURL=timings.js.map

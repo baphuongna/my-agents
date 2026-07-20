@@ -96,6 +96,7 @@ export class FooterDataProvider {
     reftableTablesListWatcher = null;
     reftableTablesListPath = null;
     branchChangeCallbacks = new Set();
+    // mya fork: subagent count for footer display (no pi equivalent)
     subagentCount = 0;
     availableProviderCount = 0;
     refreshTimer = null;
@@ -125,31 +126,34 @@ export class FooterDataProvider {
         return () => this.branchChangeCallbacks.delete(callback);
     }
     /** Internal: set extension status */
+    setExtensionStatus(key, text) {
+        if (text === undefined) {
+            this.extensionStatuses.delete(key);
+        }
+        else {
+            this.extensionStatuses.set(key, text);
+        }
+    }
+    /** Internal: clear extension statuses */
+    clearExtensionStatuses() {
+        this.extensionStatuses.clear();
+    }
     /** Number of unique providers with available models (for footer display) */
     getAvailableProviderCount() {
         return this.availableProviderCount;
-    }
-    /** Number of running subagents (for footer display) */
-    getSubagentCount() {
-        return this.subagentCount;
-    }
-    /** Update subagent count + notify listeners (for footer re-render) */
-    setSubagentCount(count) {
-        if (this.subagentCount !== count) {
-            this.subagentCount = count;
-        }
     }
     /** Internal: update available provider count */
     setAvailableProviderCount(count) {
         this.availableProviderCount = count;
     }
-    /** Set an extension status entry (shown in footer). */
-    setExtensionStatus(key, text) {
-        this.extensionStatuses.set(key, text);
+    // mya fork: subagent count accessors (no pi equivalent)
+    getSubagentCount() {
+        return this.subagentCount;
     }
-    /** Clear all extension status entries (called on shutdown). */
-    clearExtensionStatuses() {
-        this.extensionStatuses.clear();
+    setSubagentCount(count) {
+        if (this.subagentCount !== count) {
+            this.subagentCount = count;
+        }
     }
     setCwd(cwd) {
         if (this.cwd === cwd) {
@@ -342,3 +346,4 @@ export class FooterDataProvider {
         }
     }
 }
+//# sourceMappingURL=footer-data-provider.js.map

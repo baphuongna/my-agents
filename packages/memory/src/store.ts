@@ -21,7 +21,7 @@
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import type { MemoryEntry, MemoryHit, MemoryQuery, MemoryRoleId } from "@my-agent/core";
+import { type MemoryEntry, type MemoryHit, type MemoryQuery, type MemoryRoleId, nowWallclock } from "@my-agent/core";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ export class UnifiedStore {
       tokens: tokenize(entry.content),
       trigrams: trigramize(entry.content),
       metadata: entry.metadata,
-      createdAt: Date.now(),
+      createdAt: nowWallclock(),
     };
     const idx = this.entries.length;
     this.entries.push(indexed);
@@ -249,7 +249,7 @@ export class UnifiedStore {
           content: text,
           tokens: tokenize(text),
           trigrams: trigramize(text),
-          createdAt: Date.now(),
+          createdAt: nowWallclock(),
         };
         const idx = this.entries.length;
         this.entries.push(indexed);

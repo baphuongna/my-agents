@@ -421,3 +421,4 @@ export async function computeEditsDiff(path, edits, cwd) {
 export async function computeEditDiff(path, oldText, newText, cwd) {
     return computeEditsDiff(path, [{ oldText, newText }], cwd);
 }
+//# sourceMappingURL=edit-diff.js.map

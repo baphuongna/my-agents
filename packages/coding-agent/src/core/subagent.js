@@ -20,7 +20,7 @@
  * the goal/prompt — the subagent's system identity tells it which tools
  * to use. (For strict enforcement, layer ToolPolicy.)
  */
-import { createAgentSession } from "./sdk.js";
+import { createAgentSession } from "./sdk.ts";
 import { nowWallclock } from "@my-agent/core";
 /** Max recursion depth for subagent tree (parent → sub → sub). Default 3. */
 export const MAX_SUBAGENT_DEPTH = 3;
@@ -226,3 +226,4 @@ export function killAllSubagents(parentId) {
     subagentCountListener?.(totalActiveSubagents());
     return n;
 }
+//# sourceMappingURL=subagent.js.map

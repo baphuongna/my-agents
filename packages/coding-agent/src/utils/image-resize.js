@@ -94,3 +94,4 @@ export function formatDimensionNote(result) {
     const scale = result.originalWidth / result.width;
     return `[Image: original ${result.originalWidth}x${result.originalHeight}, displayed at ${result.width}x${result.height}. Multiply coordinates by ${scale.toFixed(2)} to map to original image.]`;
 }
+//# sourceMappingURL=image-resize.js.map

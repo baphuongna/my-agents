@@ -20,6 +20,13 @@ describe("Invariant #10 — single time helper (no Date.now() outside core.time)
       else if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) {
         // the sole allowed source of wall-clock time:
         if (full.endsWith(join("core", "src", "time.ts"))) continue;
+        // Exclude vendored pi upstream packages (coding-agent, pi-ai-src, pi-agent-src, tui).
+        // These are owned by pi and use Date.now() natively; mya's invariant applies
+        // only to code mya owns (core, ai, cron, gateway, memory, tools, print, etc.).
+        if (full.includes(join("packages", "coding-agent"))) continue;
+        if (full.includes(join("packages", "pi-ai-src"))) continue;
+        if (full.includes(join("packages", "pi-agent-src"))) continue;
+        if (full.includes(join("packages", "tui"))) continue;
         const text = readFileSync(full, "utf8");
         // match `Date.now(` but NOT inside a comment line.
         for (const line of text.split("\n")) {

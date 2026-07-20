@@ -146,21 +146,22 @@ export class FooterDataProvider {
 	}
 
 	/** Internal: set extension status */
+	setExtensionStatus(key: string, text: string | undefined): void {
+		if (text === undefined) {
+			this.extensionStatuses.delete(key);
+		} else {
+			this.extensionStatuses.set(key, text);
+		}
+	}
+
+	/** Internal: clear extension statuses */
+	clearExtensionStatuses(): void {
+		this.extensionStatuses.clear();
+	}
+
 	/** Number of unique providers with available models (for footer display) */
 	getAvailableProviderCount(): number {
 		return this.availableProviderCount;
-	}
-
-	/** Number of running subagents (for footer display) */
-	getSubagentCount(): number {
-		return this.subagentCount;
-	}
-
-	/** Update subagent count + notify listeners (for footer re-render) */
-	setSubagentCount(count: number): void {
-		if (this.subagentCount !== count) {
-			this.subagentCount = count;
-		}
 	}
 
 	/** Internal: update available provider count */
@@ -168,14 +169,15 @@ export class FooterDataProvider {
 		this.availableProviderCount = count;
 	}
 
-	/** Set an extension status entry (shown in footer). */
-	setExtensionStatus(key: string, text: string): void {
-		this.extensionStatuses.set(key, text);
+	// mya fork: subagent count accessors (no pi equivalent)
+	getSubagentCount(): number {
+		return this.subagentCount;
 	}
 
-	/** Clear all extension status entries (called on shutdown). */
-	clearExtensionStatuses(): void {
-		this.extensionStatuses.clear();
+	setSubagentCount(count: number): void {
+		if (this.subagentCount !== count) {
+			this.subagentCount = count;
+		}
 	}
 
 	setCwd(cwd: string): void {

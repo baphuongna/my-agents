@@ -6,3 +6,4 @@ function isTruthyEnvFlag(value) {
 export function isInstallTelemetryEnabled(settingsManager, telemetryEnv = process.env.PI_TELEMETRY) {
     return telemetryEnv !== undefined ? isTruthyEnvFlag(telemetryEnv) : settingsManager.getEnableInstallTelemetry();
 }
+//# sourceMappingURL=telemetry.js.map

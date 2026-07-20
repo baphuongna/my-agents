@@ -18,3 +18,4 @@ export function formatNoApiKeyFoundMessage(provider) {
     const providerDisplay = provider === UNKNOWN_PROVIDER ? "the selected model" : provider;
     return `No API key found for ${providerDisplay}.\n\n${getProviderLoginHelp()}`;
 }
+//# sourceMappingURL=auth-guidance.js.map

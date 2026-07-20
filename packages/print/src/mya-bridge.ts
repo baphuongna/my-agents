@@ -737,45 +737,67 @@ ${hitLines}`);
     });
 
     // ═══════════════════════════════════════════════════════════════════
-    // PROVIDER HOOKS: key rotation (from pi-soly)
+    // PROVIDER HOOKS: key rotation (from pi-soly, ported to RuntimeCredentials)
     // ═══════════════════════════════════════════════════════════════════
     // Multi-key rotation: when MYA_API_KEYS_<PROVIDER> is set (comma-separated),
-    // cycle through keys. sdk.js reads x-mya-rotated-key convention header.
+    // cycle through keys via RuntimeCredentials.setRuntimeApiKey (upstream 0.80.10+).
+    // Provider ID must come from the ACTIVE model (ctx.model?.provider), not env-var name,
+    // because env vars allow any name but the request uses the configured provider.
     const keyState = new Map<string, { keys: string[]; idx: number; cooldownUntil: number }>();
 
-    pi.on("before_provider_headers", (event: unknown) => {
-      const e = event as { headers?: Record<string, string> };
-      if (!e.headers) return;
-      // Detect provider from existing auth header
-      const providerKeys = findRotatableKeys();
-      if (providerKeys.length <= 1) return; // nothing to rotate
+    // findRotatableKeys now takes the active provider ID and looks up MYA_API_KEYS_<PROVIDER>.
+    // Falls back to scanning env vars if no active provider is known yet (first request).
+    function findKeysForProvider(providerId: string): string[] | null {
+      const envName = `MYA_API_KEYS_${providerId.replace(/-/g, "_").toUpperCase()}`;
+      const raw = process.env[envName];
+      if (!raw) return null;
+      const keys = raw.split(",").map((k) => k.trim()).filter(Boolean);
+      return keys.length > 1 ? keys : null;
+    }
 
-      const now = Date.now();
-      let state = keyState.get("default");
+    pi.on("before_provider_request", async (event: unknown, ctx: unknown) => {
+      const c = ctx as { model?: { provider?: string }; modelRegistry?: { setRuntimeApiKey(providerId: string, apiKey: string): Promise<void> } };
+      if (!c?.modelRegistry) return;
+
+      const providerId = c.model?.provider;
+      if (!providerId) return;
+
+      const keys = findKeysForProvider(providerId);
+      if (!keys) return;
+
+      const now = nowWallclock();
+      let state = keyState.get(providerId);
       if (!state) {
-        state = { keys: providerKeys, idx: 0, cooldownUntil: 0 };
-        keyState.set("default", state);
+        state = { keys, idx: 0, cooldownUntil: 0 };
+        keyState.set(providerId, state);
       }
-      // Skip if all keys are in cooldown
       if (state.cooldownUntil > now) return;
 
-      // Pick next available key (round-robin)
+      // Pick next key (round-robin), await so the credential is set BEFORE modelRuntime reads it
       state.idx = (state.idx + 1) % state.keys.length;
       const rotatedKey = state.keys[state.idx];
       if (rotatedKey) {
-        // Convention header — sdk.js streamFn reads this and overrides apiKey
-        e.headers["x-mya-rotated-key"] = rotatedKey;
+        // setRuntimeApiKey is async + refreshes auth store; AWAIT so it's applied to the
+        // CURRENT request (before modelRuntime.streamSimple reads credentials)
+        try {
+          await c.modelRegistry.setRuntimeApiKey(providerId, rotatedKey);
+        } catch (err) {
+          console.error(`[mya-bridge] key rotation failed for ${providerId}:`, err);
+        }
       }
     });
 
-    pi.on("after_provider_response", (event: unknown) => {
+    pi.on("after_provider_response", (event: unknown, ctx: unknown) => {
       const e = event as { status?: number };
+      const c = ctx as { model?: { provider?: string } };
+      const providerId = c?.model?.provider;
+      if (!providerId) return;
+
       if (e.status === 429 || e.status === 529) {
-        // Rate-limited: put current key in cooldown
-        const state = keyState.get("default");
+        const state = keyState.get(providerId);
         if (state) {
           // 429 = key-specific (60s), 529 = provider-wide (120s)
-          state.cooldownUntil = Date.now() + (e.status === 429 ? 60_000 : 120_000);
+          state.cooldownUntil = nowWallclock() + (e.status === 429 ? 60_000 : 120_000);
         }
       }
     });
@@ -1576,16 +1598,7 @@ function sanitizeMcpToolInfo(info: { name: string; description?: string; inputSc
   return { name: info.name, description, parameters };
 }
 
-/** Find comma-separated API keys from MYA_API_KEYS_<PROVIDER> env vars. */
-function findRotatableKeys(): string[] {
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith("MYA_API_KEYS_") && value) {
-      return value.split(",").map((k) => k.trim()).filter(Boolean);
-    }
-  }
-  return [];
-}
-
+// findRotatableKeys removed in 0.80.10 sync; use findKeysForProvider(activeProviderId) inside handler instead
 /** Extract potential issues from assistant text for adversarial review. */
 function extractFindings(text: string): string[] {
   const findings: string[] = [];

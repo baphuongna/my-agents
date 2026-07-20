@@ -22,5 +22,5 @@ export const BUILTIN_SLASH_COMMANDS = [
     { name: "resume", description: "Resume a different session" },
     { name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
     { name: "quit", description: `Quit ${APP_NAME}` },
-    { name: "subagents", description: "List active subagents (delegated tasks)" },
 ];
+//# sourceMappingURL=slash-commands.js.map

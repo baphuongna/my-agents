@@ -23,12 +23,11 @@ import {
 	createAgentSessionServices,
 } from "./core/agent-session-services.ts";
 import { formatNoModelsAvailableMessage } from "./core/auth-guidance.ts";
-import { AuthStorage } from "./core/auth-storage.ts";
 import { exportFromFile } from "./core/export-html/index.ts";
 import type { InlineExtension } from "./core/extensions/types.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "./core/http-dispatcher.ts";
-import type { ModelRegistry } from "./core/model-registry.ts";
 import { resolveCliModel, resolveModelScope, type ScopedModel } from "./core/model-resolver.ts";
+import type { ModelRuntime } from "./core/model-runtime.ts";
 import { restoreStdout, takeOverStdout } from "./core/output-guard.ts";
 import { type AppMode, resolveProjectTrusted } from "./core/project-trust.ts";
 import type { CreateAgentSessionOptions } from "./core/sdk.ts";
@@ -49,15 +48,8 @@ import { handleConfigCommand, handlePackageCommand } from "./package-manager-cli
 import { isLocalPath, normalizePath, resolvePath } from "./utils/paths.ts";
 import { cleanupWindowsSelfUpdateQuarantine } from "./utils/windows-self-update.ts";
 
-// mya fork: extension failure hint references mya CLI name
+// mya fork: branding
 const EXTENSION_LOAD_FAILURE_HINT = 'Hint: Start without extensions using "mya -ne".';
-
-/** Normalize a settings-stored appendSystemPrompt (string|string[]|undefined) to the
- *  string[] shape that ResourceLoaderOptions.appendSystemPrompt expects. */
-function toAppendSource(v: string | string[] | undefined): string[] | undefined {
-	if (v === undefined) return undefined;
-	return Array.isArray(v) ? v : [v];
-}
 
 /**
  * Read all content from piped stdin.
@@ -366,7 +358,7 @@ function buildSessionOptions(
 	parsed: Args,
 	scopedModels: ScopedModel[],
 	hasExistingSession: boolean,
-	modelRegistry: ModelRegistry,
+	modelRuntime: ModelRuntime,
 	settingsManager: SettingsManager,
 ): {
 	options: CreateAgentSessionOptions;
@@ -385,7 +377,7 @@ function buildSessionOptions(
 			cliProvider: parsed.provider,
 			cliModel: parsed.model,
 			cliThinking: parsed.thinking,
-			modelRegistry,
+			modelRuntime,
 		});
 		if (resolved.warning) {
 			diagnostics.push({ type: "warning", message: resolved.warning });
@@ -408,7 +400,7 @@ function buildSessionOptions(
 		// Check if saved default is in scoped models - use it if so, otherwise first scoped model
 		const savedProvider = settingsManager.getDefaultProvider();
 		const savedModelId = settingsManager.getDefaultModel();
-		const savedModel = savedProvider && savedModelId ? modelRegistry.find(savedProvider, savedModelId) : undefined;
+		const savedModel = savedProvider && savedModelId ? modelRuntime.getModel(savedProvider, savedModelId) : undefined;
 		const savedInScope = savedModel ? scopedModels.find((sm) => modelsAreEqual(sm.model, savedModel)) : undefined;
 
 		if (savedInScope) {
@@ -441,7 +433,7 @@ function buildSessionOptions(
 		}));
 	}
 
-	// API key from CLI - set in authStorage
+	// API key from CLI - set as a non-persistent runtime override
 	// (handled by caller before createAgentSession)
 
 	// Tools
@@ -619,7 +611,6 @@ export async function main(args: string[], options?: MainOptions) {
 	const resolvedSkillPaths = resolveCliPaths(cwd, parsed.skills);
 	const resolvedPromptTemplatePaths = resolveCliPaths(cwd, parsed.promptTemplates);
 	const resolvedThemePaths = resolveCliPaths(cwd, parsed.themes);
-	const authStorage = AuthStorage.create();
 	const createRuntime: CreateAgentSessionRuntimeFactory = async ({
 		cwd,
 		agentDir,
@@ -642,7 +633,6 @@ export async function main(args: string[], options?: MainOptions) {
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,
-			authStorage,
 			settingsManager: runtimeSettingsManager,
 			extensionFlagValues: parsed.unknownFlags,
 			resourceLoaderReloadOptions: shouldResolveProjectTrust
@@ -679,15 +669,13 @@ export async function main(args: string[], options?: MainOptions) {
 				noPromptTemplates: parsed.noPromptTemplates,
 				noThemes: parsed.noThemes,
 				noContextFiles: parsed.noContextFiles,
-				// CLI flag wins over settings.json (matches existing precedence for other options).
+				// mya fork: CLI flag wins over settings.json (upstream 0.80.10 dropped this fallback)
 				systemPrompt: parsed.systemPrompt ?? runtimeSettingsManager.getSystemPrompt(),
-				appendSystemPrompt:
-					parsed.appendSystemPrompt ??
-					toAppendSource(runtimeSettingsManager.getAppendSystemPrompt()),
+				appendSystemPrompt: parsed.appendSystemPrompt ?? runtimeSettingsManager.getAppendSystemPrompt(),
 				extensionFactories: options?.extensionFactories,
 			},
 		});
-		const { settingsManager, modelRegistry, resourceLoader } = services;
+		const { settingsManager, modelRuntime, resourceLoader } = services;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...projectTrustDiagnostics,
 			...services.diagnostics,
@@ -700,7 +688,7 @@ export async function main(args: string[], options?: MainOptions) {
 
 		const modelPatterns = parsed.models ?? settingsManager.getEnabledModels();
 		const scopedModels =
-			modelPatterns && modelPatterns.length > 0 ? await resolveModelScope(modelPatterns, modelRegistry) : [];
+			modelPatterns && modelPatterns.length > 0 ? await resolveModelScope(modelPatterns, modelRuntime) : [];
 		const {
 			options: sessionOptions,
 			cliThinkingFromModel,
@@ -709,7 +697,7 @@ export async function main(args: string[], options?: MainOptions) {
 			parsed,
 			scopedModels,
 			sessionManager.buildSessionContext().messages.length > 0,
-			modelRegistry,
+			modelRuntime,
 			settingsManager,
 		);
 		diagnostics.push(...sessionOptionDiagnostics);
@@ -721,7 +709,8 @@ export async function main(args: string[], options?: MainOptions) {
 					message: "--api-key requires a model to be specified via --model, --provider/--model, or --models",
 				});
 			} else {
-				authStorage.setRuntimeApiKey(sessionOptions.model.provider, parsed.apiKey);
+				await modelRuntime.setRuntimeApiKey(sessionOptions.model.provider, parsed.apiKey);
+				await services.modelRuntime.getAvailable();
 			}
 		}
 
@@ -756,73 +745,7 @@ export async function main(args: string[], options?: MainOptions) {
 	});
 	time("createAgentSessionRuntime");
 	const { services, session, modelFallbackMessage } = runtime;
-	const { settingsManager, modelRegistry, resourceLoader } = services;
-
-	// ── Gateway session proxy: connect TUI to a running gateway AgentSession ──
-	const gatewaySession = (parsed as Record<string, unknown>).gatewaySession as string | undefined;
-	const gatewayUrl = (parsed as Record<string, unknown>).gatewayUrl as string | undefined;
-	if (gatewaySession) {
-		// Get WS token from gateway
-		const gwPort = gatewayUrl ? new URL(gatewayUrl).port : "3000";
-		const tokenRes = await fetch(`http://127.0.0.1:${gwPort}/ws-info`);
-		const tokenData = (await tokenRes.json()) as { token: string; port: number };
-		const wsUrl = `ws://127.0.0.1:${tokenData.port}/events?session=${gatewaySession}&token=${tokenData.token}`;
-
-		// Connect to gateway session via WS
-		const { default: WebSocket } = await import("ws");
-		const ws = new WebSocket(wsUrl);
-
-		await new Promise<void>((resolve, reject) => {
-			ws.on("open", resolve);
-			ws.on("error", reject);
-			setTimeout(() => reject(new Error("WS connect timeout")), 5000);
-		});
-
-		// Override session.prompt() → send to gateway instead of running locally
-		const sessionAny = session as unknown as {
-			prompt: (text: string, options?: unknown) => Promise<void>;
-			abort: () => void;
-			_emit: (event: unknown) => void;
-			_isAgentRunActive: boolean;
-			_emitQueueUpdate: () => void;
-		};
-
-		const origPrompt = sessionAny.prompt;
-		sessionAny.prompt = async (_text: string, _options?: unknown) => {
-			// Send to gateway — the gateway AgentSession runs the prompt.
-			// Events stream back via WS → _emit → TUI renders them.
-			sessionAny._isAgentRunActive = true;
-			sessionAny._emitQueueUpdate();
-			ws.send(JSON.stringify({ text: _text }));
-		};
-
-		sessionAny.abort = () => {
-			ws.send(JSON.stringify({ method: "cancel" }));
-		};
-
-		// Forward WS events to session listeners → TUI renders them
-		ws.on("message", (data: Buffer) => {
-			try {
-				const env = JSON.parse(data.toString()) as { event?: unknown; method?: string };
-				if (env.event) {
-					// Gateway event → forward to InteractiveMode
-					sessionAny._emit(env.event);
-					// Check if turn completed
-					const ev = env.event as { type?: string; kind?: string; stage?: string };
-					if (ev.type === "turn_end" || ev.kind === "turn" && ev.stage === "end") {
-						sessionAny._isAgentRunActive = false;
-						sessionAny._emitQueueUpdate();
-					}
-				}
-			} catch { /* malformed */ }
-		});
-
-		ws.on("close", () => {
-			sessionAny._isAgentRunActive = false;
-			sessionAny._emitQueueUpdate();
-		});
-	}
-
+	const { settingsManager, modelRuntime, resourceLoader } = services;
 	applyHttpProxySettings(settingsManager.getGlobalSettings().httpProxy);
 	configureHttpDispatcher(settingsManager.getHttpIdleTimeoutMs());
 
@@ -836,7 +759,7 @@ export async function main(args: string[], options?: MainOptions) {
 
 	if (parsed.listModels !== undefined) {
 		const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
-		await listModels(modelRegistry, searchPattern);
+		await listModels(modelRuntime, searchPattern);
 		process.exit(0);
 	}
 

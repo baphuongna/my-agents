@@ -397,6 +397,9 @@ export class ExtensionRunner {
             };
         });
     }
+    getModelRegistry() {
+        return this.modelRegistry;
+    }
     getRegisteredCommands() {
         this.commandDiagnostics = [];
         return this.resolveRegisteredCommands();
@@ -916,3 +919,4 @@ export class ExtensionRunner {
             : { action: "continue" };
     }
 }
+//# sourceMappingURL=runner.js.map

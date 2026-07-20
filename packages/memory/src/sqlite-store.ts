@@ -8,6 +8,7 @@
  * No in-memory cache needed.
  */
 import type { SqliteDatabase } from "./sqlite-db.js";
+import { nowWallclock } from "@my-agent/core";
 import { randomUUID } from "node:crypto";
 import { embedContent, vecToBuffer, embeddingDim, embeddingsDisabled } from "./embeddings.js";
 
@@ -84,7 +85,7 @@ const TTL_HOURS_BY_TYPE: Record<string, number> = {
 const DEFAULT_TTL_HOURS = 8760;
 
 /** Compute the hard-expiry timestamp for a memory type (ISO string). */
-export function ttlValidUntil(memoryType: string | undefined, nowMs: number = Date.now()): string {
+export function ttlValidUntil(memoryType: string | undefined, nowMs: number = nowWallclock()): string {
   const hours = TTL_HOURS_BY_TYPE[memoryType ?? "general"] ?? DEFAULT_TTL_HOURS;
   return new Date(nowMs + hours * 3_600_000).toISOString();
 }
@@ -253,7 +254,7 @@ export function purgeExpired(db: SqliteDatabase, table: "working_memory" | "epis
 
 /** Get unconsolidated working memories older than threshold. */
 export function getUnconsolidated(db: SqliteDatabase, sessionId: string, olderThanHours: number): MemoryRecord[] {
-  const cutoff = new Date(Date.now() - olderThanHours * 3600_000).toISOString();
+  const cutoff = new Date(nowWallclock() - olderThanHours * 3600_000).toISOString();
   return db.prepare(`
     SELECT * FROM working_memory
     WHERE session_id = ? AND consolidated_at IS NULL AND timestamp < ?

@@ -1,9 +1,11 @@
+import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@my-agent/pi-ai";
 import { Container, type Focusable } from "@my-agent/tui";
-import type { AuthStatus, AuthStorage } from "../../../core/auth-storage.ts";
 export type AuthSelectorProvider = {
     id: string;
     name: string;
     authType: "oauth" | "api_key";
+    method?: ApiKeyAuth | OAuthAuth;
+    status?: AuthCheck;
 };
 export declare function formatAuthSelectorProviderType(authType: AuthSelectorProvider["authType"]): string;
 /**
@@ -19,12 +21,10 @@ export declare class OAuthSelectorComponent extends Container implements Focusab
     private filteredProviders;
     private selectedIndex;
     private mode;
-    private authStorage;
-    private getAuthStatus;
     private onSelectCallback;
     private onCancelCallback;
     private showAuthTypeLabels;
-    constructor(mode: "login" | "logout", authStorage: AuthStorage, providers: AuthSelectorProvider[], onSelect: (providerId: string, authType: AuthSelectorProvider["authType"]) => void, onCancel: () => void, getAuthStatus?: (providerId: string) => AuthStatus, initialSearchInput?: string);
+    constructor(mode: "login" | "logout", providers: AuthSelectorProvider[], onSelect: (providerId: string, authType: AuthSelectorProvider["authType"]) => void, onCancel: () => void, initialSearchInput?: string);
     private filterProviders;
     private updateList;
     private formatStatusIndicator;

@@ -18,3 +18,4 @@ export class DynamicBorder {
         return [this.color("─".repeat(Math.max(1, width)))];
     }
 }
+//# sourceMappingURL=dynamic-border.js.map

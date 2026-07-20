@@ -138,7 +138,7 @@ export class FooterComponent implements Component {
 			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
 		}
 		// Show cost with "(sub)" indicator if using OAuth subscription
-		const usingSubscription = state.model ? this.session.modelRegistry.isUsingOAuth(state.model) : false;
+		const usingSubscription = state.model ? this.session.modelRuntime.isUsingOAuth(state.model.provider) : false;
 		if (totalCost || usingSubscription) {
 			const costStr = `$${totalCost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
 			statsParts.push(costStr);
@@ -161,11 +161,6 @@ export class FooterComponent implements Component {
 		statsParts.push(contextPercentStr);
 		if (areExperimentalFeaturesEnabled()) {
 			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
-		}
-		// Subagent count (running) — small badge in footer
-		const subagentCount = this.footerData.getSubagentCount();
-		if (subagentCount > 0) {
-			statsParts.push(theme.fg("accent", `${subagentCount} sub`));
 		}
 
 		let statsLeft = statsParts.join(" ");

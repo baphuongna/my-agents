@@ -7,5 +7,9 @@
     "@my-agent/ai": "*",
     "@my-agent/tui": "*",
     "@my-agent/core": "*"
+  },
+  "piConfig": {
+    "name": "mya",
+    "configDir": ".mya"
   }
 }

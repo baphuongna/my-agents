@@ -273,3 +273,4 @@ export function createReadToolDefinition(cwd, options) {
 export function createReadTool(cwd, options) {
     return wrapToolDefinition(createReadToolDefinition(cwd, options));
 }
+//# sourceMappingURL=read.js.map

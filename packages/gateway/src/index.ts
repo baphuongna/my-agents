@@ -184,9 +184,9 @@ export interface GatewayOptions {
   cronJobOutput?: (jobId: string) => string | undefined;
   /** Phase 5: load + assemble per-job skill bodies (returns the assembled skill text). */
   cronLoadSkills?: (names: string[]) => string;
-  /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
+  /** §12 sync server (CRDT + HLC). Endpoints active: /sync/pull, /sync/push. */
   sync?: SyncServer;
-  /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
+  /** §12 collaboration relay (rooms). Endpoint active: /collab/rooms. */
   collab?: CollabRelay;
   /** Channel session router (inbound messages → sessions). */
   channelRouter?: ChannelSessionRouter;
@@ -281,9 +281,9 @@ export class Gateway {
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
-  /** §12 sync server (optional — Phase 6 wiring). Stored; no auto-start. */
+  /** §12 sync server (optional — Phase 6 wiring). Endpoints active when provided. */
   private readonly sync?: SyncServer;
-  /** §12 collaboration relay (optional — Phase 6 wiring). Stored; no auto-start. */
+  /** §12 collaboration relay (optional — Phase 6 wiring). Endpoint active when provided. */
   private readonly collab?: CollabRelay;
   /** Channel session router (inbound messages → sessions). */
   private readonly channelRouter?: ChannelSessionRouter;
@@ -624,7 +624,7 @@ export class Gateway {
         // Phase 4A: mirror the run outcome to durable history (runs for EVERY
         // outcome incl. no-runner — the early-return bug left rows stuck 'claimed').
         if (rec) {
-          try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now(), runOutput); } catch { /* best-effort */ }
+          try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? nowWallclock(), runOutput); } catch { /* best-effort */ }
         }
       }));
       // complete() re-anchored nextRunAt off completion time — persist for accuracy.
@@ -633,7 +633,7 @@ export class Gateway {
       // 'lease-expired' in memory; mirror it so the durable row isn't stuck 'claimed').
       const expired = this.cron.sweepExpired();
       for (const runId of expired) {
-        try { this.cronRunEnd?.(runId, "lease-expired", null, Date.now()); } catch { /* best-effort */ }
+        try { this.cronRunEnd?.(runId, "lease-expired", null, nowWallclock()); } catch { /* best-effort */ }
       }
       // Phase 4C: success marker (clean sweep).
       try { this.cronHeartbeat?.(true); } catch { /* best-effort */ }
@@ -652,6 +652,7 @@ export class Gateway {
   private isAuthAllowlisted(url: URL, method: string | undefined): boolean {
     const p = url.pathname;
     if (p === "/health/live" || p === "/ready" || p === "/manifest.json" || p === "/sw.js") return true;
+    if (p === "/web.js" || p === "/offline.html") return true; // mya fork: Vite-bundled JS + offline page are public PWA assets
     if (p.startsWith("/icons/")) return true;
     // channel webhooks carry their own auth (adapter verify() / signature);
     // gating them with wsToken would block external webhook delivery.
@@ -854,7 +855,7 @@ export class Gateway {
       case "/sessions":
         if (req.method === "POST") {
           // Create new session
-          const sid = this.control.createSession() ?? `sess-${Date.now()}`;
+          const sid = this.control.createSession() ?? `sess-${nowWallclock()}`;
           return send(201, { ok: true, sessionId: sid });
         }
         return send(200, this.control.listSessions());
@@ -1664,12 +1665,12 @@ export class Gateway {
     return this.cron;
   }
 
-  /** §12 sync server getter (stored only — no auto-start; Tier-2 follow-up). */
+  /** §12 sync server getter (endpoints active when wired via shared-instances). */
   get syncServer(): SyncServer | undefined {
     return this.sync;
   }
 
-  /** §12 collaboration relay getter (stored only — no auto-start; Tier-2). */
+  /** §12 collaboration relay getter (endpoints active when wired via shared-instances). */
   get collabRelay(): CollabRelay | undefined {
     return this.collab;
   }

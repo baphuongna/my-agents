@@ -2,12 +2,11 @@
  * Interactive mode for the coding agent.
  * Handles TUI rendering and user interaction, delegating business logic to AgentSession.
  */
-import { type ImageContent } from "@my-agent/pi-ai/compat";
+import type { ImageContent } from "@my-agent/pi-ai/compat";
 import { type AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
 import { SessionManager } from "../../core/session-manager.ts";
 import { type LatestPiRelease } from "../../utils/version-check.ts";
 export declare function formatResumeCommand(sessionManager: SessionManager): string | undefined;
-export declare function isApiKeyLoginProvider(providerId: string, oauthProviderIds: ReadonlySet<string>, builtInProviderIds?: ReadonlySet<string>): boolean;
 /**
  * Options for InteractiveMode initialization.
  */
@@ -368,8 +367,12 @@ export declare class InteractiveMode {
     private showLoginProviderSelector;
     private showOAuthSelector;
     private completeProviderAuthentication;
+    private showAmbientAuthDialog;
     private showApiKeyLoginDialog;
-    private showOAuthLoginSelect;
+    private showAuthSelect;
+    private showAuthPrompt;
+    private notifyAuthDialog;
+    private loginProvider;
     private showLoginDialog;
     private handleReloadCommand;
     private handleExportCommand;
@@ -390,7 +393,6 @@ export declare class InteractiveMode {
     private getEditorKeyDisplay;
     private handleHotkeysCommand;
     private handleClearCommand;
-    private handleSubagentsCommand;
     private handleDebugCommand;
     private handleArminSaysHi;
     private handleDementedDelves;

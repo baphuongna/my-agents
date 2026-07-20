@@ -38,3 +38,4 @@ export function wrapRegisteredTool(registeredTool, runner) {
 export function wrapRegisteredTools(registeredTools, runner) {
     return registeredTools.map((tool) => wrapRegisteredTool(tool, runner));
 }
+//# sourceMappingURL=wrapper.js.map

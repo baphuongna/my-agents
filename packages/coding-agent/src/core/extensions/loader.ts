@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import * as _bundledPiAgentCore from "@my-agent/pi-agent-core";
 import * as _bundledPiAiCompat from "@my-agent/pi-ai/compat";
 import * as _bundledPiAiOauth from "@my-agent/pi-ai/oauth";
+import * as _bundledPiAiProviders from "@my-agent/pi-ai/providers/all";
 import type { KeyId } from "@my-agent/tui";
 import * as _bundledPiTui from "@my-agent/tui";
 import { createJiti } from "jiti/static";
@@ -58,12 +59,14 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@my-agent/pi-ai": _bundledPiAiCompat,
 	"@my-agent/pi-ai/compat": _bundledPiAiCompat,
 	"@my-agent/pi-ai/oauth": _bundledPiAiOauth,
+	"@my-agent/pi-ai/providers/all": _bundledPiAiProviders,
 	"@my-agent/coding-agent": _bundledPiCodingAgent,
 	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
 	"@mariozechner/pi-tui": _bundledPiTui,
 	"@mariozechner/pi-ai": _bundledPiAiCompat,
 	"@mariozechner/pi-ai/compat": _bundledPiAiCompat,
 	"@mariozechner/pi-ai/oauth": _bundledPiAiOauth,
+	"@mariozechner/pi-ai/providers/all": _bundledPiAiProviders,
 	"@mariozechner/pi-coding-agent": _bundledPiCodingAgent,
 };
 
@@ -102,20 +105,26 @@ function getAliases(): Record<string, string> {
 	// global API keep working at runtime until compat is removed.
 	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@my-agent/pi-ai/compat");
 	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@my-agent/pi-ai/oauth");
+	const piAiProvidersEntry = resolveWorkspaceOrImport(
+		"ai/dist/providers/all.js",
+		"@my-agent/pi-ai/providers/all",
+	);
 
 	_aliases = {
 		"@my-agent/coding-agent": piCodingAgentEntry,
 		"@my-agent/pi-agent-core": piAgentCoreEntry,
 		"@my-agent/tui": piTuiEntry,
-		"@my-agent/pi-ai": piAiCompatEntry,
+		"@my-agent/pi-ai/providers/all": piAiProvidersEntry,
 		"@my-agent/pi-ai/compat": piAiCompatEntry,
 		"@my-agent/pi-ai/oauth": piAiOauthEntry,
+		"@my-agent/pi-ai": piAiCompatEntry,
 		"@mariozechner/pi-coding-agent": piCodingAgentEntry,
 		"@mariozechner/pi-agent-core": piAgentCoreEntry,
 		"@mariozechner/pi-tui": piTuiEntry,
-		"@mariozechner/pi-ai": piAiCompatEntry,
+		"@mariozechner/pi-ai/providers/all": piAiProvidersEntry,
 		"@mariozechner/pi-ai/compat": piAiCompatEntry,
 		"@mariozechner/pi-ai/oauth": piAiOauthEntry,
+		"@mariozechner/pi-ai": piAiCompatEntry,
 		typebox: typeboxEntry,
 		"typebox/compile": typeboxCompileEntry,
 		"typebox/value": typeboxValueEntry,

@@ -16,3 +16,4 @@ export function createSyntheticSourceInfo(path, options) {
         baseDir: options.baseDir,
     };
 }
+//# sourceMappingURL=source-info.js.map

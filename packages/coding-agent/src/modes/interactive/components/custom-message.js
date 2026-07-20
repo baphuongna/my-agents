@@ -76,3 +76,4 @@ export class CustomMessageComponent extends Container {
         }));
     }
 }
+//# sourceMappingURL=custom-message.js.map

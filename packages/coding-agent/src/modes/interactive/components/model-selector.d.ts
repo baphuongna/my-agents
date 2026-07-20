@@ -1,6 +1,6 @@
 import { type Model } from "@my-agent/pi-ai";
 import { Container, type Focusable, Input, type TUI } from "@my-agent/tui";
-import type { ModelRegistry } from "../../../core/model-registry.ts";
+import type { ModelRuntime } from "../../../core/model-runtime.ts";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 interface ScopedModelItem {
     model: Model<any>;
@@ -22,17 +22,24 @@ export declare class ModelSelectorComponent extends Container implements Focusab
     private selectedIndex;
     private currentModel?;
     private settingsManager;
-    private modelRegistry;
+    private modelRuntime;
     private onSelectCallback;
     private onCancelCallback;
     private errorMessage?;
+    private refreshStatusMessage;
+    private refreshStatusSuccess;
     private tui;
     private scopedModels;
     private scope;
     private scopeText?;
     private scopeHintText?;
-    constructor(tui: TUI, currentModel: Model<any> | undefined, settingsManager: SettingsManager, modelRegistry: ModelRegistry, scopedModels: ReadonlyArray<ScopedModelItem>, onSelect: (model: Model<any>) => void, onCancel: () => void, initialSearchInput?: string);
-    private loadModels;
+    private readonly refreshAbortController;
+    private refreshTimeout?;
+    private closed;
+    constructor(tui: TUI, currentModel: Model<any> | undefined, settingsManager: SettingsManager, modelRuntime: ModelRuntime, scopedModels: ReadonlyArray<ScopedModelItem>, onSelect: (model: Model<any>) => void, onCancel: () => void, initialSearchInput?: string);
+    private loadModelsFromSnapshot;
+    private refreshModels;
+    private close;
     private sortModels;
     private getScopeText;
     private getScopeHintText;

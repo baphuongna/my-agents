@@ -49,3 +49,4 @@ export function stripAnsi(value) {
     // and doing it manually has a performance penalty.
     return value.replace(regex, "");
 }
+//# sourceMappingURL=ansi.js.map

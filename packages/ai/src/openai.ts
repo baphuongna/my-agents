@@ -172,11 +172,23 @@ async function parseSSE(body: ReadableStream<Uint8Array>): Promise<StreamEvent[]
         }
         if (delta?.tool_calls) {
           for (const tc of delta.tool_calls) {
-            pendingTools.set(tc.id, {
-              id: tc.id,
-              name: tc.function.name,
-              args: tc.function.arguments ?? "",
-            });
+            // OpenAI streams tool_calls in chunks: first chunk has id+name,
+            // subsequent chunks only have index + arguments delta.
+            // Use index as the map key (falls back to id for non-streamed).
+            const key = tc.index ?? tc.id ?? pendingTools.size;
+            const existing = pendingTools.get(key);
+            if (existing) {
+              // Continuation: append arguments, fill name/id if now present
+              if (tc.function?.arguments) existing.args += tc.function.arguments;
+              if (tc.id && !existing.id) existing.id = tc.id;
+              if (tc.function?.name && !existing.name) existing.name = tc.function.name;
+            } else {
+              pendingTools.set(key, {
+                id: tc.id ?? `call_${key}`,
+                name: tc.function?.name ?? "",
+                args: tc.function?.arguments ?? "",
+              });
+            }
           }
         }
       }

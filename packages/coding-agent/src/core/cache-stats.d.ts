@@ -22,9 +22,9 @@ export interface CacheWasteTotals {
     /** Number of counted misses (turns above the noise floor). */
     missCount: number;
 }
-/** Minimal pricing lookup, satisfied by ModelRegistry. Cost is $/million tokens. */
+/** Minimal pricing lookup, satisfied by ModelRuntime. Cost is $/million tokens. */
 export interface ModelPriceSource {
-    find(provider: string, modelId: string): {
+    getModel(provider: string, modelId: string): {
         cost: {
             cacheRead: number;
         };

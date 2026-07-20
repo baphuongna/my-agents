@@ -123,6 +123,7 @@ export declare class ExtensionRunner {
     getMessageRenderer(customType: string): MessageRenderer | undefined;
     getEntryRenderer(customType: string): EntryRenderer | undefined;
     private resolveRegisteredCommands;
+    getModelRegistry(): ModelRegistry;
     getRegisteredCommands(): ResolvedCommand[];
     getCommandDiagnostics(): ResourceDiagnostic[];
     getCommand(name: string): ResolvedCommand | undefined;

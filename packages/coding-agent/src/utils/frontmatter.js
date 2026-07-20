@@ -23,3 +23,4 @@ export const parseFrontmatter = (content) => {
     return { frontmatter: (parsed ?? {}), body };
 };
 export const stripFrontmatter = (content) => parseFrontmatter(content).body;
+//# sourceMappingURL=frontmatter.js.map

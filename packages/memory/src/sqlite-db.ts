@@ -17,6 +17,7 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { nowWallclock } from "@my-agent/core";
 
 // ── Minimal type-safe interface for the SQLite API surface we use ─────────
 // This avoids importing the native addon at module eval time (which breaks
@@ -82,8 +83,8 @@ function isSqliteBusy(error: unknown): boolean {
 
 /** Synchronous sleep (better-sqlite3 is synchronous; no async sleep possible). */
 function syncSleep(ms: number): void {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { /* spin — only on rare contention */ }
+  const end = nowWallclock() + ms;
+  while (nowWallclock() < end) { /* spin — only on rare contention */ }
 }
 
 /**

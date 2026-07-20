@@ -20,7 +20,7 @@
  * the goal/prompt — the subagent's system identity tells it which tools
  * to use. (For strict enforcement, layer ToolPolicy.)
  */
-import { createAgentSession, type AgentSession, type CreateAgentSessionOptions } from "./sdk.js";
+import { createAgentSession, type AgentSession, type CreateAgentSessionOptions } from "./sdk.ts";
 import { nowWallclock } from "@my-agent/core";
 
 export type SubagentStatus = "running" | "done" | "failed" | "aborted";

@@ -41,3 +41,4 @@ export class BranchSummaryMessageComponent extends Box {
         }
     }
 }
+//# sourceMappingURL=branch-summary-message.js.map

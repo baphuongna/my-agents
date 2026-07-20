@@ -25,6 +25,7 @@
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 import type { Fact, Take, BrainPage, FactKind, FactVisibility } from "./brain.js";
 import type { Tier } from "./tree.js";
 
@@ -191,7 +192,7 @@ export class BrainStore {
         lines.push(JSON.stringify({ type: "page", data: page, tier }));
       }
       // Tombstones older than 72h are dropped during compaction
-      const now = Date.now();
+      const now = nowWallclock();
       for (const [id, ts] of snapshot.tombstones) {
         if (now - ts.deletedAt < 72 * 60 * 60 * 1000) {
           lines.push(JSON.stringify({ type: "tombstone", id, deletedAt: ts.deletedAt }));

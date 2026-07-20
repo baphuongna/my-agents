@@ -1,19 +1,9 @@
 /**
- * Credential storage for API keys and OAuth tokens.
- * Handles loading, saving, and refreshing credentials from auth.json.
- *
- * Uses file locking to prevent race conditions when multiple pi instances
- * try to refresh tokens simultaneously.
+ * CredentialStore implementation backed by auth.json.
+ * Provider auth orchestration belongs to ModelRuntime and pi-ai Models.
  */
 
-import {
-	findEnvKeys,
-	getEnvApiKey,
-	type OAuthCredentials,
-	type OAuthLoginCallbacks,
-	type OAuthProviderId,
-} from "@my-agent/pi-ai/compat";
-import { getOAuthApiKey, getOAuthProvider, getOAuthProviders } from "@my-agent/pi-ai/oauth";
+import type { Credential, CredentialInfo, CredentialStore } from "@my-agent/pi-ai";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
@@ -21,29 +11,7 @@ import { getAgentDir } from "../config.ts";
 import { normalizePath } from "../utils/paths.ts";
 import { resolveConfigValue } from "./resolve-config-value.ts";
 
-export type ApiKeyCredential = {
-	type: "api_key";
-	key: string;
-	env?: Record<string, string>;
-};
-
-export type OAuthCredential = {
-	type: "oauth";
-} & OAuthCredentials;
-
-export type AuthCredential = ApiKeyCredential | OAuthCredential;
-
-export type AuthStorageData = Record<string, AuthCredential>;
-
-export type AuthStatus = {
-	configured: boolean;
-	source?: "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
-	label?: string;
-};
-
-export interface GetApiKeyOptions {
-	includeFallback?: boolean;
-}
+type AuthStorageData = Record<string, Credential>;
 
 type LockResult<T> = {
 	result: T;
@@ -200,12 +168,11 @@ export class InMemoryAuthStorageBackend implements AuthStorageBackend {
 /**
  * Credential storage backed by a JSON file.
  */
-export class AuthStorage {
+export class AuthStorage implements CredentialStore {
 	private data: AuthStorageData = {};
-	private runtimeOverrides: Map<string, string> = new Map();
-	private loadError: Error | null = null;
-	private errors: Error[] = [];
 	private storage: AuthStorageBackend;
+	// mya fork: runtime API-key overrides (mirror RuntimeCredentials semantics in 0.80.10)
+	private runtimeOverrides: Map<string, string> = new Map();
 
 	private constructor(storage: AuthStorageBackend) {
 		this.storage = storage;
@@ -226,26 +193,6 @@ export class AuthStorage {
 		return AuthStorage.fromStorage(storage);
 	}
 
-	/**
-	 * Set a runtime API key override (not persisted to disk).
-	 * Used for CLI --api-key flag.
-	 */
-	setRuntimeApiKey(provider: string, apiKey: string): void {
-		this.runtimeOverrides.set(provider, apiKey);
-	}
-
-	/**
-	 * Remove a runtime API key override.
-	 */
-	removeRuntimeApiKey(provider: string): void {
-		this.runtimeOverrides.delete(provider);
-	}
-
-	private recordError(error: unknown): void {
-		const normalizedError = error instanceof Error ? error : new Error(String(error));
-		this.errors.push(normalizedError);
-	}
-
 	private parseStorageData(content: string | undefined): AuthStorageData {
 		if (!content) {
 			return {};
@@ -264,276 +211,134 @@ export class AuthStorage {
 				return { result: undefined };
 			});
 			this.data = this.parseStorageData(content);
-			this.loadError = null;
-		} catch (error) {
-			this.loadError = error as Error;
-			this.recordError(error);
+		} catch {
+			// Preserve the last valid in-memory snapshot.
 		}
 	}
 
-	private persistProviderChange(provider: string, credential: AuthCredential | undefined): AuthStorageData {
-		if (this.loadError) {
-			this.reload();
-		}
-
-		if (this.loadError) {
-			const error = new Error(
-				`Cannot update auth storage because it could not be loaded: ${this.loadError.message}`,
-			);
-			this.recordError(error);
-			throw error;
-		}
-
-		try {
-			let persistedData: AuthStorageData = {};
-			this.storage.withLock((current) => {
-				const currentData = this.parseStorageData(current);
-				const merged: AuthStorageData = { ...currentData };
-				if (credential) {
-					merged[provider] = credential;
-				} else {
-					delete merged[provider];
-				}
-				persistedData = merged;
-				return { result: undefined, next: JSON.stringify(merged, null, 2) };
-			});
-			this.loadError = null;
-			return persistedData;
-		} catch (error) {
-			this.recordError(error);
-			throw error;
-		}
+	async read(provider: string): Promise<Credential | undefined> {
+		const credential = this.data[provider];
+		if (credential?.type !== "api_key") return credential;
+		if (credential.key === undefined) return credential;
+		return { ...credential, key: resolveConfigValue(credential.key, credential.env) };
 	}
 
-	/**
-	 * Get credential for a provider.
-	 */
-	get(provider: string): AuthCredential | undefined {
-		return this.data[provider] ?? undefined;
-	}
-
-	/**
-	 * Get provider-scoped environment values for an API key credential.
-	 */
-	getProviderEnv(provider: string): Record<string, string> | undefined {
-		const cred = this.data[provider];
-		return cred?.type === "api_key" && cred.env ? { ...cred.env } : undefined;
-	}
-
-	/**
-	 * Set credential for a provider.
-	 */
-	set(provider: string, credential: AuthCredential): void {
-		this.data = this.persistProviderChange(provider, credential);
-	}
-
-	/**
-	 * Remove credential for a provider.
-	 */
-	remove(provider: string): void {
-		this.data = this.persistProviderChange(provider, undefined);
-	}
-
-	/**
-	 * List all providers with credentials.
-	 */
-	list(): string[] {
-		return Object.keys(this.data);
-	}
-
-	/**
-	 * Check if credentials exist for a provider in auth.json.
-	 */
-	has(provider: string): boolean {
-		return provider in this.data;
-	}
-
-	/**
-	 * Check if any form of auth is configured for a provider.
-	 * Unlike getApiKey(), this doesn't refresh OAuth tokens.
-	 */
-	hasAuth(provider: string): boolean {
-		if (this.runtimeOverrides.has(provider)) return true;
-		if (this.data[provider]) return true;
-		if (getEnvApiKey(provider)) return true;
-		return false;
-	}
-
-	/**
-	 * Return auth status without exposing credential values or refreshing tokens.
-	 */
-	getAuthStatus(provider: string): AuthStatus {
-		if (this.data[provider]) {
-			return { configured: true, source: "stored" };
-		}
-
-		if (this.runtimeOverrides.has(provider)) {
-			return { configured: false, source: "runtime", label: "--api-key" };
-		}
-
-		const envKeys = findEnvKeys(provider);
-		if (envKeys?.[0]) {
-			return { configured: false, source: "environment", label: envKeys[0] };
-		}
-
-		return { configured: false };
-	}
-
-	/**
-	 * Get all credentials (for passing to getOAuthApiKey).
-	 */
-	getAll(): AuthStorageData {
-		return { ...this.data };
-	}
-
-	drainErrors(): Error[] {
-		const drained = [...this.errors];
-		this.errors = [];
-		return drained;
-	}
-
-	/**
-	 * Login to an OAuth provider.
-	 */
-	async login(providerId: OAuthProviderId, callbacks: OAuthLoginCallbacks): Promise<void> {
-		const provider = getOAuthProvider(providerId);
-		if (!provider) {
-			throw new Error(`Unknown OAuth provider: ${providerId}`);
-		}
-
-		const credentials = await provider.login(callbacks);
-		this.set(providerId, { type: "oauth", ...credentials });
-	}
-
-	/**
-	 * Logout from a provider.
-	 */
-	logout(provider: string): void {
-		this.remove(provider);
-	}
-
-	/**
-	 * Refresh OAuth token with backend locking to prevent race conditions.
-	 * Multiple pi instances may try to refresh simultaneously when tokens expire.
-	 */
-	private async refreshOAuthTokenWithLock(
-		providerId: OAuthProviderId,
-	): Promise<{ apiKey: string; newCredentials: OAuthCredentials } | null> {
-		const provider = getOAuthProvider(providerId);
-		if (!provider) {
-			return null;
-		}
-
-		const result = await this.storage.withLockAsync(async (current) => {
-			const currentData = this.parseStorageData(current);
-			this.data = currentData;
-			this.loadError = null;
-
-			const cred = currentData[providerId];
-			if (cred?.type !== "oauth") {
-				return { result: null };
+	async modify(
+		provider: string,
+		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+	): Promise<Credential | undefined> {
+		return this.storage.withLockAsync(async (content) => {
+			const currentData = this.parseStorageData(content);
+			const next = await fn(currentData[provider]);
+			if (next === undefined) {
+				this.data = currentData;
+				return { result: currentData[provider] };
 			}
 
-			if (Date.now() < cred.expires) {
-				return { result: { apiKey: provider.getApiKey(cred), newCredentials: cred } };
-			}
-
-			const oauthCreds: Record<string, OAuthCredentials> = {};
-			for (const [key, value] of Object.entries(currentData)) {
-				if (value.type === "oauth") {
-					oauthCreds[key] = value;
-				}
-			}
-
-			const refreshed = await getOAuthApiKey(providerId, oauthCreds);
-			if (!refreshed) {
-				return { result: null };
-			}
-
-			const merged: AuthStorageData = {
-				...currentData,
-				[providerId]: { type: "oauth", ...refreshed.newCredentials },
-			};
+			const merged: AuthStorageData = { ...currentData, [provider]: next };
 			this.data = merged;
-			this.loadError = null;
-			return { result: refreshed, next: JSON.stringify(merged, null, 2) };
+			return { result: next, next: JSON.stringify(merged, null, 2) };
 		});
-
-		return result;
 	}
 
-	/**
-	 * Get API key for a provider.
-	 * Priority:
-	 * 1. Runtime override (CLI --api-key)
-	 * 2. API key from auth.json
-	 * 3. OAuth token from auth.json (auto-refreshed with locking)
-	 * 4. Environment variable
-	 */
-	async getApiKey(providerId: string, options: GetApiKeyOptions = {}): Promise<string | undefined> {
-		// Runtime override takes highest priority
-		const runtimeKey = this.runtimeOverrides.get(providerId);
-		if (runtimeKey) {
-			return runtimeKey;
-		}
+	async delete(provider: string): Promise<void> {
+		await this.storage.withLockAsync(async (content) => {
+			const currentData = this.parseStorageData(content);
+			delete currentData[provider];
+			this.data = currentData;
+			return { result: undefined, next: JSON.stringify(currentData, null, 2) };
+		});
+	}
 
-		const cred = this.data[providerId];
+	/** List credential metadata without resolving configured key values. */
+	async list(): Promise<readonly CredentialInfo[]> {
+		return Object.entries(this.data).map(([providerId, credential]) => ({ providerId, type: credential.type }));
+	}
 
-		if (cred?.type === "api_key") {
-			return resolveConfigValue(cred.key, cred.env);
-		}
+	// ═════════════════════════════════════════════════════════════════
+	// mya fork: backward-compat shims for pre-0.80.10 test/internal callers
+	// (upstream 0.80.10 replaced these with read/modify/delete/list + RuntimeCredentials).
+	// These delegate to the new CredentialStore API. Marked for removal once
+	// callers and tests migrate.
+	// ═════════════════════════════════════════════════════════════════
 
-		if (cred?.type === "oauth") {
-			const provider = getOAuthProvider(providerId);
-			if (!provider) {
-				// Unknown OAuth provider, can't get API key
-				return undefined;
-			}
+	/** Shim for old `getApiKey(provider)`: returns the api_key string or undefined.
+	 * Synchronous for the cached in-memory case; older tests called without await. */
+	getApiKey(provider: string): string | undefined {
+		// mya fork: runtime override takes priority over stored credential
+		const override = this.runtimeOverrides.get(provider);
+		if (override !== undefined) return override;
+		const c = this.data[provider];
+		if (!c || c.type !== "api_key") return undefined;
+		if (c.key === undefined) return undefined;
+		// Resolve $VAR / !cmd references via resolveConfigValue (sync wrapper)
+		return resolveConfigValue(c.key, c.env);
+	}
 
-			// Check if token needs refresh
-			const needsRefresh = Date.now() >= cred.expires;
+	/** Shim for old `getAuthStatus(provider)`: returns { configured, source }. Sync. */
+	getAuthStatus(provider: string): { configured: boolean; source?: string } {
+		const c = this.data[provider];
+		if (!c) return { configured: false };
+		const source = c.type === "api_key" ? (c.env ? "env" : "stored") : "stored";
+		return { configured: true, source };
+	}
 
-			if (needsRefresh) {
-				// Use locked refresh to prevent race conditions
-				try {
-					const result = await this.refreshOAuthTokenWithLock(providerId);
-					if (result) {
-						return result.apiKey;
-					}
-				} catch (error) {
-					this.recordError(error);
-					// Refresh failed - re-read file to check if another instance succeeded
-					this.reload();
-					const updatedCred = this.data[providerId];
+	/** Shim for old `set(provider, credential)`: write via modify(). */
+	async set(provider: string, credential: Credential): Promise<void> {
+		await this.modify(provider, async () => credential);
+	}
 
-					if (updatedCred?.type === "oauth" && Date.now() < updatedCred.expires) {
-						// Another instance refreshed successfully, use those credentials
-						return provider.getApiKey(updatedCred);
-					}
+	/** Shim for old `has(provider)`: sync — checks in-memory data. */
+	has(provider: string): boolean {
+		return this.data[provider] !== undefined;
+	}
 
-					// Refresh truly failed - return undefined so model discovery skips this provider
-					// User can /login to re-authenticate (credentials preserved for retry)
-					return undefined;
-				}
-			} else {
-				// Token not expired, use current access token
-				return provider.getApiKey(cred);
-			}
-		}
+	/** Shim for old `get(provider)`: sync — returns cached credential. */
+	get(provider: string): Credential | undefined {
+		return this.data[provider];
+	}
 
-		if (options.includeFallback === false) return undefined;
+	/** Shim for old `remove(provider)`: alias for delete(). */
+	async remove(provider: string): Promise<void> {
+		return this.delete(provider);
+	}
 
-		// Fall back to environment variable
-		const envKey = getEnvApiKey(providerId);
-		if (envKey) return envKey;
+	/** Shim for old `getProviderEnv(provider)`: sync — returns credential.env if api_key. */
+	getProviderEnv(provider: string): Record<string, string> | undefined {
+		const c = this.data[provider];
+		if (c?.type !== "api_key") return undefined;
+		return c.env;
+	}
 
+	/** Shim for old `drainErrors()`: AuthStorage doesn't buffer errors in 0.80.10 — return []. */
+	drainErrors(): Array<{ scope: string; error: Error }> {
+		return [];
+	}
+
+	/** Shim for old `setRuntimeApiKey(provider, apiKey)`: mirror RuntimeCredentials semantics
+	 * (in-memory override, doesn't touch disk-stored credential). */
+	async setRuntimeApiKey(provider: string, apiKey: string): Promise<void> {
+		this.runtimeOverrides.set(provider, apiKey);
+	}
+
+	/** Shim for old `removeRuntimeApiKey(provider)`. */
+	async removeRuntimeApiKey(provider: string): Promise<void> {
+		this.runtimeOverrides.delete(provider);
+	}
+}
+
+/**
+ * One-off synchronous read of a stored credential from an auth.json file,
+ * without instantiating a store or resolving configured key values.
+ */
+export function readStoredCredential(
+	providerId: string,
+	authPath: string = join(getAgentDir(), "auth.json"),
+): Credential | undefined {
+	try {
+		const data = JSON.parse(readFileSync(normalizePath(authPath), "utf-8")) as AuthStorageData;
+		return data[providerId];
+	} catch {
 		return undefined;
-	}
-
-	/**
-	 * Get all registered OAuth providers
-	 */
-	getOAuthProviders() {
-		return getOAuthProviders();
 	}
 }

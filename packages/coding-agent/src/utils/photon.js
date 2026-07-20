@@ -118,3 +118,4 @@ export async function loadPhoton() {
     })();
     return loadPromise;
 }
+//# sourceMappingURL=photon.js.map

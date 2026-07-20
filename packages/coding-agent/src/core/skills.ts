@@ -324,44 +324,25 @@ function loadSkillFromFile(
 	}
 }
 
-/** Max chars of skill description shipped in the system prompt. */
-const PROMPT_DESCRIPTION_MAX_CHARS = 80;
-
 /**
- * Compact a skill description for the system prompt:
- *   - take the first sentence (split on `.` or `?` or `!` followed by whitespace/end)
- *   - trim whitespace
- *   - if still > PROMPT_DESCRIPTION_MAX_CHARS, hard-truncate with an ellipsis
+ * Format skills for inclusion in a system prompt.
+ * Uses XML format per Agent Skills standard.
+ * See: https://agentskills.io/integrate-skills
  *
- * Full description is still on the Skill object; the model reads SKILL.md
- * for the long version.
+ * Skills with disableModelInvocation=true are excluded from the prompt
+ * (they can only be invoked explicitly via /skill:name commands).
  */
 // mya fork: compact skill descriptions to ≤80 chars + elide <location> tag for slimmer prompt
+const PROMPT_DESCRIPTION_MAX_CHARS = 80;
+
 function compactDescription(description: string): string {
 	const trimmed = description.trim();
-	// Match first sentence boundary: . ? ! followed by whitespace or end-of-string.
 	const match = trimmed.match(/^[^.!?]+[.!?]?(?=\s|$)/);
 	const first = (match ? match[0] : trimmed).trim();
 	if (first.length <= PROMPT_DESCRIPTION_MAX_CHARS) return first;
 	return first.slice(0, PROMPT_DESCRIPTION_MAX_CHARS - 1).trimEnd() + "…";
 }
 
-/**
- * Format skills for inclusion in a system prompt.
- *
- * Uses a slimmed variant of the Agent Skills XML format
- * (https://agentskills.io/integrate-skills):
- *   - <location> is elided — the model resolves paths on first use
- *     (convention: ~/.agents/skills/<name>/SKILL.md, or project-local skills dir)
- *   - <description> is compacted to ≤80 chars (first sentence + ellipsis)
- *
- * Rationale: this block ships every turn; on a session with 40+ skills the
- * full name+description+location trio costs ~5 KB of prefill. The model only
- * needs enough to decide whether to read SKILL.md — the rest is wasted.
- *
- * Skills with disableModelInvocation=true are excluded from the prompt
- * (they can only be invoked explicitly via /skill:name commands).
- */
 export function formatSkillsForPrompt(skills: Skill[]): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
 
@@ -372,7 +353,8 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
 	const lines = [
 		"\n\nThe following skills provide specialized instructions for specific tasks.",
 		"Use the read tool to load a skill's file when the task matches its description.",
-		"Skill files live under ~/.agents/skills/<name>/SKILL.md (or the project-local skills dir); resolve any relative paths in a skill file against that skill's directory.",
+		// mya fork: skill path comes from MYA_SKILL_SOURCE (defaults to ~/.mya/agent/skills)
+		`Skill files live under ${process.env["MYA_SKILL_SOURCE"] || "~/.mya/agent/skills"}/<name>/SKILL.md (or the project-local skills dir); resolve any relative paths in a skill file against that skill's directory.`,
 		"",
 		"<available_skills>",
 	];

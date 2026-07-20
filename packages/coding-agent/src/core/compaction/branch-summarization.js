@@ -246,3 +246,4 @@ export async function generateBranchSummary(entries, options) {
         modifiedFiles,
     };
 }
+//# sourceMappingURL=branch-summarization.js.map

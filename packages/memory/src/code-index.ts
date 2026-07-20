@@ -30,6 +30,7 @@ import { openDB, type SqliteDatabase } from "./sqlite-db.js";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import { readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
+import { nowWallclock } from "@my-agent/core";
 
 const DEFAULT_DB_PATH = join(homedir(), ".mya", "code-index.db");
 const CHUNK_CHARS = 2000;
@@ -161,7 +162,7 @@ export async function indexCodebase(
   opts: { timeBudgetMs?: number } = {},
 ): Promise<IndexStats> {
   if (embeddingsDisabled()) return { filesIndexed: 0, filesSkipped: 0, chunksEmbedded: 0 };
-  const deadline = opts.timeBudgetMs !== undefined ? Date.now() + opts.timeBudgetMs : undefined;
+  const deadline = opts.timeBudgetMs !== undefined ? nowWallclock() + opts.timeBudgetMs : undefined;
   const d = db();
   const stats: IndexStats = { filesIndexed: 0, filesSkipped: 0, chunksEmbedded: 0 };
   const selMtime = d.prepare("SELECT mtime FROM code_chunks WHERE file_path = ? LIMIT 1");
@@ -170,7 +171,7 @@ export async function indexCodebase(
     "INSERT INTO code_chunks (file_path, start_line, end_line, content, embedding, mtime) VALUES (?, ?, ?, ?, ?, ?)",
   );
   for (const abs of walkSource(root)) {
-    if (deadline !== undefined && Date.now() > deadline) {
+    if (deadline !== undefined && nowWallclock() > deadline) {
       stats.moreRemain = true;
       break;
     }
@@ -189,7 +190,7 @@ export async function indexCodebase(
       // Check the deadline per-CHUNK (not per-file): a single large file (up to
       // MAX_FILE_BYTES ≈ 500 chunks) could otherwise run for many minutes before
       // the between-files check fires.
-      if (deadline !== undefined && Date.now() > deadline) { stats.moreRemain = true; hitDeadline = true; break; }
+      if (deadline !== undefined && nowWallclock() > deadline) { stats.moreRemain = true; hitDeadline = true; break; }
       try {
         const vec = await embedContent(ch.text);
         ins.run(abs, ch.startLine, ch.endLine, ch.text, vec ? vecToBuffer(vec) : null, mtime);

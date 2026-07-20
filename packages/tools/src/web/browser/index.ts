@@ -32,7 +32,7 @@
  *
  * Constraints: TS strict + noUncheckedIndexedAccess + ESM.
  */
-import type { Mode, ToolResult } from "@my-agent/core";
+import { type Mode, type ToolResult, nowWallclock } from "@my-agent/core";
 import { ok, err, isRecord, type ToolImpl } from "../../registry.js";
 import { checkUrl, checkUrlAsync, checkRedirectAsync, detectBot } from "../security-guard.js";
 import {
@@ -213,7 +213,7 @@ async function ensureCloudCdpUrl(
   const cached = cloudSessionCache.get(taskId);
   if (cached) {
     const ttlMs = envCfg?.cloudSessionTtlMs ?? DEFAULT_CLOUD_SESSION_TTL_MS;
-    const ageMs = Date.now() - cached.createdAt;
+    const ageMs = nowWallclock() - cached.createdAt;
     if (ageMs < ttlMs) {
       return {
         ok: true,
@@ -234,7 +234,7 @@ async function ensureCloudCdpUrl(
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
-  cloudSessionCache.set(taskId, { meta: result.session, createdAt: Date.now() });
+  cloudSessionCache.set(taskId, { meta: result.session, createdAt: nowWallclock() });
   trimCache(cloudSessionCache);
   return {
     ok: true,
@@ -997,6 +997,69 @@ export const browserScreenshotTool: ToolImpl = {
   },
 };
 
+// ─── browser_vision (A5 fix: screenshot + vision analysis) ─────────────────
+
+export const browserVisionTool: ToolImpl = {
+  meta: {
+    name: "browser_vision",
+    args: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Browser session/task id" },
+        question: {
+          type: "string",
+          description: "What to analyze about the current page (e.g. 'What buttons are visible?' or 'Read the error message').",
+        },
+      },
+      required: ["question"],
+    },
+    requiredMode: PROMPT,
+  },
+  async run(args, _ctx): Promise<ToolResult> {
+    const argsObj = isRecord(args) ? args : {};
+    const taskId = extractTaskId(argsObj);
+    const question = typeof argsObj.question === "string" ? argsObj.question : "Describe this page.";
+    try {
+      const engineResult = resolveEffectiveEngine(taskId, undefined, argsObj);
+      if (!engineResult.resolved) {
+        return err("browser_vision", "no browser engine available");
+      }
+      const { effective, envCfg } = engineResult;
+
+      // Capture screenshot via the same path as browser_screenshot
+      let imageBase64 = "";
+      if (effective.engine === "camofox") {
+        const cfg = buildCamofoxConfig(effective, envCfg);
+        const sessResult = await getOrCreateCamofoxSession(taskId, cfg);
+        if (!sessResult.ok) return err("browser_vision", sessResult.error);
+        const result = await camofoxScreenshot(sessResult.session, cfg);
+        if (!result.ok) return err("browser_vision", result.error ?? "camofox screenshot failed");
+        imageBase64 = result.data?.base64 ?? "";
+      } else {
+        const result = await runForTask(taskId, effective, "screenshot", []);
+        if (!result.ok) return err("browser_vision", result.error ?? "screenshot failed");
+        imageBase64 = result.data?.screenshot ?? "";
+      }
+
+      if (!imageBase64) {
+        return err("browser_vision", "screenshot returned empty image");
+      }
+
+      // Return image + question for vision-capable models. The agent loop
+      // passes imageBase64 as an image content block when the model supports
+      // vision (GPT-4o, Claude 3.5, Minimax-M3, etc.).
+      return ok("browser_vision", {
+        imageBase64,
+        question,
+        instruction: `Analyze the screenshot and answer: ${question}`,
+        engine: effective.engine,
+      });
+    } catch (e) {
+      return err("browser_vision", e instanceof Error ? e.message : String(e));
+    }
+  },
+};
+
 // ─── browser_close (Bug B fix) ─────────────────────────────────────────────────
 
 /** Explicit close tool — invokes {@link clearSessionCache} on demand. The model
@@ -1125,7 +1188,7 @@ export async function browserSearch(
   query: string,
   opts?: { engineUrl?: string; taskId?: string; maxResults?: number },
 ): Promise<{ results: { title: string; url?: string }[]; engine: string; query: string; serpLen: number }> {
-  const taskId = opts?.taskId ?? `search-${Date.now()}`;
+  const taskId = opts?.taskId ?? `search-${nowWallclock()}`;
   const engineUrl = opts?.engineUrl ?? "https://duckduckgo.com/";
   // URL-based search: navigate directly to engine?q=<query> (DDG/Bing/Google support ?q=).
   // Faster than type+submit AND works on Camofox, whose a11y tree assigns NO ref to
@@ -1186,6 +1249,7 @@ export const browserTools: ToolImpl[] = [
   browserBackTool,
   browserPressTool,
   browserScreenshotTool,
+  browserVisionTool,
   browserCloseTool,
   browserSearchTool,
 ];
@@ -1214,6 +1278,10 @@ export const BROWSER_DESCRIPTIONS: Record<string, string> = {
   browser_back: "Browser back button.",
   browser_press: "Press a keyboard key (e.g. Enter, Tab, Escape).",
   browser_screenshot: "Take a screenshot of the current page.",
+  browser_vision:
+    "Capture a screenshot and analyze it with vision. Provide a 'question' describing what to look for " +
+    "(e.g. 'What error messages are visible?' or 'Describe the layout'). Returns the screenshot as base64 " +
+    "plus a vision-analysis prompt. Works with vision-capable models (GPT-4o, Claude 3.5, Minimax-M3).",
   browser_close:
     "Explicitly close all browser sessions and clear the session cache. Releases " +
     "remote Camofox sessions (DELETE /sessions/{userId}) and tears down local " +

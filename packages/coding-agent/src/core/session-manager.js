@@ -1259,3 +1259,4 @@ export class SessionManager {
         }
     }
 }
+//# sourceMappingURL=session-manager.js.map

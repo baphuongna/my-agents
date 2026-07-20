@@ -1,18 +1,12 @@
 /**
  * System prompt construction and project context loading
  */
-import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";
+import { getDocsPath, getExamplesPath, getReadmePath, APP_NAME, APP_TITLE } from "../config.ts";
 import { formatSkillsForPrompt } from "./skills.ts";
 /** Build the system prompt with tools, guidelines, and context */
 export function buildSystemPrompt(options) {
     const { customPrompt, selectedTools, toolSnippets, promptGuidelines, appendSystemPrompt, cwd, contextFiles: providedContextFiles, skills: providedSkills, } = options;
-    const resolvedCwd = cwd;
-    const promptCwd = resolvedCwd.replace(/\\/g, "/");
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const date = `${year}-${month}-${day}`;
+    const promptCwd = cwd.replace(/\\/g, "/");
     const appendSection = appendSystemPrompt ? `\n\n${appendSystemPrompt}` : "";
     const contextFiles = providedContextFiles ?? [];
     const skills = providedSkills ?? [];
@@ -35,8 +29,6 @@ export function buildSystemPrompt(options) {
         if (customPromptHasRead && skills.length > 0) {
             prompt += formatSkillsForPrompt(skills);
         }
-        // Add date and working directory last
-        prompt += `\nCurrent date: ${date}`;
         prompt += `\nCurrent working directory: ${promptCwd}`;
         return prompt;
     }
@@ -78,15 +70,24 @@ export function buildSystemPrompt(options) {
     addGuideline("Be concise in your responses");
     addGuideline("Show file paths clearly when working with files");
     const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
-    let prompt = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+    let prompt = `You are an expert coding assistant operating inside ${APP_NAME}, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
 Available tools:
 ${toolsList}
 
+In addition to the tools above, you may have access to other custom tools depending on the project.
+
 Guidelines:
 ${guidelines}
 
-Pi docs (only when working on pi): ${docsPath}/, ${examplesPath}/, ${readmePath}`;
+${APP_TITLE} documentation (read only when the user asks about ${APP_NAME} itself, its SDK, extensions, themes, skills, or TUI):
+- Main documentation: ${readmePath}
+- Additional docs: ${docsPath}
+- Examples: ${examplesPath} (extensions, custom tools, SDK)
+- When reading ${APP_NAME} docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
+- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), ${APP_NAME} packages (docs/packages.md)
+- When working on ${APP_NAME} topics, read the docs and examples, and follow .md cross-references before implementing
+- Always read ${APP_NAME} .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
     if (appendSection) {
         prompt += appendSection;
     }
@@ -103,8 +104,7 @@ Pi docs (only when working on pi): ${docsPath}/, ${examplesPath}/, ${readmePath}
     if (hasRead && skills.length > 0) {
         prompt += formatSkillsForPrompt(skills);
     }
-    // Add date and working directory last
-    prompt += `\nCurrent date: ${date}`;
     prompt += `\nCurrent working directory: ${promptCwd}`;
     return prompt;
 }
+//# sourceMappingURL=system-prompt.js.map

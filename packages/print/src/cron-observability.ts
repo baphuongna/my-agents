@@ -9,6 +9,7 @@ import Database from "better-sqlite3";
 import { writeFileSync, mkdirSync, statSync, openSync, closeSync, fsyncSync, renameSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { nowWallclock } from "@my-agent/core";
 
 // Paths are computed lazily (not at module load) so tests overriding $HOME get a
 // fresh path per test (ESM caches the module namespace, not these calls).
@@ -104,14 +105,14 @@ function writeEpoch(path: string, epochMs: number): void {
 
 /** Called at the top of every cron sweep (alive marker). */
 export function recordHeartbeat(): void {
-  writeEpoch(heartbeatFile(), Date.now());
+  writeEpoch(heartbeatFile(), nowWallclock());
 }
 
 /** Called after a clean sweep. NOTE: "success" means the sweep LOOP completed
  * without crashing — NOT that every job succeeded (a job can fail while the
  * ticker is healthy; check run history for per-job outcomes). */
 export function recordHeartbeatSuccess(): void {
-  writeEpoch(successFile(), Date.now());
+  writeEpoch(successFile(), nowWallclock());
 }
 
 /** Heartbeat freshness for `mya cron status` / monitoring. Returns ages in ms
@@ -119,7 +120,7 @@ export function recordHeartbeatSuccess(): void {
  * alive-but-failing ticker. */
 export function heartbeatAge(): { heartbeatAgeMs?: number; successAgeMs?: number } {
   const age = (p: string): number | undefined => {
-    try { return Date.now() - statSync(p).mtimeMs; } catch { return undefined; }
+    try { return nowWallclock() - statSync(p).mtimeMs; } catch { return undefined; }
   };
   return { heartbeatAgeMs: age(heartbeatFile()), successAgeMs: age(successFile()) };
 }

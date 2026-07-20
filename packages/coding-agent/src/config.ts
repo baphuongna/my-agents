@@ -486,10 +486,9 @@ try {
 
 const piConfigName: string | undefined = pkg.piConfig?.name;
 export const PACKAGE_NAME: string = pkg.name || "@my-agent/coding-agent";
-// mya fork: branding constants (pi uses "pi" / ".pi")
-export const APP_NAME: string = "mya";
-export const APP_TITLE: string = "mya";
-export const CONFIG_DIR_NAME: string = ".mya";
+export const APP_NAME: string = piConfigName || "pi";
+export const APP_TITLE: string = piConfigName ? APP_NAME : "π";
+export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".pi";
 export const VERSION: string = pkg.version || "0.0.0";
 
 // e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR

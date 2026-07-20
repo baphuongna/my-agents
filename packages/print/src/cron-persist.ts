@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { nowWallclock } from "@my-agent/core";
 
 export const CRON_DIR = join(homedir(), ".mya", "agent");
 export const CRON_FILE = join(CRON_DIR, "cron.json");
@@ -73,7 +74,7 @@ export function atomicWriteJobs(jobs: CronFileJob[], path = CRON_FILE): void {
   mkdirSync(CRON_DIR, { recursive: true, mode: 0o700 });
   try { chmodSync(CRON_DIR, 0o700); } catch { /* best-effort */ }
   const dir = dirname(path);
-  const tmp = join(dir, `.cron.${process.pid}.${Date.now()}.tmp`);
+  const tmp = join(dir, `.cron.${process.pid}.${nowWallclock()}.tmp`);
   try {
     // flag "wx" = O_CREAT|O_EXCL: fails (EEXIST) if tmp exists, incl. as a
     // symlink → blocks a pre-planted symlink redirecting the write. mode 0600

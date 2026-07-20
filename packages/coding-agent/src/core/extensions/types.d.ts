@@ -8,7 +8,7 @@
  * - Interact with the user via UI primitives
  */
 import type { AgentMessage, AgentToolResult, AgentToolUpdateCallback, ThinkingLevel, ToolExecutionMode } from "@my-agent/pi-agent-core";
-import type { Api, AssistantMessageEvent, AssistantMessageEventStream, Context, ImageContent, Model, OAuthCredentials, OAuthLoginCallbacks, ProviderHeaders, SimpleStreamOptions, TextContent, ToolResultMessage } from "@my-agent/pi-ai";
+import type { Api, AssistantMessageEvent, AssistantMessageEventStream, Context, ImageContent, Model, OAuthCredentials, OAuthLoginCallbacks, ProviderHeaders, RefreshModelsContext, SimpleStreamOptions, TextContent, ToolResultMessage } from "@my-agent/pi-ai";
 import type { AutocompleteItem, AutocompleteProvider, Component, EditorComponent, EditorTheme, KeyId, OverlayHandle, OverlayOptions, TUI } from "@my-agent/tui";
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
@@ -1015,17 +1015,24 @@ export interface ProviderConfig {
     authHeader?: boolean;
     /** Models to register. If provided, replaces all existing models for this provider. */
     models?: ProviderModelConfig[];
+    /**
+     * Refresh this provider's model list. The returned list replaces extension-provided models.
+     * Use context.store explicitly when the catalog should persist across sessions.
+     */
+    refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;
     /** OAuth provider for /login support. The `id` is set automatically from the provider name. */
     oauth?: {
         /** Display name for the provider in login UI. */
         name: string;
+        /** @deprecated Retained for source compatibility; canonical auth flows ignore it. */
+        usesCallbackServer?: boolean;
         /** Run the login flow, return credentials to persist. */
         login(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials>;
         /** Refresh expired credentials, return updated credentials to persist. */
         refreshToken(credentials: OAuthCredentials): Promise<OAuthCredentials>;
         /** Convert credentials to API key string for the provider. */
         getApiKey(credentials: OAuthCredentials): string;
-        /** Optional: modify models for this provider (e.g., update baseUrl based on credentials). */
+        /** Legacy synchronous credential-dependent model projection. */
         modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];
     };
 }

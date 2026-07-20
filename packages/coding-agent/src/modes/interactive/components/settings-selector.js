@@ -590,3 +590,4 @@ export class SettingsSelectorComponent extends Container {
         return this.settingsList;
     }
 }
+//# sourceMappingURL=settings-selector.js.map

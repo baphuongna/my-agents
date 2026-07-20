@@ -23,7 +23,6 @@ export interface AppKeybindings {
 	"app.thinking.toggle": true;
 	"app.session.toggleNamedFilter": true;
 	"app.editor.external": true;
-	// mya fork: message copy + followUp keybindings
 	"app.message.copy": true;
 	"app.message.followUp": true;
 	"app.message.dequeue": true;

@@ -85,12 +85,10 @@ export interface Settings {
 	defaultProvider?: string;
 	defaultModel?: string;
 	defaultThinkingLevel?: ThinkingLevel;
-	/** Path to a file containing a custom system prompt, or the prompt text itself. */
-	systemPrompt?: string;
-	/** Path(s) to append-system-prompt files, or the append text(s) themselves. */
-	appendSystemPrompt?: string | string[];
 	transport?: TransportSetting; // default: "auto"
 	steeringMode?: "all" | "one-at-a-time";
+	systemPrompt?: string; // mya fork: slim-prompt system prompt override
+	appendSystemPrompt?: string | string[]; // mya fork: append to system prompt
 	followUpMode?: "all" | "one-at-a-time";
 	theme?: string;
 	compaction?: CompactionSettings;

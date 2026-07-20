@@ -42,3 +42,4 @@ export function isLsToolResult(e) {
 export function isToolCallEventType(toolName, event) {
     return event.toolName === toolName;
 }
+//# sourceMappingURL=types.js.map

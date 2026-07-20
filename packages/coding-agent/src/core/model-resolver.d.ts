@@ -3,7 +3,7 @@
  */
 import type { ThinkingLevel } from "@my-agent/pi-agent-core";
 import { type Api, type KnownProvider, type Model } from "@my-agent/pi-ai";
-import type { ModelRegistry } from "./model-registry.ts";
+import type { ModelRuntime } from "./model-runtime.ts";
 /** Default model IDs for each known provider */
 export declare const defaultModelPerProvider: Record<KnownProvider, string>;
 export interface ScopedModel {
@@ -59,8 +59,8 @@ export interface ResolveModelScopeResult {
     scopedModels: ScopedModel[];
     diagnostics: ModelScopeDiagnostic[];
 }
-export declare function resolveModelScopeWithDiagnostics(patterns: string[], modelRegistry: ModelRegistry): Promise<ResolveModelScopeResult>;
-export declare function resolveModelScope(patterns: string[], modelRegistry: ModelRegistry): Promise<ScopedModel[]>;
+export declare function resolveModelScopeWithDiagnostics(patterns: string[], modelRuntime: ModelRuntime): Promise<ResolveModelScopeResult>;
+export declare function resolveModelScope(patterns: string[], modelRuntime: ModelRuntime): Promise<ScopedModel[]>;
 export interface ResolveCliModelResult {
     model: Model<Api> | undefined;
     thinkingLevel?: ThinkingLevel;
@@ -86,7 +86,7 @@ export declare function resolveCliModel(options: {
     cliProvider?: string;
     cliModel?: string;
     cliThinking?: ThinkingLevel;
-    modelRegistry: ModelRegistry;
+    modelRuntime: ModelRuntime;
 }): ResolveCliModelResult;
 export interface InitialModelResult {
     model: Model<Api> | undefined;
@@ -109,12 +109,12 @@ export declare function findInitialModel(options: {
     defaultProvider?: string;
     defaultModelId?: string;
     defaultThinkingLevel?: ThinkingLevel;
-    modelRegistry: ModelRegistry;
+    modelRuntime: ModelRuntime;
 }): Promise<InitialModelResult>;
 /**
  * Restore model from session, with fallback to available models
  */
-export declare function restoreModelFromSession(savedProvider: string, savedModelId: string, currentModel: Model<Api> | undefined, shouldPrintMessages: boolean, modelRegistry: ModelRegistry): Promise<{
+export declare function restoreModelFromSession(savedProvider: string, savedModelId: string, currentModel: Model<Api> | undefined, shouldPrintMessages: boolean, modelRuntime: ModelRuntime): Promise<{
     model: Model<Api> | undefined;
     fallbackMessage: string | undefined;
 }>;

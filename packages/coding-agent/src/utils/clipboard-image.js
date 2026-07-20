@@ -242,3 +242,4 @@ export async function readClipboardImage(options) {
     }
     return image;
 }
+//# sourceMappingURL=clipboard-image.js.map

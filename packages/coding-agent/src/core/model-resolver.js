@@ -14,6 +14,7 @@ export const defaultModelPerProvider = {
     openai: "gpt-5.5",
     "azure-openai-responses": "gpt-5.4",
     "openai-codex": "gpt-5.5",
+    radius: "auto",
     nvidia: "nvidia/nemotron-3-super-120b-a12b",
     deepseek: "deepseek-v4-pro",
     google: "gemini-3.1-pro-preview",
@@ -21,7 +22,7 @@ export const defaultModelPerProvider = {
     "github-copilot": "gpt-5.4",
     openrouter: "moonshotai/kimi-k2.6",
     "vercel-ai-gateway": "zai/glm-5.1",
-    xai: "grok-4.20-0309-reasoning",
+    xai: "grok-4.5",
     groq: "openai/gpt-oss-120b",
     cerebras: "zai-glm-4.7",
     zai: "glm-5.1",
@@ -195,8 +196,8 @@ export function parseModelPattern(pattern, availableModels, options) {
         return result;
     }
 }
-export async function resolveModelScopeWithDiagnostics(patterns, modelRegistry) {
-    const availableModels = await modelRegistry.getAvailable();
+export async function resolveModelScopeWithDiagnostics(patterns, modelRuntime) {
+    const availableModels = [...(await modelRuntime.getAvailable())];
     const scopedModels = [];
     const diagnostics = [];
     for (const pattern of patterns) {
@@ -245,8 +246,8 @@ export async function resolveModelScopeWithDiagnostics(patterns, modelRegistry) 
     }
     return { scopedModels, diagnostics };
 }
-export async function resolveModelScope(patterns, modelRegistry) {
-    const { scopedModels, diagnostics } = await resolveModelScopeWithDiagnostics(patterns, modelRegistry);
+export async function resolveModelScope(patterns, modelRuntime) {
+    const { scopedModels, diagnostics } = await resolveModelScopeWithDiagnostics(patterns, modelRuntime);
     for (const diagnostic of diagnostics) {
         console.warn(chalk.yellow(`Warning: ${diagnostic.message}`));
     }
@@ -264,13 +265,13 @@ export async function resolveModelScope(patterns, modelRegistry) {
  * return a thinking level from "<pattern>:<thinking>" so the caller can apply it.
  */
 export function resolveCliModel(options) {
-    const { cliProvider, cliModel, cliThinking, modelRegistry } = options;
+    const { cliProvider, cliModel, cliThinking, modelRuntime } = options;
     if (!cliModel) {
         return { model: undefined, warning: undefined, error: undefined };
     }
     // Important: use *all* models here, not just models with pre-configured auth.
     // This allows "--api-key" to be used for first-time setup.
-    const availableModels = modelRegistry.getAll();
+    const availableModels = [...modelRuntime.getModels()];
     if (availableModels.length === 0) {
         return {
             model: undefined,
@@ -338,8 +339,8 @@ export function resolveCliModel(options) {
         // commandcode model id "xiaomi/mimo-v2.5-pro").
         if (inferredProvider) {
             const rawExactMatches = availableModels.filter((m) => m.id.toLowerCase() === cliModel.toLowerCase() && !modelsAreEqual(m, model));
-            if (rawExactMatches.length > 0 && !modelRegistry.hasConfiguredAuth(model)) {
-                const authenticatedRawMatches = rawExactMatches.filter((m) => modelRegistry.hasConfiguredAuth(m));
+            if (rawExactMatches.length > 0 && !modelRuntime.hasConfiguredAuth(model.provider)) {
+                const authenticatedRawMatches = rawExactMatches.filter((m) => modelRuntime.hasConfiguredAuth(m.provider));
                 if (authenticatedRawMatches.length === 1) {
                     return {
                         model: authenticatedRawMatches[0],
@@ -418,7 +419,7 @@ export function resolveCliModel(options) {
  * 5. First available model with valid API key
  */
 export async function findInitialModel(options) {
-    const { cliProvider, cliModel, scopedModels, isContinuing, defaultProvider, defaultModelId, defaultThinkingLevel, modelRegistry, } = options;
+    const { cliProvider, cliModel, scopedModels, isContinuing, defaultProvider, defaultModelId, defaultThinkingLevel, modelRuntime, } = options;
     let model;
     let thinkingLevel = DEFAULT_THINKING_LEVEL;
     // 1. CLI args take priority
@@ -426,7 +427,7 @@ export async function findInitialModel(options) {
         const resolved = resolveCliModel({
             cliProvider,
             cliModel,
-            modelRegistry,
+            modelRuntime,
         });
         if (resolved.error) {
             console.error(chalk.red(resolved.error));
@@ -446,8 +447,8 @@ export async function findInitialModel(options) {
     }
     // 3. Try saved default from settings if auth is configured.
     if (defaultProvider && defaultModelId) {
-        const found = modelRegistry.find(defaultProvider, defaultModelId);
-        if (found && modelRegistry.hasConfiguredAuth(found)) {
+        const found = modelRuntime.getModel(defaultProvider, defaultModelId);
+        if (found && modelRuntime.hasConfiguredAuth(found.provider)) {
             model = found;
             if (defaultThinkingLevel) {
                 thinkingLevel = defaultThinkingLevel;
@@ -456,7 +457,7 @@ export async function findInitialModel(options) {
         }
     }
     // 4. Try first available model with valid API key
-    const availableModels = await modelRegistry.getAvailable();
+    const availableModels = [...(await modelRuntime.getAvailable())];
     if (availableModels.length > 0) {
         // Try to find a default model from known providers
         for (const provider of Object.keys(defaultModelPerProvider)) {
@@ -475,10 +476,10 @@ export async function findInitialModel(options) {
 /**
  * Restore model from session, with fallback to available models
  */
-export async function restoreModelFromSession(savedProvider, savedModelId, currentModel, shouldPrintMessages, modelRegistry) {
-    const restoredModel = modelRegistry.find(savedProvider, savedModelId);
+export async function restoreModelFromSession(savedProvider, savedModelId, currentModel, shouldPrintMessages, modelRuntime) {
+    const restoredModel = modelRuntime.getModel(savedProvider, savedModelId);
     // Check if restored model exists and still has auth configured
-    const hasConfiguredAuth = restoredModel ? modelRegistry.hasConfiguredAuth(restoredModel) : false;
+    const hasConfiguredAuth = restoredModel ? modelRuntime.hasConfiguredAuth(restoredModel.provider) : false;
     if (restoredModel && hasConfiguredAuth) {
         if (shouldPrintMessages) {
             console.log(chalk.dim(`Restored model: ${savedProvider}/${savedModelId}`));
@@ -501,7 +502,7 @@ export async function restoreModelFromSession(savedProvider, savedModelId, curre
         };
     }
     // Try to find any available model
-    const availableModels = await modelRegistry.getAvailable();
+    const availableModels = [...(await modelRuntime.getAvailable())];
     if (availableModels.length > 0) {
         // Try to find a default model from known providers
         let fallbackModel;
@@ -528,3 +529,4 @@ export async function restoreModelFromSession(savedProvider, savedModelId, curre
     // No models available
     return { model: undefined, fallbackMessage: undefined };
 }
+//# sourceMappingURL=model-resolver.js.map

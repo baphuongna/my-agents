@@ -30,3 +30,4 @@ export function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0)
     const skippedCount = allVisualLines.length - maxVisualLines;
     return { visualLines: truncatedLines, skippedCount };
 }
+//# sourceMappingURL=visual-truncate.js.map

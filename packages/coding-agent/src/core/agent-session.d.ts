@@ -18,7 +18,7 @@ import { type BashResult } from "./bash-executor.ts";
 import { type CompactionResult } from "./compaction/index.ts";
 import { type ContextUsage, type ExtensionCommandContextActions, type ExtensionErrorListener, type ExtensionMode, ExtensionRunner, type ExtensionUIContext, type InputSource, type ReplacedSessionContext, type SessionStartEvent, type ShutdownHandler, type ToolDefinition, type ToolInfo } from "./extensions/index.ts";
 import type { CustomMessage } from "./messages.ts";
-import type { ModelRegistry } from "./model-registry.ts";
+import type { ModelRuntime } from "./model-runtime.ts";
 import { type PromptTemplate } from "./prompt-templates.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import type { BranchSummaryEntry, SessionEntry, SessionManager } from "./session-manager.ts";
@@ -96,8 +96,8 @@ export interface AgentSessionConfig {
     resourceLoader: ResourceLoader;
     /** SDK custom tools registered outside extensions */
     customTools?: ToolDefinition[];
-    /** Model registry for API key resolution and model discovery */
-    modelRegistry: ModelRegistry;
+    /** Canonical model/auth runtime used by coding-agent internals. */
+    modelRuntime: ModelRuntime;
     /** Initial active built-in tool names. Default: [read, bash, edit, write] */
     initialActiveToolNames?: string[];
     /** Optional allowlist of tool names. When provided, only these tool names are exposed. */
@@ -208,7 +208,7 @@ export declare class AgentSession {
     private _extensionShutdownHandler?;
     private _extensionErrorListener?;
     private _extensionErrorUnsubscriber?;
-    private _modelRegistry;
+    private _modelRuntime;
     private _toolRegistry;
     private _toolDefinitions;
     private _toolPromptSnippets;
@@ -217,10 +217,9 @@ export declare class AgentSession {
     private _baseSystemPromptOptions;
     private _systemPromptOverride?;
     constructor(config: AgentSessionConfig);
-    /** Model registry for API key resolution and model discovery */
-    get modelRegistry(): ModelRegistry;
+    get modelRuntime(): ModelRuntime;
     private _getRequiredRequestAuth;
-    private _getCompactionRequestAuth;
+    private _getSummarizationRequestAuth;
     /**
      * Install tool hooks once on the Agent instance.
      *

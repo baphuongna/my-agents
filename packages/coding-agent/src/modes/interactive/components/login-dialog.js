@@ -1,4 +1,3 @@
-import { getOAuthProviders } from "@my-agent/pi-ai/oauth";
 import { Container, getKeybindings, Input, Spacer, Text } from "@my-agent/tui";
 import { openBrowser } from "../../../utils/open-browser.ts";
 import { theme } from "../theme/theme.ts";
@@ -28,8 +27,7 @@ export class LoginDialogComponent extends Container {
         super();
         this.tui = tui;
         this.onComplete = onComplete;
-        const providerInfo = getOAuthProviders().find((p) => p.id === providerId);
-        const providerName = providerNameOverride || providerInfo?.name || providerId;
+        const providerName = providerNameOverride || providerId;
         const title = titleOverride ?? `Login to ${providerName}`;
         // Top border
         this.addChild(new DynamicBorder());
@@ -137,9 +135,7 @@ export class LoginDialogComponent extends Container {
             this.inputRejecter = reject;
         });
     }
-    /**
-     * Show informational text before another login step.
-     */
+    /** Show informational text before another login step. */
     showDetails(lines) {
         this.contentContainer.clear();
         this.contentContainer.addChild(new Spacer(1));
@@ -148,13 +144,19 @@ export class LoginDialogComponent extends Container {
         }
         this.tui.requestRender();
     }
-    /**
-     * Show informational text without prompting for input.
-     */
-    showInfo(lines) {
-        this.showDetails(lines);
+    /** Show provider-owned information and links without starting an auth callback flow. */
+    showInfo(message, links = [], showCloseHint = false) {
         this.contentContainer.addChild(new Spacer(1));
-        this.contentContainer.addChild(new Text(`(${keyHint("tui.select.cancel", "to close")})`, 1, 0));
+        this.contentContainer.addChild(new Text(theme.fg("text", message), 1, 0));
+        for (const link of links) {
+            const text = link.label ? `${link.label}: ${link.url}` : link.url;
+            const hyperlink = `\x1b]8;;${link.url}\x07${text}\x1b]8;;\x07`;
+            this.contentContainer.addChild(new Text(theme.fg("accent", hyperlink), 1, 0));
+        }
+        if (showCloseHint) {
+            this.contentContainer.addChild(new Spacer(1));
+            this.contentContainer.addChild(new Text(`(${keyHint("tui.select.cancel", "to close")})`, 1, 0));
+        }
         this.tui.requestRender();
     }
     /**
@@ -183,3 +185,4 @@ export class LoginDialogComponent extends Container {
         this.input.handleInput(data);
     }
 }
+//# sourceMappingURL=login-dialog.js.map

@@ -1,9 +1,8 @@
 import { type ThinkingLevel } from "@my-agent/pi-agent-core";
 import { type Model } from "@my-agent/pi-ai/compat";
 import { AgentSession } from "./agent-session.ts";
-import { AuthStorage } from "./auth-storage.ts";
 import type { LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
-import { ModelRegistry } from "./model-registry.ts";
+import { ModelRuntime } from "./model-runtime.ts";
 import type { ResourceLoader } from "./resource-loader.ts";
 import { SessionManager } from "./session-manager.ts";
 import { SettingsManager } from "./settings-manager.ts";
@@ -13,10 +12,8 @@ export interface CreateAgentSessionOptions {
     cwd?: string;
     /** Global config directory. Default: ~/.pi/agent */
     agentDir?: string;
-    /** Auth storage for credentials. Default: AuthStorage.create(agentDir/auth.json) */
-    authStorage?: AuthStorage;
-    /** Model registry. Default: ModelRegistry.create(authStorage, agentDir/models.json) */
-    modelRegistry?: ModelRegistry;
+    /** Canonical model/auth runtime. Defaults to a runtime using agentDir/auth.json and models.json. */
+    modelRuntime?: ModelRuntime;
     /** Model to use. Default: from settings, else first available */
     model?: Model<any>;
     /** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
@@ -69,6 +66,7 @@ export type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Extension
 export type { PromptTemplate } from "./prompt-templates.ts";
 export type { Skill } from "./skills.ts";
 export type { Tool } from "./tools/index.ts";
+export type { AgentSession } from "./agent-session.ts";
 export { withFileMutationQueue, createCodingTools, createReadOnlyTools, createReadTool, createBashTool, createEditTool, createWriteTool, createGrepTool, createFindTool, createLsTool, };
 /**
  * Create an AgentSession with the specified options.
@@ -79,7 +77,7 @@ export { withFileMutationQueue, createCodingTools, createReadOnlyTools, createRe
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@my-agent/ai';
+ * import { getModel } from '@my-agent/pi-ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',

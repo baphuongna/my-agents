@@ -15,6 +15,8 @@
  * Constraints: TS strict + noUncheckedIndexedAccess + ESM; never throws.
  */
 
+import { nowWallclock } from "@my-agent/core";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /** Configuration for the Camofox REST client. */
@@ -165,12 +167,12 @@ export async function isCamofoxAvailable(
 /** Set the cached health result + its timestamp. */
 function setHealthCache(result: boolean): void {
   cachedHealthResult = result;
-  cachedHealthAt = Date.now();
+  cachedHealthAt = nowWallclock();
 }
 
 /** True if the cache is populated AND older than the TTL (should re-probe). */
 function isHealthCacheStale(): boolean {
-  return cachedHealthAt === 0 || Date.now() - cachedHealthAt > HEALTH_CACHE_TTL_MS;
+  return cachedHealthAt === 0 || nowWallclock() - cachedHealthAt > HEALTH_CACHE_TTL_MS;
 }
 
 /** Reset the cached health result (for testing). */

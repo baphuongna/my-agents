@@ -20,7 +20,7 @@
  * the goal/prompt — the subagent's system identity tells it which tools
  * to use. (For strict enforcement, layer ToolPolicy.)
  */
-import { type AgentSession } from "./sdk.js";
+import { type AgentSession } from "./sdk.ts";
 export type SubagentStatus = "running" | "done" | "failed" | "aborted";
 /** Max recursion depth for subagent tree (parent → sub → sub). Default 3. */
 export declare const MAX_SUBAGENT_DEPTH = 3;

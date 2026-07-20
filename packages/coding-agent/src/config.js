@@ -389,9 +389,9 @@ catch (e) {
 }
 const piConfigName = pkg.piConfig?.name;
 export const PACKAGE_NAME = pkg.name || "@my-agent/coding-agent";
-export const APP_NAME = "mya";
-export const APP_TITLE = "mya";
-export const CONFIG_DIR_NAME = ".mya";
+export const APP_NAME = piConfigName || "pi";
+export const APP_TITLE = piConfigName ? APP_NAME : "π";
+export const CONFIG_DIR_NAME = pkg.piConfig?.configDir || ".pi";
 export const VERSION = pkg.version || "0.0.0";
 // e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
@@ -452,3 +452,4 @@ export function getSessionsDir() {
 export function getDebugLogPath() {
     return join(getAgentDir(), `${APP_NAME}-debug.log`);
 }
+//# sourceMappingURL=config.js.map

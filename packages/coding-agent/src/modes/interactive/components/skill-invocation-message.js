@@ -44,3 +44,4 @@ export class SkillInvocationMessageComponent extends Box {
         }
     }
 }
+//# sourceMappingURL=skill-invocation-message.js.map

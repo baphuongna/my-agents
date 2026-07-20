@@ -864,3 +864,4 @@ export class SessionSelectorComponent extends Container {
         return this.sessionList;
     }
 }
+//# sourceMappingURL=session-selector.js.map

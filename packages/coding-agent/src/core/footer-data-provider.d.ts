@@ -30,18 +30,15 @@ export declare class FooterDataProvider {
     /** Subscribe to git branch changes. Returns unsubscribe function. */
     onBranchChange(callback: () => void): () => void;
     /** Internal: set extension status */
+    setExtensionStatus(key: string, text: string | undefined): void;
+    /** Internal: clear extension statuses */
+    clearExtensionStatuses(): void;
     /** Number of unique providers with available models (for footer display) */
     getAvailableProviderCount(): number;
-    /** Number of running subagents (for footer display) */
-    getSubagentCount(): number;
-    /** Update subagent count + notify listeners (for footer re-render) */
-    setSubagentCount(count: number): void;
     /** Internal: update available provider count */
     setAvailableProviderCount(count: number): void;
-    /** Set an extension status entry (shown in footer). */
-    setExtensionStatus(key: string, text: string): void;
-    /** Clear all extension status entries (called on shutdown). */
-    clearExtensionStatuses(): void;
+    getSubagentCount(): number;
+    setSubagentCount(count: number): void;
     setCwd(cwd: string): void;
     /** Internal: cleanup */
     dispose(): void;

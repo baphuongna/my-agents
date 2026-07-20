@@ -1,15 +1,14 @@
 import { join } from "node:path";
 import { Agent } from "@my-agent/pi-agent-core";
-import { clampThinkingLevel, streamSimple } from "@my-agent/pi-ai/compat";
+import { clampThinkingLevel } from "@my-agent/pi-ai/compat";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
-import { AuthStorage } from "./auth-storage.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import { convertToLlm } from "./messages.ts";
-import { ModelRegistry } from "./model-registry.ts";
 import { findInitialModel } from "./model-resolver.ts";
+import { ModelRuntime } from "./model-runtime.ts";
 import { mergeProviderAttributionHeaders } from "./provider-attribution.ts";
 import { DefaultResourceLoader } from "./resource-loader.ts";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.ts";
@@ -34,7 +33,7 @@ function getDefaultAgentDir() {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@my-agent/ai';
+ * import { getModel } from '@my-agent/pi-ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
@@ -64,11 +63,9 @@ export async function createAgentSession(options = {}) {
     const cwd = resolvePath(options.cwd ?? options.sessionManager?.getCwd() ?? process.cwd());
     const agentDir = options.agentDir ? resolvePath(options.agentDir) : getDefaultAgentDir();
     let resourceLoader = options.resourceLoader;
-    // Use provided or create AuthStorage and ModelRegistry
     const authPath = options.agentDir ? join(agentDir, "auth.json") : undefined;
     const modelsPath = options.agentDir ? join(agentDir, "models.json") : undefined;
-    const authStorage = options.authStorage ?? AuthStorage.create(authPath);
-    const modelRegistry = options.modelRegistry ?? ModelRegistry.create(authStorage, modelsPath);
+    const modelRuntime = options.modelRuntime ?? (await ModelRuntime.create({ authPath, modelsPath }));
     const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
     if (!resourceLoader) {
@@ -84,8 +81,8 @@ export async function createAgentSession(options = {}) {
     let modelFallbackMessage;
     // If session has data, try to restore model from it
     if (!model && hasExistingSession && existingSession.model) {
-        const restoredModel = modelRegistry.find(existingSession.model.provider, existingSession.model.modelId);
-        if (restoredModel && modelRegistry.hasConfiguredAuth(restoredModel)) {
+        const restoredModel = modelRuntime.getModel(existingSession.model.provider, existingSession.model.modelId);
+        if (restoredModel && modelRuntime.hasConfiguredAuth(restoredModel.provider)) {
             model = restoredModel;
         }
         if (!model) {
@@ -100,7 +97,7 @@ export async function createAgentSession(options = {}) {
             defaultProvider: settingsManager.getDefaultProvider(),
             defaultModelId: settingsManager.getDefaultModel(),
             defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
-            modelRegistry,
+            modelRuntime,
         });
         model = result.model;
         if (!model) {
@@ -174,11 +171,6 @@ export async function createAgentSession(options = {}) {
         },
         convertToLlm: convertToLlmWithBlockImages,
         streamFn: async (model, context, options) => {
-            const auth = await modelRegistry.getApiKeyAndHeaders(model);
-            if (!auth.ok) {
-                throw new Error(auth.error);
-            }
-            const env = auth.env || options?.env ? { ...(auth.env ?? {}), ...(options?.env ?? {}) } : undefined;
             const providerRetrySettings = settingsManager.getProviderRetrySettings();
             const httpIdleTimeoutMs = settingsManager.getHttpIdleTimeoutMs();
             // SDKs treat timeout=0 as 0ms (immediate timeout), not "no timeout".
@@ -186,27 +178,19 @@ export async function createAgentSession(options = {}) {
             const effectiveTimeoutMs = httpIdleTimeoutMs === 0 ? 2147483647 : httpIdleTimeoutMs;
             const timeoutMs = options?.timeoutMs ?? providerRetrySettings.timeoutMs ?? effectiveTimeoutMs;
             const websocketConnectTimeoutMs = options?.websocketConnectTimeoutMs ?? settingsManager.getWebSocketConnectTimeoutMs();
-            let headers = mergeProviderAttributionHeaders(model, settingsManager, options?.sessionId, auth.headers, options?.headers);
-            // Let extensions inject/adjust per-request headers (e.g. tracing, session correlation)
-            // after static assembly, before the provider HTTP call.
             const headerRunner = extensionRunnerRef.current;
-            if (headerRunner?.hasHandlers("before_provider_headers")) {
-                headers = await headerRunner.emitBeforeProviderHeaders(headers ?? {});
-            }
-            // Convention: extensions can rotate API keys via x-mya-rotated-key header.
-            const rotatedKey = headers?.["x-mya-rotated-key"];
-            const effectiveApiKey = rotatedKey ?? auth.apiKey;
-            if (rotatedKey)
-                delete headers["x-mya-rotated-key"];
-            return streamSimple(model, context, {
+            return modelRuntime.streamSimple(model, context, {
                 ...options,
-                apiKey: effectiveApiKey,
-                env,
                 timeoutMs,
                 websocketConnectTimeoutMs,
                 maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
                 maxRetryDelayMs: options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
-                headers,
+                transformHeaders: async (requestHeaders) => {
+                    const headers = mergeProviderAttributionHeaders(model, settingsManager, options?.sessionId, requestHeaders);
+                    return headerRunner?.hasHandlers("before_provider_headers")
+                        ? headerRunner.emitBeforeProviderHeaders(headers ?? {})
+                        : (headers ?? {});
+                },
             });
         },
         onPayload: async (payload, _model) => {
@@ -262,7 +246,7 @@ export async function createAgentSession(options = {}) {
         scopedModels: options.scopedModels,
         resourceLoader,
         customTools: options.customTools,
-        modelRegistry,
+        modelRuntime,
         initialActiveToolNames,
         allowedToolNames,
         excludedToolNames,
@@ -276,3 +260,4 @@ export async function createAgentSession(options = {}) {
         modelFallbackMessage,
     };
 }
+//# sourceMappingURL=sdk.js.map

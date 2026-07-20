@@ -3,8 +3,7 @@ export { parseArgs } from "./cli/args.ts";
 // Config paths
 export { CONFIG_DIR_NAME, getAgentDir, getDocsPath, getExamplesPath, getPackageDir, getReadmePath, VERSION, } from "./config.ts";
 export { AgentSession, parseSkillBlock, } from "./core/agent-session.ts";
-// Auth and model registry
-export { AuthStorage, FileAuthStorageBackend, InMemoryAuthStorageBackend, } from "./core/auth-storage.ts";
+export { readStoredCredential } from "./core/auth-storage.ts";
 // Compaction
 export { calculateContextTokens, collectEntriesForBranchSummary, compact, DEFAULT_COMPACTION_SETTINGS, estimateTokens, findCutPoint, findTurnStartIndex, generateBranchSummary, generateSummary, getLastAssistantUsage, prepareBranchEntries, serializeConversation, shouldCompact, } from "./core/compaction/index.ts";
 export { createEventBus } from "./core/event-bus.ts";
@@ -12,6 +11,7 @@ export { createExtensionRuntime, defineTool, discoverAndLoadExtensions, Extensio
 export { convertToLlm } from "./core/messages.ts";
 export { ModelRegistry } from "./core/model-registry.ts";
 export { resolveCliModel, resolveModelScopeWithDiagnostics, } from "./core/model-resolver.ts";
+export { ModelRuntime, } from "./core/model-runtime.ts";
 export { DefaultPackageManager } from "./core/package-manager.ts";
 export { DefaultResourceLoader, loadProjectContextFiles } from "./core/resource-loader.ts";
 // SDK for programmatic usage
@@ -44,3 +44,4 @@ export { convertToPng } from "./utils/image-convert.ts";
 export { formatDimensionNote, resizeImage } from "./utils/image-resize.ts";
 // Shell utilities
 export { getShellConfig } from "./utils/shell.ts";
+//# sourceMappingURL=index.js.map

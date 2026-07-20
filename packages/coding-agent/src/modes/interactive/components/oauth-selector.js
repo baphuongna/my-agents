@@ -23,16 +23,12 @@ export class OAuthSelectorComponent extends Container {
     filteredProviders;
     selectedIndex = 0;
     mode;
-    authStorage;
-    getAuthStatus;
     onSelectCallback;
     onCancelCallback;
     showAuthTypeLabels;
-    constructor(mode, authStorage, providers, onSelect, onCancel, getAuthStatus, initialSearchInput) {
+    constructor(mode, providers, onSelect, onCancel, initialSearchInput) {
         super();
         this.mode = mode;
-        this.authStorage = authStorage;
-        this.getAuthStatus = getAuthStatus ?? ((providerId) => this.authStorage.getAuthStatus(providerId));
         this.allProviders = providers;
         this.filteredProviders = providers;
         this.showAuthTypeLabels = new Set(providers.map((provider) => provider.authType)).size > 1;
@@ -68,7 +64,7 @@ export class OAuthSelectorComponent extends Container {
     }
     filterProviders(query) {
         this.filteredProviders = query
-            ? fuzzyFilter(this.allProviders, query, (provider) => `${provider.name} ${provider.id} ${provider.authType}`)
+            ? fuzzyFilter(this.allProviders, query, (provider) => `${provider.name} ${provider.id} ${provider.authType} ${provider.method?.name ?? ""}`)
             : this.allProviders;
         this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, Math.max(0, this.filteredProviders.length - 1)));
         this.updateList();
@@ -114,30 +110,21 @@ export class OAuthSelectorComponent extends Container {
         }
     }
     formatStatusIndicator(provider) {
-        const credential = this.authStorage.get(provider.id);
-        if (credential?.type === provider.authType)
-            return theme.fg("success", " ✓ configured");
-        if (credential) {
-            const label = credential.type === "oauth" ? "subscription configured" : "API key configured";
+        if (!provider.status)
+            return theme.fg("muted", " • unconfigured");
+        if (provider.status.type !== provider.authType) {
+            const label = provider.status.type === "oauth" ? "subscription configured" : "API key configured";
             return theme.fg("muted", " • ") + theme.fg("warning", label);
         }
-        if (provider.authType !== "api_key")
-            return theme.fg("muted", " • unconfigured");
-        const status = this.getAuthStatus(provider.id);
-        switch (status.source) {
-            case "environment":
-                return theme.fg("success", ` ✓ env: ${status.label ?? "API key"}`);
-            case "runtime":
-                return theme.fg("success", " ✓ runtime API key");
-            case "fallback":
-                return theme.fg("success", " ✓ custom API key");
-            case "models_json_key":
-                return theme.fg("success", " ✓ key in models.json");
-            case "models_json_command":
-                return theme.fg("success", " ✓ command in models.json");
-            default:
-                return theme.fg("muted", " • unconfigured");
+        if (!provider.status.source ||
+            provider.status.source === "OAuth" ||
+            provider.status.source === "stored credential") {
+            return theme.fg("success", " ✓ configured");
         }
+        const source = /^[A-Z][A-Z0-9_]*(?:, [A-Z][A-Z0-9_]*)*$/.test(provider.status.source)
+            ? `env: ${provider.status.source}`
+            : provider.status.source;
+        return theme.fg("success", ` ✓ ${source}`);
     }
     handleInput(keyData) {
         const kb = getKeybindings();
@@ -173,3 +160,4 @@ export class OAuthSelectorComponent extends Container {
         }
     }
 }
+//# sourceMappingURL=oauth-selector.js.map

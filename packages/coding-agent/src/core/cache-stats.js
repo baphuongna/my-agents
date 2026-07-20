@@ -31,7 +31,7 @@ function detectMiss(prev, message, models) {
     const paidPerToken = paidTokens > 0 ? (usage.cost.input + usage.cost.cacheWrite) / paidTokens : 0;
     const readPerToken = usage.cacheRead > 0
         ? usage.cost.cacheRead / usage.cacheRead
-        : (models.find(message.provider, message.model)?.cost.cacheRead ?? 0) / 1_000_000;
+        : (models.getModel(message.provider, message.model)?.cost.cacheRead ?? 0) / 1_000_000;
     return {
         missedTokens,
         missedCost: missedTokens * Math.max(0, paidPerToken - readPerToken),
@@ -98,3 +98,4 @@ export function collectCacheMisses(entries, models) {
 export function detectCacheMiss(entries, message, models) {
     return detectMiss(scan(entries, models).prev, message, models);
 }
+//# sourceMappingURL=cache-stats.js.map

@@ -31,3 +31,4 @@ export function createToolDefinitionFromAgentTool(tool) {
         execute: async (toolCallId, params, signal, onUpdate) => tool.execute(toolCallId, params, signal, onUpdate),
     };
 }
+//# sourceMappingURL=tool-definition-wrapper.js.map

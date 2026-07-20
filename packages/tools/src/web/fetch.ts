@@ -26,7 +26,7 @@ import {
   type SecurityGuardOptions,
 } from "./security-guard.js";
 import { loadWebConfig } from "./config.js";
-import type { Mode, ToolResult } from "@my-agent/core";
+import { type Mode, type ToolResult, nowWallclock } from "@my-agent/core";
 import { ok, err, isRecord, type ToolImpl } from "../registry.js";
 
 // ---------------------------------------------------------------------------
@@ -332,7 +332,7 @@ export async function webFetch(
   //  post-redirect guard ran). A SINGLE shared deadline bounds TOTAL time across
   //  all hops + DNS (F1); cross-origin hops strip Authorization/Cookie (F2).
   const MAX_REDIRECTS = 10;
-  const deadline = Date.now() + timeoutMs;
+  const deadline = nowWallclock() + timeoutMs;
   let originalOrigin = "";
   try {
     originalOrigin = new URL(url).origin;
@@ -343,7 +343,7 @@ export async function webFetch(
   let response: Response;
   let redirects = 0;
   for (;;) {
-    const remaining = deadline - Date.now();
+    const remaining = deadline - nowWallclock();
     if (remaining <= 0) {
       return {
         ok: false,

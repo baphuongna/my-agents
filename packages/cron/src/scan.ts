@@ -39,6 +39,21 @@ const THREAT_PATTERNS: ThreatPattern[] = [
   // 3D gateway-lifecycle: a cron job restarting/stopping/killing the gateway
   // loops under launchd/systemd supervision (#30719).
   { id: "gateway_lifecycle", re: /(?:mya\s+(?:gateway\s+)?(?:restart|stop)|systemctl\s+(?:-\S+\s+)*(?:restart|stop)\s+[^\n]*mya|p?kill\s+[^\n]*mya[^\n]*(?:gateway|serve)?|p?kill\s+[^\n]*(?:gateway|serve)\b[^\n]*mya)/i },
+  // D5 fix: pipe-to-shell RCE (curl/wget | bash/sh/zsh/python/perl/ruby/node)
+  // Classic remote code execution — fetch a script and execute it immediately.
+  { id: "pipe_to_shell", re: /(?:curl|wget|fetch)\s+[^\n|]*\|\s*(?:bash|sh|zsh|python\d?|perl|ruby|node|php)\b/i },
+  // D5 fix: process substitution RCE: bash <(curl ...), $(curl ...)
+  { id: "cmd_subst_exec", re: /\$\(\s*(?:curl|wget)\s|<\(\s*(?:curl|wget)\s/i },
+  // D5 follow-up: eval on decoded/obfuscated content (base64, hex, etc.)
+  { id: "eval_decoded", re: /(?:eval|exec)\s+\$?\(?s*(?:base64|openssl|xxd|printf|echo)\b/i },
+  // D5 follow-up: environment variable exfiltration (grep/env to extract secrets)
+  { id: "env_exfil", re: /(?:env|printenv|set)\s*\|?\s*(?:grep|sort|head|tail|cat|less|more)\b[^\n]*(?:pass|secret|key|token|api|auth|cred)/i },
+  // D5 follow-up: reading sensitive system files
+  { id: "read_sensitive_file", re: /(?:cat|head|tail|less|more|vi|nano|vim)\s+(?:\/etc\/(?:shadow|passwd|sudoers|ssh)|~?\/\.ssh\/(?:id_|authorized_keys|known_hosts|config))/i },
+  // D5 follow-up: reverse shell / network backdoor
+  { id: "reverse_shell", re: /(?:nc|ncat|netcat|socat|bash|sh|zsh)\s+[^\n]*(?:-[elp].*-(?:e|c)\s|--exec|\/dev\/tcp\/|\/dev\/udp\/|0\.0\.0\.0|API_ADDRESS)/i },
+  // D5 follow-up: insecure permission escalation (chmod 777, world-writable ssh)
+  { id: "insecure_chmod", re: /chmod\s+[-R]*\s*7[67][67]\s+[^\n]*(?:\.ssh|\/etc|\/usr|\/bin|\/root|\/var)/i },
 ];
 
 /** Invisible / bidi Unicode that can hide injection from human review. Hard-block

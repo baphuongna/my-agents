@@ -10,6 +10,7 @@
  */
 import type { SqliteDatabase } from "./sqlite-db.js";
 import { randomUUID } from "node:crypto";
+import { nowWallclock } from "@my-agent/core";
 import { getUnconsolidated, markConsolidated, degradeTier, purgeExpired } from "./sqlite-store.js";
 import { weibullDecayFactor, parseTimestamp } from "./weibull.js";
 import { transaction } from "./sqlite-db.js";
@@ -219,7 +220,7 @@ export function consolidate(
  */
 export function degradeOldMemories(db: SqliteDatabase): DegradeResult {
   let degraded = 0;
-  const now = Date.now();
+  const now = nowWallclock();
 
   transaction(db, () => {
     // Tier 1 → 2: older than 30 days
@@ -271,7 +272,7 @@ export function degradeOldMemories(db: SqliteDatabase): DegradeResult {
  */
 export function purgeWeakMemories(db: SqliteDatabase): PurgeResult {
   let purged = 0;
-  const now = Date.now();
+  const now = nowWallclock();
 
   transaction(db, () => {
     // Check working_memory — enhanced with salience(type) + access-reinforcement + pin protection.

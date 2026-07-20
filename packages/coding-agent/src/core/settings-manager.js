@@ -459,6 +459,7 @@ export class SettingsManager {
         this.markModified("defaultModel");
         this.save();
     }
+    // mya fork: systemPrompt / appendSystemPrompt accessors (slim-prompt feature)
     getSystemPrompt() {
         return this.settings.systemPrompt;
     }
@@ -926,3 +927,4 @@ export class SettingsManager {
         this.save();
     }
 }
+//# sourceMappingURL=settings-manager.js.map

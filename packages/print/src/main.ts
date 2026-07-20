@@ -638,7 +638,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         cron.complete(run.runId, "failed", (e as Error).message);
       }
       const rec = cron.runsOf(jobId).at(-1);
-      if (rec) { try { recordRunEnd(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now()); } catch { /* best-effort */ } }
+      if (rec) { try { recordRunEnd(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? nowWallclock()); } catch { /* best-effort */ } }
     },
     cronRemove: (jobId: string) => {
       // Phase 0B: removeJob write-throughs to cron.json via onDirty (replaces the
