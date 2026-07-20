@@ -121,11 +121,34 @@ export async function cronAdd(name?: string, schedule?: string, prompt?: string,
     console.log(`${A.muted("  Set MYA_CRON_ALLOW_HIGH_FREQUENCY=1, use a less frequent schedule, or 'every 60s' (on-interval).")}`);
     return;
   }
+  // Phase 3B: validate the prompt BEFORE writing the file (the gateway's
+  // reconcile would quarantine it on the next sweep, but the user gets no
+  // feedback — this gives immediate rejection).
+  try {
+    const { validateCronPrompt } = await import("@my-agent/cron");
+    const scanErr = validateCronPrompt(prompt);
+    if (scanErr) {
+      console.log(`${A.red("✗ Prompt rejected:")} ${scanErr}`);
+      return;
+    }
+  } catch { /* cron module unavailable — skip validation (best-effort) */ }
 
   // Persist to cron.json (atomic, 0600 — same path the gateway reads).
   const arr = readCronJobs();
   arr.push({ id, name, trigger, schedule: schedValue, prompt: prompt ?? "", enabled: true, deliveryTarget: "_cron", ...(timezone ? { timezone } : {}) });
   atomicWriteJobs(arr);
+
+  // Also POST to the gateway (immediate visibility — the gateway's scheduler
+  // won't see the file until the next 30s sweep; the POST registers it now).
+  // Best-effort: if the gateway isn't running, the file write is the fallback.
+  try {
+    await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs`, {
+      method: "POST",
+      headers: withAuth({ "content-type": "application/json" }),
+      body: JSON.stringify({ id, name, trigger, schedule: schedValue, prompt: prompt ?? "" }),
+      signal: AbortSignal.timeout(1000),
+    });
+  } catch { /* gateway not running — file write is the durability fallback */ }
 
   console.log(`${A.green("✓")} Cron job added:`);
   console.log(`  ID:       ${id}`);
@@ -143,12 +166,14 @@ export async function cronRemove(id?: string): Promise<void> {
     console.log(`${A.red("Usage:")} mya cron remove <id>`);
     return;
   }
+  const resolvedId = await resolveJobId(id);
+  if (!resolvedId) { console.log(`${A.red("✗ Job not found:")} ${id}`); return; }
   const arr = readCronJobs();
   if (arr.length === 0) {
     console.log(`${A.red("No cron.json found.")}`);
     return;
   }
-  const filtered = arr.filter((j) => j.id !== id && !id.startsWith(j.id.slice(0, 8)));
+  const filtered = arr.filter((j) => j.id !== resolvedId && !resolvedId.startsWith(j.id.slice(0, 8)));
   if (filtered.length === arr.length) {
     console.log(`${A.yellow("Job not found in cron.json:")} ${id}`);
     console.log(`${A.muted("It may only exist in the running gateway. Restart to clear.")}`);
@@ -158,7 +183,7 @@ export async function cronRemove(id?: string): Promise<void> {
   }
   // Also try API
   try {
-    await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}`, { method: "DELETE", headers: authHeaders(), signal: AbortSignal.timeout(1000) });
+    await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${resolvedId}`, { method: "DELETE", headers: authHeaders(), signal: AbortSignal.timeout(1000) });
   } catch { /* gateway may not be running */ }
 }
 
@@ -167,8 +192,10 @@ export async function cronToggle(id?: string, action?: "enable" | "disable"): Pr
     console.log(`${A.red("Usage:")} mya cron {enable|disable} <id>`);
     return;
   }
+  const resolvedId = await resolveJobId(id);
+  if (!resolvedId) { console.log(`${A.red("✗ Job not found:")} ${id}`); return; }
   try {
-    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/patch`, {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${resolvedId}/patch`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({ enabled: action === "enable" }),
@@ -183,7 +210,7 @@ export async function cronToggle(id?: string, action?: "enable" | "disable"): Pr
   const arr = readCronJobs();
   if (arr.length > 0) {
     for (const j of arr) {
-      if (j.id === id || id.startsWith(j.id.slice(0, 8))) j.enabled = action === "enable";
+      if (j.id === resolvedId || resolvedId.startsWith(j.id.slice(0, 8))) j.enabled = action === "enable";
     }
     atomicWriteJobs(arr);
   }
@@ -194,8 +221,10 @@ export async function cronRun(id?: string): Promise<void> {
     console.log(`${A.red("Usage:")} mya cron run <id>`);
     return;
   }
+  const resolvedId = await resolveJobId(id);
+  if (!resolvedId) { console.log(`${A.red("✗ Job not found:")} ${id}`); return; }
   try {
-    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/run`, {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${resolvedId}/run`, {
       method: "POST",
       headers: authHeaders(),
       signal: AbortSignal.timeout(2000),
@@ -212,9 +241,11 @@ export async function cronHistory(id?: string): Promise<void> {
     console.log(`${A.red("Usage:")} mya cron history <id>`);
     return;
   }
+  const resolvedId = await resolveJobId(id);
+  if (!resolvedId) { console.log(`${A.red("✗ Job not found:")} ${id}`); return; }
   // Phase 4A: fetch durable run history from the gateway (SQLite-backed).
   try {
-    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/runs`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${resolvedId}/runs`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
     if (r.status === 401) { console.log(`${A.red("✗")} unauthorized (gateway has wsToken; run on the same host)`); return; }
     if (!r.ok) { console.log(`${A.red("✗")} ${r.status} (is the gateway running?)`); return; }
     const runs = await r.json() as Array<{ status: string; startedAt: number; endedAt?: number; error?: string }>;
@@ -237,13 +268,15 @@ export async function cronUpdate(id: string | undefined, field: string | undefin
     console.log(`${A.muted("  fields: name | schedule | prompt | enabled | trigger | timezone")}`);
     return;
   }
+  const resolvedId = await resolveJobId(id);
+  if (!resolvedId) { console.log(`${A.red("✗ Job not found:")} ${id}`); return; }
   const value = values.join(" ");
   const patch: Record<string, unknown> = {};
   if (field === "enabled") patch.enabled = value === "true" || value === "1" || value === "yes";
   else if (["schedule", "prompt", "trigger", "timezone", "name"].includes(field)) patch[field] = value;
   else { console.log(`${A.red("✗ field must be")} name|schedule|prompt|enabled|trigger|timezone`); return; }
   try {
-    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/patch`, {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${resolvedId}/patch`, {
       method: "POST", headers: withAuth({ "content-type": "application/json" }),
       body: JSON.stringify(patch), signal: AbortSignal.timeout(2000),
     });
@@ -252,6 +285,22 @@ export async function cronUpdate(id: string | undefined, field: string | undefin
   } catch (e) {
     console.log(`${A.red("✗")} ${(e as Error).message} (is the gateway running?)`);
   }
+}
+
+/** Resolve a name-or-ID to the actual job ID (hermes resolve_job_ref pattern).
+ * Checks the loaded cron.json for a matching name, then falls back to ID prefix. */
+async function resolveJobId(idOrName: string): Promise<string | undefined> {
+  const jobs = readCronJobs();
+  // exact ID match
+  const exact = jobs.find((j) => j.id === idOrName);
+  if (exact) return exact.id;
+  // exact name match
+  const byName = jobs.find((j) => j.name === idOrName);
+  if (byName) return byName.id;
+  // ID prefix match (first 8 chars)
+  const byPrefix = jobs.find((j) => j.id.startsWith(idOrName) || idOrName.startsWith(j.id.slice(0, 8)));
+  if (byPrefix) return byPrefix.id;
+  return undefined;
 }
 
 /** Phase 4C/G5: cron ticker health (heartbeat freshness) + job count. */

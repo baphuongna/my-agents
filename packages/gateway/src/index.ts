@@ -1167,7 +1167,12 @@ export class Gateway {
         }
         const cronRunMatch = url.pathname.match(/^\/cron\/jobs\/([^/]+)\/run$/);
         if (cronRunMatch && req.method === "POST" && this.cronRunNow) {
-          void this.cronRunNow(cronRunMatch[1]!);
+          const jobId = cronRunMatch[1]!;
+          // Phase 5: honest 404 if the job doesn't exist (was always 200).
+          if (this.cron && !this.cron.getJob(jobId) && !this.control.getCronJob(jobId)) {
+            return send(404, { error: "job not found" });
+          }
+          void this.cronRunNow(jobId);
           return send(200, { ok: true });
         }
         // Phase 4A: durable run history for a job.
