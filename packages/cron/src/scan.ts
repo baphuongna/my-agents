@@ -107,3 +107,23 @@ export function isSilenceResponse(text: string | undefined | null): boolean {
   if (lines.length && SILENCE_TOKENS.has(lines[lines.length - 1]!.trim().toLowerCase())) return true;
   return text.trim().toUpperCase().startsWith("[SILENT]");
 }
+
+/** Phase 5 / Tier-2: scan an ASSEMBLED cron prompt (incl. loaded skill bodies +
+ * context_from). LOOSER than validateCronPrompt: only the injection DIRECTIVES
+ * (whose phrasing doesn't survive normal prose) — NOT the command-shape patterns
+ * (cat .env / rm -rf / exfil) which false-positive on skill markdown that
+ * describes attacks. Invisible-unicode is SANITIZED (stripped), not blocked —
+ * a stray zero-width in a code example shouldn't kill the job. */
+const ASSEMBLED_THREAT_PATTERNS: ThreatPattern[] = [
+  THREAT_PATTERNS[0]!, // prompt_injection
+  THREAT_PATTERNS[1]!, // deception_hide
+  THREAT_PATTERNS[2]!, // sys_prompt_override
+  THREAT_PATTERNS[3]!, // disregard_rules
+];
+export function validateCronAssembledPrompt(prompt: string | undefined | null): string | null {
+  if (!prompt) return null;
+  for (const { re, id } of ASSEMBLED_THREAT_PATTERNS) {
+    if (re.test(prompt)) return `assembled prompt matches threat pattern '${id}'`;
+  }
+  return null;
+}

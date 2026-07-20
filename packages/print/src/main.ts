@@ -470,6 +470,15 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     cronRunEnd: (runId, status, error, endedAt, output) => recordRunEnd(runId, status, error, endedAt, output),
     cronRuns: (jobId) => getRunHistory(jobId),
     cronJobOutput: (jobId) => getLastOutput(jobId),
+    cronLoadSkills: (names) => {
+      // Phase 5: assemble per-job skill bodies (hermes-style injection).
+      const parts: string[] = [];
+      for (const n of names) {
+        const sk = skillStore.get(n);
+        if (sk?.body) parts.push(`[Skill: ${n}]\n${sk.body}`);
+      }
+      return parts.join("\n\n");
+    },
     cronCurrentDefault: () => ({
       provider: process.env["MYA_PROVIDER"],
       model: process.env["MYA_MODEL"],

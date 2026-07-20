@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { nowWallclock } from "@my-agent/core";
 
 // Phase 3B/3D: prompt-injection / lifecycle scanner (re-exported for the gateway).
-export { validateCronPrompt, THREAT_IDS, validateCronBaseUrl, snapshotDrifted, isSilenceResponse } from "./scan.js";
+export { validateCronPrompt, THREAT_IDS, validateCronBaseUrl, snapshotDrifted, isSilenceResponse, validateCronAssembledPrompt } from "./scan.js";
 import { validateCronBaseUrl as _validateBaseUrl } from "./scan.js";
 
 export type TriggerType = "cron" | "on-interval" | "once";

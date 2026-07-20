@@ -182,6 +182,8 @@ export interface GatewayOptions {
   cronCurrentDefault?: () => { provider?: string; model?: string };
   /** Phase 5: fetch a prior job's latest output (context_from chaining). */
   cronJobOutput?: (jobId: string) => string | undefined;
+  /** Phase 5: load + assemble per-job skill bodies (returns the assembled skill text). */
+  cronLoadSkills?: (names: string[]) => string;
   /** §12 sync server (CRDT + HLC). Stored only — no auto-start (Tier-2). */
   sync?: SyncServer;
   /** §12 collaboration relay (rooms). Stored only — no auto-start (Tier-2). */
@@ -275,6 +277,7 @@ export class Gateway {
   private readonly onRunShell?: (job: { command?: string; script?: string; workdir?: string }) => Promise<{ ok: boolean; output: string; error?: string }>;
   private readonly cronCurrentDefault?: () => { provider?: string; model?: string };
   private readonly cronJobOutput?: (jobId: string) => string | undefined;
+  private readonly cronLoadSkills?: (names: string[]) => string;
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
@@ -402,6 +405,7 @@ export class Gateway {
     this.onRunShell = opts.onRunShell;
     this.cronCurrentDefault = opts.cronCurrentDefault;
     this.cronJobOutput = opts.cronJobOutput;
+    this.cronLoadSkills = opts.cronLoadSkills;
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
@@ -550,6 +554,22 @@ export class Gateway {
             }
             if (parts.length) prompt = `${parts.join("\n\n")}\n\n${prompt}`;
           }
+          // Phase 5: per-job skills — inject skill bodies (hermes-style).
+          if (job.skills?.length && this.cronLoadSkills) {
+            const skillText = this.cronLoadSkills(job.skills);
+            if (skillText) prompt = `${skillText}\n\n${prompt}`;
+          }
+          // Phase 5 / Tier-2: scan the ASSEMBLED prompt (skills + context_from)
+          // for injection DIRECTIVES (looser set — command-shape patterns would
+          // false-positive on skill markdown). Blocks agent runs; shell jobs skip.
+          if (job.jobType !== "shell") {
+            const { validateCronAssembledPrompt } = await import("@my-agent/cron");
+            const asmErr = validateCronAssembledPrompt(prompt);
+            if (asmErr) {
+              this.cron!.complete(run.runId, "failed", `assembled prompt rejected: ${asmErr}`);
+              throw new Error("assembled-rejected");
+            }
+          }
           // Phase 5: shell jobs (no LLM — watchdogs).
           if (job.jobType === "shell") {
             if (!this.onRunShell) {
@@ -578,7 +598,8 @@ export class Gateway {
             }
           }
         } catch (e) {
-          if ((e as Error).message !== "drift") this.cron!.complete(run.runId, "failed", (e as Error).message);
+          const msg = (e as Error).message;
+          if (msg !== "drift" && msg !== "assembled-rejected") this.cron!.complete(run.runId, "failed", msg);
         }
         const rec = this.cron!.runsOf(job.id).at(-1);
         // Phase 5: multi-platform delivery. deliveryTarget grammar: comma-separated
