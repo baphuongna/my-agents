@@ -114,6 +114,14 @@ export async function cronAdd(name?: string, schedule?: string, prompt?: string,
   const { trigger, schedule: schedValue } = parseSchedule(schedule);
   const id = `cron-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
+  // G10/C10 min-interval floor: refuse every-minute cron at the CLI too (the
+  // register() floor covers POST /cron/jobs; this covers the direct-file path).
+  if (trigger === "cron" && schedule === "* * * * *" && !process.env["MYA_CRON_ALLOW_HIGH_FREQUENCY"]) {
+    console.log(`${A.red("✗ Refusing '* * * * *' (every-minute cron).")}`);
+    console.log(`${A.muted("  Set MYA_CRON_ALLOW_HIGH_FREQUENCY=1, use a less frequent schedule, or 'every 60s' (on-interval).")}`);
+    return;
+  }
+
   // Persist to cron.json (atomic, 0600 — same path the gateway reads).
   const arr = readCronJobs();
   arr.push({ id, name, trigger, schedule: schedValue, prompt: prompt ?? "", enabled: true, deliveryTarget: "_cron", ...(timezone ? { timezone } : {}) });

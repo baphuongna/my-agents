@@ -147,6 +147,22 @@ describe("gateway auth gate (Phase 0C)", () => {
     }
   });
 
+  it("G1/2: POST /cron/approval-mode is also a cron mutation — blocked in dev (regex covers /cron/*)", async () => {
+    const orig = process.env["MYA_CRON_UNSAFE_NO_AUTH"];
+    delete process.env["MYA_CRON_UNSAFE_NO_AUTH"];
+    try {
+      const { port, stop } = await start({ wsToken: undefined });
+      const post = await fetch(`${base(port)}/cron/approval-mode`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "approve" }),
+      });
+      expect(post.status).toBe(401); // approval-mode flip is a sensitive mutation
+      await stop();
+    } finally {
+      if (orig !== undefined) process.env["MYA_CRON_UNSAFE_NO_AUTH"] = orig;
+    }
+  });
+
   it("G8: POST /cron/approval-mode runtime-flips deny↔approve", async () => {
     const { port, stop } = await start({ wsToken: "secret", cronSetApprovalMode: () => {} });
     const r = await fetch(`${base(port)}/cron/approval-mode`, {

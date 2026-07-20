@@ -661,10 +661,11 @@ export class Gateway {
         return send(403, { error: "cross-origin state change blocked" });
       }
     }
-    // C11: cron MUTATIONS require auth (wsToken) OR an explicit
-    // MYA_CRON_UNSAFE_NO_AUTH=1 — never implicitly opened by MYA_NO_WS_TOKEN
-    // (the dashboard dev bypass). Closes the D6 re-opening in dev deployments.
-    const isCronMutation = req.method !== "GET" && req.method !== "OPTIONS" && /^\/cron\/jobs/.test(url.pathname);
+    // C11: cron MUTATIONS (any /cron/* non-GET route — jobs + approval-mode)
+    // require auth (wsToken) OR an explicit MYA_CRON_UNSAFE_NO_AUTH=1 — never
+    // implicitly opened by MYA_NO_WS_TOKEN (the dashboard dev bypass). Covers
+    // POST/DELETE/PATCH/RUN on /cron/jobs* AND POST /cron/approval-mode.
+    const isCronMutation = req.method !== "GET" && req.method !== "OPTIONS" && /^\/cron\//.test(url.pathname);
     if (isCronMutation && !this.wsToken && !process.env["MYA_CRON_UNSAFE_NO_AUTH"]) {
       return send(401, { error: "cron mutations require wsToken auth (or MYA_CRON_UNSAFE_NO_AUTH=1)" });
     }
@@ -1083,8 +1084,8 @@ export class Gateway {
         if (cronRunsMatch && req.method === "GET" && this.cronRuns) {
           return send(200, this.cronRuns(cronRunsMatch[1]!));
         }
-        // G8: runtime-flip the cron approval mode (deny/approve). Auth-gated +
-        // C11 cron-mutation check apply (it's a /cron/jobs* non-GET route).
+        // G8: runtime-flip the cron approval mode (deny/approve). Auth-gated
+        // (wsToken) + C11 cron-mutation check apply (it's a /cron/* non-GET route).
         if (url.pathname === "/cron/approval-mode" && req.method === "POST" && this.cronSetApprovalMode) {
           let body = "";
           req.on("data", (c) => (body += c));
