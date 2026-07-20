@@ -56,7 +56,7 @@ interface GatewayInfo {
   model?: string;
   uptime?: number;
   channels?: Array<{ id: string; type: string; alias?: string; label: string; enabled: boolean; configured: boolean; health: string }>;
-  cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>;
+  cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; nextRunAt?: number; lastStatus?: string; lastError?: string; jobType?: string; deliveryTarget?: string }>;
   providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>;
   subagents?: { active: number; total: number };
   agentTree?: AgentTreeEntry[];
@@ -109,7 +109,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
     fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
-    fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; lastStatus?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
+    fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; nextRunAt?: number; lastStatus?: string; lastError?: string; jobType?: string; deliveryTarget?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
     fetchJson<AgentTreeEntry[]>(`http://127.0.0.1:${GW_PORT}/pool/tree`),
     fetchJson<GatewayInfo["mcpServers"]>(`http://127.0.0.1:${GW_PORT}/mcp/servers`),
     fetchJson<GatewayInfo["skills"]>(`http://127.0.0.1:${GW_PORT}/skills`),
@@ -568,12 +568,15 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
             const is = i === state.cronSel;
             const icon = job.enabled ? A.green("●") : A.dim2("○");
             const sched = job.trigger === "on-interval" ? `every ${(job.schedule as number) / 1000}s` : String(job.schedule);
+            const typeBadge = job.jobType === "shell" ? A.accent("🔧") : A.dim2("🤖");
             const lastStatus = job.lastStatus
               ? job.lastStatus === "succeeded" ? A.green("✓")
               : job.lastStatus === "failed" ? A.red("✗")
+              : job.lastStatus === "lease-expired" ? A.yellow("⏱")
               : A.yellow("?")
               : A.dim2("-");
-            const line1 = `${icon}  ${job.name.padEnd(20)}  ${A.dim2(sched.padEnd(16))}  ${A.dim2(job.trigger.padEnd(12))}  ${lastStatus} ${A.dim2(fmt(job.lastRunAt ?? 0))}`;
+            const nextRun = job.nextRunAt ? A.dim2("next:" + fmt(job.nextRunAt)) : "";
+            const line1 = `${icon}  ${job.name.padEnd(18)}  ${A.dim2(sched.padEnd(16))} ${typeBadge} ${lastStatus} ${A.dim2(fmt(job.lastRunAt ?? 0))} ${nextRun}`;
             if (is) lines.push(`  ${A.selBg(line1 + A.clrEol)}`);
             else lines.push(`  ${line1}`);
             if (job.prompt) {
