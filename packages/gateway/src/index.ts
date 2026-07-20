@@ -1137,8 +1137,13 @@ export class Gateway {
           req.on("data", (c) => (body += c));
           req.on("end", () => {
             try {
-              const patch = JSON.parse(body || "{}") as Record<string, unknown>;
+              const raw = JSON.parse(body || "{}") as Record<string, unknown>;
               const id = cronPatchMatch[1]!;
+              // Phase 5: allowlist PATCH fields — jobType/command/script/provider are
+              // create-only (prevents PATCH-escalation from an agent job to shell exec).
+              const SAFE_PATCH_FIELDS = new Set(["name", "schedule", "prompt", "enabled", "trigger", "timezone", "deliveryTarget", "workdir", "contextFrom", "skills"]);
+              const patch: Record<string, unknown> = {};
+              for (const [k, v] of Object.entries(raw)) { if (SAFE_PATCH_FIELDS.has(k)) patch[k] = v; }
               // Phase 0B: PATCH writes through to the scheduler (updateJob → onDirty
               // → atomicWriteJobs) so it persists + reflects in GET. Falls back to
               // the control plane only when no scheduler is wired.

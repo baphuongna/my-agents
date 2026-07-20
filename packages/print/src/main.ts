@@ -393,7 +393,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     }
   };
 
-  // Phase 5: declarative config jobs — seed from ~/.mya/agent/cron.config.json
+  // Phase 5: declarative config jobs — FIRST load existing cron.json (so the
+  // seed doesn't overwrite manual jobs), THEN seed from cron.config.json.
+  cronReload(); // load existing cron.json BEFORE seeding
   // (an array of job configs). Jobs not already present (by name) are registered;
   // runtime state of existing jobs is preserved (mya-v1 sync_declarative_jobs).
   try {
@@ -484,26 +486,42 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       model: process.env["MYA_MODEL"],
     }),
     onRunShell: async (job) => {
-      // Phase 5: shell/script jobs (no LLM — watchdogs). Script paths confined to
-      // ~/.mya/agent/scripts/; commands run via `sh -c` (cwd = workdir).
-      const cwd = job.workdir ?? process.cwd();
-      let cmd: string | undefined;
-      if (job.script) {
-        const scriptsDir = join(homedir(), ".mya", "agent", "scripts");
-        const resolved = (await import("node:path")).resolve(scriptsDir, job.script);
-        if (!resolved.startsWith(scriptsDir + "/") && !resolved.startsWith(scriptsDir + \\"\\")) {
-          return { ok: false, output: "", error: "script path escapes ~/.mya/agent/scripts" };
-        }
-        const isSh = /\.(sh|bash)$/.test(job.script);
-        cmd = `${isSh ? "bash" : "python3"} ${JSON.stringify(resolved)}`;
-      } else if (job.command) {
-        cmd = job.command;
+      // Phase 5: shell/script jobs (no LLM — watchdogs). Gated by
+      // MYA_CRON_ALLOW_SHELL=1 (shell jobs run arbitrary code as the gateway
+      // user — opt-in). Scripts confined to ~/.mya/agent/scripts/ (realpath
+      // checked); commands run via sh -c. ASYNC (execFile, not execFileSync) so
+      // the event loop isn't blocked.
+      if (!process.env["MYA_CRON_ALLOW_SHELL"]) {
+        return { ok: false, output: "", error: "shell jobs require MYA_CRON_ALLOW_SHELL=1" };
       }
-      if (!cmd) return { ok: false, output: "", error: "shell job has no command/script" };
+      const nodePath = await import("node:path");
+      const { execFile } = await import("node:child_process");
+      const { existsSync, statSync, realpathSync } = await import("node:fs");
+      const cwd = job.workdir && existsSync(job.workdir) && statSync(job.workdir).isDirectory() ? job.workdir : process.cwd();
+      const runAsync = (cmd: string, args: string[]): Promise<string> =>
+        new Promise((resolve, reject) => {
+          execFile(cmd, args, { cwd, timeout: 120_000, maxBuffer: 1_000_000, encoding: "utf8" }, (err, stdout) => {
+            if (err) reject(Object.assign(err, { stdout }));
+            else resolve(stdout);
+          });
+        });
       try {
-        const { execFileSync } = await import("node:child_process");
-        const out = execFileSync("sh", ["-c", cmd], { cwd, timeout: 120_000, maxBuffer: 1_000_000, encoding: "utf8" });
-        return { ok: true, output: out };
+        if (job.script) {
+          const scriptsDir = join(homedir(), ".mya", "agent", "scripts");
+          const resolved = nodePath.resolve(scriptsDir, job.script);
+          const real = realpathSync(resolved); // follow symlinks before confinement check
+          if (!real.startsWith(scriptsDir + nodePath.sep)) {
+            return { ok: false, output: "", error: "script path escapes ~/.mya/agent/scripts" };
+          }
+          const isSh = /\.(sh|bash)$/.test(job.script);
+          // pass the script path as an ARG (not via sh -c) to avoid injection
+          const out = await runAsync(isSh ? "bash" : "python3", [real]);
+          return { ok: true, output: out };
+        } else if (job.command) {
+          const out = await runAsync("sh", ["-c", job.command]);
+          return { ok: true, output: out };
+        }
+        return { ok: false, output: "", error: "shell job has no command/script" };
       } catch (e) {
         const er = e as { stdout?: string; message?: string };
         return { ok: false, output: er.stdout ?? "", error: er.message ?? "shell failed" };
@@ -586,6 +604,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // atomicWriteJobs). Previously cronAdd was unwired → HTTP jobs never fired
       // (D1) and, after 0B moved GET to read the scheduler, vanished entirely
       // (split-brain). Includes leaseMs + timezone so the file row is complete.
+      // Phase 5: capture provider/model snapshot for drift detection.
       cron.register({
         id: job.id,
         name: job.name,
@@ -596,6 +615,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         enabled: job.enabled,
         timezone: job.timezone,
         leaseMs: 5 * 60_000,
+        providerSnapshot: process.env["MYA_PROVIDER"],
+        modelSnapshot: process.env["MYA_MODEL"],
       });
     },
     cronRunNow: async (jobId: string) => {

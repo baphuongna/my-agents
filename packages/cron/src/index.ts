@@ -131,6 +131,10 @@ export class CronScheduler {
     // Phase 5: base_url exfil guard.
     const buErr = _validateBaseUrl(job.provider, job.base_url);
     if (buErr) throw new Error(`cron base_url rejected: ${buErr}`);
+    // Phase 5: shell jobs require explicit operator opt-in (arbitrary code exec).
+    if (job.jobType === "shell" && !process.env["MYA_CRON_ALLOW_SHELL"]) {
+      throw new Error("shell jobs require MYA_CRON_ALLOW_SHELL=1");
+    }
     const full: CronJob = { ...job, id };
     this.jobs.set(id, full);
     this.markDirty();
