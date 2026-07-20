@@ -97,6 +97,36 @@ describe("gateway cron sweep — D2 real-outcome (Phase 1A)", () => {
     expect(lastStatus(cron, "shf")).toBe("failed");
   });
 
+  it("Phase 5: multi-platform delivery — a succeeded job's output is sent to the channel", async () => {
+    const cron = new CronScheduler();
+    cron.register({ ...dueJob("d"), prompt: "p", deliveryTarget: "channel:test:dest1" } as never);
+    const sent: Array<{ id: string; target: string; text: string }> = [];
+    // minimal ChannelRegistry stub
+    const channels = {
+      get: (id: string) => id === "test" ? { send: async (target: string, text: string) => { sent.push({ id, target, text }); return { ok: true }; } } : undefined,
+      list: () => [],
+    } as never;
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron, channels,
+      onRunOnSession: (async () => "the daily report") as never,
+    });
+    await gw.cronSweep("test-worker");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.id).toBe("test");
+    expect(sent[0]!.target).toBe("dest1");
+    expect(sent[0]!.text).toBe("the daily report");
+  });
+
+  it("Phase 5: [SILENT] response is NOT delivered (suppression)", async () => {
+    const cron = new CronScheduler();
+    cron.register({ ...dueJob("s"), prompt: "p", deliveryTarget: "channel:test:dest" } as never);
+    let sent = false;
+    const channels = { get: () => ({ send: async () => { sent = true; return { ok: true }; } }), list: () => [] } as never;
+    const gw = new Gateway({ host: "127.0.0.1", port: 0, cron, channels, onRunOnSession: (async () => "[SILENT]") as never });
+    await gw.cronSweep("test-worker");
+    expect(sent).toBe(false); // suppressed
+  });
+
   it("calls cronReload (reconcile) before due — guards the constructor wiring", async () => {
     // Regression guard: cronReload must be ASSIGNED from opts (a prior version
     // declared the field but never assigned it → reconcile was a no-op → CLI

@@ -580,9 +580,28 @@ export class Gateway {
         } catch (e) {
           if ((e as Error).message !== "drift") this.cron!.complete(run.runId, "failed", (e as Error).message);
         }
+        const rec = this.cron!.runsOf(job.id).at(-1);
+        // Phase 5: multi-platform delivery. deliveryTarget grammar: comma-separated
+        // "channel:<id>:<target>" entries (e.g. "channel:telegram:12345"). The
+        // cron result is sent to each configured channel adapter. [SILENT]/empty
+        // responses are suppressed (no spam).
+        if (rec?.status === "succeeded" && runOutput && this.channels && job.deliveryTarget) {
+          const { isSilenceResponse } = await import("@my-agent/cron");
+          if (!isSilenceResponse(runOutput)) {
+            for (const tok of job.deliveryTarget.split(",").map((s) => s.trim()).filter(Boolean)) {
+              const m = tok.match(/^channel:([^:]+):(.+)$/);
+              if (m) {
+                const ch = this.channels!.get(m[1]!);
+                if (ch) {
+                  try { await ch.send(m[2]!, runOutput); }
+                  catch (e) { console.warn(`[gateway] cron deliver to ${tok} failed:`, (e as Error).message); }
+                }
+              }
+            }
+          }
+        }
         // Phase 4A: mirror the run outcome to durable history (runs for EVERY
         // outcome incl. no-runner — the early-return bug left rows stuck 'claimed').
-        const rec = this.cron!.runsOf(job.id).at(-1);
         if (rec) {
           try { this.cronRunEnd?.(run.runId, rec.status, rec.error ?? null, rec.endedAt ?? Date.now(), runOutput); } catch { /* best-effort */ }
         }
