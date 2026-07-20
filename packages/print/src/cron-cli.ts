@@ -10,7 +10,7 @@
  *   mya cron history <id>            # Show run history
  */
 import { readCronJobs, atomicWriteJobs, CRON_FILE } from "./cron-persist.js";
-import { authHeaders } from "./gw-auth.js";
+import { authHeaders, withAuth } from "./gw-auth.js";
 import { nowWallclock } from "@my-agent/core";
 
 const GW_PORT = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
@@ -225,6 +225,30 @@ export async function cronHistory(id?: string): Promise<void> {
       const mark = run.status === "succeeded" ? A.green("✓") : run.status === "failed" ? A.red("✗") : A.muted("·");
       console.log(`  ${mark} ${A.muted(t)} ${run.status}${dur}${run.error ? ` — ${run.error.slice(0, 80)}` : ""}`);
     }
+  } catch (e) {
+    console.log(`${A.red("✗")} ${(e as Error).message} (is the gateway running?)`);
+  }
+}
+
+/** Phase 5: full update — patch any field (name|schedule|prompt|enabled|trigger|timezone). */
+export async function cronUpdate(id: string | undefined, field: string | undefined, ...values: string[]): Promise<void> {
+  if (!id || !field) {
+    console.log(`${A.red("Usage:")} mya cron update <id> <field> <value>`);
+    console.log(`${A.muted("  fields: name | schedule | prompt | enabled | trigger | timezone")}`);
+    return;
+  }
+  const value = values.join(" ");
+  const patch: Record<string, unknown> = {};
+  if (field === "enabled") patch.enabled = value === "true" || value === "1" || value === "yes";
+  else if (["schedule", "prompt", "trigger", "timezone", "name"].includes(field)) patch[field] = value;
+  else { console.log(`${A.red("✗ field must be")} name|schedule|prompt|enabled|trigger|timezone`); return; }
+  try {
+    const r = await fetch(`http://127.0.0.1:${GW_PORT}/cron/jobs/${id}/patch`, {
+      method: "POST", headers: withAuth({ "content-type": "application/json" }),
+      body: JSON.stringify(patch), signal: AbortSignal.timeout(2000),
+    });
+    if (r.ok) console.log(`${A.green("✓")} Updated ${field} on ${id}`);
+    else console.log(`${A.red("✗")} ${(await r.json() as { error: string }).error}`);
   } catch (e) {
     console.log(`${A.red("✗")} ${(e as Error).message} (is the gateway running?)`);
   }

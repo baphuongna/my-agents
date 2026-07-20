@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     return;
   }
   if (args[0] === "cron") {
-    const { cronList, cronAdd, cronRemove, cronToggle, cronRun, cronHistory, cronStatus } = await import("./cron-cli.js");
+    const { cronList, cronAdd, cronRemove, cronToggle, cronRun, cronHistory, cronStatus, cronUpdate } = await import("./cron-cli.js");
     const sub = args[1];
     if (sub === "list" || sub === undefined) return cronList();
     if (sub === "add") return cronAdd(args[2], args[3], args[4], args[5]);
@@ -96,7 +96,8 @@ async function main(): Promise<void> {
     if (sub === "run") return cronRun(args[2]);
     if (sub === "history") return cronHistory(args[2]);
     if (sub === "status") return cronStatus();
-    console.log("Usage: mya cron {list|add|remove|enable|disable|run|history|status}");
+    if (sub === "update") return cronUpdate(args[2], args[3], ...args.slice(4));
+    console.log("Usage: mya cron {list|add|remove|enable|disable|run|history|status|update}");
     return;
   }
 
@@ -391,6 +392,29 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       console.warn(`[cron] ${stats.quarantined} job(s) quarantined by validate on reload`);
     }
   };
+
+  // Phase 5: declarative config jobs — seed from ~/.mya/agent/cron.config.json
+  // (an array of job configs). Jobs not already present (by name) are registered;
+  // runtime state of existing jobs is preserved (mya-v1 sync_declarative_jobs).
+  try {
+    const { readFileSync, existsSync } = await import("node:fs");
+    const declFile = join(homedir(), ".mya", "agent", "cron.config.json");
+    if (existsSync(declFile)) {
+      const decl = JSON.parse(readFileSync(declFile, "utf-8")) as Array<{ name: string; trigger?: "cron" | "on-interval" | "once"; schedule: string | number; prompt?: string; timezone?: string; jobType?: "agent" | "shell"; command?: string }>;
+      const existing = new Set(cron.listJobs().map((j) => j.name));
+      let seeded = 0;
+      for (const j of decl) {
+        if (!j.name || existing.has(j.name)) continue;
+        try {
+          cron.register({ name: j.name, trigger: j.trigger ?? "cron", schedule: j.schedule, prompt: j.prompt ?? "", deliveryTarget: "_cron", enabled: true, leaseMs: 5 * 60_000, timezone: j.timezone, jobType: j.jobType, command: j.command });
+          seeded++;
+        } catch (e) {
+          console.warn(`[cron] declarative job '${j.name}' skipped:`, (e as Error).message);
+        }
+      }
+      if (seeded > 0) console.warn(`[cron] seeded ${seeded} declarative job(s) from cron.config.json`);
+    }
+  } catch { /* best-effort */ }
 
   // Phase 0C auth: the WS token gates ALL non-allowlist HTTP routes + the WS
   // upgrade (Bearer header OR HttpOnly cookie). MYA_NO_WS_TOKEN remains an
