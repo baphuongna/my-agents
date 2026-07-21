@@ -8,25 +8,32 @@
 
 const BASE = "";
 
-/** Generic JSON fetch with session cookie. */
+/** Generic JSON fetch with session cookie + 15s timeout. */
 export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${text}`);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15_000);
+  try {
+    const res = await fetch(`${BASE}${url}`, {
+      ...init,
+      credentials: "include",
+      signal: init?.signal ?? ctl.signal,
+      headers: {
+        "content-type": "application/json",
+        ...init?.headers,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("application/json")) {
+      return res.json() as Promise<T>;
+    }
+    return res.text() as unknown as Promise<T>;
+  } finally {
+    clearTimeout(timer);
   }
-  const ct = res.headers.get("content-type") ?? "";
-  if (ct.includes("application/json")) {
-    return res.json() as Promise<T>;
-  }
-  return res.text() as unknown as Promise<T>;
 }
 
 /** POST JSON helper. */

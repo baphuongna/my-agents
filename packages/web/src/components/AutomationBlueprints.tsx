@@ -90,7 +90,7 @@ export function AutomationBlueprints({
               <div className="text-[12px] font-medium text-fg group-hover:text-accent transition-colors">
                 {bp.name}
               </div>
-              <div className="text-[10px] text-fg-subtle truncate">{bp.description}</div>
+              <div className="text-[11px] text-fg-subtle truncate">{bp.description}</div>
             </div>
           </button>
         ))}

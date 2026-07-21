@@ -60,14 +60,14 @@ export function Modal({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         className={cn(
-          "w-full bg-bg-surface border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh]",
+          "w-full bg-bg-surface border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh] animate-scale-in",
           maxWidth,
         )}
       >
@@ -119,7 +119,7 @@ export function ConfirmDialog({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

@@ -6,6 +6,8 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -30,16 +32,30 @@ let _id = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+
+  // Clear all timers on unmount
+  useEffect(() => {
+    return () => { timers.current.forEach((t) => clearTimeout(t)); };
+  }, []);
 
   const toast = useCallback((message: string, type: ToastType = "info") => {
     const id = ++_id;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
+    setToasts((prev) => {
+      const next = [...prev, { id, type, message }];
+      // Cap at 5 visible toasts
+      return next.length > 5 ? next.slice(-5) : next;
+    });
+    const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
+      timers.current.delete(id);
     }, 4000);
+    timers.current.set(id, timer);
   }, []);
 
   const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer) { clearTimeout(timer); timers.current.delete(id); }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
@@ -47,7 +63,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ toast }}>
       {children}
       {/* Toast viewport */}
-      <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 max-w-sm">
+      <div className="fixed bottom-4 right-4 z-[250] flex flex-col gap-2 max-w-sm">
         {toasts.map((t) => (
           <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
         ))}
