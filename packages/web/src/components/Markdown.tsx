@@ -4,6 +4,8 @@
  */
 import { useMemo, type ReactNode } from "react";
 
+// H13: force strikethrough variant ^~~text^~~
+const FORCE_STRIKETHROUGH_REGEX = /^(\^~~)(.+?)\^~~$/;
 type Block =
   | { type: "code"; lang: string; content: string }
   | { type: "heading"; level: number; content: string }

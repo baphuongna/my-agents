@@ -1997,3 +1997,4 @@ export { isSystemdAvailable, notifyReady, startWatchdog, stopWatchdog, notifySto
 export { VoicePTTController } from "./voice-ptt.js";
 export type { VoicePTTState, VoiceEvent, VoicePTTResult } from "./voice-ptt.js";
 export { RateLimiter, getRateLimiter, MediaCache } from "./channel-identity.js";
+export { MsGraphChannel, FeishuChannel, WeChatChannel, SpotifyChannel } from "./channel-adapters-extra.js";
