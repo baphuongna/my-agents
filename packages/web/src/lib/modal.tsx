@@ -27,8 +27,30 @@ export function useModalBehavior(open: boolean, onClose: () => void) {
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+
+    // Focus trap: cycle Tab between first and last focusable elements
+    const focusableSelector = 'a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !containerRef.current) return;
+      const focusable = containerRef.current.querySelectorAll<HTMLElement>(focusableSelector);
+      if (!focusable.length) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleTab);
+
+    // Auto-focus first focusable after a tick (allow modal to render)
+    const focusTimer = setTimeout(() => {
+      const first = containerRef.current?.querySelector<HTMLElement>(focusableSelector);
+      first?.focus();
+    }, 50);
+
     return () => {
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", handleTab);
+      clearTimeout(focusTimer);
       document.body.style.overflow = prevOverflow;
       prevActive?.focus?.();
     };
