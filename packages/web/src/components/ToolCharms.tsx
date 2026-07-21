@@ -1,0 +1,4 @@
+import { useEffect, useState } from "react";
+export interface ToolCharmsProps { toolName: string; active?: boolean; messages?: string[] }
+const defaults = ["Working…", "Gathering context…", "Still making progress…"];
+export default function ToolCharms({ toolName, active = true, messages = defaults }: ToolCharmsProps) { const [index, setIndex] = useState(0); useEffect(() => { if (!active || messages.length < 2) return; const timer = window.setInterval(() => setIndex(value => (value + 1) % messages.length), 3000); return () => window.clearInterval(timer); }, [active, messages.length]); if (!active) return null; return <div role="status" className="inline-flex items-center gap-2 text-xs text-fg-muted"><span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" /><span className="font-mono">{toolName}</span><span>{messages[index] ?? "Working…"}</span></div>; }

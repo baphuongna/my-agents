@@ -18,6 +18,12 @@ import { FilesPage } from "@/pages/FilesPage";
 import { LogsPage } from "@/pages/LogsPage";
 import { ConfigPage } from "@/pages/ConfigPage";
 import { SkillsPage } from "@/pages/SkillsPage";
+import { ProfilesPage } from "@/pages/ProfilesPage";
+import { ProfileBuilderPage } from "@/pages/ProfileBuilderPage";
+import { WebhooksPage } from "@/pages/WebhooksPage";
+import { PairingPage } from "@/pages/PairingPage";
+import { PetsPage } from "@/pages/PetsPage";
+import { AchievementsPage } from "@/pages/AchievementsPage";
 import { EnvPage } from "@/pages/EnvPage";
 import { PushPage } from "@/pages/PushPage";
 import { CollabPage } from "@/pages/CollabPage";
@@ -121,6 +127,12 @@ export default function App() {
                 />
               }
             />
+            <Route path="/profiles" element={<ProfilesPage />} />
+            <Route path="/profiles/new" element={<ProfileBuilderPage />} />
+            <Route path="/webhooks" element={<WebhooksPage />} />
+            <Route path="/pairing" element={<PairingPage />} />
+            <Route path="/pets" element={<PetsPage />} />
+            <Route path="/achievements" element={<AchievementsPage />} />
             <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
           </ErrorBoundary>

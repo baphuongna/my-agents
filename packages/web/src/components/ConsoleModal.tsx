@@ -1,0 +1,3 @@
+import { Button } from "@/components/ui/Button"; import Terminal from "@/components/Terminal";
+export interface ConsoleModalProps { open: boolean; onClose: () => void }
+export default function ConsoleModal({ open, onClose }: ConsoleModalProps) { if (!open) return null; return <div role="dialog" aria-modal="true" aria-label="Console" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"><div className="card w-full max-w-4xl"><div className="flex justify-between items-center mb-3"><h2 className="font-semibold">Console</h2><Button size="sm" onClick={onClose}>Close</Button></div><Terminal /></div></div>; }
