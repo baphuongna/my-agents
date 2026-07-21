@@ -483,6 +483,9 @@ export const findTool: ToolImpl = {
 
 import { osvCheckTool } from "./osv-check.js";
 import { urlSafetyTool } from "./url-safety.js";
+import { imageGenTool } from "./image-gen.js";
+import { videoGenTool } from "./video-gen.js";
+import { kanbanTool } from "./kanban.js";
 
 export const builtinTools: ToolImpl[] = [
   readTool,
@@ -507,6 +510,10 @@ export const builtinTools: ToolImpl[] = [
   // C4+C5: security tools
   osvCheckTool,
   urlSafetyTool,
+  // C1+C2+C3: generation + kanban tools
+  imageGenTool,
+  videoGenTool,
+  kanbanTool,
 ];
 
 function globToRegex(pattern: string): RegExp {

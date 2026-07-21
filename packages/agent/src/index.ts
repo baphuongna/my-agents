@@ -104,6 +104,9 @@ export interface AgentConfig {
   /** A1: max tool rounds per turn (default 25). Caps the number of
    * provider→tool-call iterations before the loop aborts. */
   maxToolRounds?: number;
+  /** A2: max subagent spawn depth (default 2). Prevents infinite recursion.
+   * Depth 1 = subagents can't spawn their own subagents. */
+  maxSpawnDepth?: number;
 }
 
 /** Subagent lifecycle status. */
@@ -567,8 +570,26 @@ export function createAgent(config: AgentConfig = {}): Agent {
    */
   function spawnSubagent(
     goal: string,
-    options?: { allowedTools?: string[]; signal?: AbortSignal },
+    options?: { allowedTools?: string[]; signal?: AbortSignal; depth?: number },
   ): SubagentHandle {
+    const currentDepth = options?.depth ?? 0;
+    const maxDepth = config.maxSpawnDepth ?? 2;
+    if (currentDepth >= maxDepth) {
+      // A2: reject spawn at max depth — return a failed handle.
+      const id = `sub-${randomBytes(4).toString("hex")}`;
+      const handle: SubagentHandle = {
+        id, goal, startedAt: nowWallclock(),
+        allowedTools: options?.allowedTools,
+        status: "failed",
+        output: "",
+        error: `max spawn depth (${maxDepth}) reached`,
+        endedAt: nowWallclock(),
+        abort: () => {},
+        wait: () => Promise.resolve(""),
+        stream: () => ({ [Symbol.asyncIterator]() { return { next: () => Promise.resolve({ value: undefined as unknown as string, done: true }) }; } }),
+      };
+      return handle;
+    }
     const id = `sub-${randomBytes(4).toString("hex")}`;
     const toolLine = options?.allowedTools?.length
       ? `\nAllowed tools: ${options.allowedTools.join(", ")}\nUse only these tools.`

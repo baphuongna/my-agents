@@ -42,3 +42,5 @@ export { resolveModelForPhase, parseModelRoutingFromMeta, buildDefaultTierConfig
 export type { ModelRoute, ModelRoutingConfig, ModelTier, ModelTierConfig } from "./model-routing.js";
 export { generatePkce, buildAuthUrl, exchangeCode, refreshAccessToken, verifyPkce, verifyCallbackState, LoopbackServer } from "./oauth.js";
 export type { PkcePair, AuthRequest, CallbackResult, TokenResponse } from "./oauth.js";
+export { scanProviders, isProviderConfigured, manifestToProfile, getConfiguredProviders } from "./provider-discovery.js";
+export type { ProviderPackageManifest } from "./provider-discovery.js";

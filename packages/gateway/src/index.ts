@@ -1844,6 +1844,7 @@ export class Gateway {
 export * from "./hooks.js";
 export { ApprovalRelay } from "./approval-relay.js";
 export type { ApprovalRequestPayload, ApprovalDecisionPayload } from "./approval-relay.js";
+export { startMcpOAuth, completeMcpOAuth, getMcpToken } from "./mcp-oauth.js";
 export * from "./mcp-lifecycle.js";
 export * from "./mcp-client.js";
 export * from "./channels.js";

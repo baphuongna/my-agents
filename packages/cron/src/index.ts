@@ -583,3 +583,4 @@ export function computeNextFire(
   }
   return null;
 }
+export { makeCronTools } from "./agent-tools.js";
