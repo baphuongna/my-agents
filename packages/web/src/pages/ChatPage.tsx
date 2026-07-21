@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/PageBits";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/Markdown";
+import { ModelPickerDialog } from "@/components/ModelPickerDialog";
 import { useToast } from "@/lib/toast";
 import {
   Terminal,
@@ -19,6 +20,7 @@ import {
   ChevronRight,
   RotateCcw,
   Cpu,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { postJSON } from "@/lib/api";
@@ -37,6 +39,8 @@ export function ChatPage() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [activeModel, setActiveModel] = useState<string>("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -170,6 +174,24 @@ export function ChatPage() {
         <Terminal size={16} className="text-accent" />
         <h1 className="text-sm font-semibold text-fg">Chat</h1>
         <div className="flex-1" />
+        {activeModel && (
+          <button
+            className="btn-secondary text-[11px] gap-1"
+            onClick={() => setModelPickerOpen(true)}
+          >
+            <Cpu size={11} />
+            {activeModel}
+          </button>
+        )}
+        {!activeModel && (
+          <button
+            className="btn-ghost text-[11px] gap-1"
+            onClick={() => setModelPickerOpen(true)}
+          >
+            <Settings size={11} />
+            Select model
+          </button>
+        )}
         {sessionId && (
           <Badge color="blue" className="font-mono">
             {sessionId.slice(0, 12)}
@@ -233,6 +255,12 @@ export function ChatPage() {
           </Button>
         </div>
       </div>
+
+      <ModelPickerDialog
+        open={modelPickerOpen}
+        onClose={() => setModelPickerOpen(false)}
+        onSelect={(_provider, model) => setActiveModel(model)}
+      />
     </div>
   );
 

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, LoadingSpinner, ErrorBox, EmptyState, RefreshButton } from "@/components/PageBits";
 import { ScheduleBuilder } from "@/components/ScheduleBuilder";
+import { AutomationBlueprints, type Blueprint } from "@/components/AutomationBlueprints";
 import { ConfirmDialog, Modal } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
 import {
@@ -354,6 +355,16 @@ function CronJobModal({
       }
     >
       <form id="cron-form" onSubmit={submit} className="space-y-4">
+        {/* Quick templates (only for new jobs) */}
+        {!editing && (
+          <AutomationBlueprints
+            onApply={(bp: Blueprint) => {
+              setName(bp.name);
+              setPrompt(bp.prompt);
+              setSchedule((prev) => ({ ...prev, ...bp.schedule }));
+            }}
+          />
+        )}
         {/* Name */}
         <div>
           <label className="text-xs text-fg-muted mb-1 block">Job Name</label>

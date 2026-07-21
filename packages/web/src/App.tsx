@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CommandPalette } from "@/components/CommandPalette";
 import { ChatPage } from "@/pages/ChatPage";
 import { SessionsPage } from "@/pages/SessionsPage";
 import { CronPage } from "@/pages/CronPage";
@@ -28,11 +30,13 @@ export default function App() {
 
   return (
     <div className="flex h-dvh max-h-dvh overflow-hidden bg-bg text-fg">
+      <CommandPalette />
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
       <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto">
+          <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<ChatPage />} />
@@ -115,6 +119,7 @@ export default function App() {
             />
             <Route path="*" element={<Navigate to="/sessions" replace />} />
           </Routes>
+          </ErrorBoundary>
         </main>
       </div>
     </div>
