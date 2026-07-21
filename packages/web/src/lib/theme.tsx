@@ -35,8 +35,8 @@ const THEMES: Theme[] = [
       "--bg": "#0b0d10", "--bg-surface": "#161b22", "--bg-elevated": "#1c2330", "--bg-input": "#0d1117",
       "--border": "#30363d", "--border-subtle": "#21262d",
       "--fg": "#e6edf3", "--fg-muted": "#8b949e", "--fg-subtle": "#6e7681",
-      "--accent": "#58a6ff", "--accent-hover": "#79b8ff",
-      "--success": "#238636", "--warning": "#d29922", "--danger": "#da3633", "--purple": "#a371f7", "--orange": "#f0883e",
+      "--accent": "#58a6ff", "--accent-hover": "#a5c9ff",
+      "--success": "#3fb950", "--warning": "#e3b341", "--danger": "#f85149", "--purple": "#a371f7", "--orange": "#f0883e",
     }),
   },
   {
@@ -83,8 +83,8 @@ const THEMES: Theme[] = [
       "--bg": "#0e0e0e", "--bg-surface": "#1a1a1a", "--bg-elevated": "#242424", "--bg-input": "#0a0a0a",
       "--border": "#333333", "--border-subtle": "#222222",
       "--fg": "#eaeaea", "--fg-muted": "#888888", "--fg-subtle": "#555555",
-      "--accent": "#bbbbbb", "--accent-hover": "#dddddd",
-      "--success": "#666666", "--warning": "#999999", "--danger": "#aaaaaa", "--purple": "#888888", "--orange": "#999999",
+      "--accent": "#bbbbbb", "--accent-hover": "#ffffff",
+      "--success": "#7fdb7f", "--warning": "#e3b341", "--danger": "#f85149", "--purple": "#a371f7", "--orange": "#f0883e",
     }),
   },
 ];

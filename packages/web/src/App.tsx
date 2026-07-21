@@ -32,11 +32,24 @@ export default function App() {
     document.title = "mya — Dashboard";
   }, []);
 
+  // R4: body scroll lock when mobile sidebar open
+  // R5: escape key closes mobile sidebar
+  useEffect(() => {
+    if (!mobileOpen) return;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [mobileOpen]);
+
   return (
-    <div className="flex h-dvh max-h-dvh overflow-hidden bg-bg text-fg">
-      {/* Subtle ambient gradient background */}
-      <div className="pointer-events-none fixed inset-0 z-0" style={{
-        background: "radial-gradient(ellipse 80% 50% at 50% -20%, color-mix(in srgb, theme('colors.accent.DEFAULT') 8%, transparent), transparent)",
+    <div className="flex h-dvh overflow-hidden bg-bg text-fg">
+      {/* Ambient gradient background */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0" style={{
+        background: "radial-gradient(ellipse 80% 50% at 50% -20%, rgb(var(--accent) / 0.08), transparent)",
       }} />
       <CommandPalette />
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
