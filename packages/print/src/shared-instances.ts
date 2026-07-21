@@ -43,7 +43,33 @@ import { createRequire } from "node:module";
 import { autoConfigureChannels } from "@my-agent/gateway";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { readFileSync, existsSync } from "node:fs";
 import type { ToolHookSink } from "@my-agent/core";
+
+// ── #5: Central config loader (R3-5 fix) ──
+// Reads ~/.mya/agent/config.json once at module load. Falls back to env vars.
+// This replaces the scattered 17-JSON-file pattern with a single optional config.
+export interface MyaConfig {
+  memoryBackend?: string; // "sqlite" | "brain" | "mem0" (D1)
+  activeProfile?: string; // H1 profile system
+  maxSpawnDepth?: number; // A2 subagent depth
+  maxToolRounds?: number; // A1 iteration budget
+}
+function loadConfig(): MyaConfig {
+  const configPath = join(homedir(), ".mya", "agent", "config.json");
+  let fileConfig: Partial<MyaConfig> = {};
+  if (existsSync(configPath)) {
+    try { fileConfig = JSON.parse(readFileSync(configPath, "utf8")) as Partial<MyaConfig>; }
+    catch { /* corrupt config → ignore */ }
+  }
+  return {
+    memoryBackend: fileConfig.memoryBackend ?? process.env["MYA_MEMORY_BACKEND"],
+    activeProfile: fileConfig.activeProfile ?? process.env["MYA_PROFILE"] ?? "default",
+    maxSpawnDepth: fileConfig.maxSpawnDepth ?? (process.env["MYA_MAX_SPAWN_DEPTH"] ? Number(process.env["MYA_MAX_SPAWN_DEPTH"]) : undefined),
+    maxToolRounds: fileConfig.maxToolRounds ?? (process.env["MYA_MAX_TOOL_ROUNDS"] ? Number(process.env["MYA_MAX_TOOL_ROUNDS"]) : undefined),
+  };
+}
+export const config = loadConfig();
 
 // ── Shared instances (created once at module load) ──
 export const secretStore = new SecretStore();

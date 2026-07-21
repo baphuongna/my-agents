@@ -55,6 +55,8 @@ function loadAuthConfig(): void {
 import { cronSessionToolConfig } from "./cron-role.js";
 // R3-3 fix: wire DevicePairing + WebAuthn (were never instantiated → endpoints 404).
 import { DevicePairing, WebAuthnService } from "@my-agent/secrets";
+// R4-2 fix: cross-device approval relay.
+import { ApprovalRelay } from "@my-agent/gateway";
 
 async function main(): Promise<void> {
   loadAuthConfig();
@@ -463,6 +465,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // R3-3 fix: instantiate DevicePairing + WebAuthn (were never wired → 404).
   const devicePairing = new DevicePairing();
   const webAuthn = new WebAuthnService({ origin: `http://127.0.0.1:${port}` });
+  // R4-2 fix: instantiate cross-device approval relay.
+  const approvalRelay = new ApprovalRelay();
 
   const gw = new Gateway({
     port,
@@ -671,6 +675,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     // R3-3 fix: wire device pairing + WebAuthn into gateway.
     devicePairing,
     webAuthn,
+    // R4-2 fix: wire approval relay for cross-device permission decisions.
+    approvalRelay,
   });
   const { port: actualPort } = await gw.start();
 

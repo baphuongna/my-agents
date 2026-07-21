@@ -22,6 +22,7 @@ import { ControlPlane } from "./control.js";
 import type { ControlCronJob } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
+import { ApprovalRelay, type ApprovalDecisionPayload } from "./approval-relay.js";
 import { HookRegistry } from "./hooks.js";
 import { CronScheduler } from "@my-agent/cron";
 import { SyncServer } from "@my-agent/sync";
@@ -227,6 +228,7 @@ export interface GatewayOptions {
   wsInfo?: () => unknown;
   /** Phase G: device pairing manager (optional). */
   devicePairing?: DevicePairing;
+  approvalRelay?: ApprovalRelay;
   /** Phase 3-7: WebAuthn/FaceID biometric auth service (optional). */
   webAuthn?: WebAuthnService;
   /** C-5 fix: optional voice call channel for Twilio integration. */
@@ -316,6 +318,7 @@ export class Gateway {
   private readonly wsInfo?: () => unknown;
   /** Phase G: device pairing manager. */
   private readonly devicePairing?: DevicePairing;
+  private readonly approvalRelay?: ApprovalRelay;
   /** Phase 3-7: WebAuthn biometric auth service. */
   private readonly webAuthn?: WebAuthnService;
   private readonly voiceCall?: VoiceCallChannel;
@@ -430,6 +433,14 @@ export class Gateway {
     this.poolQueueDepth = opts.poolQueueDepth;
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
+    this.approvalRelay = opts.approvalRelay;
+    // R4-2 fix: wire approval relay broadcast so web clients see pending approvals.
+    if (this.approvalRelay) {
+      this.approvalRelay.setEmitter((event) => {
+        // Broadcast to all wildcard subscribers (EventsPage / approval UI).
+        this.broadcast("*", event);
+      });
+    }
     this.webAuthn = opts.webAuthn;
     this.voiceCall = opts.voiceCall;
     // Phase 3: if cron is configured but no delivery channel exists, log once.
@@ -1339,6 +1350,29 @@ export class Gateway {
           return;
         }
         // ── Push (PWA) ──
+        // R4-2 fix: cross-device approval relay endpoints.
+        if (url.pathname === "/approval/pending" && req.method === "GET" && this.approvalRelay) {
+          return send(200, { pending: this.approvalRelay.listPending() });
+        }
+        const approvalDecideMatch = url.pathname.match(/^\/approval\/([^/]+)\/decide$/);
+        if (approvalDecideMatch && req.method === "POST" && this.approvalRelay) {
+          let apBody = "";
+          req.on("data", (c) => (apBody += c));
+          req.on("end", () => {
+            try {
+              const { decision, reason } = JSON.parse(apBody || "{}") as { decision?: string; reason?: string };
+              const ok = this.approvalRelay!.decide({
+                requestId: approvalDecideMatch[1]!,
+                decision: decision === "allow" ? "allow" : "deny",
+                reason,
+              });
+              return ok ? send(200, { ok: true }) : send(404, { error: "request not found or expired" });
+            } catch (e) {
+              return send(400, { error: (e as Error).message });
+            }
+          });
+          return;
+        }
         if (url.pathname === "/push/vapid-key" && req.method === "GET") {
           return send(200, { publicKey: getVapidPublicKey() });
         }
@@ -1607,6 +1641,12 @@ export class Gateway {
             return;
           }
         }
+        // R4-2 fix: handle cross-device approval decisions via WS.
+        if (msg.kind === "approval_decision" && this.approvalRelay) {
+          const ok = this.approvalRelay.decide(msg as ApprovalDecisionPayload);
+          ws.send(JSON.stringify({ kind: "approval_result", ok, requestId: (msg as { requestId?: string }).requestId }));
+          return;
+        }
         if (this.onWsMessage) {
           this.onWsMessage(session, msg);
         }
@@ -1785,6 +1825,8 @@ export class Gateway {
   }
 }
 export * from "./hooks.js";
+export { ApprovalRelay } from "./approval-relay.js";
+export type { ApprovalRequestPayload, ApprovalDecisionPayload } from "./approval-relay.js";
 export * from "./mcp-lifecycle.js";
 export * from "./mcp-client.js";
 export * from "./channels.js";
