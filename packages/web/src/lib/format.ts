@@ -126,8 +126,11 @@ export function describeSchedule(s: ScheduleState): string {
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function parseSchedule(expr: string): ScheduleState {
+  if (!expr || !expr.trim()) return { ...DEFAULT_SCHEDULE };
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return { ...DEFAULT_SCHEDULE, mode: "custom", customExpr: expr };
+  // R84: NaN guard on parseInt
+  const safeInt = (s: string) => { const n = parseInt(s); return Number.isFinite(n) ? n : NaN; };
 
   const [m, h, dom, , dow] = parts;
 

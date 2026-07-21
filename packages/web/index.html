@@ -3,18 +3,58 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#041c1c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icons/192.png" />
     <title>mya — Dashboard</title>
+    <!-- R47: Theme FOUC prevention — inject CSS vars before first paint -->
     <script>
-      // Gateway injects the session token into the cookie (HttpOnly).
-      // For WS connections, we read the token from the cookie via /ws-info
-      // or use the query-param approach: the rootHtml sets a cookie that
-      // the WS handler reads. For the SPA, we fetch the token at runtime.
-      window.__MYA_WS_PATH__ = "/events";
+      (function () {
+        try {
+          var t = localStorage.getItem("mya-theme");
+          var map = {
+            dark: "11 13 16 22 27 34 13 17 34 230 237 243 139 148 158 110 118 129 88 166 255 121 184 255 35 134 54 210 153 34 218 54 51 163 113 247 240 136 62",
+            midnight: "10 10 31 18 18 46 26 26 48 224 224 255 136 136 187 90 90 138 124 127 255 153 153 255 34 170 102 221 170 34 255 68 102 170 77 247 255 153 68",
+            teal: "4 28 28 10 40 40 16 53 53 224 240 232 122 170 154 74 122 106 61 214 176 93 230 192 44 181 104 224 168 48 232 69 69 168 112 216 232 149 72",
+            ember: "26 10 6 36 16 8 46 24 12 245 230 208 170 144 120 112 96 74 255 152 84 255 176 116 102 170 68 221 170 34 238 68 68 187 102 221 255 119 51",
+            mono: "14 14 14 26 26 26 36 36 36 234 234 234 136 136 136 85 85 85 187 187 187 221 221 221 102 102 102 153 153 153 170 170 170",
+          };
+          if (t && map[t]) {
+            var v = map[t].split(" ");
+            document.documentElement.setAttribute("data-theme", t);
+            var root = document.documentElement.style;
+            root.setProperty("--bg", v.slice(0, 4).join(" "));
+            root.setProperty("--bg-surface", v.slice(4, 8).join(" "));
+            root.setProperty("--bg-elevated", v.slice(8, 12).join(" "));
+            root.setProperty("--bg-input", v.slice(12, 16).join(" "));
+            root.setProperty("--border", v.slice(16, 20).join(" "));
+            root.setProperty("--border-subtle", v.slice(20, 24).join(" "));
+            root.setProperty("--fg", v.slice(24, 28).join(" "));
+            root.setProperty("--fg-muted", v.slice(28, 32).join(" "));
+            root.setProperty("--fg-subtle", v.slice(32, 36).join(" "));
+            root.setProperty("--accent", v.slice(36, 40).join(" "));
+            root.setProperty("--accent-hover", v[40] + " " + v[41] + " " + v[42]);
+            // Status colors from theme
+            var statusColors = {
+              dark: ["63 185 80", "227 179 65", "248 81 73", "163 113 247", "240 136 62"],
+              midnight: ["34 170 102", "227 179 65", "255 68 102", "170 119 247", "255 153 68"],
+              teal: ["44 181 104", "224 168 48", "232 69 69", "168 112 216", "232 149 72"],
+              ember: ["102 170 68", "221 170 34", "238 68 68", "187 102 221", "255 119 51"],
+              mono: ["127 219 127", "227 179 65", "248 81 73", "163 113 247", "240 136 62"],
+            };
+            var sc = statusColors[t];
+            if (sc) {
+              root.setProperty("--success", sc[0]);
+              root.setProperty("--warning", sc[1]);
+              root.setProperty("--danger", sc[2]);
+              root.setProperty("--purple", sc[3]);
+              root.setProperty("--orange", sc[4]);
+            }
+          }
+        } catch (e) { /* localStorage unavailable, use default */ }
+      })();
     </script>
   </head>
   <body>
