@@ -1,7 +1,7 @@
 /* fonts.css: @font-face declarations (no @apply, safe for v3) */
 @import '@nous-research/ui/styles/fonts.css';
-/* globals.css omitted — uses Tailwind v4 @utility/@apply directives incompatible with v3.
-   CSS variables are defined in :root below. */
+/* globals.css patched: v4 @utility/@apply/@theme stripped, plain CSS kept */
+@import './globals-patched.css';
 
 @tailwind base;
 @tailwind components;
