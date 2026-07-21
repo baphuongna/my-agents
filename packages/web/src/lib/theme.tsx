@@ -1,0 +1,183 @@
+/**
+ * Theme system — CSS-variable-based theming with presets.
+ * Port of Hermes ThemeProvider pattern (simplified).
+ */
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+
+export interface Theme {
+  name: string;
+  label: string;
+  description: string;
+  vars: Record<string, string>;
+}
+
+const THEMES: Theme[] = [
+  {
+    name: "dark",
+    label: "Dark",
+    description: "Default dark theme — GitHub-inspired",
+    vars: {
+      "--bg": "#0b0d10",
+      "--bg-surface": "#161b22",
+      "--bg-elevated": "#1c2330",
+      "--bg-input": "#0d1117",
+      "--border": "#30363d",
+      "--border-subtle": "#21262d",
+      "--fg": "#e6edf3",
+      "--fg-muted": "#8b949e",
+      "--fg-subtle": "#6e7681",
+      "--accent": "#58a6ff",
+      "--accent-hover": "#79b8ff",
+      "--success": "#238636",
+      "--warning": "#d29922",
+      "--danger": "#da3633",
+      "--purple": "#a371f7",
+      "--orange": "#f0883e",
+    },
+  },
+  {
+    name: "midnight",
+    label: "Midnight",
+    description: "Deep blue-violet with cool accents",
+    vars: {
+      "--bg": "#0a0a1f",
+      "--bg-surface": "#12122e",
+      "--bg-elevated": "#1a1a3a",
+      "--bg-input": "#08081a",
+      "--border": "#2a2a50",
+      "--border-subtle": "#1e1e3a",
+      "--fg": "#e0e0ff",
+      "--fg-muted": "#8888bb",
+      "--fg-subtle": "#5a5a8a",
+      "--accent": "#7c7fff",
+      "--accent-hover": "#9999ff",
+      "--success": "#22aa66",
+      "--warning": "#ddaa22",
+      "--danger": "#ff4466",
+      "--purple": "#aa77ff",
+      "--orange": "#ff9944",
+    },
+  },
+  {
+    name: "teal",
+    label: "Teal",
+    description: "Classic teal — Hermes-inspired warm glow",
+    vars: {
+      "--bg": "#041c1c",
+      "--bg-surface": "#0a2828",
+      "--bg-elevated": "#103535",
+      "--bg-input": "#021414",
+      "--border": "#1a4040",
+      "--border-subtle": "#122e2e",
+      "--fg": "#e0f0e8",
+      "--fg-muted": "#7aaa9a",
+      "--fg-subtle": "#4a7a6a",
+      "--accent": "#3dd6b0",
+      "--accent-hover": "#5de6c0",
+      "--success": "#2cb568",
+      "--warning": "#e0a830",
+      "--danger": "#e84545",
+      "--purple": "#a870d8",
+      "--orange": "#e89548",
+    },
+  },
+  {
+    name: "ember",
+    label: "Ember",
+    description: "Warm dark amber — cozy late-night coding",
+    vars: {
+      "--bg": "#1a0a06",
+      "--bg-surface": "#241008",
+      "--bg-elevated": "#2e180c",
+      "--bg-input": "#140804",
+      "--border": "#3a2010",
+      "--border-subtle": "#281608",
+      "--fg": "#f5e6d0",
+      "--fg-muted": "#aa9078",
+      "--fg-subtle": "#70604a",
+      "--accent": "#ff9854",
+      "--accent-hover": "#ffb074",
+      "--success": "#66aa44",
+      "--warning": "#ddaa22",
+      "--danger": "#ee4444",
+      "--purple": "#bb66dd",
+      "--orange": "#ff7733",
+    },
+  },
+  {
+    name: "mono",
+    label: "Mono",
+    description: "Minimal monochrome — distraction-free",
+    vars: {
+      "--bg": "#0e0e0e",
+      "--bg-surface": "#1a1a1a",
+      "--bg-elevated": "#242424",
+      "--bg-input": "#0a0a0a",
+      "--border": "#333333",
+      "--border-subtle": "#222222",
+      "--fg": "#eaeaea",
+      "--fg-muted": "#888888",
+      "--fg-subtle": "#555555",
+      "--accent": "#bbbbbb",
+      "--accent-hover": "#dddddd",
+      "--success": "#666666",
+      "--warning": "#999999",
+      "--danger": "#aaaaaa",
+      "--purple": "#888888",
+      "--orange": "#999999",
+    },
+  },
+];
+
+const THEME_KEY = "mya-theme";
+
+interface ThemeContextValue {
+  theme: Theme;
+  themes: Theme[];
+  setTheme: (name: string) => void;
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  for (const [key, value] of Object.entries(theme.vars)) {
+    root.style.setProperty(key, value);
+  }
+  root.setAttribute("data-theme", theme.name);
+}
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const stored = localStorage.getItem(THEME_KEY);
+    return THEMES.find((t) => t.name === stored) ?? THEMES[0]!;
+  });
+
+  useEffect(() => {
+    applyTheme(theme);
+    localStorage.setItem(THEME_KEY, theme.name);
+  }, [theme]);
+
+  function setTheme(name: string) {
+    const found = THEMES.find((t) => t.name === name);
+    if (found) setThemeState(found);
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, themes: THEMES, setTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
+  return ctx;
+}

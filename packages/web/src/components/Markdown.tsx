@@ -1,383 +1,196 @@
+/**
+ * Lightweight Markdown renderer — code blocks, headings, lists, bold/italic/inline-code.
+ * Port of Hermes Markdown.tsx pattern (custom parser, no library dependency).
+ */
 import { useMemo, type ReactNode } from "react";
 
-/**
- * Lightweight markdown renderer for LLM output.
- * Handles: code blocks, inline code, bold, italic, headers, links, lists, horizontal rules.
- * NOT a full CommonMark parser — optimized for typical assistant message patterns.
- *
- * `streaming` renders a blinking caret at the tail of the last block so it
- * appears to hug the final character instead of wrapping onto a new line
- * after a block element (paragraph/list/code/…).
- */
-export function Markdown({
-  content,
-  highlightTerms,
-  streaming,
-}: {
-  content: string;
-  highlightTerms?: string[];
-  streaming?: boolean;
-}) {
-  const blocks = useMemo(() => parseBlocks(content), [content]);
-  const caret = streaming ? <StreamingCaret /> : null;
-
-  return (
-    <div className="text-sm text-foreground leading-relaxed space-y-2">
-      {blocks.map((block, i) => (
-        <Block
-          key={i}
-          block={block}
-          highlightTerms={highlightTerms}
-          caret={caret && i === blocks.length - 1 ? caret : null}
-        />
-      ))}
-      {blocks.length === 0 && caret}
-    </div>
-  );
-}
-
-function StreamingCaret() {
-  return (
-    <span
-      aria-hidden
-      className="inline-block w-[0.5em] h-[1em] ml-0.5 align-[-0.15em] bg-foreground/50 animate-pulse"
-    />
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-
-type BlockNode =
+type Block =
   | { type: "code"; lang: string; content: string }
   | { type: "heading"; level: number; content: string }
   | { type: "hr" }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "paragraph"; content: string };
 
-/* ------------------------------------------------------------------ */
-/*  Block parser                                                       */
-/* ------------------------------------------------------------------ */
-
-function parseBlocks(text: string): BlockNode[] {
-  const lines = text.split("\n");
-  const blocks: BlockNode[] = [];
+function parseBlocks(src: string): Block[] {
+  const lines = src.split("\n");
+  const blocks: Block[] = [];
   let i = 0;
 
   while (i < lines.length) {
     const line = lines[i];
 
-    // Fenced code block
-    const fenceMatch = line.match(/^```(\w*)/);
-    if (fenceMatch) {
-      const lang = fenceMatch[1] || "";
-      const codeLines: string[] = [];
+    // Code block
+    if (line?.startsWith("```")) {
+      const lang = line.slice(3).trim();
+      const code: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i]);
+      while (i < lines.length && !lines[i]?.startsWith("```")) {
+        code.push(lines[i] ?? "");
         i++;
       }
       i++; // skip closing ```
-      blocks.push({ type: "code", lang, content: codeLines.join("\n") });
-      continue;
-    }
-
-    // Heading
-    const headingMatch = line.match(/^(#{1,4})\s+(.+)/);
-    if (headingMatch) {
-      blocks.push({
-        type: "heading",
-        level: headingMatch[1].length,
-        content: headingMatch[2],
-      });
-      i++;
+      blocks.push({ type: "code", lang, content: code.join("\n") });
       continue;
     }
 
     // Horizontal rule
-    if (/^[-*_]{3,}\s*$/.test(line)) {
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line?.trim() ?? "")) {
       blocks.push({ type: "hr" });
       i++;
       continue;
     }
 
-    // Unordered list
-    if (/^[-*+]\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*+]\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*+]\s/, ""));
-        i++;
-      }
-      blocks.push({ type: "list", ordered: false, items });
+    // Heading
+    const headingMatch = line?.match(/^(#{1,4})\s+(.*)/);
+    if (headingMatch) {
+      blocks.push({
+        type: "heading",
+        level: headingMatch[1]!.length,
+        content: headingMatch[2]!,
+      });
+      i++;
       continue;
     }
 
-    // Ordered list
-    if (/^\d+[.)]\s/.test(line)) {
+    // List
+    if (/^\s*([-*]|\d+\.)\s+/.test(line ?? "")) {
       const items: string[] = [];
-      while (i < lines.length && /^\d+[.)]\s/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+[.)]\s/, ""));
+      const ordered = /^\s*\d+\.\s+/.test(line ?? "");
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i] ?? "")) {
+        items.push((lines[i] ?? "").replace(/^\s*([-*]|\d+\.)\s+/, ""));
         i++;
       }
-      blocks.push({ type: "list", ordered: true, items });
+      blocks.push({ type: "list", ordered, items });
       continue;
     }
 
     // Empty line
-    if (line.trim() === "") {
+    if (!line?.trim()) {
       i++;
       continue;
     }
 
-    // Paragraph — collect consecutive non-empty, non-special lines
-    const paraLines: string[] = [];
+    // Paragraph (gather consecutive non-empty lines)
+    const para: string[] = [];
     while (
       i < lines.length &&
-      lines[i].trim() !== "" &&
-      !lines[i].match(/^```/) &&
-      !lines[i].match(/^#{1,4}\s/) &&
-      !lines[i].match(/^[-*+]\s/) &&
-      !lines[i].match(/^\d+[.)]\s/) &&
-      !lines[i].match(/^[-*_]{3,}\s*$/)
+      lines[i]?.trim() &&
+      !lines[i]?.startsWith("```") &&
+      !/^#{1,4}\s/.test(lines[i] ?? "") &&
+      !/^\s*([-*]|\d+\.)\s+/.test(lines[i] ?? "")
     ) {
-      paraLines.push(lines[i]);
+      para.push(lines[i] ?? "");
       i++;
     }
-    if (paraLines.length > 0) {
-      blocks.push({ type: "paragraph", content: paraLines.join("\n") });
-    }
+    blocks.push({ type: "paragraph", content: para.join(" ") });
   }
 
   return blocks;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Block renderer                                                     */
-/* ------------------------------------------------------------------ */
+function renderInline(text: string): ReactNode[] {
+  // Process: **bold**, *italic*, `code`, [link](url)
+  const nodes: ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
 
-function Block({
-  block,
-  highlightTerms,
-  caret,
-}: {
-  block: BlockNode;
-  highlightTerms?: string[];
-  caret?: ReactNode;
-}) {
-  switch (block.type) {
-    case "code":
-      return (
-        <pre className="bg-secondary/60 border border-border px-3 py-2.5 text-xs font-mono leading-relaxed overflow-x-auto">
-          <code>
-            {block.content}
-            {caret}
-          </code>
-        </pre>
+  const patterns: RegExp[] = [
+    /\*\*([^*]+)\*\*/,
+    /`([^`]+)`/,
+    /\*([^*]+)\*/,
+    /\[([^\]]+)\]\(([^)]+)\)/,
+  ];
+
+  while (remaining.length > 0) {
+    let earliest: { match: RegExpMatchArray; pattern: number } | null = null;
+    for (let p = 0; p < patterns.length; p++) {
+      const m = remaining.match(patterns[p]!);
+      if (m && m.index != null && (!earliest || m.index < earliest.match.index!)) {
+        earliest = { match: m, pattern: p };
+      }
+    }
+
+    if (!earliest) {
+      nodes.push(remaining);
+      break;
+    }
+
+    const { match, pattern } = earliest;
+    const idx = match.index!;
+
+    if (idx > 0) nodes.push(remaining.slice(0, idx));
+
+    if (pattern === 0) {
+      nodes.push(<strong key={key++} className="font-semibold text-fg">{match[1]}</strong>);
+    } else if (pattern === 1) {
+      nodes.push(
+        <code key={key++} className="px-1 py-0.5 rounded bg-bg-elevated text-accent text-[0.85em] font-mono">
+          {match[1]}
+        </code>,
       );
-
-    case "heading": {
-      const Tag = `h${Math.min(block.level, 4)}` as "h1" | "h2" | "h3" | "h4";
-      const sizes: Record<string, string> = {
-        h1: "text-base font-bold",
-        h2: "text-sm font-bold",
-        h3: "text-sm font-semibold",
-        h4: "text-sm font-medium",
-      };
-      return (
-        <Tag className={sizes[Tag]}>
-          <InlineContent text={block.content} highlightTerms={highlightTerms} />
-          {caret}
-        </Tag>
+    } else if (pattern === 2) {
+      nodes.push(<em key={key++}>{match[1]}</em>);
+    } else if (pattern === 3) {
+      nodes.push(
+        <a key={key++} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+          {match[1]}
+        </a>,
       );
     }
 
-    case "hr":
-      return (
-        <>
-          <hr className="border-border" />
-          {caret}
-        </>
-      );
-
-    case "list": {
-      const Tag = block.ordered ? "ol" : "ul";
-      const last = block.items.length - 1;
-      return (
-        <Tag
-          className={`space-y-0.5 ${block.ordered ? "list-decimal" : "list-disc"} pl-5 text-sm`}
-        >
-          {block.items.map((item, i) => (
-            <li key={i}>
-              <InlineContent text={item} highlightTerms={highlightTerms} />
-              {i === last ? caret : null}
-            </li>
-          ))}
-        </Tag>
-      );
-    }
-
-    case "paragraph":
-      return (
-        <p>
-          <InlineContent text={block.content} highlightTerms={highlightTerms} />
-          {caret}
-        </p>
-      );
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Inline parser + renderer                                           */
-/* ------------------------------------------------------------------ */
-
-type InlineNode =
-  | { type: "text"; content: string }
-  | { type: "code"; content: string }
-  | { type: "bold"; content: string }
-  | { type: "italic"; content: string }
-  | { type: "link"; text: string; href: string }
-  | { type: "br" };
-
-function parseInline(text: string): InlineNode[] {
-  const nodes: InlineNode[] = [];
-  // Pattern priority: code > link > bold > italic > bare URL > line break
-  const pattern =
-    /(`[^`]+`)|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(\bhttps?:\/\/[^\s<>)\]]+)|(\n)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push({ type: "text", content: text.slice(lastIndex, match.index) });
-    }
-
-    if (match[1]) {
-      // Inline code
-      nodes.push({ type: "code", content: match[1].slice(1, -1) });
-    } else if (match[2]) {
-      // [text](url) link
-      nodes.push({ type: "link", text: match[3], href: match[4] });
-    } else if (match[5]) {
-      // **bold**
-      nodes.push({ type: "bold", content: match[6] });
-    } else if (match[7]) {
-      // *italic*
-      nodes.push({ type: "italic", content: match[8] });
-    } else if (match[9]) {
-      // Bare URL
-      nodes.push({ type: "link", text: match[9], href: match[9] });
-    } else if (match[10]) {
-      // Line break within paragraph
-      nodes.push({ type: "br" });
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push({ type: "text", content: text.slice(lastIndex) });
+    remaining = remaining.slice(idx + match[0].length);
   }
 
   return nodes;
 }
 
-function InlineContent({
-  text,
-  highlightTerms,
-}: {
-  text: string;
-  highlightTerms?: string[];
-}) {
-  const nodes = useMemo(() => parseInline(text), [text]);
+export function Markdown({ content }: { content: string }) {
+  const blocks = useMemo(() => parseBlocks(content), [content]);
 
   return (
-    <>
-      {nodes.map((node, i) => {
-        switch (node.type) {
-          case "text":
-            return (
-              <HighlightedText
-                key={i}
-                text={node.content}
-                terms={highlightTerms}
-              />
-            );
+    <div className="text-sm text-fg leading-relaxed space-y-2">
+      {blocks.map((block, i) => {
+        switch (block.type) {
           case "code":
             return (
-              <code
+              <pre
                 key={i}
-                className="bg-secondary/60 px-1.5 py-0.5 text-xs font-mono text-primary/90"
+                className="bg-bg-input border border-border rounded-lg p-3 overflow-x-auto text-[12px] font-mono text-fg-muted"
               >
-                {node.content}
-              </code>
+                {block.lang && (
+                  <div className="text-[10px] text-fg-subtle mb-1 uppercase">{block.lang}</div>
+                )}
+                <code>{block.content}</code>
+              </pre>
             );
-          case "bold":
+          case "heading": {
+            const sizes = ["text-lg", "text-base", "text-sm", "text-xs"];
             return (
-              <strong key={i} className="font-semibold">
-                <HighlightedText text={node.content} terms={highlightTerms} />
-              </strong>
-            );
-          case "italic":
-            return (
-              <em key={i}>
-                <HighlightedText text={node.content} terms={highlightTerms} />
-              </em>
-            );
-          case "link": {
-            // Security: only render http(s)/mailto links. Other schemes
-            // (javascript:, data:, vbscript:) are dropped to plain text so a
-            // crafted link in agent/message content can't execute on click.
-            const href = node.href.trim();
-            if (!/^(https?:|mailto:)/i.test(href)) {
-              return (
-                <HighlightedText
-                  key={i}
-                  text={node.text}
-                  terms={highlightTerms}
-                />
-              );
-            }
-            return (
-              <a
-                key={i}
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary underline underline-offset-2 decoration-primary/30 hover:decoration-primary/60 transition-colors"
-              >
-                {node.text}
-              </a>
+              <h key={i} className={`${sizes[block.level - 1] ?? "text-sm"} font-bold text-fg mt-3`}>
+                {block.content}
+              </h>
             );
           }
-          case "br":
-            return <br key={i} />;
+          case "hr":
+            return <hr key={i} className="border-border my-3" />;
+          case "list":
+            return block.ordered ? (
+              <ol key={i} className="list-decimal list-inside space-y-0.5">
+                {block.items.map((item, j) => (
+                  <li key={j}>{renderInline(item)}</li>
+                ))}
+              </ol>
+            ) : (
+              <ul key={i} className="list-disc list-inside space-y-0.5">
+                {block.items.map((item, j) => (
+                  <li key={j}>{renderInline(item)}</li>
+                ))}
+              </ul>
+            );
+          case "paragraph":
+            return <p key={i}>{renderInline(block.content)}</p>;
         }
       })}
-    </>
-  );
-}
-
-/** Highlight search terms within a plain text string. */
-function HighlightedText({ text, terms }: { text: string; terms?: string[] }) {
-  if (!terms || terms.length === 0) return <>{text}</>;
-
-  // Build a regex that matches any of the search terms (case-insensitive)
-  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const regex = new RegExp(`(${escaped.join("|")})`, "gi");
-  const parts = text.split(regex);
-
-  return (
-    <>
-      {parts.map((part, i) =>
-        regex.test(part) ? (
-          <mark key={i} className="bg-warning/30 text-warning px-0.5">
-            {part}
-          </mark>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </>
+    </div>
   );
 }
