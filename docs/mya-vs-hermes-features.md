@@ -396,7 +396,7 @@
 14. Agent-callable scheduling (`cronjob_tools.py`)
 15. Cron one-shot grace
 16. Cron lifecycle_guard
-17. Cron pre-exec advance + post-exec mark ordering
+17. ~~Cron pre-exec advance + post-exec mark ordering~~ (already done in mya)
 18. Cron empirical catch-up grace
 19. Profile system (multi-island)
 20. Per-platform identity/cache/rate-limit
@@ -449,7 +449,7 @@
 |---|---|---|---|---|
 | 1 | **Plugin providers with lazy install** | M | **HIGH** | Closes 30+ vs 8 provider gap; reuse `tools/lazy_deps.py` allowlist pattern |
 | 2 | **`IterationBudget` per-subagent** | S (~50 LOC) | **HIGH** | Mirrors existing `BudgetConfig`; deepest single gap |
-| 3 | **Cron pre-exec advance + post-exec mark ordering** | M | **HIGH** | Fixes mark-before-async-turn anti-pattern; mya has Phase 0A + D2 soft-fail already |
+| 3 | ~~Cron pre-exec advance + post-exec mark ordering~~ | — | — | **FALSE ALARM** — mya's `dueAndAdvance()` already advances nextRunAt BEFORE firing, and `complete()` re-anchors post-exec. Correct ordering already implemented. |
 | 4 | **Cron catch-up with grace window** | S | **HIGH** | Port `_compute_grace_seconds`; fixes `#33315`-style infinite-defer |
 | 5 | **ProfileSwitcher + per-profile remount + ProfileScopeBanner** | M | **HIGH** | Multi-island invariant; gateway endpoint already exists |
 | 6 | **Web plugin manifest + slot registry (30+ slots)** | L | **HIGH** | Single biggest UX gap — mya React has zero plugin surface |
