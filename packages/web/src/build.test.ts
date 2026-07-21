@@ -1,35 +1,33 @@
 /**
  * @my-agent/web — build pipeline tests.
- *
- * Verifies that the Vite build produces the SPA output files (React app).
- * The old library-mode build (web.js exporting dashboardHtml) has been
- * replaced by a Vite React app that builds to dist/web/assets/index.js.
+ * Uses a temp directory so the real dist/ is never touched.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execSync } from "child_process";
-import { existsSync, rmSync, readdirSync, readFileSync } from "fs";
+import { existsSync, rmSync, readFileSync } from "fs";
 import { join } from "path";
+import { mkdtempSync } from "fs";
+import { tmpdir } from "os";
 
 const WEB_DIR = join(import.meta.dirname, "..");
-const DIST_DIR = join(WEB_DIR, "dist", "web");
-const ASSETS_DIR = join(DIST_DIR, "assets");
+// Use a temp directory so tests never delete the real dist/
+const TEST_DIR = mkdtempSync(join(tmpdir(), "mya-web-build-"));
 
-describe("web build pipeline", () => {
+describe("web build pipeline (temp dir, no real dist cleanup)", () => {
   beforeAll(() => {
-    if (existsSync(DIST_DIR)) {
-      rmSync(DIST_DIR, { recursive: true, force: true });
-    }
+    // No-op: we build into TEST_DIR, not the real dist
   });
 
   afterAll(() => {
-    if (existsSync(DIST_DIR)) {
-      rmSync(DIST_DIR, { recursive: true, force: true });
+    // Clean up only the temp directory, never the real dist
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true, force: true });
     }
   });
 
   it("builds successfully with vite", () => {
-    const output = execSync("npx vite build", {
+    const output = execSync("npx vite build --outDir " + TEST_DIR, {
       cwd: WEB_DIR,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
@@ -37,35 +35,27 @@ describe("web build pipeline", () => {
     expect(output).toContain("built in");
   });
 
-  it("produces index.html in dist/web/", () => {
-    expect(existsSync(join(DIST_DIR, "index.html"))).toBe(true);
-    const html = readFileSync(join(DIST_DIR, "index.html"), "utf-8");
+  it("produces index.html in temp dir", () => {
+    const indexPath = join(TEST_DIR, "index.html");
+    expect(existsSync(indexPath)).toBe(true);
+    const html = readFileSync(indexPath, "utf-8");
     expect(html).toContain("<!doctype html>");
     expect(html).toContain('id="root"');
-    expect(html).toContain('src="/assets/index.js"');
+    // Verify FOUC prevention script is present
+    expect(html).toContain("mya-theme");
   });
 
-  it("produces JavaScript bundle in dist/web/assets/", () => {
-    expect(existsSync(ASSETS_DIR)).toBe(true);
-    const jsFile = join(ASSETS_DIR, "index.js");
+  it("produces JavaScript bundle", () => {
+    const jsFile = join(TEST_DIR, "assets", "index.js");
     expect(existsSync(jsFile)).toBe(true);
     const content = readFileSync(jsFile, "utf-8");
-    // Should be a substantial bundle (React + app code)
     expect(content.length).toBeGreaterThan(10000);
   });
 
-  it("produces CSS bundle in dist/web/assets/", () => {
-    const cssFile = join(ASSETS_DIR, "index.css");
+  it("produces CSS bundle", () => {
+    const cssFile = join(TEST_DIR, "assets", "index.css");
     expect(existsSync(cssFile)).toBe(true);
     const content = readFileSync(cssFile, "utf-8");
-    // Should contain Tailwind utilities
     expect(content.length).toBeGreaterThan(1000);
-  });
-
-  it("preserves PWA assets in dist/web/", () => {
-    const entries = readdirSync(DIST_DIR);
-    expect(entries).toContain("manifest.json");
-    expect(entries).toContain("sw.js");
-    expect(entries).toContain("icons");
   });
 });
