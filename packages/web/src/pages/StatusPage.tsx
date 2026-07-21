@@ -66,7 +66,7 @@ export function StatusPage() {
   const configuredCount = providers.filter((p) => p.configured).length;
 
   return (
-    <div className="p-4 max-w-5xl space-y-4 animate-fade-in-up">
+    <div className="p-4 max-w-7xl w-full mx-auto space-y-4 animate-fade-in-up">
       <PageHeader
         title="System"
         icon={Activity}
@@ -95,7 +95,7 @@ export function StatusPage() {
           </div>
 
           {/* Metrics grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
             <StatCard
               icon={Server}
               label="Gateway"

@@ -55,7 +55,7 @@ export function ToolsPage() {
   const modeOrder = ["DangerFullAccess", "WorkspaceWrite", "ReadOnly", "__other__"];
 
   return (
-    <div className="p-4 max-w-4xl space-y-3">
+    <div className="p-4 max-w-4xl w-full mx-auto space-y-3">
       <PageHeader
         title="Tools"
         icon={Zap}

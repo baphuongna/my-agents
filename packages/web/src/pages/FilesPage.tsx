@@ -78,7 +78,7 @@ export function FilesPage() {
   const breadcrumbs = ["root", ...path];
 
   return (
-    <div className="p-4 max-w-3xl animate-fade-in-up">
+    <div className="p-4 max-w-3xl w-full mx-auto animate-fade-in-up">
       <PageHeader
         title="Files"
         icon={FolderOpen}
@@ -90,7 +90,7 @@ export function FilesPage() {
       />
 
       {/* Breadcrumbs */}
-      <div className="flex items-center gap-1 mb-3 text-xs">
+      <div className="flex items-center gap-1 mb-3 text-xs overflow-x-auto whitespace-nowrap pb-1">
         <button
           className="btn-ghost p-1"
           onClick={() => loadDir([])}

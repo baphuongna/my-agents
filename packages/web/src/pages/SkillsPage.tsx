@@ -51,7 +51,7 @@ export function SkillsPage() {
     : skills;
 
   return (
-    <div className="p-4 max-w-4xl space-y-3">
+    <div className="p-4 max-w-4xl w-full mx-auto space-y-3">
       <PageHeader
         title="Skills"
         icon={Package}

@@ -61,7 +61,7 @@ export function SessionsPage() {
   return (
     <div className="flex h-full">
       {/* Session list */}
-      <div className={cn("p-4 space-y-3 overflow-y-auto", selected && "hidden md:block md:w-80 md:shrink-0")}>
+      <div className={cn("flex-1 min-w-0 p-4 space-y-3 overflow-y-auto", selected && "hidden md:block md:w-80 md:shrink-0")}>
         <PageHeader
           title="Sessions"
           icon={MessageSquare}
@@ -204,7 +204,7 @@ function SessionDetail({
       </div>
 
       {/* Metadata */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <DetailField label="Session ID" value={session.id} mono />
         <DetailField label="Model" value={session.model || "—"} />
         <DetailField label="Provider" value={session.provider || "—"} />

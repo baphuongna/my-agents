@@ -128,7 +128,7 @@ function NavGroup({ items, collapsed, onItemClick }: { items: NavItem[]; collaps
           onClick={onItemClick}
           title={collapsed ? item.label : undefined}
           className={({ isActive }) => cn(
-            "relative flex items-center gap-3 mx-2 px-3 py-2 rounded-lg text-[13px] transition-all duration-150",
+            "relative flex items-center gap-3 mx-2 px-3 py-2 rounded-lg text-[13px] transition-all duration-150 nav-link",
             collapsed && "justify-center mx-1.5",
             isActive
               ? "text-fg bg-accent/10 font-medium"

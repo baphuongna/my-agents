@@ -80,7 +80,7 @@ export function CronPage() {
   }
 
   return (
-    <div className="p-4 max-w-4xl animate-fade-in-up">
+    <div className="p-4 max-w-4xl w-full mx-auto animate-fade-in-up">
       <PageHeader
         title="Cron Jobs"
         icon={Clock}

@@ -119,7 +119,7 @@ export function LogsPage() {
               {log.level}
             </Badge>
             <span className="text-fg-muted shrink-0">[{log.source}]</span>
-            <span className="text-fg-muted break-all">{log.message}</span>
+            <span className="text-fg-muted break-words col-span-3 min-w-0 w-full sm:col-span-1 sm:w-auto">{log.message}</span>
           </div>
         ))}
         <div ref={bottomRef} />

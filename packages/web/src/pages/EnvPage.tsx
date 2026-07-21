@@ -66,7 +66,7 @@ export function EnvPage() {
   const configured = providers.filter((p) => p.configured);
 
   return (
-    <div className="p-4 max-w-3xl space-y-3">
+    <div className="p-4 max-w-3xl w-full mx-auto space-y-3">
       <PageHeader
         title="API Keys"
         icon={KeyRound}

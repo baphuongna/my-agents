@@ -187,7 +187,7 @@ export function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-6">
+          <div className="flex flex-col items-center justify-center h-full px-4 sm:px-6">
             <div className="w-16 h-16 rounded-2xl gradient-accent flex items-center justify-center mb-5 animate-scale-in" style={{ boxShadow: "0 0 32px rgb(var(--accent) / 0.25)" }}>
               <Sparkles size={28} className="text-white" />
             </div>

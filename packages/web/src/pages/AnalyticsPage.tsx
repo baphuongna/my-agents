@@ -63,7 +63,7 @@ export function AnalyticsPage() {
   const roles = (status?.roles as unknown[]) ?? [];
 
   return (
-    <div className="p-4 max-w-4xl space-y-3">
+    <div className="p-4 max-w-4xl w-full mx-auto space-y-3">
       <PageHeader
         title="Analytics"
         icon={BarChart3}

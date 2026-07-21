@@ -100,7 +100,7 @@ export function ModelsPage() {
                 {provider}
                 <Badge color="gray">{providerModels.length}</Badge>
               </h3>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="grid sm:grid-cols-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                 {providerModels.map((m, mi) => (
                   <ModelCard key={m.id} model={m} index={mi} />
                 ))}
@@ -108,7 +108,7 @@ export function ModelsPage() {
             </div>
           ))
         : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid sm:grid-cols-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
             {filtered.map((m, mi) => (
               <ModelCard key={m.id} model={m} index={mi} />
             ))}

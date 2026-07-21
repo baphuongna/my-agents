@@ -56,7 +56,7 @@ export function ScheduleBuilder({
           <span className="text-xs text-fg-muted">Every</span>
           <input
             type="number"
-            min={1} max={1440} aria-label="Interval value"
+            aria-label="Interval value" min={1} max={1440}
             className="input w-20 text-center"
             value={value.intervalValue}
             onChange={(e) => update({ intervalValue: Math.max(1, parseInt(e.target.value) || 1) })}
@@ -118,7 +118,7 @@ export function ScheduleBuilder({
           <span className="text-xs text-fg-muted">on day</span>
           <input
             type="number"
-            min={1} max={1440} aria-label="Interval value"
+            aria-label="Interval value" min={1} max={1440}
             max={31}
             className="input w-20 text-center"
             value={value.monthDay}

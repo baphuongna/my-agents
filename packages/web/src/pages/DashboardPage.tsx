@@ -46,7 +46,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
+    <div className="p-6 max-w-7xl mx-auto p-4 sm:p-6 space-y-5">
       {/* Hero section */}
       <div className="animate-fade-in-up">
         <h1 className="text-2xl font-bold text-fg mb-1">Welcome to mya</h1>
@@ -54,7 +54,7 @@ export function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in-up" style={{ animationDelay: "50ms" }}>
+      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in-up" style={{ animationDelay: "50ms" }}>
         <QuickAction icon={Terminal} label="New Chat" desc="Start conversation" onClick={() => navigate("/chat")} />
         <QuickAction icon={Calendar} label="Schedule" desc="Cron jobs" onClick={() => navigate("/cron")} />
         <QuickAction icon={Cpu} label="Models" desc={`${configured.length} providers`} onClick={() => navigate("/models")} />
@@ -62,7 +62,7 @@ export function DashboardPage() {
       </div>
 
       {/* Metrics row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in-up" style={{ animationDelay: "100ms" }}>
         <MetricCard icon={Clock} label="Uptime" value={formatDuration(uptime)} color="text-accent" />
         <MetricCard icon={MessageSquare} label="Sessions" value={String(sessions)} color="text-success" />
         <MetricCard icon={Zap} label="Providers" value={`${configured.length}/${providers.length}`} color="text-purple" />

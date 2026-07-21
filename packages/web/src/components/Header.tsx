@@ -12,7 +12,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
 
   return (
     <header role="banner" className="flex items-center gap-2 px-4 h-12 shrink-0 bg-bg-surface/80 backdrop-blur-md border-b border-border/30">
-      <button className="lg:hidden btn-ghost p-1.5" onClick={onMenuClick} aria-label="Toggle menu">
+      <button className="lg:hidden btn-ghost p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={onMenuClick} aria-label="Toggle menu">
         <Menu size={18} />
       </button>
       <div className="flex-1" />

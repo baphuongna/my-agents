@@ -115,7 +115,7 @@ export function PushPage() {
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
   return (
-    <div className="p-4 max-w-3xl animate-fade-in-up space-y-3">
+    <div className="p-4 max-w-3xl w-full mx-auto animate-fade-in-up space-y-3">
       <PageHeader title="Push Notifications" icon={Bell} />
 
       {error && <ErrorBox message={error} />}
@@ -135,7 +135,7 @@ export function PushPage() {
             )}
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <span className="text-fg font-medium text-sm">
                 {subscribed ? "Notifications Enabled" : "Not Subscribed"}
               </span>
@@ -151,7 +151,7 @@ export function PushPage() {
       </Card>
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         {subscribed ? (
           <>
             <Button variant="secondary" onClick={testNotification} disabled={testing}>
