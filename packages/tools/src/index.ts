@@ -59,6 +59,8 @@ export * from "./symbol-extractor.js";
 export * from "./graph-store.js";
 export * from "./reference-graph.js";
 export * from "./codeexec.js";
+export { osvCheckTool } from "./osv-check.js";
+export { urlSafetyTool } from "./url-safety.js";
 export * from "./lsp-client.js";
 export * from "./lsp-cascade.js";
 export * from "./approval.js";

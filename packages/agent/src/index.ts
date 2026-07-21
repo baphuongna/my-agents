@@ -101,6 +101,9 @@ export interface AgentConfig {
   /** Shared skill store. If absent, a fresh empty SkillStore is created.
    * Pass a pre-discovered store to share skills across agent instances. */
   skillStore?: SkillStore;
+  /** A1: max tool rounds per turn (default 25). Caps the number of
+   * provider→tool-call iterations before the loop aborts. */
+  maxToolRounds?: number;
 }
 
 /** Subagent lifecycle status. */
@@ -400,6 +403,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
         }
       },
       signal,
+      // A1: forward maxToolRounds from config (default 25 in loop.ts).
+      maxToolRounds: config.maxToolRounds,
     });
   }
 

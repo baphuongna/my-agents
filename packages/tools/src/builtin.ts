@@ -481,6 +481,9 @@ export const findTool: ToolImpl = {
   },
 };
 
+import { osvCheckTool } from "./osv-check.js";
+import { urlSafetyTool } from "./url-safety.js";
+
 export const builtinTools: ToolImpl[] = [
   readTool,
   writeTool,
@@ -501,6 +504,9 @@ export const builtinTools: ToolImpl[] = [
   browserBackTool,
   browserPressTool,
   browserScreenshotTool,
+  // C4+C5: security tools
+  osvCheckTool,
+  urlSafetyTool,
 ];
 
 function globToRegex(pattern: string): RegExp {

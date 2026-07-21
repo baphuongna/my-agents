@@ -12,7 +12,13 @@ import { nowWallclock } from "@my-agent/core";
 
 // Phase 3B/3D: prompt-injection / lifecycle scanner (re-exported for the gateway).
 export { validateCronPrompt, THREAT_IDS, validateCronBaseUrl, snapshotDrifted, isSilenceResponse, validateCronAssembledPrompt } from "./scan.js";
+export { LifecycleGuard } from "./lifecycle-guard.js";
+export type { LifecycleGuardOptions } from "./lifecycle-guard.js";
 import { validateCronBaseUrl as _validateBaseUrl } from "./scan.js";
+
+/** F1: grace window for one-shot ("once") jobs. A one-shot scheduled more than
+ * this many ms in the past is considered a "ghost" and skipped (not fired). */
+export const ONESHOT_GRACE_MS = 120_000; // 2 minutes
 
 export type TriggerType = "cron" | "on-interval" | "once";
 
@@ -58,6 +64,10 @@ export interface CronJob {
   contextFrom?: string[];
   /** Per-job skills to load (names). */
   skills?: string[];
+  /** F3: catch-up grace window (ms). If a cron job is more than this far past
+   * its nextRunAt, it is skipped (not fired) and advanced. Default: Infinity
+   * (backward compat — always fires). */
+  graceMs?: number;
 }
 
 export interface RunRecord {
@@ -338,7 +348,11 @@ export class CronScheduler {
         if (last == null || now - last >= job.schedule) out.push(job);
       } else if (job.trigger === "once" && typeof job.schedule === "number") {
         const succeeded = this.runsOf(job.id).some((r) => r.status === "succeeded");
-        if (now >= job.schedule && !succeeded) out.push(job);
+        if (now >= job.schedule && !succeeded) {
+          // F1: ghost one-shot guard — skip if scheduled too far in the past.
+          if (now - job.schedule > ONESHOT_GRACE_MS) continue;
+          out.push(job);
+        }
       } else if (job.trigger === "cron" && typeof job.schedule === "string") {
         // recovery: a legacy/loaded row without nextRunAt.
         if (job.nextRunAt == null) {
@@ -357,8 +371,13 @@ export class CronScheduler {
           // every sweep (computeNextFire-null hazard).
           const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
           if (next == null) { job.enabled = false; this.dirty = true; continue; }
+          // F3: catch-up grace — check staleness BEFORE advancing.
+          const grace = job.graceMs ?? Infinity;
+          const isStale = grace !== Infinity && (now - job.nextRunAt!) > grace;
+          // Advance nextRunAt regardless (even stale jobs advance to next fire).
           job.nextRunAt = next;
           this.dirty = true; // Phase 2C: the gateway persists this before firing
+          if (isStale) continue; // skip firing — too stale
           out.push(job);
         }
       }
