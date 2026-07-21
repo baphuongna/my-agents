@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CommandPalette } from "@/components/CommandPalette";
+import { DashboardPage } from "@/pages/DashboardPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { SessionsPage } from "@/pages/SessionsPage";
 import { CronPage } from "@/pages/CronPage";
@@ -45,7 +46,8 @@ export default function App() {
         <main className="flex-1 overflow-y-auto">
           <ErrorBoundary>
           <Routes>
-            <Route path="/" element={<Navigate to="/chat" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/events" element={<EventsPage />} />

@@ -34,6 +34,7 @@ interface PaletteItem {
 }
 
 const ITEMS: PaletteItem[] = [
+  { label: "Dashboard", path: "/dashboard", icon: Activity, keywords: ["home", "overview", "summary"] },
   { label: "Chat", path: "/chat", icon: Terminal, keywords: ["agent", "prompt", "ai"] },
   { label: "Sessions", path: "/sessions", icon: MessageSquare, keywords: ["history", "conversations"] },
   { label: "Live Events", path: "/events", icon: Activity, keywords: ["stream", "websocket", "realtime"] },

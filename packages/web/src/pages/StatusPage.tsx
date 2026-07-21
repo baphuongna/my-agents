@@ -7,6 +7,7 @@ import { api, type StatusResponse } from "@/lib/api";
 import { Card, CardContent, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, RefreshButton } from "@/components/PageBits";
+import { RadialGauge, ProgressBar } from "@/components/Charts";
 import {
   Activity,
   Server,
@@ -76,7 +77,23 @@ export function StatusPage() {
 
       {status && (
         <>
-          {/* Top metrics grid */}
+          {/* Visual overview with gauges */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+            <Card className="flex flex-col items-center py-4">
+              <RadialGauge value={configuredCount} max={Math.max(providers.length, 1)} size={72} label={`${configuredCount}`} sublabel="providers" color="var(--success)" />
+            </Card>
+            <Card className="flex flex-col items-center py-4">
+              <RadialGauge value={Math.min(uptime / 3600, 100)} max={100} size={72} label={formatDuration(uptime).split(' ')[0]!} sublabel={formatDuration(uptime).split(' ')[1] ?? 'uptime'} color="var(--accent)" />
+            </Card>
+            <Card className="flex flex-col items-center py-4">
+              <RadialGauge value={roles.length} max={10} size={72} label={String(roles.length)} sublabel="roles" color="var(--purple)" />
+            </Card>
+            <Card className="flex flex-col items-center py-4">
+              <RadialGauge value={subagents?.active ?? 0} max={Math.max(subagents?.total ?? 1, 1)} size={72} label={String(subagents?.active ?? 0)} sublabel="subagents" color="var(--orange)" />
+            </Card>
+          </div>
+
+          {/* Metrics grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
             <StatCard
               icon={Server}

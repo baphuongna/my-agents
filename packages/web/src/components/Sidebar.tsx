@@ -17,6 +17,7 @@ import { useHealth } from "@/hooks/useHealth";
 interface NavItem { path: string; label: string; icon: typeof Activity; group?: string }
 
 const NAV_ITEMS: NavItem[] = [
+  { path: "/dashboard", label: "Dashboard", icon: Activity, group: "main" },
   { path: "/chat", label: "Chat", icon: Terminal, group: "main" },
   { path: "/sessions", label: "Sessions", icon: MessageSquare, group: "main" },
   { path: "/events", label: "Live Events", icon: Activity, group: "main" },
