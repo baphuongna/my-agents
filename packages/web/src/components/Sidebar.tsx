@@ -21,6 +21,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Zap,
+  Bell,
+  Users,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
@@ -45,10 +48,12 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/analytics", label: "Analytics", icon: BarChart3, group: "main" },
   { path: "/logs", label: "Logs", icon: FileText, group: "main" },
   { path: "/channels", label: "Channels", icon: Radio, group: "config" },
+  { path: "/collab", label: "Collaboration", icon: Users, group: "config" },
+  { path: "/push", label: "Push Notifications", icon: Bell, group: "config" },
   { path: "/mcp", label: "MCP", icon: Plug, group: "config" },
   { path: "/skills", label: "Skills", icon: Package, group: "config" },
   { path: "/sync", label: "Sync", icon: Database, group: "config" },
-  { path: "/keys", label: "API Keys", icon: Settings, group: "config" },
+  { path: "/keys", label: "API Keys", icon: KeyRound, group: "config" },
   { path: "/config", label: "Config", icon: Settings, group: "config" },
   { path: "/status", label: "System", icon: Activity, group: "config" },
 ];

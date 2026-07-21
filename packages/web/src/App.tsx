@@ -18,8 +18,11 @@ import { LogsPage } from "@/pages/LogsPage";
 import { ConfigPage } from "@/pages/ConfigPage";
 import { SkillsPage } from "@/pages/SkillsPage";
 import { EnvPage } from "@/pages/EnvPage";
+import { PushPage } from "@/pages/PushPage";
+import { CollabPage } from "@/pages/CollabPage";
+import { SyncPage } from "@/pages/SyncPage";
 import { RichInfoPage } from "@/pages/RichInfoPage";
-import { Radio, Plug, Database } from "lucide-react";
+import { Radio, Plug } from "lucide-react";
 
 export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -50,6 +53,9 @@ export default function App() {
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/keys" element={<EnvPage />} />
+            <Route path="/push" element={<PushPage />} />
+            <Route path="/collab" element={<CollabPage />} />
+            <Route path="/sync" element={<SyncPage />} />
             <Route path="/config" element={<ConfigPage />} />
             <Route path="/status" element={<StatusPage />} />
             <Route
@@ -96,28 +102,7 @@ export default function App() {
                 />
               }
             />
-            <Route
-              path="/sync"
-              element={
-                <RichInfoPage
-                  title="Sync"
-                  icon={Database}
-                  description="Cross-device state convergence (HLC + LWW push/pull)"
-                  endpoints={[
-                    { method: "GET", path: "/sync/state", desc: "Replica state" },
-                    { method: "GET", path: "/sync/pull", desc: "Pull since HLC" },
-                    { method: "POST", path: "/sync/push", desc: "Push entries" },
-                  ]}
-                  features={[
-                    "HLC timestamp visualization",
-                    "Push/pull sync controls",
-                    "Conflict resolution (LWW) viewer",
-                    "A2A protocol endpoint",
-                  ]}
-                />
-              }
-            />
-            <Route path="*" element={<Navigate to="/sessions" replace />} />
+            <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
           </ErrorBoundary>
         </main>
