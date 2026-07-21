@@ -14,9 +14,10 @@
 | Priority | Count | Description |
 |---|---|---|
 | **P0 — Critical gaps** | 6 | Core runtime + security (IterationBudget, OSV, Tirith, etc.) |
-| **P1 — High value** | 12 | Providers, channels, profile system, voice, web UX |
-| **P2 — Medium value** | 14 | Memory backends, skill editor, i18n, daemon pool |
+| **P1 — High value** | 11 | Providers, channels, profile system, voice (PTT), web UX |
+| **P2 — Medium value** | 13 | Memory backends, skill editor, daemon pool |
 | **P3 — Nice-to-have** | 12 | Pets, achievements, Spotify, tooltip warmup, etc. |
+| **DEFERRED** | 2 | H6 web plugin slots (security), G1b continuous VAD (complexity) |
 
 ### Effort distribution
 
@@ -321,18 +322,25 @@
 
 ## Group G — Voice (1 item)
 
-### G1. Voice continuous mode (STT→agent) — **P1, L**
-**Gap**: mya has TTS only; no continuous STT→agent loop.
-**Files**: `packages/gateway/src/voice-continuous.ts` (new), `packages/tts/src/stt.ts` (new)
-**LOC**: ~450
+### G1. Voice mode — **P1, split into G1a (push-to-talk) + G1b (continuous, future)**
+
+#### G1a. Push-to-talk voice mode — **P1, M**
+**Decision**: Start with push-to-talk (simpler, no VAD complexity).
+**Files**: `packages/gateway/src/voice-ptt.ts` (new), `packages/tts/src/stt.ts` (new)
+**LOC**: ~200
 **Steps**:
-1. STT backends: Whisper (local), Deepgram (cloud), browser Web Speech API
-2. Continuous capture: VAD (voice activity detection) → chunk → transcribe
+1. STT backends: Whisper (local), browser Web Speech API (web only)
+2. `voicePttStart()` → record audio → `voicePttStop()` → transcribe
 3. Agent loop: transcript → agent turn → TTS response → speak
-4. `voiceMode` CLI command + web toggle
-5. Interruption handling (barge-in)
+4. CLI: hold-to-talk keybinding; Web: microphone button
+5. No interruption handling (push-to-talk is turn-based)
 **Tests**: mock STT → agent → mock TTS
-**Risks**: High — real-time audio complexity; start with push-to-talk (simpler)
+**Risks**: Medium — audio capture API differs CLI vs web
+
+#### G1b. Continuous VAD mode — **FUTURE, defer**
+**Decision**: Defer continuous voice activity detection (barge-in, always-listening).
+**LOC**: ~250 (additional, on top of G1a)
+**Revisit**: After G1a is stable + user requests hands-free mode
 
 ---
 
@@ -351,17 +359,18 @@
 **Tests**: CRUD, switch remounts, backward compat
 **Risks**: Medium — migration + state isolation
 
-### H2. 17-locale i18n — **P1, M**
-**Gap**: 2 langs (en, vi) vs Hermes 17.
-**Files**: `packages/web/src/lib/i18n.tsx` (expand), `packages/web/src/i18n/{es,fr,de,it,ja,ko,pt,ru,tr,uk,zh,zh-hant,ga,hu,af}.ts` (new)
-**LOC**: ~400 (16 files × ~25 keys)
+### H2. i18n — improve EN+VI quality only — **P2, S**
+**Decision**: Skip 17-locale expansion. Keep EN + VI only, focus on **translation quality + coverage**.
+**Files**: `packages/web/src/lib/i18n.tsx`
+**LOC**: ~80 (audit + fill missing keys + improve VI translations)
 **Steps**:
-1. Extract all hardcoded strings to keys (audit pages)
-2. Machine-translate to 15 new locales (base quality)
-3. LangToggle: add all 17 to dropdown
-4. Store preference in localStorage
-**Tests**: all keys present in all locales; missing key → fallback en
-**Risks**: Low — translation quality (acceptable for base)
+1. Audit all 19 pages for hardcoded strings (not using `t()`)
+2. Extract to keys, add to both en + vi dictionaries
+3. Improve existing VI translations (natural phrasing, not literal)
+4. Verify LangToggle covers all visible text
+**Tests**: no hardcoded strings remain; all keys in both dicts
+**Risks**: Low
+**Note**: 15 other locales (es, fr, de, ja, etc.) explicitly **skipped** per user decision
 
 ### H3. Theme presets (backend-synced) — **P2, M**
 **Gap**: 5 static themes; no backend sync.
@@ -397,18 +406,10 @@
 3. Connects to same PTY pool
 **Tests**: open → type → close
 
-### H6. Web plugin slot registry (30+ slots) — **P1, L**
-**Gap**: Zero plugin extension points in web.
-**Files**: `packages/web/src/plugins/{registry,slots,types,sdk}.ts` (new), `packages/web/src/plugins/PluginPage.tsx`
-**LOC**: ~500
-**Steps**:
-1. Define slots: `backdrop`, `header-banner`, `header-left/right`, `pre-main`, `post-main`, `overlay`, `sidebar-top/bottom`, `nav-item`, `settings-tab`
-2. `PluginManifest` interface
-3. `usePlugins()` hook → inject components into slots
-4. SRI verification for plugin scripts
-5. `exposePluginSDK()` global
-**Tests**: register plugin → renders in slot; SRI reject
-**Risks**: High — security (plugin code execution); sandbox with iframe or vm
+### H6. Web plugin slot registry — **DEFERRED** ❌
+**Decision**: Skip per user — security risk too high for now (plugin code execution in browser).
+**Rationale**: Needs careful sandbox design (iframe/vm). Defer until security model is proven.
+**Revisit**: When B1 plugin providers (backend) security model is validated.
 
 ### H7. In-browser skill editor — **P1, M**
 **Gap**: SkillsPage lists only; no create/edit.
@@ -589,21 +590,20 @@
 - A2 Spawn depth (S)
 **LOC**: ~1140
 
-### Sprint 3: Web foundation (P0-P1, ~2 weeks)
+### Sprint 3: Web foundation (P0-P1, ~1.5 weeks)
 - H1 Profile system (L)
 - H4 xterm terminal (M)
-- H6 Plugin slots (L)
 - H7 Skill editor (M)
 - H8 Auth widget (M)
-- H2 i18n 17 locales (M)
-**LOC**: ~2660
+- H2 i18n EN+VI quality (S)
+**LOC**: ~1960 (was ~2660; H6 deferred, H2 downsized)
 
 ### Sprint 4: Channels & Voice (P1, ~1.5 weeks)
 - E1 Plugin channels (L)
 - E2 Per-platform identity (M)
-- G1 Voice continuous (L)
+- G1a Voice push-to-talk (M)
 - C3 Kanban (M)
-**LOC**: ~1650
+**LOC**: ~1400 (was ~1650; G1 split, G1b deferred)
 
 ### Sprint 5: Memory & System (P1-P2, ~1.5 weeks)
 - D1 Memory backends (L)
@@ -634,7 +634,8 @@
 - H14 Tool charms (S)
 **LOC**: ~1130
 
-**Grand total: ~9,880 LOC over ~7 sprints (~8 weeks paced)**
+**Grand total: ~8,510 LOC over ~7 sprints (~7.5 weeks paced)**
+*(reduced from ~9,880: H6 deferred ~500, G1 split ~250 saved, H2 downsized ~320)*
 
 ---
 
@@ -666,11 +667,13 @@ A1 IterationBudget ─→ A2 Spawn depth (subagent nesting needs iter cap)
 
 ---
 
-## Decision points for user
+## User decisions (2026-07-21)
 
-1. **Scope**: All 44, or filter to P0+P1 (18 items)?
-2. **Sprint 1 first?** (7 quick security/core wins, ~530 LOC, 1 week)
-3. **Translation approach**: machine-translate 15 locales (fast, lower quality) or community (slow, high quality)?
-4. **Plugin security**: iframe sandbox (safe, limited) or vm.runInContext (flexible, risky) for H6 web plugins?
-5. **Voice G1**: push-to-talk first (simpler) or full continuous VAD (complex)?
-6. **Pets J1**: include or skip (pure UX, no functional value)?
+1. ✅ **Scope**: ALL features (not filtered)
+2. ⏸️ **Status**: NOT STARTED — user reviewing plan first
+3. ✅ **i18n**: EN + VI only (skip 15 other locales); focus on translation quality
+4. ❌ **H6 web plugin slots**: DEFERRED (security risk; revisit after backend plugin model proven)
+5. ✅ **Voice G1a**: Push-to-talk first (simpler); G1b continuous VAD deferred
+6. ✅ **Pets J1 + Achievements J2**: INCLUDED (pure UX, but user wants them)
+
+**Updated grand total**: ~8,510 LOC over 7 sprints
