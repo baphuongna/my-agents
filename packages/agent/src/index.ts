@@ -527,6 +527,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
       toolSchemas: openAITools,
       audit,
       hooks: config.hooks,
+      // A1: forward maxToolRounds to subagent path too (cold-verify finding).
+      maxToolRounds: config.maxToolRounds,
       signal,
     });
     const collected: RuntimeEvent[] = [];
