@@ -26,6 +26,8 @@ export function LogsPage() {
   pausedRef.current = paused;
 
   useEffect(() => {
+    // Subscribe to ALL sessions for the log viewer
+    eventClient.setSession("*");
     eventClient.connect();
     const unsub = eventClient.onEvent((ev) => {
       if (pausedRef.current) return;

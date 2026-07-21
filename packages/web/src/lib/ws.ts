@@ -21,9 +21,18 @@ export class EventClient {
   private statusListeners = new Set<(status: string) => void>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private _status = "disconnected";
+  private _session: string | null = null;
 
   get status(): string {
     return this._status;
+  }
+
+  /** Set the session to subscribe to. Use "*" for all sessions. Reconnects if changed. */
+  setSession(session: string): void {
+    if (this._session === session) return;
+    this._session = session;
+    this.disconnect();
+    this.connect();
   }
 
   connect(): void {
@@ -32,9 +41,9 @@ export class EventClient {
     }
 
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    // Same-origin: the HttpOnly mya_ws cookie authenticates automatically.
-    // No query param needed (and the token is HttpOnly so JS can't read it).
-    const url = `${proto}//${location.host}/events`;
+    // Include session param if set ("*" for all sessions, specific ID for chat)
+    const sessionParam = this._session ? `?session=${encodeURIComponent(this._session)}` : "";
+    const url = `${proto}//${location.host}/events${sessionParam}`;
 
     this.setStatus("connecting");
     try {

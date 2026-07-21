@@ -68,50 +68,87 @@ export function ChatPage() {
   }, [messages]);
 
   const handleEvent = useCallback((ev: GatewayEvent) => {
-    const type = ev.type;
-    const payload = ev as Record<string, unknown>;
+    // Gateway wraps events in an envelope: { sessionId, seq, event: { type, ... } }
+    // The inner event has the actual RuntimeEvent type
+    const inner = ((ev as Record<string, unknown>).event as Record<string, unknown>) ?? ev;
+    const type = (inner.type ?? inner.kind ?? "") as string;
 
-    if (type === "message/delta" || type === "message_delta" || type === "response/delta") {
-      const delta = (payload.text ?? payload.delta ?? payload.content ?? "") as string;
-      if (!delta) return;
+    // Text streaming deltas
+    if (type === "message_update") {
+      const ame = inner.assistantMessageEvent as Record<string, unknown> | undefined;
+      if (!ame) return;
+      const subType = ame.type as string;
+
+      if (subType === "text_delta") {
+        const delta = (ame.delta ?? "") as string;
+        if (!delta) return;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && last.streaming) {
+            return [...prev.slice(0, -1), { ...last, content: last.content + delta }];
+          }
+          return [...prev, { role: "assistant", content: delta, streaming: true }];
+        });
+      }
+      // Ignore thinking_delta, thinking_start/end, text_start/end for now
+      return;
+    }
+
+    // Turn completed
+    if (type === "turn_end" || type === "agent_end" || type === "agent_settled") {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "assistant" && last.streaming) {
-          return [...prev.slice(0, -1), { ...last, content: last.content + delta }];
-        }
-        return [...prev, { role: "assistant", content: delta, streaming: true }];
-      });
-    } else if (type === "turn/end" || type === "turn_end" || type === "response/end" || type === "message/end") {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === "assistant" && last.streaming) {
+          // Extract final text from turn_end message if available
+          const msg = inner.message as { content?: Array<{ type: string; text?: string }> } | undefined;
+          if (msg?.content && type === "turn_end") {
+            const textParts = msg.content
+              .filter((c) => c.type === "text")
+              .map((c) => c.text ?? "");
+            const finalText = textParts.join("");
+            if (finalText) {
+              return [...prev.slice(0, -1), { ...last, content: finalText, streaming: false }];
+            }
+          }
           return [...prev.slice(0, -1), { ...last, streaming: false }];
         }
         return prev;
       });
-      setBusy(false);
-    } else if (type === "tool/call" || type === "tool_call") {
-      const name = (payload.name ?? payload.toolName ?? "tool") as string;
+      if (type === "turn_end" || type === "agent_end") setBusy(false);
+      return;
+    }
+
+    // Tool calls
+    if (type === "tool_call" || type === "tool_start") {
+      const name = (inner.name ?? inner.toolName ?? "tool") as string;
       setMessages((prev) => [
         ...prev,
         { role: "tool", content: `Using ${name}…`, toolName: name, collapsed: false },
       ]);
-    } else if (type === "tool/result" || type === "tool_result") {
-      const result = (payload.output ?? payload.result ?? "") as string;
+      return;
+    }
+
+    if (type === "tool_result" || type === "tool_end") {
+      const output = (inner.output ?? inner.result ?? "") as string;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.role === "tool") {
           return [
             ...prev.slice(0, -1),
-            { ...last, content: typeof result === "string" ? result.slice(0, 500) : JSON.stringify(result).slice(0, 500) },
+            { ...last, content: typeof output === "string" ? output.slice(0, 500) : JSON.stringify(output).slice(0, 500) },
           ];
         }
         return prev;
       });
-    } else if (type === "error") {
-      const msg = (payload.message ?? payload.error ?? "Unknown error") as string;
+      return;
+    }
+
+    // Errors
+    if (type === "error") {
+      const msg = (inner.message ?? inner.error ?? "Unknown error") as string;
       setMessages((prev) => [...prev, { role: "system", content: `Error: ${msg}` }]);
       setBusy(false);
+      return;
     }
   }, []);
 
@@ -121,6 +158,8 @@ export function ChatPage() {
         cwd: ".",
       });
       setSessionId(res.sessionId);
+      // Reconnect WS bound to this session so we receive its events
+      eventClient.setSession(res.sessionId);
       toast("Session started", "success");
       return res.sessionId;
     } catch (e) {
@@ -165,6 +204,7 @@ export function ChatPage() {
     setMessages([]);
     setSessionId(null);
     setBusy(false);
+    eventClient.setSession("*");
     inputRef.current?.focus();
   }
 

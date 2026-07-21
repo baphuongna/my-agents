@@ -35,6 +35,8 @@ export function EventsPage() {
   pausedRef.current = paused;
 
   useEffect(() => {
+    // Subscribe to ALL sessions (wildcard) for the live events viewer
+    eventClient.setSession("*");
     eventClient.connect();
     const unsubEvents = eventClient.onEvent((ev) => {
       if (pausedRef.current) return;

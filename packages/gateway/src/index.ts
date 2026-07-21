@@ -1602,7 +1602,8 @@ export class Gateway {
     if (buf.length > this.retainBound) this.retainedBySession.set(sessionId, buf.slice(-this.retainBound));
     else this.retainedBySession.set(sessionId, buf);
     for (const [ws, sub] of this.subscribers) {
-      if (sub.session === sessionId && envelope.seq > sub.since && ws.readyState === ws.OPEN) {
+      // mya fork: wildcard session ("*" or "all") receives ALL events (for EventsPage)
+      if ((sub.session === sessionId || sub.session === "*" || sub.session === "all") && envelope.seq > sub.since && ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify(envelope));
       }
     }
