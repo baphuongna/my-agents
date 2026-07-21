@@ -11,6 +11,7 @@
  *         PLAN-FEATURES-REVIEW-V4 R4-2.
  */
 import { nowWallclock } from "@my-agent/core";
+import { randomUUID } from "node:crypto";
 
 export interface ApprovalRequestPayload {
   requestId: string;
@@ -48,7 +49,7 @@ export class ApprovalRelay {
 
   /** Submit a new approval request. Returns a promise that resolves on decision or timeout. */
   request(payload: Omit<ApprovalRequestPayload, "requestId" | "createdAt">): Promise<{ decision: "Allow" | "Deny"; reason: string }> {
-    const requestId = `apr-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `apr-${randomUUID().slice(0, 18)}`;
     const fullPayload: ApprovalRequestPayload = { ...payload, requestId, createdAt: nowWallclock() };
 
     return new Promise((resolve) => {

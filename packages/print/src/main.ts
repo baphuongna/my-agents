@@ -464,7 +464,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
 
   // R3-3 fix: instantiate DevicePairing + WebAuthn (were never wired → 404).
   const devicePairing = new DevicePairing();
-  const webAuthn = new WebAuthnService({ origin: `http://127.0.0.1:${port}` });
+  const webAuthn = new WebAuthnService({ origin: `http://127.0.0.1:${port}`, rpId: "127.0.0.1" });
   // R4-2 fix: instantiate cross-device approval relay.
   const approvalRelay = new ApprovalRelay();
 

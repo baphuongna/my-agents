@@ -163,8 +163,8 @@ export class ChannelSessionRouter {
     }
 
     try {
-      // Build context from history (last N messages)
-      const contextPrompt = this.buildContextPrompt(session, msg.text);
+      // R4-2 security fix: use safeText (scanned) not raw msg.text in prompt.
+      const contextPrompt = this.buildContextPrompt(session, safeText);
       const response = await this.agentHandler(session, contextPrompt);
 
       // Add assistant response to history

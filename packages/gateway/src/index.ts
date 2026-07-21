@@ -519,15 +519,15 @@ export class Gateway {
         this.cronTimer = setInterval(() => { void this.cronSweep(workerId); }, this.cronIntervalMs);
         // Don't keep the process alive solely for the cron sweep.
         this.cronTimer.unref?.();
-
-        // R6-3 fix: wire sweepIdle timers (were dead code — never called).
-        // Channel sessions + control-plane handles now evicted on the cron interval.
-        this.idleTimer = setInterval(() => {
-          try { this.channelRouter?.sweepIdle(); } catch {}
-          try { this.control?.handles.sweepIdle(nowWallclock()); } catch {}
-        }, this.cronIntervalMs);
-        this.idleTimer.unref?.();
       }
+      // R6-3 fix: wire sweepIdle timers (were dead code — never called).
+      // Review P7 fix: move OUTSIDE if(this.cron) so SDK consumers without cron
+      // still get sweeps. Gate on channelRouter/control presence instead.
+      this.idleTimer = setInterval(() => {
+        try { this.channelRouter?.sweepIdle(); } catch {}
+        try { this.control?.handles.sweepIdle(nowWallclock()); } catch {}
+      }, this.cronIntervalMs);
+      this.idleTimer.unref?.();
       // R6-4: channel inbound polling loop. receive() is implemented on all
       // adapters but was never called in production (dead code). Poll every 5s.
       if (this.channels && this.channelRouter) {
@@ -1698,13 +1698,19 @@ export class Gateway {
     const envelope = frame({ sessionId, seq: ++this.seq, event });
     // H-2 fix: notify push subscribers when notable events occur.
     // R6-2 fix: push was gated on `voiceCall` (Twilio) — logic inversion.
-    // Push notifications should fire regardless of voice-call config.
+    // R4-review fix: filter to notable event kinds only (prevent spam — broadcast
+    // fires dozens of times per turn; push every one would exhaust mobile quota).
     {
       const kind = (event as { kind?: string })?.kind ?? "event";
-      const summary = JSON.stringify(event).slice(0, 100);
-      import("./push.js").then(({ notifyEvent }) =>
-        notifyEvent({ kind, sessionId, summary }),
-      ).catch(() => {});
+      const isNotable = kind === "approval_requested" || kind === "channel" ||
+        kind === "health" || kind === "log" ||
+        (kind === "turn" && (event as { stage?: string })?.stage === "end");
+      if (isNotable) {
+        const summary = JSON.stringify(event).slice(0, 100);
+        import("./push.js").then(({ notifyEvent }) =>
+          notifyEvent({ kind, sessionId, summary }),
+        ).catch(() => {});
+      }
     }
     // retain per-session (bounded)
     const buf = this.retainedBySession.get(sessionId) ?? [];
