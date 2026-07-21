@@ -75,11 +75,16 @@ export function SkillsPage() {
       )}
 
       <div className="grid sm:grid-cols-2 gap-2">
-        {filtered.map((skill) => (
-          <Card key={skill.name} className="hover:border-accent/40 transition-colors">
+        {filtered.map((skill, idx) => (
+          <Card
+            key={skill.name}
+            hover
+            className="animate-fade-in-up"
+            style={{ animationDelay: `${Math.min(idx * 40, 320)}ms` }}
+          >
             <div className="flex items-start gap-2">
-              <div className="w-7 h-7 rounded bg-bg-elevated flex items-center justify-center shrink-0">
-                <Package size={14} className="text-accent" />
+              <div className="w-7 h-7 rounded gradient-accent flex items-center justify-center shrink-0 shadow-sm">
+                <Package size={14} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-[13px] text-accent font-mono">{skill.name}</code>

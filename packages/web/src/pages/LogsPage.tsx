@@ -60,7 +60,7 @@ export function LogsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full p-4 gap-3">
+    <div className="flex flex-col h-full p-4 gap-3 animate-fade-in-up">
       <PageHeader
         title="Logs"
         icon={FileText}

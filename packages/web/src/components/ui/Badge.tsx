@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-type Color = "green" | "yellow" | "red" | "blue" | "gray";
+type Color = "green" | "yellow" | "red" | "blue" | "gray" | "purple";
 
 export function Badge({
   children,

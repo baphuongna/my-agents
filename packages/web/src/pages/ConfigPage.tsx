@@ -54,22 +54,44 @@ export function ConfigPage() {
               </p>
             </Card>
           ) : (
-            <Card>
+            <Card className="animate-fade-in-up">
               <CardTitle>Runtime Configuration ({entries.length} keys)</CardTitle>
-              <div className="space-y-1 mt-3">
-                {entries.map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-bg-elevated/50 text-[12px]"
-                  >
-                    <code className="text-accent font-mono shrink-0">{key}</code>
-                    <span className="text-fg-subtle">=</span>
-                    <code className="text-fg-muted font-mono flex-1 truncate">
-                      {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                    </code>
-                    <Badge color="gray">{typeof value}</Badge>
-                  </div>
-                ))}
+              <div className="mt-3 bg-bg-input/60 border border-border/40 rounded-lg p-2.5 font-mono text-[12px] leading-relaxed">
+                <div className="flex items-center gap-1.5 mb-2 pb-1.5 border-b border-border/40 text-[10px] text-fg-subtle">
+                  <span className="w-2 h-2 rounded-full bg-danger/70" />
+                  <span className="w-2 h-2 rounded-full bg-warning/70" />
+                  <span className="w-2 h-2 rounded-full bg-success/70" />
+                  <span className="ml-2 uppercase tracking-wide">config.json</span>
+                </div>
+                <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
+                  {entries.map(([key, value], idx) => {
+                    const type = typeof value;
+                    const display = typeof value === "object" ? JSON.stringify(value) : String(value);
+                    const typeColor =
+                      type === "string"
+                        ? "badge-green"
+                        : type === "number"
+                          ? "badge-blue"
+                          : type === "boolean"
+                            ? "badge-purple"
+                            : type === "object"
+                              ? "badge-yellow"
+                              : "badge-gray";
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center gap-2 py-0.5 px-1.5 rounded hover:bg-bg-elevated/50 animate-fade-in-up"
+                        style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
+                      >
+                        <span className="text-fg-subtle select-none w-4 text-right shrink-0 text-[10px]">{idx + 1}</span>
+                        <code className="text-accent font-mono shrink-0">{key}</code>
+                        <span className="text-fg-subtle">=</span>
+                        <code className="text-fg-muted font-mono flex-1 truncate">{display}</code>
+                        <span className={`${typeColor} !px-1.5 !py-0`}>{type}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </Card>
           )}

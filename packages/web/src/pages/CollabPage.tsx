@@ -47,7 +47,7 @@ export function CollabPage() {
   const roomEntries = data ? Object.entries(data.rooms).sort((a, b) => b[1].clients - a[1].clients) : [];
 
   return (
-    <div className="p-4 max-w-3xl space-y-3">
+    <div className="p-4 max-w animate-fade-in-up-3xl space-y-3">
       <PageHeader
         title="Collaboration"
         icon={Users}

@@ -89,23 +89,28 @@ export function ModelsPage() {
       )}
 
       {groupByProvider
-        ? Array.from(providers.entries()).map(([provider, providerModels]) => (
-            <div key={provider}>
+        ? Array.from(providers.entries()).map(([provider, providerModels], idx) => (
+            <div
+              key={provider}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${Math.min(idx * 60, 300)}ms` }}
+            >
               <h3 className="text-xs uppercase tracking-wide text-fg-muted mb-1.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
                 {provider}
                 <Badge color="gray">{providerModels.length}</Badge>
               </h3>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {providerModels.map((m) => (
-                  <ModelCard key={m.id} model={m} />
+                {providerModels.map((m, mi) => (
+                  <ModelCard key={m.id} model={m} index={mi} />
                 ))}
               </div>
             </div>
           ))
         : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {filtered.map((m) => (
-              <ModelCard key={m.id} model={m} />
+            {filtered.map((m, mi) => (
+              <ModelCard key={m.id} model={m} index={mi} />
             ))}
           </div>
         )}
@@ -113,13 +118,17 @@ export function ModelsPage() {
   );
 }
 
-function ModelCard({ model }: { model: ModelInfo }) {
+function ModelCard({ model, index = 0 }: { model: ModelInfo; index?: number }) {
   const contextWindow = model.contextWindow as number | undefined;
   const maxTokens = (model as Record<string, unknown>).maxTokens as number | undefined;
   const reasoning = (model as Record<string, unknown>).reasoning as boolean | undefined;
 
   return (
-    <Card className="hover:border-accent/50 transition-colors py-2.5 px-3">
+    <Card
+      hover
+      className="py-2.5 px-3 border-l-2 border-l-accent/40 hover:border-l-accent animate-fade-in-up"
+      style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
+    >
       <div className="flex items-start gap-2">
         <div className="w-7 h-7 rounded bg-bg-elevated flex items-center justify-center shrink-0">
           <Cpu size={14} className="text-accent" />
@@ -128,9 +137,13 @@ function ModelCard({ model }: { model: ModelInfo }) {
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-fg font-medium text-[13px] truncate">{model.name || model.id}</span>
             {reasoning && (
-              <Badge color="purple">
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium whitespace-nowrap bg-purple/20 text-purple animate-fade-in"
+                style={{ boxShadow: "0 0 8px rgb(var(--purple) / 0.35)" }}
+                title="Reasoning-capable model"
+              >
                 <Brain size={8} /> reasoning
-              </Badge>
+              </span>
             )}
           </div>
           <code className="text-[10px] text-fg-subtle block truncate">{model.id}</code>

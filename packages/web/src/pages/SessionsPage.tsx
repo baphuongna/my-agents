@@ -95,9 +95,9 @@ export function SessionsPage() {
         )}
 
         <div className="space-y-1.5">
-          {filtered.map((s) => (
+          {filtered.map((s, i) => (
             <SessionRow
-              key={s.id}
+              key={s.id} style={{ animationDelay: `${Math.min(i * 40, 320)}ms` }} className="animate-fade-in-up"
               session={s}
               selected={selected?.id === s.id}
               onClick={() => setSelected(s)}

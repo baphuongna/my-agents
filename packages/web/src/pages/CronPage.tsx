@@ -80,7 +80,7 @@ export function CronPage() {
   }
 
   return (
-    <div className="p-4 max-w-4xl">
+    <div className="p-4 max-w-4xl animate-fade-in-up">
       <PageHeader
         title="Cron Jobs"
         icon={Clock}
@@ -110,15 +110,16 @@ export function CronPage() {
       )}
 
       <div className="space-y-2">
-        {jobs.map((job) => (
-          <CronJobCard
-            key={job.id}
-            job={job}
-            onToggle={() => toggle(job)}
-            onRun={() => run(job)}
-            onEdit={() => setEditing(job)}
-            onDelete={() => del(job.id, job.name)}
-          />
+        {jobs.map((job, i) => (
+          <div key={job.id} style={{ animationDelay: `${Math.min(i * 40, 320)}ms` }} className="animate-fade-in-up">
+            <CronJobCard
+              job={job}
+              onToggle={() => toggle(job)}
+              onRun={() => run(job)}
+              onEdit={() => setEditing(job)}
+              onDelete={() => del(job.id, job.name)}
+            />
+          </div>
         ))}
       </div>
 

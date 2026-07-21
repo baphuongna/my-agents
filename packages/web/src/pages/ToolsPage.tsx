@@ -10,11 +10,11 @@ import { Zap, Search } from "lucide-react";
 
 const MODE_CONFIG: Record<
   string,
-  { color: "green" | "yellow" | "red" | "blue" | "gray"; label: string }
+  { color: "green" | "yellow" | "red" | "blue" | "gray"; label: string; nameColor: string; dot: string }
 > = {
-  ReadOnly: { color: "green", label: "Read" },
-  WorkspaceWrite: { color: "yellow", label: "Write" },
-  DangerFullAccess: { color: "red", label: "Danger" },
+  ReadOnly: { color: "green", label: "Read", nameColor: "text-success", dot: "bg-success" },
+  WorkspaceWrite: { color: "yellow", label: "Write", nameColor: "text-warning", dot: "bg-warning" },
+  DangerFullAccess: { color: "red", label: "Danger", nameColor: "text-danger", dot: "bg-danger" },
 };
 
 export function ToolsPage() {
@@ -83,20 +83,36 @@ export function ToolsPage() {
 
       {modeOrder
         .filter((m) => byMode.has(m))
-        .map((mode) => {
-          const config = MODE_CONFIG[mode] ?? { color: "gray" as const, label: mode };
+        .map((mode, idx) => {
+          const config = MODE_CONFIG[mode] ?? {
+            color: "gray" as const,
+            label: mode,
+            nameColor: "text-fg",
+            dot: "bg-fg-subtle",
+          };
           const modeTools = byMode.get(mode)!;
           return (
-            <div key={mode}>
+            <div
+              key={mode}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${Math.min(idx * 60, 240)}ms` }}
+            >
               <h3 className="text-xs uppercase tracking-wide text-fg-muted mb-1.5 flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${config.dot} shrink-0`} />
                 <Badge color={config.color}>{config.label}</Badge>
                 <span className="text-fg-subtle">{modeTools.length} tools</span>
               </h3>
               <div className="grid sm:grid-cols-2 gap-1.5">
-                {modeTools.map((t) => (
-                  <Card key={t.name} className="py-2 px-3 hover:border-accent/40 transition-colors">
+                {modeTools.map((t, ti) => (
+                  <Card
+                    key={t.name}
+                    hover
+                    className="py-2 px-3 animate-fade-in-up"
+                    style={{ animationDelay: `${Math.min(ti * 40, 320)}ms` }}
+                  >
                     <div className="flex items-center gap-2">
-                      <code className="text-[13px] text-accent font-mono">{t.name}</code>
+                      <span className={`w-1 h-1 rounded-full ${config.dot} shrink-0`} />
+                      <code className={`text-[13px] ${config.nameColor} font-mono`}>{t.name}</code>
                       <span className="flex-1" />
                       {t.description && (
                         <span className="text-[10px] text-fg-subtle truncate max-w-[50%]">

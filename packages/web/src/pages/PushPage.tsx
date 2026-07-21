@@ -115,7 +115,7 @@ export function PushPage() {
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
   return (
-    <div className="p-4 max-w-2xl space-y-3">
+    <div className="p-4 max-w animate-fade-in-up-2xl space-y-3">
       <PageHeader title="Push Notifications" icon={Bell} />
 
       {error && <ErrorBox message={error} />}

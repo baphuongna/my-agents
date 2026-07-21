@@ -65,7 +65,7 @@ export function StatusPage() {
   const configuredCount = providers.filter((p) => p.configured).length;
 
   return (
-    <div className="p-4 max-w-5xl space-y-4">
+    <div className="p-4 max-w-5xl space-y-4 animate-fade-in-up">
       <PageHeader
         title="System"
         icon={Activity}

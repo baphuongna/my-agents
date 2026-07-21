@@ -75,15 +75,27 @@ export function EnvPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
-        <Card className="py-2.5 px-3 text-center">
+        <Card
+          hover
+          className="py-2.5 px-3 text-center animate-fade-in-up"
+          style={{ animationDelay: "40ms" }}
+        >
           <div className="text-2xl font-bold text-success">{configured.length}</div>
           <div className="text-[10px] text-fg-subtle uppercase tracking-wide mt-0.5">Configured</div>
         </Card>
-        <Card className="py-2.5 px-3 text-center">
+        <Card
+          hover
+          className="py-2.5 px-3 text-center animate-fade-in-up"
+          style={{ animationDelay: "80ms" }}
+        >
           <div className="text-2xl font-bold text-fg-muted">{providers.length - configured.length}</div>
           <div className="text-[10px] text-fg-subtle uppercase tracking-wide mt-0.5">Available</div>
         </Card>
-        <Card className="py-2.5 px-3 text-center">
+        <Card
+          hover
+          className="py-2.5 px-3 text-center animate-fade-in-up"
+          style={{ animationDelay: "120ms" }}
+        >
           <div className="text-2xl font-bold text-accent">{providers.length}</div>
           <div className="text-[10px] text-fg-subtle uppercase tracking-wide mt-0.5">Total</div>
         </Card>
@@ -92,18 +104,58 @@ export function EnvPage() {
       {loading && <LoadingSpinner />}
       {error && <ErrorBox message={error} />}
 
+      {/* Configured providers — visually prominent success-glow section */}
+      {configured.length > 0 && (
+        <Card
+          className="border-success/40 animate-fade-in-up"
+          style={{
+            boxShadow: "0 0 0 1px rgb(var(--success) / 0.25), 0 0 18px rgb(var(--success) / 0.12)",
+          }}
+        >
+          <CardTitle>
+            <span className="w-2 h-2 rounded-full bg-success animate-pulse-slow shrink-0" />
+            Active Providers ({configured.length})
+          </CardTitle>
+          <CardContent>
+            <div className="space-y-1 mt-2">
+              {configured.map((p, idx) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-success/5 border-l-2 border-l-success animate-fade-in-up"
+                  style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
+                >
+                  <Check size={14} className="text-success shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <code className="text-[13px] text-fg font-mono">{p.id}</code>
+                      <Badge color="green">active</Badge>
+                    </div>
+                    <div className="text-[10px] text-fg-subtle font-mono mt-0.5">
+                      {p.envKey} → {p.model}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Provider list */}
-      <Card>
+      <Card className="animate-fade-in-up" style={{ animationDelay: "60ms" }}>
         <CardTitle>Providers</CardTitle>
         <CardContent>
           <div className="space-y-1 mt-2">
-            {providers.map((p) => (
+            {providers.map((p, idx) => (
               <div
                 key={p.id}
                 className={cn(
-                  "flex items-center gap-2 py-2 px-2.5 rounded-lg transition-colors",
-                  p.configured ? "bg-success/5" : "hover:bg-bg-elevated/50",
+                  "flex items-center gap-2 py-2 px-2.5 rounded-lg transition-colors border-l-2 animate-fade-in-up",
+                  p.configured
+                    ? "border-l-success/40 opacity-70"
+                    : "border-l-transparent hover:border-l-fg-subtle hover:bg-bg-elevated/50",
                 )}
+                style={!p.configured ? { animationDelay: `${Math.min(idx * 30, 240)}ms` } : undefined}
               >
                 {p.configured ? (
                   <Check size={14} className="text-success shrink-0" />
@@ -144,7 +196,7 @@ export function EnvPage() {
       </Card>
 
       {/* Help card */}
-      <Card className="border-accent/30 bg-accent/5">
+      <Card className="border-accent/30 bg-accent/5 animate-fade-in-up" style={{ animationDelay: "120ms" }}>
         <div className="flex items-start gap-2">
           <KeyRound size={14} className="text-accent shrink-0 mt-0.5" />
           <div className="text-[12px] text-fg-muted">

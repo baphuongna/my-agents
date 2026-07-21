@@ -20,7 +20,7 @@ export function RichInfoPage({
   features?: string[];
 }) {
   return (
-    <div className="p-4 max-w-3xl space-y-3">
+    <div className="p-4 max-w animate-fade-in-up-3xl space-y-3">
       <div className="flex items-center gap-2 mb-4">
         <Icon size={18} className="text-accent" />
         <h1 className="text-lg font-semibold text-fg">{title}</h1>
