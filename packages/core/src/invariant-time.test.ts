@@ -14,6 +14,7 @@ describe("Invariant #10 — single time helper (no Date.now() outside core.time)
 
   function walk(dir: string): void {
     for (const entry of readdirSync(dir)) {
+      if (entry === "node_modules" || entry === ".git") continue;
       const full = join(dir, entry);
       const st = statSync(full);
       if (st.isDirectory()) walk(full);
@@ -29,6 +30,8 @@ describe("Invariant #10 — single time helper (no Date.now() outside core.time)
         if (full.includes(join("packages", "tui"))) continue;
         // Web SPA runs in the browser — cannot import @my-agent/core (Node-only).
         if (full.includes(join("packages", "web"))) continue;
+        // Exclude @hermes/shared (cloned from Hermes, uses Date.now natively)
+        if (full.includes(join("packages", "shared"))) continue;
         const text = readFileSync(full, "utf8");
         // match `Date.now(` but NOT inside a comment line.
         for (const line of text.split("\n")) {
