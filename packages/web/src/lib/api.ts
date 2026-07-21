@@ -191,13 +191,11 @@ export async function getWsTicket(): Promise<{ ticket: string; ttl_seconds: numb
  * connect. In gated mode mints a fresh single-use ticket; in loopback
  * mode returns the injected session token.
  */
-export async function buildWsAuthParam(): Promise<[string, string]> {
-  if (window.__HERMES_AUTH_REQUIRED__) {
-    const { ticket } = await getWsTicket();
-    return ["ticket", ticket];
-  }
-  const token = window.__HERMES_SESSION_TOKEN__ ?? "";
-  return ["token", token];
+export async function buildWsAuthParam(): Promise<[string, string] | null> {
+  // mya fork: cookie-based auth — no token param needed for WS.
+  // The HttpOnly mya_ws cookie authenticates same-origin WS connections.
+  // Return null to signal "no auth param needed".
+  return null;
 }
 
 /**
@@ -250,12 +248,14 @@ export async function buildWsUrl(
   path: string,
   params?: Record<string, string>,
 ): Promise<string> {
-  return buildHermesWebSocketUrl({
-    authParam: await buildWsAuthParam(),
-    basePath: BASE,
-    params,
-    path,
-  });
+  // mya fork: build WS URL for mya gateway (/events, not /api/events)
+  const mapped = mapMyaUrl(path);
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const qs = new URLSearchParams(params ?? {});
+  // Default to wildcard session if not specified
+  if (!qs.has("session")) qs.set("session", "*");
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return `${proto}//${location.host}${mapped}${query}`;
 }
 
 /** Build a ``?profile=<name>`` query suffix, or "" when unset.

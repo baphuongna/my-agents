@@ -48,7 +48,7 @@ export interface WireEnvelope {
 
 /** Phase C: CSP for PWA — widened for service workers + push subscriptions. */
 const GATEWAY_CSP =
-  "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self';";
+  "frame-ancestors 'none'; default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self';";
 
 export function frame(opts: {
   sessionId: string;
@@ -323,6 +323,25 @@ export class Gateway {
   private cronDeliveredWarned = false;
   /** Static file directory (optional — Phase 25.2 build pipeline). */
   private readonly staticDir?: string;
+
+  /** mya fork: stub responses for Hermes SPA endpoints that don't exist in mya. */
+  private readonly HERMES_STUBS: Record<string, unknown> = {
+    "/auth/me": { authenticated: true, user: "local", provider: "loopback" },
+    "/profiles": { profiles: [{ name: "default", description: "Default profile", is_default: true }] },
+    "/dashboard/plugins": { plugins: [], manifests: [] },
+    "/dashboard/themes": { themes: [], current: "default" },
+    "/dashboard/font": { font: "theme" },
+    "/dashboard/plugin-providers": { providers: [] },
+    "/dashboard/plugins/hub": { plugins: [] },
+    "/dashboard/plugins/rescan": { ok: true },
+    "/dashboard/theme": { ok: true },
+    "/api/auth/me": { authenticated: true, user: "local" },
+    "/api/profiles": { profiles: [{ name: "default", description: "Default", is_default: true }] },
+    "/api/dashboard/plugins": { plugins: [] },
+    "/api/dashboard/themes": { themes: [], current: "default" },
+    "/api/dashboard/font": { font: "theme" },
+  };
+
   /** MIME type map for common static file extensions. */
   private readonly mimeTypes: Record<string, string> = {
     ".html": "text/html; charset=utf-8",
@@ -662,6 +681,10 @@ export class Gateway {
     // gate would reject a pairing client that has only the pairing token.
     if (p === "/pair/request" || p === "/pair/accept" || p === "/pair/devices" || /^\/pair\/devices\//.test(p)) return true;
     if ((p === "/" || p === "/index.html") && method === "GET") return true;
+    // mya fork: Hermes SPA stub endpoints — allowlisted so the SPA can fetch
+    // them without auth (they return static defaults, no sensitive data)
+    if (this.HERMES_STUBS && p in this.HERMES_STUBS) return true;
+    if (p === "/sessions/stats" || p === "/sessions/empty/count" || p === "/profiles/active") return true;
     return false;
   }
 
@@ -757,6 +780,11 @@ export class Gateway {
     if (isCronMutation && !this.wsToken && !process.env["MYA_CRON_UNSAFE_NO_AUTH"]) {
       return send(401, { error: "cron mutations require wsToken auth (or MYA_CRON_UNSAFE_NO_AUTH=1)" });
     }
+    // mya fork: Hermes SPA session stat stubs — must come before /sessions/:id match
+    if (url.pathname === "/sessions/stats" && req.method === "GET")
+      return send(200, { total: 0, active: 0, today: 0 });
+    if (url.pathname === "/sessions/empty/count" && req.method === "GET")
+      return send(200, { count: 0 });
     // §12 parametric control-plane route: /sessions/:id
     const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
     if (sessionMatch) {
@@ -1448,6 +1476,21 @@ export class Gateway {
             return send(401, { error: "unauthorized" });
           }
           return send(200, this.wsInfo());
+        }
+        // mya fork: Hermes SPA stub endpoints — return empty defaults for
+        // Hermes-specific APIs that don't exist in mya's gateway.
+        // Without these, the SPA gets 404s on mount and crashes.
+        if (req.method === "GET" || req.method === "PUT" || req.method === "POST") {
+          const stub = this.HERMES_STUBS[url.pathname];
+          if (stub) {
+            // Drain body for PUT/POST to prevent connection hang
+            if (req.method !== "GET") req.on("data", () => {});
+            return send(200, stub);
+          }
+          // Pattern-based stubs
+          if (url.pathname === "/sessions/stats") return send(200, { total: 0, active: 0, today: 0 });
+          if (url.pathname === "/sessions/empty/count") return send(200, { count: 0 });
+          if (url.pathname === "/profiles/active") return send(200, { name: "default" });
         }
         // Serve static files from dist/web/ if available
         if (this.staticDir && req.method === "GET") {
