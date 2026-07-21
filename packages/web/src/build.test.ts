@@ -1,90 +1,71 @@
 /**
  * @my-agent/web — build pipeline tests.
  *
- * Verifies that the Vite build produces output files and that the built
- * dashboard can be imported correctly.
+ * Verifies that the Vite build produces the SPA output files (React app).
+ * The old library-mode build (web.js exporting dashboardHtml) has been
+ * replaced by a Vite React app that builds to dist/web/assets/index.js.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execSync } from "child_process";
-import { existsSync, rmSync } from "fs";
+import { existsSync, rmSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const WEB_DIR = join(import.meta.dirname, "..");
 const DIST_DIR = join(WEB_DIR, "dist", "web");
+const ASSETS_DIR = join(DIST_DIR, "assets");
 
 describe("web build pipeline", () => {
   beforeAll(() => {
-    // Clean previous build output
     if (existsSync(DIST_DIR)) {
       rmSync(DIST_DIR, { recursive: true, force: true });
     }
   });
 
   afterAll(() => {
-    // Clean up build output
     if (existsSync(DIST_DIR)) {
       rmSync(DIST_DIR, { recursive: true, force: true });
     }
   });
 
   it("builds successfully with vite", () => {
-    // Run the build
     const output = execSync("npx vite build", {
       cwd: WEB_DIR,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    
-    // Verify build completed without errors
     expect(output).toContain("built in");
   });
 
-  it("produces output in dist/web/", () => {
-    // Check that the build output directory exists
-    expect(existsSync(DIST_DIR)).toBe(true);
-    
-    // Check for the built JavaScript file
-    const jsFiles = execSync("ls dist/web/", {
-      cwd: WEB_DIR,
-      encoding: "utf-8",
-    });
-    
-    // Should contain at least one .js file
-    expect(jsFiles).toContain("web.js");
-  });
-
-  it("produces valid JavaScript output", () => {
-    // Read the built JavaScript file
-    const jsFiles = execSync("ls dist/web/*.js", {
-      cwd: WEB_DIR,
-      encoding: "utf-8",
-    }).trim().split("\n");
-    
-    expect(jsFiles.length).toBeGreaterThan(0);
-    
-    // Check that the file contains expected exports — use web.js (entry point),
-    // not sw.js (service worker copied from public/ by Vite).
-    const content = execSync(`cat dist/web/web.js`, {
-      cwd: WEB_DIR,
-      encoding: "utf-8",
-    });
-    
-    // Should contain the dashboardHtml function or its minified version
-    expect(content).toContain("dashboardHtml");
-  });
-
-  it("built output can be imported", async () => {
-    // Import the built module
-    const builtModule = await import(join(DIST_DIR, "web.js"));
-    
-    // Should export dashboardHtml
-    expect(typeof builtModule.dashboardHtml).toBe("function");
-    
-    // Should produce valid HTML
-    const html = builtModule.dashboardHtml();
+  it("produces index.html in dist/web/", () => {
+    expect(existsSync(join(DIST_DIR, "index.html"))).toBe(true);
+    const html = readFileSync(join(DIST_DIR, "index.html"), "utf-8");
     expect(html).toContain("<!doctype html>");
-    expect(html).toContain("<html");
-    expect(html).toContain("mya");
+    expect(html).toContain('id="root"');
+    expect(html).toContain('src="/assets/index.js"');
+  });
+
+  it("produces JavaScript bundle in dist/web/assets/", () => {
+    expect(existsSync(ASSETS_DIR)).toBe(true);
+    const jsFile = join(ASSETS_DIR, "index.js");
+    expect(existsSync(jsFile)).toBe(true);
+    const content = readFileSync(jsFile, "utf-8");
+    // Should be a substantial bundle (React + app code)
+    expect(content.length).toBeGreaterThan(10000);
+  });
+
+  it("produces CSS bundle in dist/web/assets/", () => {
+    const cssFile = join(ASSETS_DIR, "index.css");
+    expect(existsSync(cssFile)).toBe(true);
+    const content = readFileSync(cssFile, "utf-8");
+    // Should contain Tailwind utilities
+    expect(content.length).toBeGreaterThan(1000);
+  });
+
+  it("preserves PWA assets in dist/web/", () => {
+    const entries = readdirSync(DIST_DIR);
+    expect(entries).toContain("manifest.json");
+    expect(entries).toContain("sw.js");
+    expect(entries).toContain("icons");
   });
 });

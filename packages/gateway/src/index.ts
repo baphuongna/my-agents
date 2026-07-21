@@ -653,6 +653,7 @@ export class Gateway {
     const p = url.pathname;
     if (p === "/health/live" || p === "/ready" || p === "/manifest.json" || p === "/sw.js") return true;
     if (p === "/web.js" || p === "/offline.html") return true; // mya fork: Vite-bundled JS + offline page are public PWA assets
+    if (p.startsWith("/assets/")) return true; // mya fork: Vite-built JS/CSS bundles (public SPA assets)
     if (p.startsWith("/icons/")) return true;
     // channel webhooks carry their own auth (adapter verify() / signature);
     // gating them with wsToken would block external webhook delivery.

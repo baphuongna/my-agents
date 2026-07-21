@@ -27,6 +27,8 @@ describe("Invariant #10 — single time helper (no Date.now() outside core.time)
         if (full.includes(join("packages", "pi-ai-src"))) continue;
         if (full.includes(join("packages", "pi-agent-src"))) continue;
         if (full.includes(join("packages", "tui"))) continue;
+        // Web SPA runs in the browser — cannot import @my-agent/core (Node-only).
+        if (full.includes(join("packages", "web"))) continue;
         const text = readFileSync(full, "utf8");
         // match `Date.now(` but NOT inside a comment line.
         for (const line of text.split("\n")) {
