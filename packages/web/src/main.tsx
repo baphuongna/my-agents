@@ -1,25 +1,25 @@
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import { ToastProvider } from "@/lib/toast";
-import { ThemeProvider } from "@/lib/theme";
-import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
+import App from "./App";
+import { SystemActionsProvider } from "./contexts/SystemActions";
+import { I18nProvider } from "./i18n";
+import { exposePluginSDK } from "./plugins";
+import { ThemeProvider } from "./themes";
+import { HERMES_BASE_PATH } from "./lib/api";
 
-const root = document.getElementById("root");
-if (!root) throw new Error("#root not found");
+// Expose the plugin SDK before rendering so plugins loaded via <script>
+// can access React, components, etc. immediately.
+exposePluginSDK();
 
-createRoot(root).render(
-  <StrictMode>
-    <BrowserRouter>
+createRoot(document.getElementById("root")!).render(
+  <BrowserRouter basename={HERMES_BASE_PATH || undefined}>
+    <I18nProvider>
       <ThemeProvider>
-        <I18nProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
-        </I18nProvider>
+        <SystemActionsProvider>
+          <App />
+        </SystemActionsProvider>
       </ThemeProvider>
-    </BrowserRouter>
-  </StrictMode>,
+    </I18nProvider>
+  </BrowserRouter>,
 );

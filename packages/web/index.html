@@ -1,21 +1,14 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/icons/192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#041c1c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/icons/192.png" />
     <title>mya — Dashboard</title>
-    <script>
-      // Gateway injects the session token into the cookie (HttpOnly).
-      // For WS connections, we read the token from the cookie via /ws-info
-      // or use the query-param approach: the rootHtml sets a cookie that
-      // the WS handler reads. For the SPA, we fetch the token at runtime.
-      window.__MYA_WS_PATH__ = "/events";
-    </script>
   </head>
   <body>
     <div id="root"></div>
