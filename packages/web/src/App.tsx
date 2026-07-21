@@ -33,10 +33,14 @@ export default function App() {
 
   return (
     <div className="flex h-dvh max-h-dvh overflow-hidden bg-bg text-fg">
+      {/* Subtle ambient gradient background */}
+      <div className="pointer-events-none fixed inset-0 z-0" style={{
+        background: "radial-gradient(ellipse 80% 50% at 50% -20%, color-mix(in srgb, theme('colors.accent.DEFAULT') 8%, transparent), transparent)",
+      }} />
       <CommandPalette />
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
+      <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto">
           <ErrorBoundary>

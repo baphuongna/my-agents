@@ -1,5 +1,5 @@
 /**
- * Header — top bar with mobile menu toggle + live status pills.
+ * Header — glassmorphic top bar with animated status indicator.
  */
 import { Menu } from "lucide-react";
 import { Badge } from "./ui/Badge";
@@ -10,34 +10,26 @@ import { formatDuration } from "@/lib/format";
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const { status, uptime } = useHealth();
 
-  const statusColor =
-    status === "ok" ? "green" : status === "loading" ? "yellow" : "red";
-  const statusLabel =
-    status === "ok" ? "online" : status === "loading" ? "connecting" : "offline";
-
   return (
-    <header className="flex items-center gap-2 px-3 py-2 bg-bg-surface border-b border-border h-11 shrink-0">
-      <button
-        className="lg:hidden btn-ghost p-1.5"
-        onClick={onMenuClick}
-        aria-label="Menu"
-      >
+    <header className="flex items-center gap-2 px-4 h-12 shrink-0 glass border-b border-border/40">
+      <button className="lg:hidden btn-ghost p-1.5" onClick={onMenuClick} aria-label="Menu">
         <Menu size={18} />
       </button>
-
       <div className="flex-1" />
-
-      {/* Status pills */}
-      <Badge color={statusColor as "green" | "yellow" | "red"}>
+      {/* Status with animated glow */}
+      <div className="flex items-center gap-1.5">
         <span
           className={cn(
-            "w-1.5 h-1.5 rounded-full",
+            "w-2 h-2 rounded-full",
             status === "ok" ? "bg-success" : status === "error" ? "bg-danger" : "bg-warning",
-            status === "ok" && "animate-pulse-slow",
+            status === "ok" && "animate-pulse",
           )}
+          style={status === "ok" ? { boxShadow: "0 0 8px theme('colors.success')" } : undefined}
         />
-        {statusLabel}
-      </Badge>
+        <span className="text-[11px] font-mono text-fg-muted">
+          {status === "ok" ? "online" : status === "loading" ? "…" : "offline"}
+        </span>
+      </div>
       {uptime != null && uptime > 0 && (
         <Badge color="gray" className="hidden sm:inline-flex font-mono tabular-nums">
           {formatDuration(uptime)}
