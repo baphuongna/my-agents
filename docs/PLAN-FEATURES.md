@@ -1,458 +1,676 @@
-# mya Feature Adoption Plan — From Hermes Comparison
+# mya Feature Adoption Plan — ALL Hermes-Only Features
 
 > Generated: 2026-07-21
-> Source: `docs/mya-vs-hermes-features.md` §15 Top Recommendations
-> Status: **PROPOSED** — awaiting user prioritization
+> Source: `docs/mya-vs-hermes-features.md` §14.2 (45 Hermes-only capabilities)
+> Scope: **ALL 44 actionable items** (#17 cron ordering already done)
+> Status: **PROPOSED**
 
-## Executive Summary
+## Overview
 
-5 priorities identified from the mya-vs-Hermes feature comparison. After code recon:
+44 features to adopt from Hermes, grouped into 10 categories. Total estimate: **~12,000 LOC + ~3-4 weeks** full-time (or paced over months).
 
-| # | Feature | Effort | ROI | Status |
-|---|---|---|---|---|
-| 1 | **IterationBudget per-subagent** | S (~80 LOC) | HIGH | **NEW** — not started |
-| 2 | **Plugin providers với lazy install** | L | HIGH | **NEW** — biggest provider gap |
-| 3 | **Cron ordering fix** | — | — | **ALREADY DONE** ✅ (false alarm in comparison) |
-| 4 | **Cron catch-up grace window** | S (~40 LOC) | MEDIUM | **PARTIAL** — mya fires-once+advances; grace window is a behavioral choice |
-| 5 | **ProfileSwitcher + per-island** | L | HIGH | **STUB** — gateway endpoint exists, UI missing |
+### Priority matrix
 
-**Revised priority order** (after recon):
-1. IterationBudget (S, HIGH) — fastest win
-2. Cron grace window (S, MEDIUM) — small, optional
-3. ProfileSwitcher (L, HIGH) — biggest UX gap
-4. Plugin providers (L, HIGH) — biggest capability gap
-5. ~~Cron ordering~~ — already correct
-
-**Recommended batch**: Do #1 + #2 first (both S, ~1 session each), then #5 or #4 (both L, multi-session).
-
----
-
-## Priority 1: IterationBudget per-subagent
-
-### Why
-mya subagents currently have **no iteration cap** — they can loop until token budget exhausts or model times out. Hermes has `agent/iteration_budget.py` with thread-safe `consume(refund)` per agent (parent=90, sub=50). This is the **#1 deepest single gap** from the comparison.
-
-### Current state (evidence)
-- `packages/core/src/budget.ts` — `BudgetConfig` is **token-USD only** (`total`, `reserved`, `spend(Cost)`)
-- `packages/agent/src/index.ts:455-535` — `runSubagentTurn()` runs turns until budget.exhausted() or signal abort; **no turn counter**
-- `packages/core/src/budget.test.ts` — 54 lines, no iteration tests
-- `grep -r "IterationBudget\|iteration_budget"` → **0 matches** (confirmed absent)
-
-### Design
-
-**Option A (preferred): Extend BudgetConfig with iteration tracking**
-- Add `maxIterations` to `BudgetConfig` (0 = unlimited)
-- Add `consumeIteration(): boolean` method — decrements counter, returns false if exhausted
-- Add `releaseIterations(n)` — refund on abort (mirrors `releasePrecharge`)
-- Reuse the existing `RootState`/`ChildRecord` tree structure
-
-**Option B: Separate IterationTracker class**
-- Cleaner separation but duplicates the tree-accounting pattern
-- More LOC, more surface area
-
-→ **Choose A** for minimal blast radius.
-
-### Files to change
-
-| File | Change | LOC |
+| Priority | Count | Description |
 |---|---|---|
-| `packages/core/src/types.ts` | Add `maxIterations?` to `BudgetConfig`; add `consumeIteration`, `releaseIterations`, `iterationsRemaining` to interface | +15 |
-| `packages/core/src/budget.ts` | Extend `RootState` with `iterationsUsed`; add `consumeIteration`/`releaseIterations` to `makeBudget`; cap in `deriveChild` | +35 |
-| `packages/core/src/budget.test.ts` | Test: parent cap, sub cap, refund on abort, exhausted check | +40 |
-| `packages/agent/src/index.ts` | In `runSubagentTurn`: call `budget.consumeIteration()` before each turn; abort if false | +8 |
-| `packages/agent/src/subagent.test.ts` | Test: subagent aborts at iteration cap | +20 |
+| **P0 — Critical gaps** | 6 | Core runtime + security (IterationBudget, OSV, Tirith, etc.) |
+| **P1 — High value** | 12 | Providers, channels, profile system, voice, web UX |
+| **P2 — Medium value** | 14 | Memory backends, skill editor, i18n, daemon pool |
+| **P3 — Nice-to-have** | 12 | Pets, achievements, Spotify, tooltip warmup, etc. |
 
-**Total: ~118 LOC** (S effort, ~2-3 hours)
+### Effort distribution
 
-### Implementation steps
-
-1. **types.ts**: Add to `BudgetConfig`:
-   ```ts
-   maxIterations: number;        // 0 = unlimited
-   consumeIteration: () => boolean;  // false = exhausted
-   releaseIterations: (n: number) => void;  // refund on abort
-   iterationsRemaining: () => number;
-   ```
-
-2. **budget.ts**: Extend `RootState`:
-   ```ts
-   interface RootState {
-     // ...existing...
-     iterationsUsed: number;
-     iterationsCap: number;  // 0 = unlimited
-   }
-   ```
-   In `makeBudget`, add:
-   ```ts
-   consumeIteration: () => {
-     if (node.unlimited || node.root.iterationsCap === 0) return true;
-     if (node.root.iterationsUsed >= node.root.iterationsCap) return false;
-     node.root.iterationsUsed++;
-     return true;
-   },
-   releaseIterations: (n) => { node.root.iterationsUsed = Math.max(0, node.root.iterationsUsed - n); },
-   iterationsRemaining: () => node.unlimited || node.root.iterationsCap === 0
-     ? Infinity : Math.max(0, node.root.iterationsCap - node.root.iterationsUsed),
-   ```
-
-3. **createBudget**: Add `maxIterations` param (default 0 = unlimited; subagent default 50).
-
-4. **agent/index.ts runSubagentTurn**: Before `runTurn`, add:
-   ```ts
-   if (!budget.consumeIteration()) {
-     throw new Error("iteration budget exhausted");
-   }
-   ```
-
-5. **AgentConfig**: Add `subagentMaxIterations?: number` (default 50).
-
-### Tests
-- `budget.test.ts`: consume hits cap → false; release refunds; unlimited always true
-- `subagent.test.ts`: spawn subagent with cap=2, verify it aborts after 2 turns
-- Existing 1824 tests still pass (backward compatible — default 0 = unlimited)
-
-### Risks
-- **Low**: backward compatible (default unlimited)
-- Thread-safety not needed (JS single-threaded; async is fine)
-- Subagents sharing parent budget means parent cap applies globally — may want per-subagent isolated budget (use `deriveChild`)
-
----
-
-## Priority 2: Plugin providers with lazy install
-
-### Why
-mya has **8 hard-coded providers**; Hermes has **30+ plugin providers** with lazy install. This is the **biggest capability gap**. However, it's L effort and touches the provider architecture deeply.
-
-### Current state (evidence)
-- `packages/ai/src/index.ts` — `ProviderRegistry` is a Map; providers are explicitly constructed in `createAgent`
-- `grep "registerProvider"` → 0 matches (no plugin registration API)
-- No `packages/ai/plugins/` directory
-- `packages/pkg/src/index.ts` — `PackageHost` exists for extensions/skills but NOT providers
-
-### Design
-
-**Declarative plugin manifest** (Hermes-style dataclass → TS interface):
-```ts
-interface PluginProviderManifest {
-  id: string;                    // "deepinfra", "fireworks", ...
-  displayName: string;
-  npmPackage: string;            // "@mya/provider-deepinfra"
-  baseUrl: string;
-  envVar: string;                // "DEEPINFRA_API_KEY"
-  models: ModelSpec[];
-  authScheme: "bearer" | "oauth-pkce" | "none";
-  allowlistEntry: string;        // must be in MYA_PLUGIN_ALLOWLIST
-}
-```
-
-**Lazy install flow**:
-1. `MYA_PLUGIN_ALLOWLIST=deepinfra,fireworks` env var
-2. On `createAgent`, scan `~/.mya/plugins/providers/` for manifests
-3. For each allowlisted provider, check if npm package installed
-4. If not, `npm install --prefix ~/.mya/plugins <pkg>` (gated by allowlist)
-5. Register in `ProviderRegistry`
-
-### Files to change
-
-| File | Change | LOC |
+| Effort | Count | Total LOC |
 |---|---|---|
-| `packages/ai/src/plugin-provider.ts` | **NEW** — `PluginProviderManifest`, `loadPluginProvider`, `scanPlugins` | +150 |
-| `packages/ai/src/index.ts` | Export `PluginProviderRegistry`; auto-scan in `ProviderRegistry` constructor | +60 |
-| `packages/ai/src/lazy-install.ts` | **NEW** — allowlist check, npm install wrapper | +80 |
-| `packages/ai/src/plugin-provider.test.ts` | **NEW** — manifest parse, allowlist gate, mock install | +100 |
-| `packages/pkg/src/index.ts` | Extend `PackageHost` to support `provider` kind (4th kind after extensions/skills/templates/themes) | +40 |
-| `docs/plugin-providers.md` | **NEW** — how to write + register a plugin provider | +80 |
-
-**Total: ~510 LOC** (L effort, ~1-2 days)
-
-### Implementation steps
-
-1. **Phase A — Manifest + scan (no install yet)**:
-   - Define `PluginProviderManifest` interface
-   - `scanPlugins(dir)`: read `*.json` manifests from `~/.mya/plugins/providers/`
-   - `ProviderRegistry.registerPlugin(manifest)`: construct adapter from manifest
-   - Test: scan a fixture dir, verify registration
-
-2. **Phase B — Lazy install**:
-   - `lazyInstall(manifest, allowlist)`: check allowlist → `npm install` → require
-   - `MYA_PLUGIN_ALLOWLIST` env gate (security: no arbitrary install)
-   - Cache installed packages in `~/.mya/plugins/node_modules/`
-
-3. **Phase C — Provider plugin SDK**:
-   - `createPluginProvider(manifest, httpClient)` helper for plugin authors
-   - Example plugin: `@mya/provider-deepinfra` (standalone package)
-
-4. **Phase D — Wiring**:
-   - `createAgent`: if `config.pluginProviders !== false`, scan + register
-   - CLI: `mya providers list` / `mya providers install <id>`
-
-### Tests
-- Manifest parse/validation
-- Allowlist gate (rejects non-allowlisted)
-- Mock npm install (stub child_process)
-- End-to-end: scan fixture → register → use provider
-
-### Risks
-- **MEDIUM**: npm install at runtime is slow + security-sensitive
-- Mitigation: allowlist required, install gated behind explicit opt-in
-- Version pinning: pin major version in manifest
+| S (<100 LOC) | 18 | ~900 |
+| M (100-500 LOC) | 16 | ~4,000 |
+| L (500+ LOC) | 10 | ~7,000 |
 
 ---
 
-## Priority 3: Cron ordering fix — ❌ ALREADY DONE
+## Group A — Agent Core & Runtime (5 items)
 
-### Recon finding
-The comparison report claimed mya has a "mark-before-async bug". **This is incorrect.** Evidence:
+### A1. IterationBudget per-subagent — **P0, S**
+**Gap**: Subagents loop until token budget exhausts; no turn cap.
+**Files**: `packages/core/src/{budget.ts,types.ts,budget.test.ts}`, `packages/agent/src/{index.ts,subagent.test.ts}`
+**LOC**: ~118
+**Steps**:
+1. Add `maxIterations`, `consumeIteration()`, `releaseIterations()` to `BudgetConfig`
+2. Extend `RootState` with `iterationsUsed`/`iterationsCap`
+3. In `runSubagentTurn`: `if (!budget.consumeIteration()) throw`
+4. Default: parent=0 (unlimited), sub=50
+**Tests**: cap hit → abort; refund on abort; unlimited always true
+**Risks**: Low (backward compat — default unlimited)
 
-```ts
-// packages/cron/src/index.ts:331-362 — dueAndAdvance()
-if (job.nextRunAt <= now) {
-  const next = computeNextFire(...)?.getTime();  // compute next FIRST
-  job.nextRunAt = next;                          // advance BEFORE firing
-  this.dirty = true;
-  out.push(job);                                 // then queue for fire
-}
-```
+### A2. `delegation.max_spawn_depth` — **P1, S**
+**Gap**: Subagents hardcoded one-level; can't nest.
+**Files**: `packages/agent/src/index.ts`, `packages/agent/src/subagent.test.ts`
+**LOC**: ~60
+**Steps**:
+1. Add `maxSpawnDepth?: number` to `AgentConfig` (default 2)
+2. Track depth in `SubagentHandle` (parent depth + 1)
+3. In `spawnSubagent`: if `handle.depth >= config.maxSpawnDepth`, reject
+4. Pass depth-aware subagent factory to subagent sessions
+**Tests**: depth=1 → subagent can't spawn; depth=2 → one level of nesting
+**Risks**: Medium — subagent sessions need access to spawn capability (currently they don't)
 
-And `complete()` (line 250): re-anchors `nextRunAt` off **completion** time (post-exec), not pre-exec.
+### A3. AST-discovered tool registry — **P2, S**
+**Gap**: Tools are explicit imports; Hermes uses AST self-registration.
+**Files**: `packages/tools/src/registry.ts`, `packages/tools/src/auto-discover.ts` (new)
+**LOC**: ~80
+**Steps**:
+1. `autoDiscover(dir)`: scan `*.ts` for `@Tool` decorator or `registerTool()` calls
+2. Use TypeScript compiler API or regex for `export const.*Tool` pattern
+3. Register discovered tools in `ToolRegistry`
+4. `MYA_TOOLS_DIR` env for custom tool dirs
+**Tests**: fixture dir with 3 tools → all registered
+**Risks**: Low — opt-in (`autoDiscover` called explicitly)
 
-The gateway (`packages/gateway/src/index.ts:535-614`) calls:
-1. `dueAndAdvance()` — advances nextRunAt
-2. `claim(job.id, workerId)` — atomic claim
-3. Execute (async turn / shell)
-4. `complete(runId, "succeeded"|"failed")` — post-exec mark
+### A4. Daemon pool — **P2, M**
+**Gap**: Long-lived process supervisor for persistent workers.
+**Files**: `packages/agent/src/daemon-pool.ts` (new), `packages/gateway/src/index.ts`
+**LOC**: ~250
+**Steps**:
+1. `DaemonPool` class: spawn N worker processes, keep alive, reuse
+2. Worker spec: `{ cmd, args, env, warmPool: number }`
+3. Health check + respawn on death
+4. Use for: MCP servers, browser engines, codeexec sandboxes
+**Tests**: pool warm-start; worker death → respawn; max pool size
+**Risks**: Medium — process management complexity
 
-**This is the correct Hermes pattern.** No change needed.
-
-### Action
-- Update `docs/mya-vs-hermes-features.md` §9 to mark cron ordering as ✅ parity (not ❌)
-- No code change
-
----
-
-## Priority 4: Cron catch-up grace window
-
-### Why
-mya fires a cron job **exactly once** when it's past due, regardless of HOW past due. Hermes uses a grace window (`MIN_GRACE=120s, MAX_GRACE=7200s`): if a job is older than the grace window, it's **skipped** (not fired). This prevents firing very stale jobs after long downtime (e.g., a job due every 5 min, server down 3 days → don't fire 864 stale runs; fire once or skip).
-
-### Current state
-mya's `dueAndAdvance()`:
-```ts
-if (job.nextRunAt <= now) {
-  // ALWAYS fires — no staleness check
-  job.nextRunAt = next;  // advances to next future
-  out.push(job);
-}
-```
-
-This is **infinite grace** (always fire once). Hermes uses **finite grace** (skip if too stale).
-
-### Design decision
-This is a **behavioral choice**, not a bug:
-- **Infinite grace (current)**: always run the missed job once — safer for important jobs
-- **Finite grace (Hermes)**: skip very stale jobs — prevents stale-data hazards
-
-**Recommendation**: Add `graceMs` per-job (default `Infinity`; configurable). If `now - job.nextRunAt > graceMs`, skip + advance.
-
-### Files to change
-
-| File | Change | LOC |
-|---|---|---|
-| `packages/cron/src/index.ts` | Add `graceMs?: number` to `CronJob`; skip-if-stale check in `dueAndAdvance` | +15 |
-| `packages/cron/src/cron.test.ts` | Test: stale job skipped, fresh job fires | +25 |
-
-**Total: ~40 LOC** (S effort, ~1 hour)
-
-### Implementation
-
-```ts
-// In dueAndAdvance(), after `if (job.nextRunAt <= now)`:
-const staleness = now - job.nextRunAt;
-const grace = job.graceMs ?? Infinity;
-if (staleness > grace) {
-  // Too stale — skip this fire, advance to next
-  const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
-  if (next == null) { job.enabled = false; this.dirty = true; continue; }
-  job.nextRunAt = next;
-  this.dirty = true;
-  continue;  // skip — do NOT push to out
-}
-```
-
-Add `graceMs?: number` to `CronJob` interface (default undefined = Infinity).
-
-### Hermes grace computation (reference)
-```python
-def _compute_grace_seconds(cron_expr):
-    interval = croniter(cron_expr).get_next()
-    grace = min(max(interval / 2, 120), 7200)  # clamp [120, 7200]
-    return grace
-```
-
-mya equivalent: compute from `computeNextFire` delta. But simpler: just use a fixed default (e.g., 1 hour) or let user set per-job.
-
-### Tests
-- Job with `graceMs: 60_000`, `nextRunAt` 2 min ago → **skipped**, nextRunAt advanced
-- Job with `graceMs: 60_000`, `nextRunAt` 30s ago → **fires**
-- Job with no `graceMs` → always fires (backward compat)
-
-### Risks
-- **LOW**: backward compatible (default Infinity = current behavior)
-- Edge: user might expect stale jobs to fire — document clearly
+### A5. Recovery FSM (gateway respawn) — **P1, S**
+**Gap**: Gateway crash = manual restart; no auto-respawn.
+**Files**: `packages/print/src/launcher.ts` (or new `packages/gateway/src/recovery.ts`)
+**LOC**: ~70
+**Steps**:
+1. Watchdog: monitor gateway PID, heartbeat file
+2. On crash: respawn within 3 attempts / 60s budget
+3. Resume mid-session (reload session state)
+4. `MYA_GATEWAY_AUTO_RESTART=1` env gate
+**Tests**: kill gateway → respawn; 3 fails → give up
+**Risks**: Low — opt-in, wrapper around existing serve
 
 ---
 
-## Priority 5: ProfileSwitcher + per-island config
+## Group B — Providers (3 items)
 
-### Why
-Hermes has full multi-profile ("islands") — per-profile `HERMES_HOME`, cron, skills, `.env`, API keys. mya has **only a stub** (`/profiles/active` returns `{name:"default"}`). This is the **biggest UX gap** in the web dashboard.
+### B1. Plugin providers with lazy install — **P0, L**
+**Gap**: 8 hard-coded providers vs Hermes 30+.
+**Files**: `packages/ai/src/{plugin-provider.ts,lazy-install.ts,index.ts}`, `packages/ai/src/plugin-provider.test.ts`
+**LOC**: ~510
+**Steps**:
+1. `PluginProviderManifest` interface (id, npmPackage, baseUrl, envVar, models, authScheme)
+2. `scanPlugins(dir)`: read manifests from `~/.mya/plugins/providers/`
+3. `lazyInstall(manifest, allowlist)`: `MYA_PLUGIN_ALLOWLIST` gate → npm install
+4. `ProviderRegistry.registerPlugin(manifest)`
+5. CLI: `mya providers list/install`
+**Tests**: manifest parse, allowlist gate, mock install, e2e scan→register→use
+**Risks**: Medium — npm install at runtime (security); mitigate with allowlist
 
-### Current state (evidence)
-```ts
-// packages/gateway/src/index.ts:1493
-if (url.pathname === "/profiles/active") return send(200, { name: "default" });
-// packages/gateway/src/index.ts:330
-"/profiles": { profiles: [{ name: "default", description: "Default profile", is_default: true }] },
-```
-- No profile store, no per-profile isolation
-- Web has no ProfileSwitcher, no ProfileProvider, no ProfileKeyedRoutes
+### B2. MCP dashboard OAuth — **P1, S**
+**Gap**: No OAuth flow for MCP server connections.
+**Files**: `packages/gateway/src/mcp-oauth.ts` (new), `packages/gateway/src/index.ts`
+**LOC**: ~90
+**Steps**:
+1. `GET /mcp/oauth/:server/start` → redirect to provider
+2. `GET /mcp/oauth/callback` → exchange code → store token
+3. Token store in `~/.mya/mcp-tokens.json`
+4. MCP client uses stored token for authed servers
+**Tests**: OAuth start→callback→token stored
+**Risks**: Low — standard OAuth code
 
-### Design
-
-**Profile = isolated config island**:
-```
-~/.mya/
-  profiles/
-    default/       ← current single-profile (backward compat)
-      config.toml
-      cron.json
-      auth.json
-      memory/
-    work/
-      config.toml
-      cron.json
-      ...
-    personal/
-      ...
-  profiles.json    ← registry: { active: "default", profiles: [...] }
-```
-
-**Gateway**:
-- `GET /profiles` → list profiles
-- `GET /profiles/active` → current active
-- `POST /profiles/switch` → switch active (remounts scheduler, reloads config)
-- `POST /profiles/create` → create new profile (5-step wizard data)
-- `DELETE /profiles/:name` → delete (refuse if active or last)
-
-**Web**:
-- `ProfileProvider` context — wraps app, provides `activeProfile`, `switchProfile()`
-- `ProfileSwitcher` — sidebar dropdown
-- `ProfileScopeBanner` — header bar showing active profile
-- `ProfileKeyedRoutes` — remounts pages on switch (prevents stale-target writes)
-- `ProfilesPage` — list + create + delete
-- `ProfileBuilderPage` — 5-step wizard (identity, model, skills, MCP, review)
-
-### Files to change
-
-| File | Change | LOC |
-|---|---|---|
-| `packages/gateway/src/profiles.ts` | **NEW** — ProfileStore, switch, create, delete | +200 |
-| `packages/gateway/src/index.ts` | Wire profile endpoints; profile-aware config loading | +80 |
-| `packages/cron/src/index.ts` | Profile-aware cron store path (`profiles/<name>/cron.json`) | +30 |
-| `packages/web/src/contexts/ProfileProvider.tsx` | **NEW** — context + hook | +80 |
-| `packages/web/src/components/ProfileSwitcher.tsx` | **NEW** — sidebar dropdown | +60 |
-| `packages/web/src/components/ProfileScopeBanner.tsx` | **NEW** — header banner | +30 |
-| `packages/web/src/components/ProfileKeyedRoutes.tsx` | **NEW** — key=profile remount wrapper | +25 |
-| `packages/web/src/pages/ProfilesPage.tsx` | **NEW** — list + manage | +120 |
-| `packages/web/src/pages/ProfileBuilderPage.tsx` | **NEW** — 5-step wizard | +200 |
-| `packages/web/src/lib/api.ts` | Add `api.profiles()` methods | +30 |
-| `packages/web/src/components/Sidebar.tsx` | Add ProfileSwitcher slot | +10 |
-| `packages/web/src/App.tsx` | Wrap with ProfileProvider; use ProfileKeyedRoutes | +15 |
-| Tests (gateway + web) | Profile CRUD, switch, remount | +150 |
-
-**Total: ~1030 LOC** (L effort, ~2-3 days)
-
-### Implementation steps
-
-**Phase A — Backend profile store** (Day 1):
-1. `profiles.ts`: `ProfileStore` class — manages `~/.mya/profiles.json` + per-profile dirs
-2. Methods: `list()`, `getActive()`, `switch(name)`, `create(data)`, `delete(name)`
-3. On switch: reload cron scheduler from new profile's `cron.json`
-4. Gateway endpoints: `GET/POST /profiles/*`
-
-**Phase B — Web context + switching** (Day 1-2):
-5. `ProfileProvider`: fetches active profile, provides switch()
-6. `ProfileSwitcher`: dropdown in sidebar (calls `POST /profiles/switch`)
-7. `ProfileScopeBanner`: shows active profile name in header
-8. `ProfileKeyedRoutes`: `<Routes key={activeProfile}>` — forces remount
-
-**Phase C — Profile management UI** (Day 2-3):
-9. `ProfilesPage`: table of profiles (name, description, active, default)
-10. `ProfileBuilderPage`: 5-step wizard:
-    - Step 1: Identity (name, description, icon)
-    - Step 2: Model (default provider + model)
-    - Step 3: Skills (select from available)
-    - Step 4: MCP (server URLs)
-    - Step 5: Review + create
-
-**Phase D — Isolation** (Day 3):
-11. Per-profile `config.toml` loading
-12. Per-profile `auth.json` (separate API keys per profile)
-13. Per-profile cron store path
-14. Per-profile memory dir
-
-### Tests
-- ProfileStore CRUD
-- Switch reloads cron scheduler
-- Web: ProfileProvider fetches, switch POSTs, routes remount
-- Backward compat: no profiles.json → single "default" profile (current behavior)
-
-### Risks
-- **MEDIUM**: switching profiles mid-session could lose state — ProfileKeyedRoutes handles this
-- Migration: existing `~/.mya/` → `~/.mya/profiles/default/` (symlink or move)
-- Backward compat: if no `profiles.json`, behave as single-profile (current)
+### B3. Plugin providers declarative dataclasses — **P1, S** (part of B1)
+**Gap**: No declarative provider spec format.
+**Note**: This is the manifest format from B1. Counted as part of B1.
+**LOC**: included in B1
 
 ---
 
-## Sequencing Recommendation
+## Group C — Tools (6 items)
 
-### Batch 1: Quick wins (1 session, ~3 hours)
-- ✅ Priority 1: IterationBudget (~118 LOC)
-- ✅ Priority 4: Cron grace window (~40 LOC)
-- ✅ Fix comparison doc (Priority 3 already done)
-- **Total**: ~158 LOC + tests, all backward compatible
+### C1. Image generation — **P1, L**
+**Gap**: No image gen tool.
+**Files**: `packages/tools/src/image-gen.ts` (new), `packages/tools/src/index.ts`
+**LOC**: ~300
+**Steps**:
+1. `imageGenerate(prompt, opts)` tool
+2. Backends: OpenAI DALL-E, Stability, Replicate (plugin pattern from B1)
+3. Output: base64 PNG or file path
+4. Permission gate: `image-gen` mode
+**Tests**: mock backend → base64 output; permission denied
+**Risks**: Low — wraps existing APIs
 
-### Batch 2: Profile system (2-3 sessions)
-- Priority 5: ProfileSwitcher + per-island (~1030 LOC)
-- Depends on: nothing (self-contained)
-- Unblocks: multi-tenant use cases
+### C2. Video generation — **P2, L**
+**Gap**: No video gen tool.
+**Files**: `packages/tools/src/video-gen.ts` (new)
+**LOC**: ~350
+**Steps**:
+1. `videoGenerate(prompt, opts)` tool
+2. Backends: Runway, Pika, Replicate
+3. Async polling (video gen takes minutes)
+4. Output: URL or file path
+**Tests**: mock backend → poll → URL
+**Risks**: Medium — async polling complexity
 
-### Batch 3: Plugin providers (2-3 sessions)
-- Priority 2: Plugin providers (~510 LOC)
-- Depends on: PackageHost (exists)
-- Unblocks: 30+ provider parity with Hermes
+### C3. Kanban — **P2, M**
+**Gap**: No task board tool.
+**Files**: `packages/tools/src/kanban.ts` (new), store in `~/.mya/kanban.json`
+**LOC**: ~200
+**Steps**:
+1. `kanbanCreateBoard`, `kanbanAddTask`, `kanbanMoveTask`, `kanbanListTasks`
+2. Boards: `{ id, name, columns: [{ id, name, tasks: [...] }] }`
+3. CLI: `mya kanban list/move/add`
+4. Web: KanbanPage (drag-drop columns)
+**Tests**: CRUD operations
+**Risks**: Low — simple JSON store
 
-### Not needed
-- ~~Priority 3: Cron ordering~~ — already correct
+### C4. OSV vulnerability check — **P0, S**
+**Gap**: No dependency vuln scanning.
+**Files**: `packages/tools/src/osv-check.ts` (new), `packages/tools/src/index.ts`
+**LOC**: ~60
+**Steps**:
+1. `osvCheck(packageName, version)` tool
+2. Query `https://api.osv.dev/v1/query`
+3. Return CVE list with severity
+4. Batch mode: scan `package.json` / `Cargo.toml`
+**Tests**: mock OSV API → CVE list
+**Risks**: Low — HTTP wrapper
+
+### C5. Tirith URL safety — **P0, S**
+**Gap**: No URL safety checker (mya has DNS SSRF guard but not URL reputation).
+**Files**: `packages/tools/src/url-safety.ts` (new)
+**LOC**: ~50
+**Steps**:
+1. `checkUrlSafety(url)` tool
+2. Check: Google Safe Browsing API, PhishTank, internal blocklist
+3. Return: `{ safe: boolean, reasons: string[] }`
+4. Wire into `web_fetch` as pre-check
+**Tests**: known-safe URL → safe; known-bad → flagged
+**Risks**: Low — needs Safe Browsing API key (optional)
+
+### C6. Agent-callable scheduling tools — **P1, M**
+**Gap**: Agent can't create cron jobs (mya blocks by design R2-4).
+**Files**: `packages/cron/src/agent-tools.ts` (new), `packages/tools/src/index.ts`
+**LOC**: ~180
+**Steps**:
+1. `cronCreate(schedule, prompt)`, `cronList()`, `cronDelete(id)`, `cronRun(id)`
+2. Permission gate: `cron-manage` mode (explicit opt-in)
+3. Scope: agent can only manage jobs IT created (prefix `agent-`)
+4. Rate limit: max 10 agent-created jobs
+**Tests**: create→list→delete; permission denied without mode
+**Risks**: Medium — security (agent self-scheduling); mitigate with mode gate + prefix
 
 ---
 
-## Verification gates (each priority)
+## Group D — Memory (2 items)
 
-Every priority must pass:
-1. `npx vitest run --pool forks` → 1824+ tests pass (no regressions)
-2. `npm run bundle` → bundle succeeds
-3. `npx tsc -b packages/<pkg>` → type-check passes
+### D1. 22 memory backends plugin system — **P1, L**
+**Gap**: mya has unified SQLite; Hermes has 22 pluggable backends (mem0, openviking, etc.).
+**Files**: `packages/memory/src/backends/` (new dir), `packages/memory/src/index.ts`
+**LOC**: ~600
+**Steps**:
+1. `MemoryBackend` interface (existing) — standardize
+2. Built-in adapters: mem0, openviking, byterover, supermemory, honcho
+3. `MemoryBackendRegistry` — register by name
+4. Config: `memory.backend = "mem0"` in config.toml
+5. Fallback: if backend unavailable, fall back to SQLite
+**Tests**: each backend mock; fallback on failure
+**Risks**: High — each backend has different API; start with 3-4 popular ones
+
+### D2. Learning graph — **P2, M**
+**Gap**: No "what user learned" derived graph.
+**Files**: `packages/memory/src/learning-graph.ts` (new)
+**LOC**: ~250
+**Steps**:
+1. Derive graph from memory entities + conversations
+2. Nodes: concepts; Edges: learned-from, related-to, built-on
+3. `learningGraph(topic)` query → DOT/JSON graph
+4. Web: graph visualization (d3-force or vis-network)
+**Tests**: ingest facts → query graph
+**Risks**: Medium — graph derivation quality
+
+---
+
+## Group E — Channels (3 items)
+
+### E1. 20+ plugin channels — **P1, L**
+**Gap**: 8 TS adapters vs Hermes 20+ plugin platforms.
+**Files**: `packages/gateway/src/channels/` (restructure), `packages/channels/src/` (new plugin SDK)
+**LOC**: ~800
+**Steps**:
+1. `ChannelPlugin` interface (send, receive, identity, rate-limit)
+2. Built-in: telegram, discord, slack, email, matrix, signal, whatsapp, line
+3. Plugin discovery (like B1 providers)
+4. Per-channel identity store (separate credentials)
+**Tests**: mock channel send/receive; plugin discovery
+**Risks**: High — each platform has unique API; prioritize top 5
+
+### E2. Per-platform identity/cache/rate-limit — **P1, M**
+**Gap**: Channels share generic OAuth; no per-platform identity.
+**Files**: `packages/gateway/src/channel-identity.ts` (new)
+**LOC**: ~200
+**Steps**:
+1. `ChannelIdentity` store per platform (bot tokens, user tokens)
+2. Sticker/media cache per platform
+3. Rate-limit guard per platform (token bucket)
+4. Wire into each channel adapter
+**Tests**: identity isolation; rate-limit triggers
+**Risks**: Medium
+
+### E3. Microsoft Graph OAuth + Feishu/WeChat/Lark — **P2, M**
+**Gap**: No MS Graph or Chinese platform integrations.
+**Files**: `packages/gateway/src/channels/{msgraph,feishu,wechat,lark}.ts`
+**LOC**: ~400 (4 adapters × ~100 each)
+**Steps**:
+1. MSGraph: OAuth + email/calendar/teams tools
+2. Feishu/Lark: bot + doc APIs
+3. WeChat: official account bot
+**Tests**: mock OAuth + API calls
+**Risks**: Medium — platform-specific quirks
+
+---
+
+## Group F — Cron (4 items, #17 already done)
+
+### F1. Cron one-shot grace — **P1, S**
+**Gap**: No grace for ghost one-shot jobs.
+**Files**: `packages/cron/src/index.ts`, `packages/cron/src/cron.test.ts`
+**LOC**: ~30
+**Steps**:
+1. `ONESHOT_GRACE_MS = 120_000` constant
+2. On create/update one-shot: reject if `schedule < now - grace`
+3. On sweep: skip one-shot jobs older than grace
+**Tests**: ghost one-shot rejected; fresh one-shot fires
+**Risks**: Low
+
+### F2. Cron lifecycle_guard — **P1, S**
+**Gap**: No restart-loop detection.
+**Files**: `packages/cron/src/lifecycle-guard.ts` (new)
+**LOC**: ~60
+**Steps**:
+1. Track restart count per job in window (e.g., 5 restarts in 60s)
+2. If threshold exceeded: disable job + alert
+3. `LifecycleGuard.check(jobId)` before fire
+**Tests**: rapid restart → disabled
+**Risks**: Low
+
+### F3. Cron empirical catch-up grace — **P1, S** (part of grace window)
+**Gap**: mya fires once + advances (infinite grace); Hermes uses finite grace.
+**Files**: `packages/cron/src/index.ts`
+**LOC**: ~40 (see PLAN-FEATURES Priority 4)
+**Steps**:
+1. Add `graceMs?: number` to `CronJob`
+2. In `dueAndAdvance`: if `now - nextRunAt > graceMs`, skip + advance
+3. Default: `Infinity` (backward compat)
+**Tests**: stale job skipped; fresh fires
+**Risks**: Low
+
+### F4. Cross-process cron lock — **P2, M**
+**Gap**: mya single-process; no `fcntl`/`msvcrt` cross-process lock.
+**Files**: `packages/cron/src/cross-process-lock.ts` (new)
+**LOC**: ~120
+**Steps**:
+1. `flock` wrapper (Unix) / `LockFileEx` (Windows)
+2. Lock file: `~/.mya/cron.lock`
+3. On sweep start: acquire lock; release on complete
+4. If lock held by another process: skip sweep
+**Tests**: two processes → only one sweeps
+**Risks**: Low — only relevant for multi-gateway topology (future)
+
+---
+
+## Group G — Voice (1 item)
+
+### G1. Voice continuous mode (STT→agent) — **P1, L**
+**Gap**: mya has TTS only; no continuous STT→agent loop.
+**Files**: `packages/gateway/src/voice-continuous.ts` (new), `packages/tts/src/stt.ts` (new)
+**LOC**: ~450
+**Steps**:
+1. STT backends: Whisper (local), Deepgram (cloud), browser Web Speech API
+2. Continuous capture: VAD (voice activity detection) → chunk → transcribe
+3. Agent loop: transcript → agent turn → TTS response → speak
+4. `voiceMode` CLI command + web toggle
+5. Interruption handling (barge-in)
+**Tests**: mock STT → agent → mock TTS
+**Risks**: High — real-time audio complexity; start with push-to-talk (simpler)
+
+---
+
+## Group H — Web Dashboard (14 items)
+
+### H1. Profile system (multi-island) — **P0, L**
+**Gap**: Only stub `/profiles/active`.
+**Files**: `packages/gateway/src/profiles.ts`, `packages/web/src/contexts/ProfileProvider.tsx`, `packages/web/src/components/{ProfileSwitcher,ProfileScopeBanner,ProfileKeyedRoutes}.tsx`, `packages/web/src/pages/{ProfilesPage,ProfileBuilderPage}.tsx`
+**LOC**: ~1030
+**Steps**:
+1. Backend: `ProfileStore` (`~/.mya/profiles.json` + per-profile dirs)
+2. Endpoints: `GET/POST /profiles/*`
+3. Web: ProfileProvider context, ProfileSwitcher dropdown, ProfileKeyedRoutes remount
+4. ProfileBuilderPage: 5-step wizard (identity, model, skills, MCP, review)
+5. Migration: `~/.mya/` → `~/.mya/profiles/default/`
+**Tests**: CRUD, switch remounts, backward compat
+**Risks**: Medium — migration + state isolation
+
+### H2. 17-locale i18n — **P1, M**
+**Gap**: 2 langs (en, vi) vs Hermes 17.
+**Files**: `packages/web/src/lib/i18n.tsx` (expand), `packages/web/src/i18n/{es,fr,de,it,ja,ko,pt,ru,tr,uk,zh,zh-hant,ga,hu,af}.ts` (new)
+**LOC**: ~400 (16 files × ~25 keys)
+**Steps**:
+1. Extract all hardcoded strings to keys (audit pages)
+2. Machine-translate to 15 new locales (base quality)
+3. LangToggle: add all 17 to dropdown
+4. Store preference in localStorage
+**Tests**: all keys present in all locales; missing key → fallback en
+**Risks**: Low — translation quality (acceptable for base)
+
+### H3. Theme presets (backend-synced) — **P2, M**
+**Gap**: 5 static themes; no backend sync.
+**Files**: `packages/web/src/lib/theme.tsx` (expand), `packages/gateway/src/index.ts`
+**LOC**: ~200
+**Steps**:
+1. Theme presets: palette + typography + layout density
+2. `GET/PUT /dashboard/theme` endpoint
+3. Gateway sends theme in `ready` event
+4. Per-theme font family (fonts.ts)
+**Tests**: theme switch → backend sync → reload restores
+**Risks**: Low
+
+### H4. Embedded xterm.js terminal in chat — **P1, M**
+**Gap**: Chat is plain textarea; no PTY.
+**Files**: `packages/web/src/components/Terminal.tsx` (new), `packages/gateway/src/pty.ts` (new)
+**LOC**: ~350
+**Steps**:
+1. Gateway: `WS /pty?token=...` → spawn `node dist/mya.js --tui` PTY
+2. Web: xterm.js + addons (fit, web-links, search)
+3. ChatPage: split view (chat | terminal)
+4. Reconnect throttle on WS drop
+**Tests**: PTY spawn → echo; reconnect
+**Risks**: Medium — PTY process management + security
+
+### H5. HermesConsoleModal (xterm PTY) — **P2, M** (part of H4)
+**Gap**: No standalone console.
+**Files**: `packages/web/src/components/ConsoleModal.tsx` (new)
+**LOC**: ~150 (uses H4 PTY infrastructure)
+**Steps**:
+1. Modal wrapper around xterm.js
+2. Cmd+Shift+C to open
+3. Connects to same PTY pool
+**Tests**: open → type → close
+
+### H6. Web plugin slot registry (30+ slots) — **P1, L**
+**Gap**: Zero plugin extension points in web.
+**Files**: `packages/web/src/plugins/{registry,slots,types,sdk}.ts` (new), `packages/web/src/plugins/PluginPage.tsx`
+**LOC**: ~500
+**Steps**:
+1. Define slots: `backdrop`, `header-banner`, `header-left/right`, `pre-main`, `post-main`, `overlay`, `sidebar-top/bottom`, `nav-item`, `settings-tab`
+2. `PluginManifest` interface
+3. `usePlugins()` hook → inject components into slots
+4. SRI verification for plugin scripts
+5. `exposePluginSDK()` global
+**Tests**: register plugin → renders in slot; SRI reject
+**Risks**: High — security (plugin code execution); sandbox with iframe or vm
+
+### H7. In-browser skill editor — **P1, M**
+**Gap**: SkillsPage lists only; no create/edit.
+**Files**: `packages/web/src/components/SkillEditorDialog.tsx` (new), `packages/gateway/src/index.ts`
+**LOC**: ~200
+**Steps**:
+1. Editor: name, description, frontmatter fields, body (CodeMirror markdown)
+2. `POST /skills/create`, `PUT /skills/:name`
+3. Validation matches server-side `skill_manage`
+4. Live preview (rendered markdown)
+**Tests**: create → save → reload → edit
+**Risks**: Low
+
+### H8. Auth widget + OAuth providers card — **P1, M**
+**Gap**: No OAuth UI.
+**Files**: `packages/web/src/components/AuthWidget.tsx` (new)
+**LOC**: ~180
+**Steps**:
+1. OAuth providers card (Google, GitHub, Anthropic, etc.)
+2. Login modal (PKCE flow from `packages/ai/src/oauth.ts`)
+3. Token status indicator
+4. Revoke button
+**Tests**: OAuth start → callback → status updates
+**Risks**: Low — uses existing OAuth code
+
+### H9. Webhook pages — **P2, S**
+**Gap**: Webhooks stub only.
+**Files**: `packages/web/src/pages/WebhooksPage.tsx` (new), `packages/gateway/src/index.ts`
+**LOC**: ~120
+**Steps**:
+1. `GET/POST/DELETE /webhooks` endpoints
+2. Webhook: `{ id, url, events: [], secret }`
+3. WebhooksPage: list + create + test
+4. Event delivery on cron/channel events
+**Tests**: create → trigger event → POST delivered
+**Risks**: Low
+
+### H10. Pairing UI — **P2, M**
+**Gap**: Backend exists (`/pair/*`), no web UI.
+**Files**: `packages/web/src/pages/PairingPage.tsx` (new)
+**LOC**: ~150
+**Steps**:
+1. Generate 8-char code
+2. QR code for mobile pairing
+3. Device list + revoke
+4. Countdown timer (1h expiry)
+**Tests**: generate → pair → device appears → revoke
+**Risks**: Low
+
+### H11. Tooltip warmup — **P3, S**
+**Gap**: No tooltip debounce.
+**Files**: `packages/web/src/components/ui/Tooltip.tsx` (new)
+**LOC**: ~40
+**Steps**:
+1. `warmRef` state — 300ms warm after dismiss
+2. Suppress fade-in during warm
+**Tests**: rapid hover → no flicker
+**Risks**: Low
+
+### H12. Pet sprites / truecolor half-block — **P3, S**
+**Gap**: No TUI mascot.
+**Files**: `packages/tui/src/components/pet-sprite.ts` (new)
+**LOC**: ~60
+**Steps**:
+1. Truecolor half-block grid renderer
+2. Sprite frames (idle, happy, thinking)
+3. `PetSprite` component in TUI status bar
+**Tests**: render → ANSI output contains color codes
+**Risks**: Low
+
+### H13. Spanforce `^~~` strikethrough in markdown — **P3, S**
+**Gap**: mya markdown uses `~~`; no `^~~` force variant.
+**Files**: `packages/tui/src/components/markdown.ts`, `packages/web/src/components/Markdown.tsx`
+**LOC**: ~20
+**Steps**:
+1. Add `^~~(.+?)^~~` regex to strikethrough tokenizer
+2. Render as `<s>` with force class
+**Tests**: `^~~text^~~` → strikethrough
+**Risks**: Low
+
+### H14. Long-run tool charms (ambient activity) — **P3, S**
+**Gap**: No ambient status for slow tools.
+**Files**: `packages/tui/src/components/charms.ts` (new), `packages/web/src/components/ToolCharms.tsx` (new)
+**LOC**: ~50
+**Steps**:
+1. Verb map: `{ read: "reading the docs", bash: "running commands", ... }`
+2. Fire ambient string after 8s of tool execution
+3. Rotate every 5s
+**Tests**: tool >8s → charm appears
+**Risks**: Low
+
+---
+
+## Group I — System/OS (2 items)
+
+### I1. Systemd / cgroup lifecycle ops — **P2, M**
+**Gap**: No systemd notify, cgroup cleanup, scale-to-zero.
+**Files**: `packages/gateway/src/systemd.ts` (new), `packages/gateway/src/cgroup.ts` (new)
+**LOC**: ~200
+**Steps**:
+1. `sd_notify(READY=1)` on gateway start
+2. Watchdog: `sd_notify(WATCHDOG=1)` every 30s
+3. cgroup cleanup on exit (kill orphan subprocesses)
+4. `scale_to_zero`: idle timeout → shutdown
+**Tests**: sd_notify mock; cgroup cleanup
+**Risks**: Medium — Linux-only; gate behind `MYA_SYSTEMD=1`
+
+### I2. (Recovery FSM — see A5)
+
+---
+
+## Group J — Fun/UX (4 items)
+
+### J1. Pets / Petdex — **P3, M**
+**Gap**: No mascot system.
+**Files**: `packages/tui/src/pets/` (new), `packages/web/src/pages/PetsPage.tsx`
+**LOC**: ~300
+**Steps**:
+1. Pet data: `{ id, name, sprite, rarity, description }`
+2. Petdex: collection (unlock by usage milestones)
+3. TUI: pet sprite in status bar
+4. CLI: `mya pets list/select`
+**Tests**: unlock milestone → pet appears
+**Risks**: Low — pure UX
+
+### J2. Achievements system — **P3, M**
+**Gap**: No gamification.
+**Files**: `packages/audit/src/achievements.ts` (new)
+**LOC**: ~200
+**Steps**:
+1. Achievement defs: `{ id, name, description, condition }`
+2. Check conditions on audit events
+3. Unlock → toast + store
+4. Web: AchievementsPage
+**Tests**: trigger condition → unlock
+**Risks**: Low
+
+### J3. Spotify integration — **P3, M**
+**Gap**: No music control.
+**Files**: `packages/gateway/src/channels/spotify.ts` (new)
+**LOC**: ~150
+**Steps**:
+1. OAuth + Web Playback SDK
+2. Tools: `spotifyPlay`, `spotifyPause`, `spotifySearch`
+3. Now-playing in status bar
+**Tests**: mock API → play/pause
+**Risks**: Low — needs Spotify Premium
+
+### J4. Google Meet / disk cleanup — **P3, S each**
+**Gap**: No meet integration; no disk cleanup.
+**Files**: `packages/gateway/src/channels/google-meet.ts`, `packages/tools/src/disk-cleanup.ts`
+**LOC**: ~100 each
+**Steps**:
+1. Meet: join link, transcript capture
+2. Disk cleanup: scan old logs/cache, suggest deletes
+**Tests**: mock APIs
+**Risks**: Low
+
+---
+
+## Implementation Sequencing
+
+### Sprint 1: Security & Core (P0, ~1 week)
+- A1 IterationBudget (S)
+- C4 OSV vuln check (S)
+- C5 Tirith URL safety (S)
+- F1 One-shot grace (S)
+- F2 Lifecycle guard (S)
+- F3 Catch-up grace (S)
+- A5 Recovery FSM (S)
+**LOC**: ~530
+
+### Sprint 2: Provider & Tool parity (P0-P1, ~1.5 weeks)
+- B1 Plugin providers (L)
+- B2 MCP OAuth (S)
+- C1 Image gen (L)
+- C6 Agent cron tools (M)
+- A2 Spawn depth (S)
+**LOC**: ~1140
+
+### Sprint 3: Web foundation (P0-P1, ~2 weeks)
+- H1 Profile system (L)
+- H4 xterm terminal (M)
+- H6 Plugin slots (L)
+- H7 Skill editor (M)
+- H8 Auth widget (M)
+- H2 i18n 17 locales (M)
+**LOC**: ~2660
+
+### Sprint 4: Channels & Voice (P1, ~1.5 weeks)
+- E1 Plugin channels (L)
+- E2 Per-platform identity (M)
+- G1 Voice continuous (L)
+- C3 Kanban (M)
+**LOC**: ~1650
+
+### Sprint 5: Memory & System (P1-P2, ~1.5 weeks)
+- D1 Memory backends (L)
+- D2 Learning graph (M)
+- A4 Daemon pool (M)
+- I1 Systemd/cgroup (M)
+- F4 Cross-process lock (M)
+**LOC**: ~1320
+
+### Sprint 6: Polish (P2-P3, ~1 week)
+- H3 Theme presets (M)
+- H5 Console modal (M)
+- H9 Webhooks (S)
+- H10 Pairing UI (M)
+- E3 MSGraph/Feishu/WeChat (M)
+- C2 Video gen (L)
+- A3 AST tool discovery (S)
+**LOC**: ~1450
+
+### Sprint 7: Fun/UX (P3, ~0.5 week)
+- J1 Pets/Petdex (M)
+- J2 Achievements (M)
+- J3 Spotify (M)
+- J4 Meet/disk-cleanup (S+S)
+- H11 Tooltip warmup (S)
+- H12 Pet sprites (S)
+- H13 Strikethrough (S)
+- H14 Tool charms (S)
+**LOC**: ~1130
+
+**Grand total: ~9,880 LOC over ~7 sprints (~8 weeks paced)**
+
+---
+
+## Verification gates (each feature)
+
+1. `npx vitest run --pool forks` → all pass (no regressions)
+2. `npm run bundle` → succeeds
+3. `npx tsc -b <pkg>` → type-check passes
 4. New tests written + passing
-5. `git commit` with conventional commit message
-6. Restart gateway: `setsid node dist/mya.js serve --port 3999 > /tmp/mya-gw.log 2>&1 &`
-7. E2E smoke test via `MYA_PORT=3999 node dist/mya.js <cmd>`
+5. `git commit` conventional message
+6. Gateway restart: `setsid node dist/mya.js serve --port 3999 > /tmp/mya-gw.log 2>&1 &`
+7. E2E smoke test
 
 ---
 
-## Open questions for user
+## Dependencies graph
 
-1. **Batch order**: Do Batch 1 first (quick wins), or jump to Batch 2/3?
-2. **Priority 4 grace default**: `Infinity` (current behavior, backward compat) or `3600_000` (1hr, Hermes-like)?
-3. **Priority 5 migration**: auto-migrate `~/.mya/` → `~/.mya/profiles/default/` or require manual?
-4. **Priority 2 scope**: full plugin SDK (Phase A-D) or just manifest+scan (Phase A only)?
+```
+B1 Plugin providers ─┬─→ C1 Image gen
+                     ├─→ C2 Video gen
+                     ├─→ E1 Plugin channels
+                     └─→ D1 Memory backends
+
+H4 xterm terminal ─→ H5 Console modal
+H1 Profile system ─→ (all web features benefit from profile isolation)
+B2 MCP OAuth ─→ MCP server connections
+A1 IterationBudget ─→ A2 Spawn depth (subagent nesting needs iter cap)
+```
+
+---
+
+## Decision points for user
+
+1. **Scope**: All 44, or filter to P0+P1 (18 items)?
+2. **Sprint 1 first?** (7 quick security/core wins, ~530 LOC, 1 week)
+3. **Translation approach**: machine-translate 15 locales (fast, lower quality) or community (slow, high quality)?
+4. **Plugin security**: iframe sandbox (safe, limited) or vm.runInContext (flexible, risky) for H6 web plugins?
+5. **Voice G1**: push-to-talk first (simpler) or full continuous VAD (complex)?
+6. **Pets J1**: include or skip (pure UX, no functional value)?
