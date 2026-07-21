@@ -6,29 +6,29 @@ export default {
     extend: {
       colors: {
         bg: {
-          DEFAULT: "#0b0d10",
-          surface: "#161b22",
-          elevated: "#1c2330",
-          input: "#0d1117",
+          DEFAULT: "var(--bg)",
+          surface: "var(--bg-surface)",
+          elevated: "var(--bg-elevated)",
+          input: "var(--bg-input)",
         },
         border: {
-          DEFAULT: "#30363d",
-          subtle: "#21262d",
+          DEFAULT: "var(--border)",
+          subtle: "var(--border-subtle)",
         },
         fg: {
-          DEFAULT: "#e6edf3",
-          muted: "#8b949e",
-          subtle: "#6e7681",
+          DEFAULT: "var(--fg)",
+          muted: "var(--fg-muted)",
+          subtle: "var(--fg-subtle)",
         },
         accent: {
-          DEFAULT: "#58a6ff",
-          hover: "#79b8ff",
+          DEFAULT: "var(--accent)",
+          hover: "var(--accent-hover)",
         },
-        success: "#238636",
-        warning: "#d29922",
-        danger: "#da3633",
-        purple: "#a371f7",
-        orange: "#f0883e",
+        success: "var(--success)",
+        warning: "var(--warning)",
+        danger: "var(--danger)",
+        purple: "var(--purple)",
+        orange: "var(--orange)",
       },
       fontFamily: {
         sans: ["-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
@@ -37,11 +37,16 @@ export default {
       animation: {
         "pulse-slow": "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         blink: "blink 0.8s steps(2) infinite",
+        "fade-in": "fadeIn 0.15s ease-out",
       },
       keyframes: {
         blink: {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0" },
+        },
+        fadeIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
         },
       },
     },

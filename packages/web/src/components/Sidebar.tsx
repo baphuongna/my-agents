@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 import { useHealth } from "@/hooks/useHealth";
 
 interface NavItem {
@@ -34,8 +35,9 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { path: "/chat", label: "Chat", icon: Terminal, group: "main" },
   { path: "/sessions", label: "Sessions", icon: MessageSquare, group: "main" },
-  { path: "/events", label: "Live Events", icon: Terminal, group: "main" },
+  { path: "/events", label: "Live Events", icon: Activity, group: "main" },
   { path: "/cron", label: "Cron", icon: Clock, group: "main" },
   { path: "/models", label: "Models", icon: Cpu, group: "main" },
   { path: "/tools", label: "Tools", icon: Zap, group: "main" },
@@ -46,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/mcp", label: "MCP", icon: Plug, group: "config" },
   { path: "/skills", label: "Skills", icon: Package, group: "config" },
   { path: "/sync", label: "Sync", icon: Database, group: "config" },
+  { path: "/keys", label: "API Keys", icon: Settings, group: "config" },
   { path: "/config", label: "Config", icon: Settings, group: "config" },
   { path: "/status", label: "System", icon: Activity, group: "config" },
 ];
@@ -125,12 +128,12 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
         {/* Status strip */}
         {!collapsed && <StatusStrip status={gwStatus} uptime={uptime} />}
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-3 py-2 border-t border-border shrink-0">
+        {/* Footer with theme switcher */}
+        <div className="flex items-center justify-between px-3 py-2 border-t border-border shrink-0 gap-1">
           {!collapsed ? (
             <>
               <span className="text-[10px] font-mono text-fg-subtle tabular-nums">v0.1.0</span>
-              <Shield size={11} className="text-fg-subtle" />
+              <ThemeSwitcher />
             </>
           ) : (
             <Shield size={11} className="text-fg-subtle mx-auto" />

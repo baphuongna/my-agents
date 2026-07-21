@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { ChatPage } from "@/pages/ChatPage";
 import { SessionsPage } from "@/pages/SessionsPage";
 import { CronPage } from "@/pages/CronPage";
 import { StatusPage } from "@/pages/StatusPage";
@@ -13,6 +15,7 @@ import { FilesPage } from "@/pages/FilesPage";
 import { LogsPage } from "@/pages/LogsPage";
 import { ConfigPage } from "@/pages/ConfigPage";
 import { SkillsPage } from "@/pages/SkillsPage";
+import { EnvPage } from "@/pages/EnvPage";
 import { RichInfoPage } from "@/pages/RichInfoPage";
 import { Radio, Plug, Database } from "lucide-react";
 
@@ -31,7 +34,8 @@ export default function App() {
         <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Navigate to="/sessions" replace />} />
+            <Route path="/" element={<Navigate to="/chat" replace />} />
+            <Route path="/chat" element={<ChatPage />} />
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/events" element={<EventsPage />} />
             <Route path="/cron" element={<CronPage />} />
@@ -41,6 +45,7 @@ export default function App() {
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/skills" element={<SkillsPage />} />
+            <Route path="/keys" element={<EnvPage />} />
             <Route path="/config" element={<ConfigPage />} />
             <Route path="/status" element={<StatusPage />} />
             <Route
