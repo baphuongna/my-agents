@@ -1,8 +1,8 @@
-import { type ReactNode } from "react";
+import { type ReactNode, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
-export function Card({ children, className, hover }: { children: ReactNode; className?: string; hover?: boolean }) {
-  return <div className={cn("card p-4", hover && "card-hover", className)}>{children}</div>;
+export function Card({ children, className, hover, style }: { children: ReactNode; className?: string; hover?: boolean; style?: CSSProperties }) {
+  return <div className={cn("card", hover && "card-hover", className)} style={style}>{children}</div>;
 }
 
 export function CardHeader({ children, className }: { children: ReactNode; className?: string }) {

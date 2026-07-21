@@ -105,7 +105,7 @@ export function DashboardPage() {
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${(configured.length / Math.max(providers.length, 1)) * 100}%`,
-                  background: "linear-gradient(90deg, theme('colors.success'), theme('colors.accent.DEFAULT'))",
+                  background: "linear-gradient(90deg, rgb(var(--success)), rgb(var(--accent)))",
                 }}
               />
             </div>

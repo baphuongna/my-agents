@@ -78,7 +78,7 @@ export function FilesPage() {
   const breadcrumbs = ["root", ...path];
 
   return (
-    <div className="p-4 max-w animate-fade-in-up-4xl">
+    <div className="p-4 max-w-3xl animate-fade-in-up">
       <PageHeader
         title="Files"
         icon={FolderOpen}

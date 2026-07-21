@@ -62,6 +62,7 @@ export function StatusPage() {
   const providers = (status?.providers as ProviderInfo[]) ?? [];
   const roles = (status?.roles as RoleInfo[]) ?? [];
   const subagents = status?.subagents as { active: number; total: number } | undefined;
+  const uptime = (status?.uptime as number) ?? 0;
   const configuredCount = providers.filter((p) => p.configured).length;
 
   return (

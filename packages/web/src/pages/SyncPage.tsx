@@ -56,7 +56,7 @@ export function SyncPage() {
     : [];
 
   return (
-    <div className="p-4 max-w animate-fade-in-up-3xl space-y-3">
+    <div className="p-4 max-w-3xl animate-fade-in-up space-y-3">
       <PageHeader
         title="Sync"
         icon={Database}
