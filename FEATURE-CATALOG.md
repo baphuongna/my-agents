@@ -1,7 +1,7 @@
 # mya — Feature Catalog
 
 > Bản tổng hợp tất cả tính năng hiện có của mya.
-> Cập nhật: 2026-07-20. Phiên bản build: cron hardening complete (commit `9c35bd9`).
+> Cập nhật: 2026-07-20. Phiên bản build: PI sync 0.80.10 + comprehensive hardening (commit `dc33923`).
 
 ---
 
