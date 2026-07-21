@@ -273,7 +273,20 @@ function appendProfileParam(url: string, profile?: string): string {
 
 export const api = {
   buildWsUrl,
-  getStatus: () => fetchJSON<StatusResponse>("/api/status"),
+  getStatus: async (): Promise<StatusResponse> => {
+    const data = await fetchJSON<Record<string, unknown>>("/api/status");
+    // mya fork: map mya gateway response to Hermes StatusResponse
+    return {
+      active_sessions: (data.sessions as number) ?? (data.active_sessions as number) ?? 0,
+      config_version: 1,
+      config_path: "~/.mya/config.toml",
+      env_path: "~/.mya/agent/auth.json",
+      version: (data.version as string) ?? "0.1.0",
+      gateway_running: true,
+      gateway_state: "running",
+      ...data,
+    } as StatusResponse;
+  },
   /**
    * Identity probe for the dashboard auth gate (Phase 7).
    *
@@ -306,18 +319,24 @@ export const api = {
       window.location.assign("/login");
       return r;
     }),
-  getSessions: (
+  getSessions: async (
     limit = 20,
     offset = 0,
     profile = getManagementProfile(),
     order: "created" | "recent" = "created",
-  ) =>
-    fetchJSON<PaginatedSessions>(
+  ): Promise<PaginatedSessions> => {
+    const data = await fetchJSON<PaginatedSessions | SessionInfo[]>(
       appendProfileParam(
         `/api/sessions?limit=${limit}&offset=${offset}&order=${order}`,
         profile,
       ),
-    ),
+    );
+    // mya fork: gateway returns a plain array — wrap in paginated format
+    if (Array.isArray(data)) {
+      return { sessions: data, total: data.length, limit, offset };
+    }
+    return data;
+  },
   getSessionMessages: (id: string, profile = getManagementProfile()) =>
     fetchJSON<SessionMessagesResponse>(
       appendProfileParam(`/api/sessions/${encodeURIComponent(id)}/messages`, profile),
@@ -446,9 +465,9 @@ export const api = {
   getSchema: () => fetchJSON<{ fields: Record<string, unknown>; category_order: string[] }>("/api/config/schema"),
   getModelInfo: (profile = getManagementProfile()) =>
     fetchJSON<ModelInfoResponse>(appendProfileParam("/api/model/info", profile)),
-  getModelOptions: (
+  getModelOptions: async (
     profileOrOptions?: string | { profile?: string; refresh?: boolean },
-  ) => {
+  ): Promise<ModelOptionsResponse> => {
     const profile =
       typeof profileOrOptions === "string"
         ? profileOrOptions
@@ -464,7 +483,23 @@ export const api = {
     // desktop chat pickers (#56974), so opt in explicitly here.
     qs.set("include_unconfigured", "1");
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return fetchJSON<ModelOptionsResponse>(`/api/model/options${suffix}`);
+    const data = await fetchJSON<ModelOptionsResponse | unknown[]>(`/api/model/options${suffix}`);
+    // mya fork: gateway returns flat model array — transform to Hermes format
+    if (Array.isArray(data)) {
+      const providerMap = new Map<string, string[]>();
+      for (const m of data) {
+        const mi = m as { provider?: string; id?: string };
+        const prov = mi.provider ?? "unknown";
+        if (!providerMap.has(prov)) providerMap.set(prov, []);
+        if (mi.id) providerMap.get(prov)!.push(mi.id);
+      }
+      const providers = Array.from(providerMap.entries()).map(([name, models]) => ({
+        name, slug: name, models, authenticated: true,
+      }));
+      const first = (data[0] as { id?: string; provider?: string }) ?? {};
+      return { model: first.id, provider: first.provider, providers } as ModelOptionsResponse;
+    }
+    return data;
   },
   getAuxiliaryModels: (profile = getManagementProfile()) =>
     fetchJSON<AuxiliaryModelsResponse>(

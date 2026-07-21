@@ -48,7 +48,7 @@ export interface WireEnvelope {
 
 /** Phase C: CSP for PWA — widened for service workers + push subscriptions. */
 const GATEWAY_CSP =
-  "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*; script-src 'self'; worker-src 'self';";
+  "frame-ancestors 'none'; default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* ws://[::1]:*; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self';";
 
 export function frame(opts: {
   sessionId: string;

@@ -242,7 +242,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const portIdx = extraArgs.indexOf("--port");
   const port = portIdx >= 0 ? Number(extraArgs[portIdx + 1]) : 3000;
   const { Gateway } = await import("@my-agent/gateway");
-  const { dashboardHtml } = await import("@my-agent/web");
+  // mya fork: SPA is served from staticDir (packages/web/dist/web/).
+  // rootHtml is a minimal fallback when staticDir isn't available.
+  const rootHtml = `<!doctype html><html><head><meta charset="utf-8"><title>mya</title></head><body style="background:#041c1c;color:#ffe6cb;font:14px monospace;padding:2rem"><h2>mya gateway</h2><p>Dashboard SPA not found. Run <code>npm run build:web</code> first.</p></body></html>`;
 
   // AgentPool: each session uses pi's FULL AgentSession (same as TUI).
   // Phase 2 wired: multi-agent via MYA_AGENTS env (JSON array of {name, agentDir, maxSessions}).
@@ -461,7 +463,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     // Phase 0C: token-free rootHtml. The dashboard obtains the token via an
     // HttpOnly SameSite=Strict cookie set on GET / (localhost origin), not via
     // a token baked into the URL/HTML source.
-    rootHtml: dashboardHtml({ title: "mya", wsPath: "/events" }),
+    rootHtml,
     staticDir: join(process.cwd(), "packages/web/dist/web"),
     wsToken,
     hooks,
