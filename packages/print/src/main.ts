@@ -57,6 +57,8 @@ import { cronSessionToolConfig } from "./cron-role.js";
 import { DevicePairing, WebAuthnService } from "@my-agent/secrets";
 // R4-2 fix: cross-device approval relay.
 import { ApprovalRelay } from "@my-agent/gateway";
+// F2 fix: lifecycle guard for cron flapping detection.
+import { LifecycleGuard } from "@my-agent/cron";
 
 async function main(): Promise<void> {
   loadAuthConfig();
@@ -183,6 +185,8 @@ async function main(): Promise<void> {
       wallet,
       hooks: toolHooks,
       extensionHost: packageHost,
+      // A1: forward maxToolRounds from central config.
+      ...(config.maxToolRounds ? { maxToolRounds: config.maxToolRounds } : {}),
       ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
     });
@@ -467,6 +471,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const webAuthn = new WebAuthnService({ origin: `http://127.0.0.1:${port}`, rpId: "127.0.0.1" });
   // R4-2 fix: instantiate cross-device approval relay.
   const approvalRelay = new ApprovalRelay();
+  // F2 fix: instantiate lifecycle guard for cron flapping detection.
+  const lifecycleGuard = new LifecycleGuard();
 
   const gw = new Gateway({
     port,
@@ -677,6 +683,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     webAuthn,
     // R4-2 fix: wire approval relay for cross-device permission decisions.
     approvalRelay,
+    // F2 fix: wire lifecycle guard for cron flapping detection.
+    lifecycleGuard,
   });
   const { port: actualPort } = await gw.start();
 

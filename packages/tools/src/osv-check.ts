@@ -35,7 +35,7 @@ export const osvCheckTool: ToolImpl = {
   async run(args): Promise<ToolResult> {
     const a = args as { package?: string; version?: string; ecosystem?: string };
     if (!a.package || !a.version) {
-      return { callId: "osv_check", ok: false, error: "package + version required" };
+      return { callId: "osv_check", ok: false, output: null, error: "package + version required" };
     }
     const ecosystem = a.ecosystem ?? "npm";
     try {
@@ -48,7 +48,7 @@ export const osvCheckTool: ToolImpl = {
         }),
         signal: AbortSignal.timeout(15_000),
       });
-      if (!res.ok) return { callId: "osv_check", ok: false, error: `OSV API ${res.status}` };
+      if (!res.ok) return { callId: "osv_check", ok: false, output: null, error: `OSV API ${res.status}` };
       const data = await res.json() as { vulns?: OsvVuln[] };
       const vulns = data.vulns ?? [];
       if (vulns.length === 0) {
@@ -68,7 +68,7 @@ export const osvCheckTool: ToolImpl = {
         },
       };
     } catch (e) {
-      return { callId: "osv_check", ok: false, error: (e as Error).message };
+      return { callId: "osv_check", ok: false, output: null, error: (e as Error).message };
     }
   },
 };

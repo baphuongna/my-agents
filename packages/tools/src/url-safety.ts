@@ -10,15 +10,13 @@
 import type { ToolImpl } from "./registry.js";
 import type { ToolResult } from "@my-agent/core";
 
-// Internal blocklist of known-bad patterns (defense-in-depth, no API key needed).
-const BLOCKED_PATTERNS = [
-  /\bphishing\b/i,
-  /\bmalware\b/i,
-  /\b scam\b/i,
+// Internal blocklist of known-bad hostname patterns (defense-in-depth, no API key needed).
+// R1-fix: match hostname ONLY (not path/query) to avoid false positives on
+// legitimate security-research URLs like wikipedia.org/wiki/Malware.
+const BLOCKED_HOSTNAMES = [
   /-login-secure\./i,
   /-verify-account\./i,
   /free-[a-z]+-download\./i,
-  /\bbit\.ly\b/i, // shorteners often abused (warning, not block)
 ];
 
 const SHORTENERS = new Set(["bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly"]);
@@ -38,23 +36,22 @@ export const urlSafetyTool: ToolImpl = {
   },
   async run(args): Promise<ToolResult> {
     const a = args as { url?: string };
-    if (!a.url) return { callId: "check_url_safety", ok: false, error: "url required" };
+    if (!a.url) return { callId: "check_url_safety", ok: false, output: null, error: "url required" };
 
     let parsed: URL;
     try {
       parsed = new URL(a.url);
     } catch {
-      return { callId: "check_url_safety", ok: false, error: "invalid URL" };
+      return { callId: "check_url_safety", ok: false, output: null, error: "invalid URL" };
     }
 
     const reasons: string[] = [];
     const warnings: string[] = [];
 
-    // 1. Internal heuristic check
-    const urlString = a.url.toLowerCase();
-    for (const pattern of BLOCKED_PATTERNS) {
-      if (pattern.test(urlString)) {
-        reasons.push(`matched suspicious pattern: ${pattern.source}`);
+    // 1. Internal heuristic check (hostname only — R1-fix)
+    for (const pattern of BLOCKED_HOSTNAMES) {
+      if (pattern.test(hostname)) {
+        reasons.push(`matched suspicious hostname pattern: ${pattern.source}`);
       }
     }
 

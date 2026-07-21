@@ -23,6 +23,7 @@ import type { ControlCronJob } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
 import { ApprovalRelay, type ApprovalDecisionPayload } from "./approval-relay.js";
+import type { LifecycleGuard } from "@my-agent/cron";
 import { HookRegistry } from "./hooks.js";
 import { CronScheduler } from "@my-agent/cron";
 import { SyncServer } from "@my-agent/sync";
@@ -229,6 +230,7 @@ export interface GatewayOptions {
   /** Phase G: device pairing manager (optional). */
   devicePairing?: DevicePairing;
   approvalRelay?: ApprovalRelay;
+  lifecycleGuard?: LifecycleGuard;
   /** Phase 3-7: WebAuthn/FaceID biometric auth service (optional). */
   webAuthn?: WebAuthnService;
   /** C-5 fix: optional voice call channel for Twilio integration. */
@@ -319,6 +321,7 @@ export class Gateway {
   /** Phase G: device pairing manager. */
   private readonly devicePairing?: DevicePairing;
   private readonly approvalRelay?: ApprovalRelay;
+  private readonly lifecycleGuard?: LifecycleGuard;
   /** Phase 3-7: WebAuthn biometric auth service. */
   private readonly webAuthn?: WebAuthnService;
   private readonly voiceCall?: VoiceCallChannel;
@@ -434,6 +437,7 @@ export class Gateway {
     this.wsInfo = opts.wsInfo;
     this.devicePairing = opts.devicePairing;
     this.approvalRelay = opts.approvalRelay;
+    this.lifecycleGuard = opts.lifecycleGuard;
     // R4-2 fix: wire approval relay broadcast so web clients see pending approvals.
     if (this.approvalRelay) {
       this.approvalRelay.setEmitter((event) => {
@@ -585,6 +589,13 @@ export class Gateway {
       await Promise.allSettled(batch.map(async (job) => {
         const run = this.cron!.claim(job.id, workerId);
         if (!run) return; // another worker holds an unexpired lease
+        // F2: lifecycle guard — check if job is flapping (too many fires in window).
+        if (this.lifecycleGuard?.recordFire(job.id)) {
+          console.warn(`[gateway] cron job ${job.id} disabled by lifecycle guard (flapping)`);
+          try { this.cron!.updateJob(job.id, { enabled: false }); this.cronPersist?.(); } catch {}
+          this.cron!.complete(run.runId, "failed", "disabled by lifecycle guard (flapping)");
+          return;
+        }
         // Phase 4A: mirror the run start to durable history.
         try { this.cronRunStart?.({ runId: run.runId, jobId: job.id, startedAt: run.startedAt, status: "claimed", claimedBy: run.claimedBy }); } catch { /* best-effort */ }
         this.cron!.start(run.runId);

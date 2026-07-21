@@ -9,7 +9,7 @@
  * correct location for process supervision.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { nowWallclock } from "@my-agent/core";
@@ -55,6 +55,9 @@ export class GatewaySupervisor {
         break;
       }
 
+      // R1-fix: exponential backoff between restarts (prevents tight CPU loop).
+      const backoffMs = Math.min(10_000, 1_000 * Math.pow(2, this.restartAttempts.length));
+      await new Promise((r) => setTimeout(r, backoffMs).unref?.());
       this.restartAttempts.push(now);
       const attempt = this.restartAttempts.length;
       const reason = `gateway exited unexpectedly — restart attempt ${attempt}/${MAX_RESTART_ATTEMPTS}`;
@@ -77,9 +80,13 @@ export class GatewaySupervisor {
         env: { ...process.env, MYA_GATEWAY_SUPERVISED: "1" },
       });
 
-      this.child.on("exit", (code, signal) => {
-        // Clean up PID file
-        try { if (existsSync(PID_FILE)) require("node:fs").unlinkSync(PID_FILE); } catch {}
+      // Write PID file with the CHILD's PID (not supervisor's).
+      if (this.child.pid) {
+        try { writeFileSync(PID_FILE, String(this.child.pid), { mode: 0o600 }); } catch {}
+      }
+
+      this.child.on("exit", (code) => {
+        try { if (existsSync(PID_FILE)) { unlinkSync(PID_FILE); } } catch {}
         // code 0 = clean exit (don't restart)
         if (code === 0) this.restartAttempts = [];
         resolve();
@@ -87,6 +94,7 @@ export class GatewaySupervisor {
 
       this.child.on("error", (err) => {
         console.error(`[supervisor] gateway process error: ${err.message}`);
+        try { if (existsSync(PID_FILE)) { unlinkSync(PID_FILE); } } catch {}
         resolve();
       });
     });
@@ -97,6 +105,13 @@ export class GatewaySupervisor {
     if (this.child && !this.child.killed) {
       this.child.kill("SIGTERM");
     }
+  }
+
+  /** Wire process signal handlers so SIGINT/SIGTERM propagate to child. */
+  wireSignalHandlers(): void {
+    const handler = () => { this.stop(); };
+    process.once("SIGINT", handler);
+    process.once("SIGTERM", handler);
   }
 
   /** Check if a heartbeat is fresh (gateway is alive). */
