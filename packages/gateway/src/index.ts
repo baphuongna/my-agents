@@ -1993,3 +1993,7 @@ function detectProviderSummary(): Array<{ id: string; envKey: string; model: str
     configured: !!process.env[e.envKey],
   }));
 }
+export { isSystemdAvailable, notifyReady, startWatchdog, stopWatchdog, notifyStopping, checkScaleToZero } from "./systemd.js";
+export { VoicePTTController } from "./voice-ptt.js";
+export type { VoicePTTState, VoiceEvent, VoicePTTResult } from "./voice-ptt.js";
+export { RateLimiter, getRateLimiter, MediaCache } from "./channel-identity.js";

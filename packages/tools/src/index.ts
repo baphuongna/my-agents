@@ -72,3 +72,5 @@ export * from "./search-index.js";
 export { ComposioClient, registerComposioTools, createComposioClient } from "./composio.js";
 export type { ComposioConfig, ComposioTool, ConnectedAccount } from "./composio.js";
 export * from "./output-compress.js";
+export { diskCleanupTool } from "./disk-cleanup.js";
+export { autoDiscoverTools, scanCustomToolDir } from "./auto-discover.js";

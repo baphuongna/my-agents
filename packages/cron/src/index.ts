@@ -584,3 +584,4 @@ export function computeNextFire(
   return null;
 }
 export { makeCronTools } from "./agent-tools.js";
+export { acquireCronLock } from "./cross-process-lock.js";

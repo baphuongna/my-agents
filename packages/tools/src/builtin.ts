@@ -486,6 +486,7 @@ import { urlSafetyTool } from "./url-safety.js";
 import { imageGenTool } from "./image-gen.js";
 import { videoGenTool } from "./video-gen.js";
 import { kanbanTool } from "./kanban.js";
+import { diskCleanupTool } from "./disk-cleanup.js";
 
 export const builtinTools: ToolImpl[] = [
   readTool,

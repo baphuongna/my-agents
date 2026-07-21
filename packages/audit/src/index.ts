@@ -162,3 +162,5 @@ export { defaultRecoveryRecipes, runRecovery } from "./recovery.js";
 export type { RecoveryRecipe, RecoveryStep, FailureScenario, EscalationPolicy, RecoveryAttempt } from "./recovery.js";
 export { loadTrust, saveTrust, promoteTrust, safeContextOnly, canAutoApprove, shouldPromptFirstRun } from "./trust.js";
 export type { ProjectTrust, TrustLevel } from "./trust.js";
+export { AchievementTracker, ACHIEVEMENTS } from "./achievements.js";
+export type { Achievement, UnlockedAchievement } from "./achievements.js";
