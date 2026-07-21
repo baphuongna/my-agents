@@ -53,6 +53,8 @@ function loadAuthConfig(): void {
 /** Phase 0A: cron-fired-turn tool policy lives in ./cron-role.ts (testable,
  * no main() side effects). Imported here for the pool factory. */
 import { cronSessionToolConfig } from "./cron-role.js";
+// R3-3 fix: wire DevicePairing + WebAuthn (were never instantiated → endpoints 404).
+import { DevicePairing, WebAuthnService } from "@my-agent/secrets";
 
 async function main(): Promise<void> {
   loadAuthConfig();
@@ -458,6 +460,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // MEDIUM-2 fix: actually start the periodic consolidation timer
   dreamCycle.start();
 
+  // R3-3 fix: instantiate DevicePairing + WebAuthn (were never wired → 404).
+  const devicePairing = new DevicePairing();
+  const webAuthn = new WebAuthnService({ origin: `http://127.0.0.1:${port}` });
+
   const gw = new Gateway({
     port,
     // Phase 0C: token-free rootHtml. The dashboard obtains the token via an
@@ -662,6 +668,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // New sessions (pool.acquire → createAgentSession) will pick it up.
       // Pi's AgentSession reads thinking level from settings on creation.
     },
+    // R3-3 fix: wire device pairing + WebAuthn into gateway.
+    devicePairing,
+    webAuthn,
   });
   const { port: actualPort } = await gw.start();
 

@@ -39,6 +39,7 @@ import {
   createComposioClient,
   registerComposioTools,
   runToolBatch,
+  makeCodeExecTool,
   type ToolImpl,
 } from "@my-agent/tools";
 import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter, DreamCycle,
@@ -238,6 +239,17 @@ export function createAgent(config: AgentConfig = {}): Agent {
   });
   dreamCycle.start();
   // C-8 fix: wire Brain + DreamCycle + 13 domains into MemoryManager via withBrain()
+  // R5-10 fix: pass persistenceDir so BrainStore is enabled (was not passed →
+  // Brain facts were process-local, lost on restart).
+  // R5-9 fix: pass FileBackend instances via roleBackends (registered BEFORE
+  // ensureDefault) so durable markdown backends actually take effect. Previously
+  // register() threw on duplicate (default already installed) and was swallowed.
+  const roleBackends = config.memoryDir
+    ? (() => {
+        const dir = config.memoryDir!;
+        return (["archivist", "goals", "working", "tree"] as const).map((r) => new FileBackend(r, dir));
+      })()
+    : undefined;
   const memory = MemoryManagerImpl.withBrain({
     brain,
     dreamCycle,
@@ -246,15 +258,10 @@ export function createAgent(config: AgentConfig = {}): Agent {
       graphDomain, conversationsDomain, searchDomain, sourcesDomain,
       entitiesDomain, storeDomain, toolsDomain, queueDomain,
     ],
+    persistenceDir: config.memoryDir,
+    roleBackends,
   });
   if (config.memoryDir) {
-    // ensureDefault() in withBrain already registered stubs for these roles.
-    // Replace with FileBackend (persistent) — wrap in try/catch since the
-    // role may already have a stub backend.
-    // Tier-3: persist 4 roles now (was only 2). working + tree added.
-    for (const role of ["archivist", "goals", "working", "tree"] as const) {
-      try { memory.register(new FileBackend(role, config.memoryDir)); } catch { /* stub already registered */ }
-    }
   }
   // Tier-3: wire previously-dead domains (sources + store + goals).
   storeDomain.wireManager(memory);
@@ -315,7 +322,9 @@ export function createAgent(config: AgentConfig = {}): Agent {
   // Compose the stable tier: identity + tools block. Tools are fixed for this
   // agent's lifetime (createAgent returns a fixed toolRegistry) → setting once
   // here keeps the prompt cache-stable.
-  const stableTier = composeStableTier(config.stableTier ?? defaultStableTier(), toolRegistry);
+  // R5-5 fix: include skills index in the stable tier (was only in print/mya-bridge).
+  const skillBlock = skillStore.index().length > 0 ? skillStore.renderIndexBlock() : undefined;
+  const stableTier = composeStableTier(config.stableTier ?? defaultStableTier(), toolRegistry, skillBlock);
   const session = createSession({ profiles: [...providers.all()], stableTier });
   // Replace the stub memory with the real manager.
   (session as { memory: unknown }).memory = memory;
@@ -323,6 +332,16 @@ export function createAgent(config: AgentConfig = {}): Agent {
   const toolExecutor: ToolExecutor = {
     execute: (calls, ctx) => runToolBatch(calls, ctx, toolRegistry),
   };
+
+  // R6-1 fix: register code-execution bridge tool (was implemented but never wired).
+  // The bridge spawns node/python child processes with bidirectional JSON-RPC
+  // to call back into agent tools. Uses the dispatch _ctx directly (no ctxSource needed).
+  if (!config.tools) {
+    try {
+      const codeTool = makeCodeExecTool(toolExecutor);
+      if (codeTool) toolRegistry.register(codeTool);
+    } catch { /* best-effort — bridge may be unavailable */ }
+  }
 
   // HIGH-2 (review): async turn lock — serializes concurrent prompt() calls.
   let turnLock = Promise.resolve();
@@ -368,6 +387,18 @@ export function createAgent(config: AgentConfig = {}): Agent {
       audit,
       // Phase 2: forward pre/post-tool hook sink.
       hooks: config.hooks,
+      // R5-4 fix: wire compressHistory (was never injected → compression never ran
+      // in the agent SDK path). Truncate to first + last 30 entries on length-finish.
+      compressHistory: (history) => {
+        const entries = history.entries();
+        if (entries.length <= 40) return;
+        const arr = (history as unknown as { _entries?: unknown[] })._entries;
+        if (Array.isArray(arr)) {
+          const keep = [arr[0], ...arr.slice(-39)];
+          arr.length = 0;
+          arr.push(...keep);
+        }
+      },
       signal,
     });
   }
@@ -470,6 +501,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     signal: AbortSignal | undefined,
     onChunk: (chunk: string) => void,
     collectedOutput: { text: string },
+    subBudget: BudgetConfig, // R3-1: isolated child budget
   ): Promise<RuntimeEvent[]> {
     subSession.history.append({ role: "user", content: text });
     const goalsBackend = memory.backends.find((b) => b.role === "goals");
@@ -481,7 +513,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
     assemblePrompt(subSession);
     const handle = await runTurn({
       session: subSession,
-      budget,
+      budget: subBudget,
       tools: toolExecutor,
       stream: (prompt, history, streamOpts) =>
         streamWithFallback(providers, prompt, history, streamOpts).then((r) =>
@@ -626,8 +658,12 @@ export function createAgent(config: AgentConfig = {}): Agent {
     subagents.set(id, handle);
 
     completionPromise = (async () => {
+      // R3-1 fix: derive a child budget so subagent spending is isolated.
+      // Previously parent + all subagents shared the SAME BudgetConfig root.
+      const childAlloc = budget.unlimited ? 0 : Math.max(1, budget.remaining() * 0.25);
+      const childBudget = budget.deriveChild(childAlloc);
       try {
-        await runSubagentTurn(subSession, goal, ac.signal, pushChunk, collectedOutput);
+        await runSubagentTurn(subSession, goal, ac.signal, pushChunk, collectedOutput, childBudget);
         handle.output = collectedOutput.text;
         signalStreamEnd();
         if (handle.status === "aborted") return handle.output;
@@ -643,6 +679,9 @@ export function createAgent(config: AgentConfig = {}): Agent {
         if (handle.status === "running") handle.status = "failed";
         handle.endedAt = nowWallclock();
         return handle.output;
+      } finally {
+        // R3-1 fix: ALWAYS refund unused pre-charge (§21 CC2).
+        if (childBudget.id) budget.releasePrecharge(childBudget.id);
       }
     })();
     // Auto-cleanup: remove completed subagents after 60s (prevents memory leak)
@@ -747,9 +786,11 @@ function buildOpenAITools(registry: ToolRegistry): import("@my-agent/core").Open
   }));
 }
 
-/** Compose identity + tools block into the stable tier. */
-function composeStableTier(identity: string, registry: ToolRegistry): string {
-  return `${identity}\n\n${renderToolsBlock(registry)}`;
+/** Compose identity + tools block (+ optional skills) into the stable tier. */
+function composeStableTier(identity: string, registry: ToolRegistry, skillBlock?: string): string {
+  const base = `${identity}\n\n${renderToolsBlock(registry)}`;
+  // R5-5 fix: include skills index in the agent's stable tier (was only in mya-bridge).
+  return skillBlock ? `${base}\n\n${skillBlock}` : base;
 }
 
 /** Reconstruct the assistant's answer text from streaming chunks. The agent

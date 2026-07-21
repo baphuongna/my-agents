@@ -261,6 +261,8 @@ export class Gateway {
   private readonly cronIntervalMs: number;
   /** Cron sweep timer handle; tracked so stop() can clear it. */
   private cronTimer?: NodeJS.Timeout;
+  private idleTimer?: NodeJS.Timeout; // R6-3: sweepIdle timer for channels + handles
+  private pollTimer?: NodeJS.Timeout; // R6-4: channel inbound polling loop
   /** Phase 0B: reconcile scheduler from cron.json each sweep. */
   private readonly cronReload?: () => void;
   /** Phase 1A: run a cron-fired prompt, returning the response text. */
@@ -506,6 +508,29 @@ export class Gateway {
         this.cronTimer = setInterval(() => { void this.cronSweep(workerId); }, this.cronIntervalMs);
         // Don't keep the process alive solely for the cron sweep.
         this.cronTimer.unref?.();
+
+        // R6-3 fix: wire sweepIdle timers (were dead code — never called).
+        // Channel sessions + control-plane handles now evicted on the cron interval.
+        this.idleTimer = setInterval(() => {
+          try { this.channelRouter?.sweepIdle(); } catch {}
+          try { this.control?.handles.sweepIdle(nowWallclock()); } catch {}
+        }, this.cronIntervalMs);
+        this.idleTimer.unref?.();
+      }
+      // R6-4: channel inbound polling loop. receive() is implemented on all
+      // adapters but was never called in production (dead code). Poll every 5s.
+      if (this.channels && this.channelRouter) {
+        this.pollTimer = setInterval(() => {
+          for (const ch of this.channels!.list()) {
+            if (!ch.receive) continue;
+            ch.receive().then((msgs) => {
+              for (const m of msgs) {
+                try { this.channelRouter!.route(m); } catch {}
+              }
+            }).catch(() => {});
+          }
+        }, 5_000);
+        this.pollTimer.unref?.();
       }
       this.http.listen(this.port, this.host, () => {
         const addr = this.http!.address();
@@ -1631,8 +1656,10 @@ export class Gateway {
   /** Broadcast a RuntimeEvent to that session's WS subscribers only (HIGH-2). */
   broadcast(sessionId: string, event: unknown): WireEnvelope {
     const envelope = frame({ sessionId, seq: ++this.seq, event });
-    // H-2 fix: notify push subscribers when notable events occur
-    if (this.voiceCall) {
+    // H-2 fix: notify push subscribers when notable events occur.
+    // R6-2 fix: push was gated on `voiceCall` (Twilio) — logic inversion.
+    // Push notifications should fire regardless of voice-call config.
+    {
       const kind = (event as { kind?: string })?.kind ?? "event";
       const summary = JSON.stringify(event).slice(0, 100);
       import("./push.js").then(({ notifyEvent }) =>
@@ -1727,6 +1754,16 @@ export class Gateway {
       if (this.cronTimer) {
         clearInterval(this.cronTimer);
         this.cronTimer = undefined;
+      }
+      // R6-3: clear idle sweep timer too.
+      if (this.idleTimer) {
+        clearInterval(this.idleTimer);
+        this.idleTimer = undefined;
+      }
+      // R6-4: clear channel polling timer.
+      if (this.pollTimer) {
+        clearInterval(this.pollTimer);
+        this.pollTimer = undefined;
       }
       // G2: terminate open WS clients first so http.close() doesn't hang.
       for (const ws of this.subscribers.keys()) {

@@ -14,6 +14,7 @@
 import type { ChannelMessage } from "./channels.js";
 import type { ChannelRegistry } from "./channels.js";
 import { nowWallclock } from "@my-agent/core";
+import { scanInject } from "@my-agent/prompts";
 
 /** A session bound to a channel conversation. */
 export interface ChannelSession {
@@ -149,7 +150,10 @@ export class ChannelSessionRouter {
     }
 
     // Add user message to history
-    session.history.push({ role: "user", text: msg.text, ts: msg.ts });
+    // R6-1 fix: scan inbound channel messages for prompt injection (§12 R27-15).
+    // scanInject returns [BLOCKED: ...] fence when a pattern matches.
+    const safeText = scanInject([msg.text], "context").trim();
+    session.history.push({ role: "user", text: safeText, ts: msg.ts });
     if (session.history.length > this.maxHistory * 2) {
       session.history = session.history.slice(-this.maxHistory);
     }

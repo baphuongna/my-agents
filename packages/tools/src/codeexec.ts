@@ -34,7 +34,7 @@ interface BridgeRequest {
 /** Build the `code` tool — runs JS/Python with bidirectional tool access. */
 export function makeCodeExecTool(
   toolExecutor: ToolExecutor,
-  ctxSource: () => import("@my-agent/core").TurnContext,
+  ctxSource?: () => import("@my-agent/core").TurnContext,
 ): ToolImpl {
   return {
     meta: {
@@ -61,7 +61,7 @@ export function makeCodeExecTool(
 
       const timeoutMs =
         typeof args.timeoutMs === "number" ? args.timeoutMs : DEFAULT_TIMEOUT_MS;
-      return runBridge(language, script, timeoutMs, toolExecutor, ctxSource());
+      return runBridge(language, script, timeoutMs, toolExecutor, ctxSource ? ctxSource() : _ctx);
     },
   };
 }
