@@ -96,6 +96,8 @@ export interface ModelInfo {
   name?: string;
   provider?: string;
   contextWindow?: number;
+  reasoning?: boolean;
+  maxTokens?: number;
   [key: string]: unknown;
 }
 

@@ -106,7 +106,7 @@ export function ScheduleBuilder({
                     : "bg-bg-elevated text-fg-muted hover:text-fg border border-border",
                 )}
               >
-                {name[0]}
+                {name.slice(0, 2)}
               </button>
             );
           })}

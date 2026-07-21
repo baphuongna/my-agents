@@ -58,13 +58,13 @@ export function ModelPickerDialog({
     if (!selected) return;
     setSaving(true);
     try {
-      // Set model via gateway config
-      await fetch("/config", {
+      const res = await fetch("/config", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ model: `${selected.provider}/${selected.model}` }),
-      }).catch(() => {});
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       toast(`Model set: ${selected.provider}/${selected.model}`, "success");
       onSelect?.(selected.provider, selected.model);
@@ -126,7 +126,7 @@ export function ModelPickerDialog({
                 const ctx = m.contextWindow as number | undefined;
                 return (
                   <button
-                    key={m.id}
+                    key={`${provider}:${m.id}`}
                     onClick={() => setSelected({ provider, model: m.id })}
                     className={cn(
                       "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors border",
