@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
@@ -8,25 +8,27 @@ import { StatusPage } from "@/pages/StatusPage";
 import { ModelsPage } from "@/pages/ModelsPage";
 import { ToolsPage } from "@/pages/ToolsPage";
 import { EventsPage } from "@/pages/EventsPage";
-import { PlaceholderPage } from "@/pages/PlaceholderPage";
-import { Radio, Plug, Package, Database, Settings } from "lucide-react";
+import { AnalyticsPage } from "@/pages/AnalyticsPage";
+import { FilesPage } from "@/pages/FilesPage";
+import { LogsPage } from "@/pages/LogsPage";
+import { ConfigPage } from "@/pages/ConfigPage";
+import { SkillsPage } from "@/pages/SkillsPage";
+import { RichInfoPage } from "@/pages/RichInfoPage";
+import { Radio, Plug, Database } from "lucide-react";
 
 export default function App() {
-  // Set document title
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   useEffect(() => {
     document.title = "mya — Dashboard";
   }, []);
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block h-full shrink-0">
-        <Sidebar />
-      </div>
+    <div className="flex h-dvh max-h-dvh overflow-hidden bg-bg text-fg">
+      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <Header />
+      <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
+        <Header onMenuClick={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<Navigate to="/sessions" replace />} />
@@ -35,54 +37,74 @@ export default function App() {
             <Route path="/cron" element={<CronPage />} />
             <Route path="/models" element={<ModelsPage />} />
             <Route path="/tools" element={<ToolsPage />} />
+            <Route path="/files" element={<FilesPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/skills" element={<SkillsPage />} />
+            <Route path="/config" element={<ConfigPage />} />
             <Route path="/status" element={<StatusPage />} />
             <Route
               path="/channels"
               element={
-                <PlaceholderPage
+                <RichInfoPage
                   title="Channels"
                   icon={Radio}
-                  description="Telegram / Discord / Slack / Email / WhatsApp / Signal management"
+                  description="Multi-platform delivery: Telegram, Discord, Slack, Email, WhatsApp, Signal"
+                  endpoints={[
+                    { method: "GET", path: "/channels/:id/config", desc: "Get channel config" },
+                    { method: "POST", path: "/channels/:id/config", desc: "Update channel config" },
+                    { method: "POST", path: "/channels/:id/test", desc: "Test channel delivery" },
+                    { method: "GET", path: "/channel/sessions", desc: "List channel sessions" },
+                    { method: "POST", path: "/channel/:id/webhook", desc: "Inbound webhook" },
+                  ]}
+                  features={[
+                    "Channel adapter management UI",
+                    "Inbound message → agent turn flow",
+                    "Outbound delivery testing",
+                    "Multi-bot alias configuration",
+                  ]}
                 />
               }
             />
             <Route
               path="/mcp"
               element={
-                <PlaceholderPage
+                <RichInfoPage
                   title="MCP"
                   icon={Plug}
                   description="Model Context Protocol server lifecycle and tool discovery"
-                />
-              }
-            />
-            <Route
-              path="/skills"
-              element={
-                <PlaceholderPage
-                  title="Skills"
-                  icon={Package}
-                  description="SKILL.md curator and skill management"
+                  endpoints={[
+                    { method: "GET", path: "/mcp/servers", desc: "List MCP servers" },
+                    { method: "POST", path: "/mcp/connect", desc: "Connect to server" },
+                    { method: "GET", path: "/mcp/tools", desc: "Discovered tools" },
+                  ]}
+                  features={[
+                    "11-phase lifecycle FSM visualization",
+                    "Server connect/disconnect controls",
+                    "Tool discovery and health monitoring",
+                    "OAuth flow for remote servers",
+                  ]}
                 />
               }
             />
             <Route
               path="/sync"
               element={
-                <PlaceholderPage
+                <RichInfoPage
                   title="Sync"
                   icon={Database}
-                  description="Cross-device state convergence (HLC + LWW)"
-                />
-              }
-            />
-            <Route
-              path="/config"
-              element={
-                <PlaceholderPage
-                  title="Config"
-                  icon={Settings}
-                  description="Runtime configuration editor"
+                  description="Cross-device state convergence (HLC + LWW push/pull)"
+                  endpoints={[
+                    { method: "GET", path: "/sync/state", desc: "Replica state" },
+                    { method: "GET", path: "/sync/pull", desc: "Pull since HLC" },
+                    { method: "POST", path: "/sync/push", desc: "Push entries" },
+                  ]}
+                  features={[
+                    "HLC timestamp visualization",
+                    "Push/pull sync controls",
+                    "Conflict resolution (LWW) viewer",
+                    "A2A protocol endpoint",
+                  ]}
                 />
               }
             />

@@ -32,6 +32,37 @@
   }
 }
 
+@keyframes slideIn {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Border-left color utilities for event stream */
+.border-l-accent {
+  border-left-color: theme("colors.accent.DEFAULT");
+}
+.border-l-success {
+  border-left-color: theme("colors.success");
+}
+.border-l-warning {
+  border-left-color: theme("colors.warning");
+}
+.border-l-danger {
+  border-left-color: theme("colors.danger");
+}
+.border-l-purple {
+  border-left-color: theme("colors.purple");
+}
+.border-l-orange {
+  border-left-color: theme("colors.orange");
+}
+
 @layer components {
   .card {
     @apply bg-bg-surface border border-border rounded-lg p-4;
