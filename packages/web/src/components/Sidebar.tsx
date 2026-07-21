@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { LangToggle } from "./LangToggle";
 import { useHealth } from "@/hooks/useHealth";
 
 interface NavItem {
@@ -138,7 +139,10 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
           {!collapsed ? (
             <>
               <span className="text-[10px] font-mono text-fg-subtle tabular-nums">v0.1.0</span>
-              <ThemeSwitcher />
+              <div className="flex items-center gap-1">
+                <LangToggle />
+                <ThemeSwitcher />
+              </div>
             </>
           ) : (
             <Shield size={11} className="text-fg-subtle mx-auto" />
