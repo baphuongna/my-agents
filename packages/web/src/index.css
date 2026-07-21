@@ -3,48 +3,24 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════
-   mya Dashboard — Design System
-   Modern dark UI with depth, gradients, and micro-interactions.
+   mya Dashboard — Design System v2
+   Colors use RGB space-channel format for Tailwind <alpha-value>.
    ═══════════════════════════════════════════════════════════════ */
 
 @layer base {
-  * {
-    @apply border-border;
-    box-sizing: border-box;
-  }
-  html, body, #root {
-    @apply h-full m-0;
-  }
+  * { @apply border-border; box-sizing: border-box; }
+  html, body, #root { @apply h-full m-0; }
   body {
     @apply bg-bg text-fg font-sans text-sm antialiased;
     overflow: hidden;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
-
-  /* Scrollbar — thin, elegant */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, theme('colors.border.DEFAULT') 60%, transparent);
-    @apply rounded-full;
-    transition: background 0.2s;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, theme('colors.accent.DEFAULT') 50%, transparent);
-  }
-
-  /* Focus ring */
-  *:focus-visible {
-    outline: 2px solid theme("colors.accent.DEFAULT");
-    outline-offset: 1px;
-    border-radius: 4px;
-  }
-
-  /* Selection */
-  ::selection {
-    background: theme("colors.accent.DEFAULT");
-    color: theme("colors.bg.DEFAULT");
-  }
+  ::-webkit-scrollbar-thumb { @apply bg-border/60 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-accent/50; }
+  *:focus-visible { outline: 2px solid theme("colors.accent.DEFAULT"); outline-offset: 1px; border-radius: 4px; }
+  ::selection { background: theme("colors.accent.DEFAULT"); color: theme("colors.bg.DEFAULT"); }
 }
 
 /* ═══ Animations ═══ */
@@ -53,113 +29,93 @@
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 theme("colors.success"); } 50% { box-shadow: 0 0 8px 2px theme("colors.success"); } }
+@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--success) / 0.4); } 50% { box-shadow: 0 0 12px 2px rgb(var(--success) / 0.2); } }
 
-/* ═══ Utility classes ═══ */
+/* ═══ Components ═══ */
 @layer components {
-  /* Card with depth */
   .card {
-    @apply bg-bg-surface rounded-xl;
-    border: 1px solid color-mix(in srgb, theme('colors.border.DEFAULT') 60%, transparent);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.02);
+    @apply bg-bg-surface border border-border/60 rounded-xl;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
   }
   .card-hover:hover {
-    border-color: theme("colors.accent.DEFAULT");
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 12px color-mix(in srgb, theme("colors.accent.DEFAULT") 15%, transparent);
+    @apply border-accent/50;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 12px rgb(var(--accent) / 0.15);
     transform: translateY(-1px);
   }
 
-  /* Glass panel */
   .glass {
-    background: color-mix(in srgb, theme("colors.bg.surface") 80%, transparent);
+    background: rgb(var(--bg-surface) / 0.8);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
 
-  /* Gradient text */
   .gradient-text {
-    background: linear-gradient(135deg, theme("colors.accent.DEFAULT"), theme("colors.purple"));
+    background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--purple)));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }
 
-  /* Gradient border accent */
   .gradient-accent {
-    background: linear-gradient(135deg, theme("colors.accent.DEFAULT"), theme("colors.purple"));
+    background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--purple)));
   }
 
-  /* Shimmer loading */
   .shimmer {
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, theme("colors.fg.DEFAULT") 8%, transparent), transparent);
+    background: linear-gradient(90deg, transparent, rgb(var(--fg) / 0.08), transparent);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
 
-  /* Buttons */
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed;
   }
   .btn-primary {
     @apply btn text-white;
-    background: linear-gradient(135deg, theme("colors.accent.DEFAULT"), color-mix(in srgb, theme("colors.accent.DEFAULT") 80%, theme("colors.purple")));
-    box-shadow: 0 2px 8px color-mix(in srgb, theme("colors.accent.DEFAULT") 30%, transparent);
+    background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent) / 0.8));
+    box-shadow: 0 2px 8px rgb(var(--accent) / 0.3);
   }
   .btn-primary:hover {
-    box-shadow: 0 4px 16px color-mix(in srgb, theme("colors.accent.DEFAULT") 45%, transparent);
+    box-shadow: 0 4px 16px rgb(var(--accent) / 0.45);
     transform: translateY(-1px);
   }
   .btn-secondary {
-    @apply btn bg-bg-elevated text-fg border border-border;
-  }
-  .btn-secondary:hover {
-    border-color: color-mix(in srgb, theme('colors.accent.DEFAULT') 50%, transparent);
+    @apply btn bg-bg-elevated text-fg border border-border hover:border-accent/50;
   }
   .btn-danger {
     @apply btn text-white;
-    background: linear-gradient(135deg, theme("colors.danger"), color-mix(in srgb, theme("colors.danger") 85%, #000));
+    background: linear-gradient(135deg, rgb(var(--danger)), rgb(var(--danger) / 0.85));
   }
   .btn-ghost {
-    @apply btn text-fg-muted hover:text-fg;
-  }
-  .btn-ghost:hover {
-    background: color-mix(in srgb, theme('colors.fg.DEFAULT') 5%, transparent);
+    @apply btn text-fg-muted hover:text-fg hover:bg-fg/5;
   }
 
-  /* Input */
   .input {
-    @apply bg-bg-input rounded-lg px-3 py-1.5 text-sm text-fg;
-    border: 1px solid color-mix(in srgb, theme('colors.border.DEFAULT') 70%, transparent);
+    @apply bg-bg-input border border-border/70 rounded-lg px-3 py-1.5 text-sm text-fg;
+    @apply placeholder:text-fg-subtle/50;
     transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  .input::placeholder {
-    color: color-mix(in srgb, theme('colors.fg.subtle') 60%, transparent);
   }
   .input:focus {
     @apply border-accent;
-    box-shadow: 0 0 0 3px color-mix(in srgb, theme("colors.accent.DEFAULT") 15%, transparent);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.15);
     outline: none;
   }
 
-  /* Badge */
   .badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium whitespace-nowrap;
   }
-  .badge-green { @apply badge; background: color-mix(in srgb, theme("colors.success") 20%, transparent); color: theme("colors.success"); }
-  .badge-yellow { @apply badge; background: color-mix(in srgb, theme("colors.warning") 20%, transparent); color: theme("colors.warning"); }
-  .badge-red { @apply badge; background: color-mix(in srgb, theme("colors.danger") 20%, transparent); color: theme("colors.danger"); }
-  .badge-blue { @apply badge; background: color-mix(in srgb, theme("colors.accent.DEFAULT") 20%, transparent); color: theme("colors.accent.DEFAULT"); }
-  .badge-gray { @apply badge; background: color-mix(in srgb, theme('colors.border.DEFAULT') 40%, transparent); color: theme('colors.fg.muted'); }
-  .badge-purple { @apply badge; background: color-mix(in srgb, theme("colors.purple") 20%, transparent); color: theme("colors.purple"); }
+  .badge-green { @apply badge bg-success/20 text-success; }
+  .badge-yellow { @apply badge bg-warning/20 text-warning; }
+  .badge-red { @apply badge bg-danger/20 text-danger; }
+  .badge-blue { @apply badge bg-accent/20 text-accent; }
+  .badge-gray { @apply badge bg-border/40 text-fg-muted; }
+  .badge-purple { @apply badge bg-purple/20 text-purple; }
 }
 
-/* Animation utilities */
 .animate-fade-in { animation: fadeIn 0.2s ease-out; }
 .animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
 .animate-scale-in { animation: scaleIn 0.2s ease-out; }
 
-/* Border-left colors for event stream */
 .border-l-accent { border-left-color: theme("colors.accent.DEFAULT"); }
 .border-l-success { border-left-color: theme("colors.success"); }
 .border-l-warning { border-left-color: theme("colors.warning"); }

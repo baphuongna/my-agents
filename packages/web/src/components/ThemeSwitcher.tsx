@@ -37,9 +37,18 @@ export function ThemeSwitcher() {
               )}
             >
               <div className="flex gap-0.5 shrink-0">
-                <span className="w-3.5 h-3.5 rounded-md border border-border/50" style={{ background: t.vars["--bg"] }} />
-                <span className="w-3.5 h-3.5 rounded-md" style={{ background: t.vars["--accent"] }} />
-                <span className="w-3.5 h-3.5 rounded-md" style={{ background: t.vars["--fg"] }} />
+                {/* Preview: reconstruct hex from RGB space-channel for swatches */}
+                {(() => {
+                  const toHex = (rgb: string) => {
+                    const [r,g,b] = rgb.split(' ').map(Number);
+                    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+                  };
+                  return <>
+                    <span className="w-3.5 h-3.5 rounded-md border border-border/50" style={{ background: toHex(t.vars["--bg"]!) }} />
+                    <span className="w-3.5 h-3.5 rounded-md" style={{ background: toHex(t.vars["--accent"]!) }} />
+                    <span className="w-3.5 h-3.5 rounded-md" style={{ background: toHex(t.vars["--fg"]!) }} />
+                  </>;
+                })()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">

@@ -6,29 +6,29 @@ export default {
     extend: {
       colors: {
         bg: {
-          DEFAULT: "var(--bg)",
-          surface: "var(--bg-surface)",
-          elevated: "var(--bg-elevated)",
-          input: "var(--bg-input)",
+          DEFAULT: "rgb(var(--bg) / <alpha-value>)",
+          surface: "rgb(var(--bg-surface) / <alpha-value>)",
+          elevated: "rgb(var(--bg-elevated) / <alpha-value>)",
+          input: "rgb(var(--bg-input) / <alpha-value>)",
         },
         border: {
-          DEFAULT: "var(--border)",
-          subtle: "var(--border-subtle)",
+          DEFAULT: "rgb(var(--border) / <alpha-value>)",
+          subtle: "rgb(var(--border-subtle) / <alpha-value>)",
         },
         fg: {
-          DEFAULT: "var(--fg)",
-          muted: "var(--fg-muted)",
-          subtle: "var(--fg-subtle)",
+          DEFAULT: "rgb(var(--fg) / <alpha-value>)",
+          muted: "rgb(var(--fg-muted) / <alpha-value>)",
+          subtle: "rgb(var(--fg-subtle) / <alpha-value>)",
         },
         accent: {
-          DEFAULT: "var(--accent)",
-          hover: "var(--accent-hover)",
+          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
+          hover: "rgb(var(--accent-hover) / <alpha-value>)",
         },
-        success: "var(--success)",
-        warning: "var(--warning)",
-        danger: "var(--danger)",
-        purple: "var(--purple)",
-        orange: "var(--orange)",
+        success: "rgb(var(--success) / <alpha-value>)",
+        warning: "rgb(var(--warning) / <alpha-value>)",
+        danger: "rgb(var(--danger) / <alpha-value>)",
+        purple: "rgb(var(--purple) / <alpha-value>)",
+        orange: "rgb(var(--orange) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
@@ -40,14 +40,8 @@ export default {
         "fade-in": "fadeIn 0.15s ease-out",
       },
       keyframes: {
-        blink: {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0" },
-        },
-        fadeIn: {
-          from: { opacity: "0" },
-          to: { opacity: "1" },
-        },
+        blink: { "0%, 100%": { opacity: "1" }, "50%": { opacity: "0" } },
+        fadeIn: { from: { opacity: "0" }, to: { opacity: "1" } },
       },
     },
   },
