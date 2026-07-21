@@ -30,10 +30,10 @@ import { browserNavigateTool, browserSnapshotTool, browserClickTool, browserType
  * is still resolved to absolute (relative paths join the workspace), but it is
  * NOT bounded — /etc/passwd, ~/.ssh/config, etc. are reachable by design.
  * Kept as a thin resolver so the call sites are unchanged. */
-function contain(ctx: { workspace?: string }, path: string, _mode: "write" | "read"):
+function contain(ctx: { workspace?: string } | undefined, path: string, _mode: "write" | "read"):
   | { ok: true; abs: string }
   | { ok: false; err: ReturnType<typeof err> } {
-  return { ok: true, abs: resolve(ctx.workspace ?? process.cwd(), path) };
+  return { ok: true, abs: resolve(ctx?.workspace ?? process.cwd(), path) };
 }
 
 /** F8 fix: strip secret-looking env vars before passing to a child process. */
