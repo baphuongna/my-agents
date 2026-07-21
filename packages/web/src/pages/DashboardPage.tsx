@@ -46,7 +46,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto p-4 sm:p-6 space-y-5">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
       {/* Hero section */}
       <div className="animate-fade-in-up">
         <h1 className="text-2xl font-bold text-fg mb-1">Welcome to mya</h1>
@@ -78,7 +78,7 @@ export function DashboardPage() {
             <Badge color="green" className="ml-auto">{configured.length} active</Badge>
           </div>
           {/* Provider grid with visual indicators */}
-          <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
             {providers.slice(0, 24).map((p) => (
               <div
                 key={p.id}

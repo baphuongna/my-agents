@@ -170,12 +170,12 @@ function CronJobCard({
           )}
         />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             <button
-              className="text-fg font-medium text-sm hover:text-accent"
+              className="text-fg font-medium text-sm hover:text-accent min-w-0"
               onClick={() => setExpanded(!expanded)}
             >
-              {job.name}
+              <span className="truncate">{job.name}</span>
             </button>
             {job.enabled ? (
               <Badge color="green">enabled</Badge>
@@ -184,13 +184,13 @@ function CronJobCard({
             )}
             {job.jobType && <Badge color="blue">{job.jobType}</Badge>}
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-fg-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-muted">
             <span className="flex items-center gap-1">
               <Clock size={10} /> {describeSchedule(schedule)}
             </span>
             <code className="text-fg-subtle">{job.schedule}</code>
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-fg-subtle mt-0.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-fg-subtle mt-0.5">
             <span>next: {timeAgo(job.nextRunAt)}</span>
             <span>last: {timeAgo(job.lastRunAt)}</span>
             {job.provider && <span>via {job.provider}</span>}

@@ -127,7 +127,7 @@ export function EnvPage() {
                   <Check size={14} className="text-success shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <code className="text-[13px] text-fg font-mono">{p.id}</code>
+                      <code className="text-[13px] text-fg font-mono truncate min-w-0">{p.id}</code>
                       <Badge color="green">active</Badge>
                     </div>
                     <div className="text-[10px] text-fg-subtle font-mono mt-0.5">
@@ -164,7 +164,7 @@ export function EnvPage() {
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <code className="text-[13px] text-fg font-mono">{p.id}</code>
+                    <code className="text-[13px] text-fg font-mono truncate min-w-0">{p.id}</code>
                     {p.configured && <Badge color="green">active</Badge>}
                   </div>
                   <div className="text-[10px] text-fg-subtle font-mono mt-0.5">

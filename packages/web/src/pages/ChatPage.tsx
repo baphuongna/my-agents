@@ -167,7 +167,7 @@ export function ChatPage() {
         <h1 className="text-sm font-semibold text-fg">Chat</h1>
         <div className="flex-1" />
         <button
-          className={cn("px-2.5 py-1 rounded-lg text-[11px] transition-all flex items-center gap-1.5",
+          className={cn("px-2.5 py-1 rounded-lg text-[11px] transition-all flex items-center gap-1.5 min-w-0 max-w-[120px]",
             activeModel ? "bg-bg-elevated text-fg border border-border/50 hover:border-accent/50" : "text-fg-muted hover:text-accent")}
           onClick={() => setModelPickerOpen(true)}
         >
@@ -195,7 +195,7 @@ export function ChatPage() {
             <p className="text-sm text-fg-muted text-center max-w-sm mb-8">
               Your unified coding & autonomous agent. Ask anything, write code, or explore your project.
             </p>
-            <div className="grid sm:grid-cols-3 gap-2 w-full max-w-lg">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 gap-2 w-full max-w-lg">
               {SUGGESTIONS.map((s, i) => (
                 <button
                   key={i}
@@ -245,7 +245,7 @@ export function ChatPage() {
             <button
               onClick={() => submit()}
               disabled={!input.trim() || busy}
-              className={cn("absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+              className={cn("absolute right-2 bottom-2 w-10 h-10 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all",
                 input.trim() && !busy ? "gradient-accent text-white hover:scale-105" : "bg-fg/5 text-fg-subtle")}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

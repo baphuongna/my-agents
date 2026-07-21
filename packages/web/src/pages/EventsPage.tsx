@@ -108,7 +108,7 @@ export function EventsPage() {
       />
 
       {/* Stats bar */}
-      <div className="flex items-center gap-3 text-[11px] text-fg-muted shrink-0">
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-fg-muted shrink-0">
         <span>{events.length} total</span>
         <span>{filtered.length} shown</span>
         {paused && <Badge color="yellow">PAUSED</Badge>}
@@ -166,7 +166,7 @@ function EventRow({ ev }: { ev: GatewayEvent }) {
         style.border,
       )}
     >
-      <div className="flex items-center gap-2 mb-0.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-0.5">
         <span className="text-fg-subtle tabular-nums">{formatTime(ev.timestamp)}</span>
         <span className="text-accent font-semibold uppercase tracking-wide">{style.label}</span>
         <span className="text-fg-muted">{ev.type}</span>

@@ -35,7 +35,7 @@ export function ConfigPage() {
   const entries = config ? Object.entries(config) : [];
 
   return (
-    <div className="p-4 max-w-3xl space-y-3">
+    <div className="p-4 max-w-3xl w-full mx-auto space-y-3">
       <PageHeader
         title="Config"
         icon={Settings}
@@ -84,7 +84,7 @@ export function ConfigPage() {
                         style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
                       >
                         <span className="text-fg-subtle select-none w-4 text-right shrink-0 text-[10px]">{idx + 1}</span>
-                        <code className="text-accent font-mono shrink-0">{key}</code>
+                        <code className="text-accent font-mono shrink-0 truncate min-w-0 max-w-[8rem]">{key}</code>
                         <span className="text-fg-subtle">=</span>
                         <code className="text-fg-muted font-mono flex-1 truncate">{display}</code>
                         <span className={`${typeColor} !px-1.5 !py-0`}>{type}</span>

@@ -84,7 +84,7 @@ export function StatusPage() {
               <RadialGauge value={configuredCount} max={Math.max(providers.length, 1)} size={72} label={`${configuredCount}`} sublabel="providers" color="var(--success)" />
             </Card>
             <Card className="flex flex-col items-center py-4">
-              <RadialGauge value={Math.min(uptime / 3600, 100)} max={100} size={72} label={formatDuration(uptime).split(' ')[0]!} sublabel={formatDuration(uptime).split(' ')[1] ?? 'uptime'} color="var(--accent)" />
+              <RadialGauge value={Math.min((uptime || 0) / 3600, 100)} max={100} size={72} label={formatDuration(uptime || 0).split(' ')[0] || '0h'} sublabel={formatDuration(uptime || 0).split(' ')[1] || 'uptime'} color="var(--accent)" />
             </Card>
             <Card className="flex flex-col items-center py-4">
               <RadialGauge value={roles.length} max={Math.max(roles.length, 1)} size={72} label={String(roles.length)} sublabel="roles" color="var(--purple)" />
@@ -95,7 +95,7 @@ export function StatusPage() {
           </div>
 
           {/* Metrics grid */}
-          <div className="grid grid-cols-2 grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-2">
             <StatCard
               icon={Server}
               label="Gateway"
@@ -139,7 +139,7 @@ export function StatusPage() {
                       ) : (
                         <X size={12} className="text-fg-subtle shrink-0" />
                       )}
-                      <span className={cn("font-mono", p.configured ? "text-fg" : "text-fg-subtle")}>
+                      <span className={cn("font-mono truncate min-w-0", p.configured ? "text-fg" : "text-fg-subtle")}>
                         {p.id}
                       </span>
                       <span className="text-fg-subtle text-[10px] truncate ml-auto">{p.model}</span>

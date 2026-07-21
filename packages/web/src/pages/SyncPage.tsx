@@ -117,7 +117,7 @@ export function SyncPage() {
                   key={key}
                   className="flex items-center gap-2 py-1 px-2 rounded text-[11px] hover:bg-bg-elevated/50"
                 >
-                  <code className="text-accent font-mono shrink-0 truncate max-w-[40%]">{key}</code>
+                  <code className="text-accent font-mono shrink-0 truncate max-w-[8rem]">{key}</code>
                   <span className="text-fg-subtle">=</span>
                   <code className="text-fg-muted font-mono flex-1 truncate">
                     {typeof value === "object" ? JSON.stringify(value) : String(value)}

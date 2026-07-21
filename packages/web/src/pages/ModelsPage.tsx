@@ -157,9 +157,9 @@ function ModelCard({ model, index = 0 }: { model: ModelInfo; index?: number }) {
             {maxTokens && <span>{formatTokenCount(maxTokens)} out</span>}
           </div>
         </div>
-        <Badge color="blue" className="shrink-0">
+        <Badge color="blue" className="shrink-0 max-w-[80px]"><span className="truncate block">
           {model.provider}
-        </Badge>
+        </span></Badge>
       </div>
     </Card>
   );

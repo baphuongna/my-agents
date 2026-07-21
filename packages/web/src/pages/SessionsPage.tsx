@@ -61,7 +61,7 @@ export function SessionsPage() {
   return (
     <div className="flex h-full">
       {/* Session list */}
-      <div className={cn("flex-1 min-w-0 p-4 space-y-3 overflow-y-auto", selected && "hidden md:block md:w-80 md:shrink-0")}>
+      <div className={cn("flex-1 min-w-0 p-4 space-y-3 overflow-y-auto", selected && "hidden md:flex-none md:w-80 md:shrink-0")}>
         <PageHeader
           title="Sessions"
           icon={MessageSquare}
