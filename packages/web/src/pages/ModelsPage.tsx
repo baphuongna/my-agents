@@ -38,7 +38,7 @@ export function ModelsPage() {
   const filtered = search
     ? models.filter(
         (m) =>
-          m.id.toLowerCase().includes(search.toLowerCase()) ||
+          m.id.toLowerCase().includes(search.toLowerCase()) || (m.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
           (m.provider ?? "").toLowerCase().includes(search.toLowerCase()),
       )
     : models;

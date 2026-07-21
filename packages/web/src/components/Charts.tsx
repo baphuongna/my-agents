@@ -14,7 +14,9 @@ export function Sparkline({
   color?: string;
   fill?: boolean;
 }) {
-  if (data.length < 2) return null;
+  const clean = data.filter(Number.isFinite);
+  if (clean.length < 2) return null;
+  data = clean;
 
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -63,7 +65,7 @@ export function ProgressBar({
   color?: string;
   height?: number;
 }) {
-  const pct = Math.min(100, (value / max) * 100);
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
   return (
     <div className="w-full rounded-full overflow-hidden bg-fg/5" style={{ height }}>
       <div
@@ -97,7 +99,7 @@ export function RadialGauge({
   label?: string;
   sublabel?: string;
 }) {
-  const pct = Math.min(1, value / max);
+  const pct = Math.min(1, Math.max(0, value / max));
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - pct);

@@ -166,9 +166,9 @@ export function Markdown({ content }: { content: string }) {
           case "heading": {
             const sizes = ["text-lg", "text-base", "text-sm", "text-xs"];
             return (
-              <h key={i} className={`${sizes[block.level - 1] ?? "text-sm"} font-bold text-fg mt-3`}>
+              <div key={i} className={`${sizes[block.level - 1] ?? "text-sm"} font-bold text-fg mt-3`}>
                 {block.content}
-              </h>
+              </div>
             );
           }
           case "hr":

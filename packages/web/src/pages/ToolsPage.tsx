@@ -52,7 +52,7 @@ export function ToolsPage() {
     byMode.get(key)!.push(t);
   }
 
-  const modeOrder = ["DangerFullAccess", "WorkspaceWrite", "ReadOnly"];
+  const modeOrder = ["DangerFullAccess", "WorkspaceWrite", "ReadOnly", "__other__"];
 
   return (
     <div className="p-4 max-w-4xl space-y-3">

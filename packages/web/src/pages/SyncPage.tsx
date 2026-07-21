@@ -39,9 +39,13 @@ export function SyncPage() {
   async function doPull() {
     try {
       const res = await fetch("/sync/pull", { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setPullResult(data);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast(`Pulled ${Array.isArray(data) ? data.length : Object.keys(data).length} entries`, "success");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (e) {
       toast(`Pull failed: ${e instanceof Error ? e.message : e}`, "error");
     }

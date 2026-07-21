@@ -83,7 +83,7 @@ export function DashboardPage() {
               <div
                 key={p.id}
                 className={cn(
-                  "aspect-square rounded-md flex items-center justify-center text-[8px] font-mono transition-all cursor-default",
+                  "aspect-square rounded-md flex items-center justify-center text-[10px] font-mono transition-all cursor-default",
                   p.configured
                     ? "bg-success/15 text-success border border-success/30"
                     : "bg-fg/5 text-fg-subtle/40 border border-transparent",

@@ -87,7 +87,7 @@ export function StatusPage() {
               <RadialGauge value={Math.min(uptime / 3600, 100)} max={100} size={72} label={formatDuration(uptime).split(' ')[0]!} sublabel={formatDuration(uptime).split(' ')[1] ?? 'uptime'} color="var(--accent)" />
             </Card>
             <Card className="flex flex-col items-center py-4">
-              <RadialGauge value={roles.length} max={10} size={72} label={String(roles.length)} sublabel="roles" color="var(--purple)" />
+              <RadialGauge value={roles.length} max={Math.max(roles.length, 1)} size={72} label={String(roles.length)} sublabel="roles" color="var(--purple)" />
             </Card>
             <Card className="flex flex-col items-center py-4">
               <RadialGauge value={subagents?.active ?? 0} max={Math.max(subagents?.total ?? 1, 1)} size={72} label={String(subagents?.active ?? 0)} sublabel="subagents" color="var(--orange)" />
