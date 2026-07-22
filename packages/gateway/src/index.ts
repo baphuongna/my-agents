@@ -745,7 +745,7 @@ export class Gateway {
    * GET / which sets the auth cookie, channel webhooks + pairing which carry
    * their OWN auth via adapter verify() / MYA_PAIRING_TOKEN). Everything else
    * (incl. /ws-info, /cron/jobs*, /sessions/*) requires the ws token. */
-  private isAuthAllowlisted(url: URL, method: string | undefined): boolean {
+  private isAuthAllowlisted(url: URL, method: string | undefined, acceptHeader?: string): boolean {
     const p = url.pathname;
     if (p === "/health/live" || p === "/ready" || p === "/manifest.json" || p === "/sw.js") return true;
     if (p === "/web.js" || p === "/offline.html") return true; // mya fork: Vite-bundled JS + offline page are public PWA assets
@@ -758,6 +758,15 @@ export class Gateway {
     // gate would reject a pairing client that has only the pairing token.
     if (p === "/pair/request" || p === "/pair/accept" || p === "/pair/devices" || /^\/pair\/devices\//.test(p)) return true;
     if ((p === "/" || p === "/index.html") && method === "GET") return true;
+    // SPA browser navigation: GET + Accept: text/html on any non-API path → serve index.html.
+    // API prefixes still require auth (they return JSON, not HTML).
+    if (method === "GET" && acceptHeader?.includes("text/html")
+        && !p.startsWith("/cron/") && !p.startsWith("/sessions/") && !p.startsWith("/pool/")
+        && !p.startsWith("/sync/") && !p.startsWith("/collab/") && !p.startsWith("/channel/")
+        && !p.startsWith("/pair/") && !p.startsWith("/approval/") && !p.startsWith("/push/")
+        && !p.startsWith("/auth/") && !p.startsWith("/webhooks/") && p !== "/skills/create") {
+      return true;
+    }
     // mya fork: Hermes SPA stub endpoints — allowlisted so the SPA can fetch
     // them without auth (they return static defaults, no sensitive data)
     if (this.HERMES_STUBS && p in this.HERMES_STUBS) return true;
@@ -838,7 +847,7 @@ export class Gateway {
     // (manifest/icons/sw), GET / (rootHtml — which SETS the cookie), channel
     // webhooks + pairing (own auth). When wsToken is unset (MYA_NO_WS_TOKEN dev)
     // everything is open.
-    if (this.wsToken && !this.isAuthAllowlisted(url, req.method)) {
+    if (this.wsToken && !this.isAuthAllowlisted(url, req.method, req.headers.accept)) {
       if (!this.isAuthed(req)) return send(401, { error: "unauthorized" });
       // CSRF defense: a state-changing request carrying an Origin header must
       // come from the gateway's OWN origin (same port). SameSite=Strict is the
@@ -1717,6 +1726,25 @@ export class Gateway {
             } catch {
               // Fall through to 404
             }
+          }
+        }
+        // SPA fallback: GET + Accept: text/html on unmatched route → serve dashboard index.html
+        // (browser hard-refresh on a React Router path like /cron should serve the SPA, not 404)
+        if (req.method === "GET" && req.headers.accept?.includes("text/html") && (this.staticDir || this.rootHtml)) {
+          if (this.staticDir) {
+            const indexPath = join(this.staticDir, "index.html");
+            if (existsSync(indexPath)) {
+              this.setAuthCookie(req, res);
+              res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-frame-options": "DENY" });
+              res.end(readFileSync(indexPath, "utf-8"));
+              return;
+            }
+          }
+          if (this.rootHtml) {
+            this.setAuthCookie(req, res);
+            res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-frame-options": "DENY" });
+            res.end(this.rootHtml);
+            return;
           }
         }
         return send(404, { error: "not found" });
