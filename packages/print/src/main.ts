@@ -641,8 +641,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       memoryScope: r.memoryScope,
     })),
     memoryStats: () => ({
-      facts: (brain as unknown as { facts: { size: number } }).facts.size,
-      takes: (brain as unknown as { takes: { size: number } }).takes.size,
+      facts: brain.factCount,
+      takes: brain.takeCount,
       tombstones: brain.tombstoneCount,
       dreamRunning: dreamCycle.running,
     }),

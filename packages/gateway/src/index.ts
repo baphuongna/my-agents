@@ -1639,12 +1639,16 @@ export class Gateway {
             );
             return;
           }
-          if (action === "discover" && this.mcpDiscover) {
+          if ((action === "discover" || action === "test") && this.mcpDiscover) {
             this.mcpDiscover!(id).then(
-              (tools) => send(200, { ok: true, id, tools }),
+              (tools) => send(200, { ok: true, id, action, tools }),
               (e: unknown) => send(500, { ok: false, id, error: (e as Error).message }),
             );
             return;
+          }
+          // 'test' action without mcpDiscover → return ok (health check semantics)
+          if (action === "test") {
+            return send(200, { ok: true, id, action: "test", tools: [] });
           }
         }
         const mcpDelMatch = url.pathname.match(/^\/mcp\/servers\/([^/]+)$/);
