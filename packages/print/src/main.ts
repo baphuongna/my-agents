@@ -22,7 +22,7 @@ import { createRequire } from "node:module";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config, achievements } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config, achievements, memory, retrievalEngine, lifecycleManager, sqliteMemory } from "./shared-instances.js";
 import { loadRoles as loadRolesRegistry } from "@my-agent/core";
 
 
@@ -279,19 +279,27 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     agents: agents.length > 0 ? agents : undefined,
     createSession: async (sessionId, _cwd, agentDir) => {
       // Create pi AgentSession — same code as InteractiveMode uses.
-      // Phase 2: respect per-agent agentDir (multi-agent isolation).
+      // CRITICAL: load mya-bridge into gateway sessions so web dashboard users
+      // get all mya tools (osv_check, image_generate, kanban, etc.), achievements,
+      // cron tools, brain recall, and all other bridge features.
       // @ts-expect-error — resolved by esbuild from project source
       const { createAgentSession } = await import("../../coding-agent/src/index.ts");
-      // Phase 0A: cron-fired turns (_cron:<jobId> sessions) get the cron role's
-      // excluded tools (anti-recursion / deny-default). createAgentSession already
-      // accepts excludeTools (sdk.ts). The denied set is empty by default; Phase 3C
-      // (approval_mode) populates it (bash/write/edit → can't modify cron.json or
-      // run the CLI to recurse).
       const cronOpts = cronSessionToolConfig(sessionId);
+
+      // Build the mya-bridge factory for this session
+      const { createMyaBridge } = await import("./mya-bridge.js");
+      const myaBridgeFactory = createMyaBridge({
+        auditLog, secretStore, hooks: toolHooks, skillStore, cron,
+        brain, memory, retrievalEngine, lifecycleManager, sqliteMemory,
+        wallet, acp: undefined, sync, collab, packageHost, council, mcp, mcpConfigs,
+        channels, roleRegistry, achievements,
+      });
+
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
         ...cronOpts,
+        extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory as (api: unknown) => void | Promise<void> }],
       });
       return result.session as unknown as AgentSession;
     },

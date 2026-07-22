@@ -22,6 +22,13 @@ import {
   Database,
   Settings,
   KeyRound,
+  UserCircle,
+  Webhook,
+  Smartphone,
+  Award,
+  Cat,
+  Users,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,6 +56,14 @@ const ITEMS: PaletteItem[] = [
   { label: "Skills", path: "/skills", icon: Package, keywords: ["templates"] },
   { label: "Sync", path: "/sync", icon: Database, keywords: ["replica", "convergence"] },
   { label: "API Keys", path: "/keys", icon: KeyRound, keywords: ["env", "secrets", "credentials"] },
+  { label: "Profiles", path: "/profiles", icon: UserCircle, keywords: ["providers", "presets"] },
+  { label: "Profile Builder", path: "/profiles/new", icon: UserCircle, keywords: ["create", "new", "profile"] },
+  { label: "Webhooks", path: "/webhooks", icon: Webhook, keywords: ["integrations", "notifications"] },
+  { label: "Pairing", path: "/pairing", icon: Smartphone, keywords: ["device", "connect", "mobile"] },
+  { label: "Push", path: "/push", icon: Bell, keywords: ["notifications", "pwa"] },
+  { label: "Collaboration", path: "/collab", icon: Users, keywords: ["rooms", "realtime"] },
+  { label: "Achievements", path: "/achievements", icon: Award, keywords: ["badges", "progress", "gamification"] },
+  { label: "Pets", path: "/pets", icon: Cat, keywords: ["petdex", "collection", "fun"] },
   { label: "Config", path: "/config", icon: Settings, keywords: ["settings", "preferences"] },
   { label: "System", path: "/status", icon: Activity, keywords: ["health", "status", "uptime"] },
 ];

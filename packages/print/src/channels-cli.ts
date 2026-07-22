@@ -101,36 +101,44 @@ export async function channelsTest(id?: string): Promise<void> {
 
 export async function channelsAdd(type?: string, alias?: string): Promise<void> {
   if (!type) {
-    console.log(`${A.bold("Available channel types:")} telegram, discord, slack, email, webhook`);
+    console.log(`${A.bold("Available channel types:")} telegram, discord, slack, email, webhook, whatsapp, signal, matrix, msgraph, feishu, wechat, spotify`);
     console.log("");
     console.log(`${A.bold("Usage:")} mya channels add <type> [alias]`);
     console.log("");
     console.log(`${A.bold("Examples:")}`);
     console.log(`  mya channels add telegram`);
     console.log(`  mya channels add telegram bot2   ${A.muted("# multi-bot: TELEGRAM_BOT_TOKEN_BOT2")}`);
+    console.log(`  mya channels add spotify         ${A.muted("# set SPOTIFY_ACCESS_TOKEN")}`);
     console.log("");
     console.log(`${A.bold("Setup:")} set the env var, then restart gateway.`);
     return;
   }
-  const envVar = `TELEGRAM_DISCORD_SLACK_EMAIL_WEBHOOK`.split("_"); // not real
-  const typeUpper = type.toUpperCase();
+  // Channel-specific credential mapping
+  const CREDENTIAL_MAP: Record<string, { var: string; help: string }> = {
+    telegram: { var: "TELEGRAM_BOT_TOKEN", help: "https://t.me/BotFather" },
+    discord:  { var: "DISCORD_BOT_TOKEN", help: "https://discord.com/developers/applications" },
+    slack:    { var: "SLACK_BOT_TOKEN", help: "https://api.slack.com/apps" },
+    email:    { var: "EMAIL_API_KEY", help: "https://resend.com/api-keys" },
+    webhook:  { var: "WEBHOOK_URL", help: "Set URL to your HTTP endpoint" },
+    whatsapp: { var: "WHATSAPP_TOKEN", help: "https://developers.facebook.com/docs/whatsapp" },
+    signal:   { var: "SIGNAL_CLI_URL", help: "https://github.com/AsamK/signal-cli" },
+    matrix:   { var: "MATRIX_ACCESS_TOKEN", help: "https://matrix.org/docs/guides" },
+    msgraph:  { var: "MSGRAPH_CLIENT_ID", help: "https://learn.microsoft.com/en-us/graph" },
+    feishu:   { var: "FEISHU_APP_ID", help: "https://open.feishu.cn" },
+    wechat:   { var: "WECHAT_APP_ID", help: "https://developers.weixin.qq.com" },
+    spotify:  { var: "SPOTIFY_ACCESS_TOKEN", help: "https://developer.spotify.com" },
+  };
+  const cred = CREDENTIAL_MAP[type];
+  if (!cred) {
+    console.log(`  ${A.yellow("Unknown type.")} Supported: ${Object.keys(CREDENTIAL_MAP).join(", ")}`);
+    return;
+  }
   const varName = alias
-    ? `${typeUpper}_BOT_TOKEN_${alias.toUpperCase()}`
-    : type === "email"
-      ? "EMAIL_API_KEY"
-      : type === "webhook"
-        ? "WEBHOOK_URL"
-        : `${typeUpper}_BOT_TOKEN`;
+    ? `${cred.var}_${alias.toUpperCase()}`
+    : cred.var;
   console.log(`${A.bold("Add channel:")} ${type}${alias ? ` (${alias})` : ""}`);
   console.log(`  Set env var: ${A.accent(varName)}=<value>`);
   console.log(`  Then restart: ${A.accent("mya serve")}`);
   console.log("");
-  switch (type) {
-    case "telegram": console.log(`  Get a bot token: ${A.muted("https://t.me/BotFather")}`); break;
-    case "discord":  console.log(`  Get a bot token: ${A.muted("https://discord.com/developers/applications")}`); break;
-    case "slack":    console.log(`  Get a bot token: ${A.muted("https://api.slack.com/apps")}`); break;
-    case "email":    console.log(`  Get an API key:  ${A.muted("https://resend.com/api-keys")} (or SendGrid)`); break;
-    case "webhook":  console.log(`  Set URL to your HTTP endpoint.`); break;
-    default:         console.log(`  ${A.yellow("Unknown type.")}`);
-  }
+  console.log(`  ${A.muted(cred.help)}`);
 }

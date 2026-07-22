@@ -1290,11 +1290,15 @@ ${hitLines}`);
           description: meta.description ?? tool.meta.name,
           parameters: tool.meta.args,
           async execute(_id: string, params: Record<string, unknown>) {
-            const result = await tool.run(params, null as never);
-            const text = typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
-            return result.ok
-              ? { content: [{ type: "text", text }] }
-              : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+            try {
+              const result = await tool.run(params, null as never);
+              const text = typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
+              return result.ok
+                ? { content: [{ type: "text", text }] }
+                : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+            } catch (e) {
+              return { content: [{ type: "text", text: `[${tool.meta.name}] error: ${(e as Error).message}` }], isError: true };
+            }
           },
         });
       } catch { /* tool name already registered */ }
@@ -1566,9 +1570,34 @@ ${hitLines}`);
       return `[mya] Cron: ${jobs.length} job(s) — ${jobs.map((j) => `${j.name}(${j.trigger}:${j.schedule})${j.enabled ? "" : " ·off"}`).join(", ")}`;
     });
 
+    registerSharedCommand(pi, "achievements", "View achievement progress", async () => {
+      if (!opts.achievements) return "[mya] Achievements not configured";
+      const tracker = opts.achievements as unknown as { listUnlocked: () => Array<{ id: string; name: string }>; listLocked: () => Array<{ id: string; name: string }> };
+      const unlocked = tracker.listUnlocked();
+      const locked = tracker.listLocked();
+      let result = `[mya] Achievements: ${unlocked.length}/${unlocked.length + locked.length} unlocked\n`;
+      if (unlocked.length > 0) result += `  ✅ ${unlocked.map((a) => a.name).join(", ")}\n`;
+      if (locked.length > 0) result += `  🔒 ${locked.slice(0, 5).map((a) => a.name).join(", ")}${locked.length > 5 ? ` (+${locked.length - 5} more)` : ""}`;
+      return result;
+    });
+
+    registerSharedCommand(pi, "webhooks", "List registered webhooks", async () => {
+      const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+      try {
+        const { authHeaders } = await import("./gw-auth.js");
+        const r = await fetch(`http://127.0.0.1:${port}/webhooks`, { headers: authHeaders(), signal: AbortSignal.timeout(1000) });
+        if (r.ok) {
+          const hooks = (await r.json()) as Array<{ id: string; url: string; events: string[] }>;
+          if (hooks.length === 0) return "[mya] Webhooks: 0 registered";
+          return `[mya] Webhooks: ${hooks.length} — ${hooks.map((h) => `${h.id}(${h.url.slice(0, 30)})`).join(", ")}`;
+        }
+      } catch { /* gateway not running */ }
+      return "[mya] Webhooks: gateway not reachable (run 'mya serve')";
+    });
+
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
-      "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel\n" +
-      "Tools: paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search (Camofox anti-detect web search), delegate_task, MCP tools");
+      "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /achievements, /webhooks\n" +
+      "Tools: paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search, osv_check, check_url_safety, image_generate, video_generate, kanban, disk_cleanup, cron_create/list/delete/run, delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
     // KEYBOARD SHORTCUTS

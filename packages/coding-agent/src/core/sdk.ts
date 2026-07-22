@@ -66,6 +66,9 @@ export interface CreateAgentSessionOptions {
 	excludeTools?: string[];
 	/** Custom tools to register (in addition to built-in tools). */
 	customTools?: ToolDefinition[];
+	/** Inline extension factories (same format as main()'s extensionFactories).
+	 * Used by the gateway pool to load mya-bridge into web sessions. */
+	extensionFactories?: Array<{ name: string; factory: (api: unknown) => void | Promise<void> }>;
 
 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
 	resourceLoader?: ResourceLoader;
@@ -386,6 +389,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		sessionStartEvent: options.sessionStartEvent,
 	});
 	const extensionsResult = resourceLoader.getExtensions();
+
+	// Load inline extension factories (gateway pool path — mya-bridge)
+	if (options.extensionFactories && options.extensionFactories.length > 0) {
+		const { loadExtensionFromFactory } = await import("./extensions/loader.js");
+		for (const ext of options.extensionFactories) {
+			try {
+				const loaded = await loadExtensionFromFactory(
+					{ name: ext.name, type: "inline" as const },
+					cwd,
+					extensionsResult.runtime.eventBus,
+					extensionsResult.runtime,
+					ext.name,
+				);
+				extensionsResult.extensions.push(loaded);
+			} catch (e) {
+				console.warn(`[sdk] Failed to load inline extension '${ext.name}': ${(e as Error).message}`);
+			}
+		}
+	}
 
 	return {
 		session,

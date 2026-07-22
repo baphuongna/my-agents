@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAsync } from "@/hooks/useAsync";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +16,7 @@ async function loadProfiles(): Promise<Profile[]> {
 }
 
 export function ProfilesPage() {
+  const navigate = useNavigate();
   const { data, loading, error, reload } = useAsync(loadProfiles, []);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -28,7 +30,7 @@ export function ProfilesPage() {
   }
 
   return <div className="p-4 max-w-4xl w-full mx-auto space-y-3">
-    <PageHeader title="Profiles" icon={Users} actions={<Button variant="primary">Create Profile</Button>} />
+    <PageHeader title="Profiles" icon={Users} actions={<Button variant="primary" onClick={() => navigate("/profiles/new")}>Create Profile</Button>} />
     {loading && !data && <LoadingSpinner label="Loading profiles…" />}
     {(error || actionError) && <ErrorBox message={error ?? actionError ?? "Unknown error"} />}
     <div className="grid sm:grid-cols-2 gap-2">{data?.map((profile) =>
