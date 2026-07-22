@@ -18,6 +18,14 @@ const INJECTION_PATTERNS: readonly RegExp[] = [
   /\b(disregard|forget)\s+(all\s+)?(previous|prior)\b/i,
   /new\s+instructions?\s*:/i,
   /\[INST\]/i,
+  // P3-19: expanded coverage for common injection variants
+  /system\s+override/i,
+  /\bact\s+as\s+(a|an)\b/i,
+  /\byou\s+must\b/i,
+  /important:\s*(ignore|disregard|override)/i,
+  /\b(jailbreak|DAN)\s*mode\b/i,
+  /\bdo\s+not\s+follow\b/i,
+  /\breveal\s+(your|the)\s+(system\s+)?prompt\b/i,
 ];
 
 /**

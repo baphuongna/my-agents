@@ -566,6 +566,18 @@ export function createAgent(config: AgentConfig = {}): Agent {
       hooks: config.hooks,
       // A1: forward maxToolRounds to subagent path too (cold-verify finding).
       maxToolRounds: config.maxToolRounds,
+      // P3-20: forward compressHistory to subagent path (was missing → subagent
+      // turns on context-full would retry without compression and eventually fail).
+      compressHistory: (history) => {
+        const entries = history.entries();
+        if (entries.length <= 40) return;
+        const arr = (history as unknown as { _entries?: unknown[] })._entries;
+        if (Array.isArray(arr)) {
+          const keep = [arr[0], ...arr.slice(-39)];
+          arr.length = 0;
+          arr.push(...keep);
+        }
+      },
       signal,
     });
     const collected: RuntimeEvent[] = [];

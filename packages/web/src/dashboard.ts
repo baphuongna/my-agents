@@ -266,7 +266,7 @@ export function dashboardHtml(opts: DashboardOptions = {}): string {
     }
   };
 
-(id){
+  window.killSession=async function(id){
     await fetch('/sessions/'+encodeURIComponent(id),{method:'DELETE'});
     window.refreshSessions();
   }
