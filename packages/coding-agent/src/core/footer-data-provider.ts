@@ -112,7 +112,6 @@ export class FooterDataProvider {
 	private branchChangeCallbacks = new Set<() => void>();
 	// mya fork: subagent count for footer display (no pi equivalent)
 	private subagentCount = 0;
-
 	private availableProviderCount = 0;
 	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	private gitWatcherRetryTimer: ReturnType<typeof setTimeout> | null = null;

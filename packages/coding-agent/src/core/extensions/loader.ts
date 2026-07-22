@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as _bundledPiAgentCore from "@my-agent/pi-agent-core";
+import type { Provider } from "@my-agent/pi-ai";
 import * as _bundledPiAiCompat from "@my-agent/pi-ai/compat";
 import * as _bundledPiAiOauth from "@my-agent/pi-ai/oauth";
 import * as _bundledPiAiProviders from "@my-agent/pi-ai/providers/all";
@@ -22,7 +23,7 @@ import * as _bundledTypeboxCompile from "typebox/compile";
 import * as _bundledTypeboxValue from "typebox/value";
 import { CONFIG_DIR_NAME, getAgentDir, isBunBinary } from "../../config.ts";
 // NOTE: This import works because loader.ts exports are NOT re-exported from index.ts,
-// avoiding a circular dependency. Extensions can import from @my-agent/coding-agent.
+// avoiding a circular dependency. Extensions can import from @earendil-works/pi-coding-agent.
 import * as _bundledPiCodingAgent from "../../index.ts";
 import { resolvePath } from "../../utils/paths.ts";
 import { createEventBus, type EventBus } from "../event-bus.ts";
@@ -60,7 +61,7 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@my-agent/pi-ai/compat": _bundledPiAiCompat,
 	"@my-agent/pi-ai/oauth": _bundledPiAiOauth,
 	"@my-agent/pi-ai/providers/all": _bundledPiAiProviders,
-	"@my-agent/coding-agent": _bundledPiCodingAgent,
+	"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,
 	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
 	"@mariozechner/pi-tui": _bundledPiTui,
 	"@mariozechner/pi-ai": _bundledPiAiCompat,
@@ -111,7 +112,7 @@ function getAliases(): Record<string, string> {
 	);
 
 	_aliases = {
-		"@my-agent/coding-agent": piCodingAgentEntry,
+		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
 		"@my-agent/pi-agent-core": piAgentCoreEntry,
 		"@my-agent/tui": piTuiEntry,
 		"@my-agent/pi-ai/providers/all": piAiProvidersEntry,
@@ -195,6 +196,7 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		setThinkingLevel: notInitialized,
 		flagValues: new Map(),
 		pendingProviderRegistrations: [],
+		pendingNativeProviderRegistrations: [],
 		assertActive,
 		invalidate: (message) => {
 			state.staleMessage ??=
@@ -206,8 +208,14 @@ export function createExtensionRuntime(): ExtensionRuntime {
 		registerProvider: (name, config, extensionPath = "<unknown>") => {
 			runtime.pendingProviderRegistrations.push({ name, config, extensionPath });
 		},
+		registerNativeProvider: (provider, extensionPath = "<unknown>") => {
+			runtime.pendingNativeProviderRegistrations.push({ provider, extensionPath });
+		},
 		unregisterProvider: (name) => {
 			runtime.pendingProviderRegistrations = runtime.pendingProviderRegistrations.filter((r) => r.name !== name);
+			runtime.pendingNativeProviderRegistrations = runtime.pendingNativeProviderRegistrations.filter(
+				(r) => r.provider.id !== name,
+			);
 		},
 	};
 
@@ -363,9 +371,14 @@ function createExtensionAPI(
 			runtime.setThinkingLevel(level);
 		},
 
-		registerProvider(name: string, config: ProviderConfig) {
+		registerProvider(providerOrName: Provider | string, config?: ProviderConfig) {
 			runtime.assertActive();
-			runtime.registerProvider(name, config, extension.path);
+			if (typeof providerOrName === "string") {
+				if (!config) throw new Error("Provider config is required when registering by name");
+				runtime.registerProvider(providerOrName, config, extension.path);
+				return;
+			}
+			runtime.registerNativeProvider(providerOrName, extension.path);
 		},
 
 		unregisterProvider(name: string) {

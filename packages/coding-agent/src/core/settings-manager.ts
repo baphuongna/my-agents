@@ -702,36 +702,6 @@ export class SettingsManager {
 		this.save();
 	}
 
-	// mya fork: systemPrompt / appendSystemPrompt accessors (slim-prompt feature)
-	getSystemPrompt(): string | undefined {
-		return this.settings.systemPrompt;
-	}
-
-	setSystemPrompt(value: string | undefined): void {
-		if (value === undefined || value === "") {
-			delete this.globalSettings.systemPrompt;
-		} else {
-			this.globalSettings.systemPrompt = value;
-		}
-		this.markModified("systemPrompt");
-		this.save();
-	}
-
-	getAppendSystemPrompt(): string | string[] | undefined {
-		return this.settings.appendSystemPrompt;
-	}
-
-	setAppendSystemPrompt(value: string | string[] | undefined): void {
-		const v = Array.isArray(value) ? (value.length === 0 ? undefined : value) : value;
-		if (v === undefined || v === "") {
-			delete this.globalSettings.appendSystemPrompt;
-		} else {
-			this.globalSettings.appendSystemPrompt = v;
-		}
-		this.markModified("appendSystemPrompt");
-		this.save();
-	}
-
 	getSteeringMode(): "all" | "one-at-a-time" {
 		return this.settings.steeringMode || "one-at-a-time";
 	}
@@ -1261,6 +1231,36 @@ export class SettingsManager {
 	setWarnings(warnings: WarningSettings): void {
 		this.globalSettings.warnings = { ...warnings };
 		this.markModified("warnings");
+		this.save();
+	}
+
+	// mya fork: systemPrompt / appendSystemPrompt accessors (slim-prompt feature)
+	getSystemPrompt(): string | undefined {
+		return this.settings.systemPrompt;
+	}
+
+	setSystemPrompt(value: string | undefined): void {
+		if (value === undefined || value === "") {
+			delete this.globalSettings.systemPrompt;
+		} else {
+			this.globalSettings.systemPrompt = value;
+		}
+		this.markModified("systemPrompt");
+		this.save();
+	}
+
+	getAppendSystemPrompt(): string | string[] | undefined {
+		return this.settings.appendSystemPrompt;
+	}
+
+	setAppendSystemPrompt(value: string | string[] | undefined): void {
+		const v = Array.isArray(value) ? (value.length === 0 ? undefined : value) : value;
+		if (v === undefined || v === "") {
+			delete this.globalSettings.appendSystemPrompt;
+		} else {
+			this.globalSettings.appendSystemPrompt = v;
+		}
+		this.markModified("appendSystemPrompt");
 		this.save();
 	}
 }
