@@ -2,27 +2,42 @@
 // Responds to initialize, tools/list (with a real inputSchema), tools/call.
 // Echoes MYA_B6_TEST env in the tool description (B6 env-retention verification).
 // NOT a vitest test file (.cjs) — spawned as a child process by mcp.test.ts.
+// Supports BOTH newline-delimited JSON (MCP standard) and Content-Length framing.
 let buf = "";
 process.stdin.on("data", (chunk) => {
   buf += chunk.toString();
-  let idx;
-  while ((idx = buf.indexOf("\r\n\r\n")) >= 0) {
-    const header = buf.slice(0, idx);
-    const bodyStart = idx + 4;
-    const m = header.match(/Content-Length:\s*(\d+)/i);
-    if (!m) { buf = buf.slice(bodyStart); continue; }
-    const len = parseInt(m[1], 10);
-    if (buf.length < bodyStart + len) break;
-    let msg;
-    try { msg = JSON.parse(buf.slice(bodyStart, bodyStart + len)); }
-    catch { buf = buf.slice(bodyStart + len); continue; }
-    buf = buf.slice(bodyStart + len);
-    handle(msg);
+  // Parse newline-delimited JSON (MCP standard) AND Content-Length (legacy)
+  while (buf.length > 0) {
+    // Try Content-Length framing first
+    let idx = buf.indexOf("\r\n\r\n");
+    if (idx >= 0 && idx < 200) {
+      const header = buf.slice(0, idx);
+      const m = header.match(/Content-Length:\s*(\d+)/i);
+      if (m) {
+        const bodyStart = idx + 4;
+        const len = parseInt(m[1], 10);
+        if (buf.length < bodyStart + len) break;
+        let msg;
+        try { msg = JSON.parse(buf.slice(bodyStart, bodyStart + len)); }
+        catch { buf = buf.slice(bodyStart + len); continue; }
+        buf = buf.slice(bodyStart + len);
+        handle(msg);
+        continue;
+      }
+    }
+    // Fall back to newline-delimited JSON
+    let nl = buf.indexOf("\n");
+    if (nl < 0) break;
+    const line = buf.slice(0, nl).trim();
+    buf = buf.slice(nl + 1);
+    if (!line) continue;
+    try { handle(JSON.parse(line)); }
+    catch { /* not JSON — skip */ }
   }
 });
 function send(obj) {
-  const json = JSON.stringify(obj);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
+  // MCP standard: newline-delimited JSON
+  process.stdout.write(JSON.stringify(obj) + "\n");
 }
 function handle(msg) {
   if (msg.method === "initialize") {

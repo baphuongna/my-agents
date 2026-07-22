@@ -244,21 +244,22 @@ export class McpManager {
     }
     const id = ++this.rpcId;
     const req: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
-    const body = JSON.stringify(req);
-    const frame = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
+    // MCP spec: newline-delimited JSON (NOT LSP-style Content-Length framing)
+    const frame = JSON.stringify(req) + "\n";
 
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       stdin.write(frame, (err) => {
         if (err) reject(new Error(`MCP write failed: ${err.message}`));
       });
-      // Timeout after 10s
+      // Timeout after 30s (npx startup can take 10-15s on first run)
+      const timeout = method === "initialize" ? 30_000 : 15_000;
       setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
-          reject(new Error(`MCP request "${method}" timed out (10s)`));
+          reject(new Error(`MCP request "${method}" timed out (${timeout / 1000}s)`));
         }
-      }, 10_000);
+      }, timeout);
     });
   }
 
@@ -278,23 +279,37 @@ export class McpManager {
   private extractMessages(buf: string): { parsed: JsonRpcResponse[]; remainder: string } {
     const parsed: JsonRpcResponse[] = [];
     let remaining = buf;
-    while (true) {
+    // MCP spec: newline-delimited JSON (NOT LSP-style Content-Length framing)
+    // Some servers may also send Content-Length — handle both for compatibility.
+    while (remaining.length > 0) {
+      // Try Content-Length framing first (LSP-style, used by some servers)
       const headerEnd = remaining.indexOf("\r\n\r\n");
-      if (headerEnd < 0) break;
-      const header = remaining.slice(0, headerEnd);
-      const match = header.match(/Content-Length:\s*(\d+)/i);
-      if (!match) break;
-      const len = parseInt(match[1]!, 10);
-      const bodyStart = headerEnd + 4;
-      const bodyEnd = bodyStart + len;
-      if (remaining.length < bodyEnd) break;
-      const body = remaining.slice(bodyStart, bodyEnd);
-      try {
-        parsed.push(JSON.parse(body) as JsonRpcResponse);
-      } catch {
-        // malformed — skip
+      if (headerEnd >= 0 && headerEnd < 200) {
+        const header = remaining.slice(0, headerEnd);
+        const match = header.match(/Content-Length:\s*(\d+)/i);
+        if (match) {
+          const len = parseInt(match[1]!, 10);
+          const bodyStart = headerEnd + 4;
+          const bodyEnd = bodyStart + len;
+          if (remaining.length < bodyEnd) break;
+          try {
+            parsed.push(JSON.parse(remaining.slice(bodyStart, bodyEnd)) as JsonRpcResponse);
+          } catch { /* malformed */ }
+          remaining = remaining.slice(bodyEnd);
+          continue;
+        }
       }
-      remaining = remaining.slice(bodyEnd);
+      // Fall back to newline-delimited JSON (MCP standard)
+      const nlIdx = remaining.indexOf("\n");
+      if (nlIdx < 0) break;
+      const line = remaining.slice(0, nlIdx).trim();
+      remaining = remaining.slice(nlIdx + 1);
+      if (!line) continue;
+      try {
+        parsed.push(JSON.parse(line) as JsonRpcResponse);
+      } catch {
+        // Not valid JSON — could be a log line or partial message, skip
+      }
     }
     return { parsed, remainder: remaining };
   }
