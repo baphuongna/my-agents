@@ -17,17 +17,34 @@ import type { Server } from "node:http";
 import webpush from "web-push";
 
 const SUBSCRIPTIONS_FILE = join(homedir(), ".mya", "agent", "push-subscriptions.json");
+const VAPID_KEYS_FILE = join(homedir(), ".mya", "agent", "vapid-keys.json");
 
-// Configure VAPID once at import time. If env vars are not set, auto-generate
-// ephemeral keys (J2 fix — enables push notifications out-of-the-box for dev).
-// For production persistence, set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY env vars.
+// Configure VAPID. Priority: env vars > persisted file > auto-generate.
+// Keys are persisted to ~/.mya/agent/vapid-keys.json so browser subscriptions
+// survive gateway restarts (ephemeral keys break push on every restart).
 if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
-  const generated = generateVapidKeys();
-  if (!process.env.VAPID_PUBLIC_KEY) process.env.VAPID_PUBLIC_KEY = generated.publicKey;
-  if (!process.env.VAPID_PRIVATE_KEY) process.env.VAPID_PRIVATE_KEY = generated.privateKey;
-  // Warning is printed once — ephemeral keys break existing subscriptions on restart.
-  if (!process.env.VAPID_SUBJECT) {
-    console.warn("[push] VAPID keys auto-generated (ephemeral). Set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY env vars for persistence.");
+  // Try loading persisted keys first
+  let loaded = false;
+  try {
+    if (existsSync(VAPID_KEYS_FILE)) {
+      const saved = JSON.parse(readFileSync(VAPID_KEYS_FILE, "utf8")) as { publicKey: string; privateKey: string };
+      if (saved.publicKey && saved.privateKey) {
+        process.env.VAPID_PUBLIC_KEY = saved.publicKey;
+        process.env.VAPID_PRIVATE_KEY = saved.privateKey;
+        loaded = true;
+      }
+    }
+  } catch { /* corrupt file — fall through to generate */ }
+
+  // No persisted keys — generate and save
+  if (!loaded) {
+    const generated = generateVapidKeys();
+    process.env.VAPID_PUBLIC_KEY = generated.publicKey;
+    process.env.VAPID_PRIVATE_KEY = generated.privateKey;
+    try {
+      mkdirSync(join(homedir(), ".mya", "agent"), { recursive: true, mode: 0o700 });
+      writeFileSync(VAPID_KEYS_FILE, JSON.stringify(generated, null, 2), { mode: 0o600 });
+    } catch { /* best-effort */ }
   }
 }
 webpush.setVapidDetails(
