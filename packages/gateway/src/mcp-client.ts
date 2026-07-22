@@ -19,12 +19,20 @@ export interface McpToolInfo {
   inputSchema?: Record<string, unknown>;
 }
 
-/** MCP server configuration (from ~/.mya/agent/mcp.json or programmatic). */
+/** MCP server configuration (from ~/.mya/agent/mcp.json or programmatic).
+ * Supports two transports:
+ * - stdio: spawn child process (command + args), communicate via stdin/stdout JSON-RPC
+ * - http: POST JSON-RPC to url, optionally with headers (e.g. Authorization) */
 export interface McpServerConfig {
   id: string;
-  command: string;
+  /** stdio transport: command to spawn */
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** http transport: endpoint URL */
+  url?: string;
+  /** http transport: request headers (e.g. Authorization) */
+  headers?: Record<string, string>;
 }
 
 interface JsonRpcRequest {
@@ -65,7 +73,7 @@ export class McpManager {
     if (existing) return; // already registered (possibly started) — don't overwrite
     const server: McpServer = {
       id: cfg.id,
-      command: cfg.command,
+      command: cfg.command ?? cfg.url ?? "",
       args: cfg.args ?? [],
       phase: "Discovered",
       health: "Healthy",
@@ -95,9 +103,28 @@ export class McpManager {
     this.servers.set(id, validated);
 
     try {
-      // Validated → Initializing (spawn process + send initialize).
+      // Validated → Initializing.
       const initializing = transition(validated, "Initializing");
       this.servers.set(id, initializing);
+      const cfg = this.configs.get(id);
+
+      // HTTP transport: no process to spawn — skip directly to initialize via HTTP
+      if (cfg?.url) {
+        const initResult = await this.rpc(id, "initialize", {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "mya", version: "1.0.0" },
+        }) as { capabilities?: Record<string, unknown> };
+        const capabilities = Object.keys(initResult.capabilities ?? {});
+        const toolsResult = await this.rpc(id, "tools/list", {}) as { tools?: McpToolInfo[] };
+        const toolInfos = toolsResult.tools ?? [];
+        this.toolSchemas.set(id, toolInfos);
+        const healthy = transition(initializing, "Healthy");
+        this.servers.set(id, { ...healthy, capabilities, tools: toolInfos.map((t) => t.name) });
+        return this.servers.get(id)!;
+      }
+
+      // stdio transport: spawn process
       const proc = spawn(initializing.command, initializing.args, {
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, ...this.getConfig(id)?.env },
@@ -241,6 +268,10 @@ export class McpManager {
 
   /** Send a JSON-RPC request and await the response. */
   private rpc(serverId: string, method: string, params: unknown): Promise<unknown> {
+    const cfg = this.configs.get(serverId);
+    // HTTP transport: POST JSON-RPC to url
+    if (cfg?.url) return this.rpcHttp(serverId, method, params);
+    // stdio transport: send via child process stdin
     const proc = this.procs.get(serverId);
     const stdin = proc?.stdin;
     if (!proc || !stdin || stdin.destroyed) {
@@ -265,6 +296,60 @@ export class McpManager {
         }
       }, timeout);
     });
+  }
+
+  /** HTTP transport: POST JSON-RPC to the server's URL. */
+  private async rpcHttp(serverId: string, method: string, params: unknown): Promise<unknown> {
+    const cfg = this.configs.get(serverId)!;
+    const id = ++this.rpcId;
+    const req: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
+    const timeout = method === "initialize" ? 30_000 : method === "tools/call" ? 60_000 : 15_000;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      // Streamable HTTP: Accept must include both JSON and SSE (MCP 2025-03-26 spec)
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        ...cfg.headers,
+      };
+      const resp = await fetch(cfg.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(req),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text().catch(() => "?")).slice(0, 200)}`);
+      // Response can be JSON or SSE (text/event-stream). Parse accordingly.
+      const contentType = resp.headers.get("content-type") ?? "";
+      if (contentType.includes("text/event-stream")) {
+        // SSE: parse data: lines until we find our JSON-RPC response
+        const text = await resp.text();
+        for (const line of text.split("\n")) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("data:")) {
+            const json = trimmed.slice(5).trim();
+            if (!json) continue;
+            try {
+              const data = JSON.parse(json) as JsonRpcResponse;
+              if (data.id === id) {
+                if (data.error) throw new Error(`MCP error ${data.error.code}: ${data.error.message}`);
+                return data.result;
+              }
+            } catch (e) { if (e instanceof SyntaxError) continue; throw e; }
+          }
+        }
+        throw new Error(`MCP SSE: no response for id ${id}`);
+      }
+      // Plain JSON response
+      const data = await resp.json() as JsonRpcResponse;
+      if (data.error) throw new Error(`MCP error ${data.error.code}: ${data.error.message}`);
+      return data.result;
+    } catch (e) {
+      if ((e as Error).name === "AbortError") throw new Error(`MCP request "${method}" timed out (${timeout / 1000}s)`);
+      throw new Error(`MCP HTTP error: ${(e as Error).message}`);
+    }
   }
 
   /** Handle a parsed JSON-RPC response. */
