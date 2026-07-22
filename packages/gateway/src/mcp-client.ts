@@ -256,8 +256,8 @@ export class McpManager {
       stdin.write(frame, (err) => {
         if (err) reject(new Error(`MCP write failed: ${err.message}`));
       });
-      // Timeout after 30s (npx startup can take 10-15s on first run)
-      const timeout = method === "initialize" ? 30_000 : 15_000;
+      // Timeout for MCP calls (npx startup is slow; real API calls can take 30s+)
+      const timeout = method === "initialize" ? 30_000 : method === "tools/call" ? 60_000 : 15_000;
       setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);

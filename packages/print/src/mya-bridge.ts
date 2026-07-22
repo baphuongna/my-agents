@@ -1407,8 +1407,12 @@ ${hitLines}`);
                 description: safe.description,
                 parameters: safe.parameters,
                 async execute(_id: string, params: Record<string, unknown>) {
+                  try {
                   const result = await mcp.callTool(cfg.id, toolName, params);
                   return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+                } catch (e) {
+                  return { content: [{ type: "text", text: `[mcp] tool error: ${(e as Error).message}` }], isError: true };
+                }
                 },
               });
             } catch {}
@@ -1430,8 +1434,12 @@ ${hitLines}`);
                 description: safe.description,
                 parameters: safe.parameters,
                 async execute(_id: string, params: Record<string, unknown>) {
+                  try {
                   const result = await mcp.callTool(cfg.id, toolName, params);
                   return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+                } catch (e) {
+                  return { content: [{ type: "text", text: `[mcp] tool error: ${(e as Error).message}` }], isError: true };
+                }
                 },
               });
             } catch {}
@@ -1463,8 +1471,12 @@ ${hitLines}`);
                   description: safe.description,
                   parameters: safe.parameters,
                   async execute(_id: string, params: Record<string, unknown>) {
-                    const result = await mcp.callTool(parts[1]!, toolName, params);
-                    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+                    try {
+                  const result = await mcp.callTool(parts[1]!, toolName, params);
+                  return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+                } catch (e) {
+                  return { content: [{ type: "text", text: `[mcp] tool error: ${(e as Error).message}` }], isError: true };
+                }
                   },
                 });
               } catch {}
