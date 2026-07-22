@@ -1230,6 +1230,54 @@ ${hitLines}`);
       });
     } catch {}
 
+    // ── code (code execution — simplified, no tool() callback) ─────────
+    // Full bidirectional codeexec requires a pi dispatch API (executeRegisteredTool
+    // is added to AgentSession but not yet exposed through ExtensionContext).
+    // This simplified version runs JS/Python with stdout capture + timeout.
+    try {
+      const { spawn } = require("child_process");
+      pi.registerTool({
+        name: "code",
+        label: "Code Execution",
+        description: "Execute JavaScript or Python code and return stdout/stderr. Use for multi-line scripts, calculations, data processing.",
+        parameters: {
+          type: "object",
+          properties: {
+            language: { type: "string", enum: ["javascript", "python"], description: "Programming language" },
+            script: { type: "string", description: "Code to execute" },
+            timeoutMs: { type: "number", description: "Timeout in ms (default 30000, max 60000)" },
+          },
+          required: ["language", "script"],
+        },
+        async execute({ language, script, timeoutMs }: { language: string; script: string; timeoutMs?: number }) {
+          if (language !== "javascript" && language !== "python")
+            return { content: [{ type: "text", text: `[code] unsupported language: ${language}` }], isError: true };
+          const timeout = Math.min(typeof timeoutMs === "number" ? timeoutMs : 30000, 60000);
+          const cmd = language === "javascript" ? "node" : "python3";
+          const args = language === "javascript" ? ["--input-type=module", "-e", script] : ["-c", script];
+          return new Promise((resolve) => {
+            const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], cwd: process.cwd(), timeout: timeout });
+            let stdout = "", stderr = "";
+            child.stdout?.on("data", (d: Buffer) => (stdout += d.toString()));
+            child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
+            const timer = setTimeout(() => { child.kill("SIGTERM"); }, timeout);
+            child.on("close", (code: number | null) => {
+              clearTimeout(timer);
+              const output = stdout + (stderr ? "\n[stderr]\n" + stderr : "");
+              resolve({
+                content: [{ type: "text", text: output || "(no output)" }],
+                isError: code !== null && code !== 0,
+              });
+            });
+            child.on("error", (e: Error) => {
+              clearTimeout(timer);
+              resolve({ content: [{ type: "text", text: `[code] spawn error: ${e.message}` }], isError: true });
+            });
+          });
+        },
+      });
+    } catch {}
+
     // ── delegate_task (subagent) ──────────────────────────────────────
     try {
       // @ts-ignore — cross-package dynamic import resolved by esbuild
@@ -1597,7 +1645,7 @@ ${hitLines}`);
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
       "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /achievements, /webhooks\n" +
-      "Tools: paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search, osv_check, check_url_safety, image_generate, video_generate, kanban, disk_cleanup, cron_create/list/delete/run, delegate_task, MCP tools");
+      "Tools: code, paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search, osv_check, check_url_safety, image_generate, video_generate, kanban, disk_cleanup, cron_create/list/delete/run, delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
     // KEYBOARD SHORTCUTS

@@ -915,6 +915,25 @@ export class AgentSession {
 		return this._toolDefinitions.get(name)?.definition;
 	}
 
+	// mya fork: execute a registered tool by name (for codeexec bridge)
+	/** Execute a tool by name with the given arguments.
+	 * Used by mya-bridge to create a ToolExecutor for the code execution tool.
+	 * Returns the raw AgentToolResult or null if the tool is not found. */
+	async executeRegisteredTool(
+		name: string,
+		args: Record<string, unknown>,
+		options?: { signal?: AbortSignal },
+	): Promise<AgentToolResult | null> {
+		const tool = this._toolRegistry.get(name);
+		if (!tool) return null;
+		const callId = `exec-${name}-${Date.now()}`;
+		try {
+			return await tool.execute(callId, args as never, options?.signal);
+		} catch (e) {
+			return { content: [{ type: "text", text: `Error: ${(e as Error).message}` }], isError: true };
+		}
+	}
+
 	/**
 	 * Set active tools by name.
 	 * Only tools in the registry can be enabled. Unknown tool names are ignored.
@@ -2396,6 +2415,8 @@ export class AgentSession {
 				getAllTools: () => this.getAllTools(),
 				setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
 				refreshTools: () => this._refreshToolRegistry(),
+				// mya fork: expose tool execution for codeexec bridge
+				executeRegisteredTool: (name: string, args: Record<string, unknown>, options?: { signal?: AbortSignal }) => this.executeRegisteredTool(name, args, options),
 				getCommands,
 				setModel: async (model) => {
 					if (!this._modelRuntime.hasConfiguredAuth(model.provider)) return false;

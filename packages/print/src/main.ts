@@ -640,12 +640,20 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       toolsDenied: r.toolsDenied, modelPrefer: r.modelPrefer,
       memoryScope: r.memoryScope,
     })),
-    memoryStats: () => ({
-      facts: brain.factCount,
-      takes: brain.takeCount,
-      tombstones: brain.tombstoneCount,
-      dreamRunning: dreamCycle.running,
-    }),
+    memoryStats: () => {
+      // Report from SQLite (production backend) — Brain counts are stale
+      // because remember/recall use SQLite, not Brain.
+      const sqlStats = sqliteMemory?.stats();
+      const brainStats = { facts: brain.factCount, takes: brain.takeCount, tombstones: brain.tombstoneCount };
+      return {
+        facts: sqlStats?.facts ?? brainStats.facts,
+        workingMemory: sqlStats?.workingMemory ?? 0,
+        episodic: sqlStats?.episodic ?? 0,
+        takes: brainStats.takes,
+        tombstones: brainStats.tombstones,
+        dreamRunning: dreamCycle.running,
+      };
+    },
     dreamTrigger: async () => {
       return await dreamCycle.dream();
     },

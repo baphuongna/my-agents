@@ -102,6 +102,21 @@ export class SqliteMemoryManager implements MemoryStore {
     return this.db;
   }
 
+  /** Count rows in each table — used by gateway /memory/stats endpoint.
+   * Returns the REAL counts from SQLite (the production backend), not Brain. */
+  stats(): { workingMemory: number; episodic: number; facts: number; triples: number } {
+    const count = (table: string): number => {
+      try { return (this.db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as { c: number }).c; }
+      catch { return 0; }
+    };
+    return {
+      workingMemory: count("working_memory"),
+      episodic: count("episodic_memory"),
+      facts: count("facts"),
+      triples: count("triples"),
+    };
+  }
+
   /** Close the database (WAL checkpoint + close). */
   close(): void {
     checkpoint(this.db);

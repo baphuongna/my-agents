@@ -218,7 +218,7 @@ export interface GatewayOptions {
   /** Roles list (from ~/.mya/roles/*.json). */
   rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
   /** Memory/brain stats. */
-  memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
+  memoryStats?: () => { facts: number; workingMemory?: number; episodic?: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   /** Trigger a dream cycle manually. */
   dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
   /** J2: Achievements list (GET /achievements). */
@@ -320,7 +320,7 @@ export class Gateway {
   private readonly skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
   private readonly skillCreate?: (skill: { name: string; description: string; body: string }) => { ok: boolean; error?: string };
   private readonly rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
-  private readonly memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
+  private readonly memoryStats?: () => { facts: number; workingMemory?: number; episodic?: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   private readonly dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
   private readonly achievementsList?: () => { unlocked: Array<{ id: string; name: string; description: string; unlockedAt: number }>; locked: Array<{ id: string; name: string; description: string }>; stats: Record<string, number> };
   private readonly webhooksList?: () => Array<{ id: string; url: string; events: string[]; createdAt: number }>;
