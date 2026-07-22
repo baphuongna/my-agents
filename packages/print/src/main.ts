@@ -289,9 +289,9 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // Build the mya-bridge factory for this session
       const { createMyaBridge } = await import("./mya-bridge.js");
       const myaBridgeFactory = createMyaBridge({
-        auditLog, secretStore, hooks: toolHooks, skillStore, cron,
+        auditLog, secretStore, hooks, skillStore, cron,
         brain, memory, retrievalEngine, lifecycleManager, sqliteMemory,
-        wallet, acp: undefined, sync, collab, packageHost, council, mcp, mcpConfigs,
+        wallet, sync, collab, packageHost, council, mcp, mcpConfigs,
         channels, roleRegistry, achievements,
       });
 
@@ -299,8 +299,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
         ...cronOpts,
-        extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory as (api: unknown) => void | Promise<void> }],
+        extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory }],
       });
+      // Emit session_start so bridge hooks capture the session ID.
+      try { await (result.session as unknown as { bindExtensions: (opts?: unknown) => Promise<void> }).bindExtensions({ mode: "print" }); } catch { /* best-effort */ }
       return result.session as unknown as AgentSession;
     },
   });
