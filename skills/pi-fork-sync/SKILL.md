@@ -1,6 +1,6 @@
 ---
 name: pi-fork-sync
-description: Sync mya fork với upstream pi-coding-agent mới. Quy trình đầy đủ: clone monorepo, sync source, re-apply patches, deep audit. Dùng khi pi có bản mới cần sync.
+description: "Sync mya fork với upstream pi-coding-agent mới. Quy trình đầy đủ — clone monorepo, sync source, re-apply patches, deep audit. Dùng khi pi có bản mới cần sync."
 triggers:
   - sync pi
   - fork pi
