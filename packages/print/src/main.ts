@@ -70,7 +70,21 @@ async function main(): Promise<void> {
     return runSubagentTest(args.slice(1));
   }
   if (args[0] === "serve") {
-    return runWebServer(args.slice(1));
+    // A5: if --supervise flag is set, wrap with GatewaySupervisor (auto-restart).
+    const serveArgs = args.slice(1);
+    if (serveArgs.includes("--supervise") || process.env.MYA_GATEWAY_AUTO_RESTART === "1") {
+      const { GatewaySupervisor } = await import("./gateway-supervisor.js");
+      const portArg = serveArgs.find((a) => a.match(/^\d+$/));
+      const supervisor = new GatewaySupervisor({
+        port: portArg ? parseInt(portArg, 10) : 3999,
+        autoRestart: true,
+        onRestart: (attempt, reason) => console.warn(`[supervisor] ${reason}`),
+        onGiveUp: (reason) => console.error(`[supervisor] ${reason}`),
+      });
+      supervisor.wireSignalHandlers();
+      return supervisor.start();
+    }
+    return runWebServer(serveArgs);
   }
   if (args[0] === "launcher") {
     const { runLauncherLoop } = await import("./launcher.js");

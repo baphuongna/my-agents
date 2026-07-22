@@ -23,6 +23,7 @@ import type { ControlCronJob } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
 import { ApprovalRelay, type ApprovalDecisionPayload } from "./approval-relay.js";
+import { notifyReady, startWatchdog, stopWatchdog, notifyStopping } from "./systemd.js";
 import type { LifecycleGuard } from "@my-agent/cron";
 import { HookRegistry } from "./hooks.js";
 import { CronScheduler } from "@my-agent/cron";
@@ -552,6 +553,10 @@ export class Gateway {
         const port = addr && typeof addr === "object" ? addr.port : this.port;
         // Mark the gateway as booted so /ready returns ok:true (not "booting").
         this.readiness.markBooted();
+        // I1: notify systemd that the gateway is ready (sd_notify READY=1).
+        try { notifyReady(); } catch { /* not under systemd or NOTIFY_SOCKET unset */ }
+        // I1: start watchdog if WatchdogSec= is set in the systemd unit.
+        try { startWatchdog(); } catch { /* best-effort */ }
         resolve({ port, wsPath: `ws://${this.host}:${port}/events` });
       });
     });
@@ -564,6 +569,13 @@ export class Gateway {
   async cronSweep(workerId: string): Promise<void> {
     if (!this.cron) return;
     if (this.cronSweeping) return; // overlapping sweep (a prior job > interval) — skip
+    // F4: cross-process lock — prevents double-sweep in multi-gateway deployments.
+    let releaseLock: (() => void) | null = null;
+    try {
+      const { acquireCronLock } = await import("@my-agent/cron");
+      releaseLock = acquireCronLock(workerId);
+      if (!releaseLock) return; // another gateway holds the lock
+    } catch { /* best-effort — proceed without lock */ }
     this.cronSweeping = true;
     try {
       // Phase 4C: heartbeat — alive marker (every sweep).
@@ -708,6 +720,8 @@ export class Gateway {
       console.warn("[gateway] cron sweep failed (non-fatal):", (e as Error).message);
     } finally {
       this.cronSweeping = false;
+      // F4: release cross-process lock.
+      if (releaseLock) try { releaseLock(); } catch { /* best-effort */ }
     }
   }
 
@@ -1822,6 +1836,9 @@ export class Gateway {
   }
 
   stop(): Promise<void> {
+    // I1: notify systemd that the gateway is stopping (sd_notify STOPPING=1).
+    try { notifyStopping(); } catch { /* best-effort */ }
+    try { stopWatchdog(); } catch { /* best-effort */ }
     return new Promise((resolve) => {
       // Phase 3 wiring: clear the cron sweep interval BEFORE terminating WS,
       // otherwise the timer keeps the event loop alive and http.close() hangs.

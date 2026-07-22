@@ -153,6 +153,10 @@ export const channels = new ChannelRegistry();
 registerBuiltinChannels(channels);
 export const channelRouter = new ChannelSessionRouter();
 
+// ── J2: Achievement tracker (persisted, stat-driven unlock) ──
+import { AchievementTracker } from "@my-agent/audit";
+export const achievements = new AchievementTracker();
+
 // ── Council (multi-model when ≥2 provider keys set, else mock 1-member) ──
 
 /** Known pi-ai provider configs for council multi-model support.

@@ -86,6 +86,7 @@ import type { SecretStore } from "@my-agent/secrets";
 import type { HookRegistry, McpManager, McpServerConfig, ChannelRegistry } from "@my-agent/gateway";
 import type { SkillStore } from "@my-agent/skills";
 import type { CronScheduler } from "@my-agent/cron";
+import { makeCronTools } from "@my-agent/cron";
 import type { Brain, MemoryFacade, RetrievalEngine, LifecycleManager, SqliteMemoryManager } from "@my-agent/memory";
 import { autoCapture, DreamCycle } from "@my-agent/memory";
 import type { Wallet } from "@my-agent/x402";
@@ -120,6 +121,8 @@ export interface MyaBridgeOptions {
   channels?: ChannelRegistry;
   /** Role registry for role-based overlays (prompt + tools + model). */
   roleRegistry?: RoleRegistry;
+  /** J2: Achievement tracker for stat-driven unlock. */
+  achievements?: { recordStat: (key: string, increment?: number) => unknown };
   registerTools?: (pi: MyaPiApi) => void;
 }
 
@@ -373,10 +376,14 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         const e = event as { toolName: string; toolCallId: string; isError?: boolean };
         audit.append({ ts: nowWallclock(), kind: "tool", actor: "agent",
           payload: { phase: "result", tool: e.toolName, callId: e.toolCallId, ok: !e.isError } });
+        // J2: track tool usage for achievements
+        opts.achievements?.recordStat(`tool:${e.toolName}`);
       });
       pi.on("turn_start", (event: unknown) => {
         const e = event as { turnIndex: number };
         audit.append({ ts: nowWallclock(), kind: "channel", actor: "agent", payload: { phase: "turn_start", turn: e.turnIndex } });
+        // J2: track prompt count for achievements
+        opts.achievements?.recordStat("promptsSent");
       });
       pi.on("turn_end", (event: unknown) => {
         const e = event as { turnIndex: number };
@@ -1291,6 +1298,31 @@ ${hitLines}`);
           },
         });
       } catch { /* tool name already registered */ }
+    }
+
+    // ── C6: bridge cron agent tools (cron_create/list/delete/run) ─────
+    if (opts.cron) {
+      try {
+        const cronTools = makeCronTools(opts.cron);
+        for (const tool of cronTools) {
+          try {
+            const meta = tool.meta as typeof tool.meta & { description?: string; label?: string };
+            pi.registerTool({
+              name: tool.meta.name,
+              label: meta.label ?? tool.meta.name,
+              description: meta.description ?? tool.meta.name,
+              parameters: tool.meta.args,
+              async execute(_id: string, params: Record<string, unknown>) {
+                const result = await tool.run(params, null as never);
+                const text = typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
+                return result.ok
+                  ? { content: [{ type: "text", text }] }
+                  : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+              },
+            });
+          } catch { /* already registered */ }
+        }
+      } catch { /* makeCronTools unavailable */ }
     }
 
     if (opts.registerTools) {

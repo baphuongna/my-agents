@@ -30,6 +30,9 @@ import {
   ProviderRegistry,
   streamWithFallback,
   textMock,
+  scanProviders,
+  isProviderConfigured,
+  manifestToProfile,
 } from "@my-agent/ai";
 import { assemblePrompt, defaultStableTier } from "@my-agent/prompts";
 import { randomBytes } from "node:crypto";
@@ -107,6 +110,11 @@ export interface AgentConfig {
   /** A2: max subagent spawn depth (default 2). Prevents infinite recursion.
    * Depth 1 = subagents can't spawn their own subagents. */
   maxSpawnDepth?: number;
+  /** R4-2: cross-device approval relay. When present, DangerFullAccess tools
+   * (bash) route approval requests through the relay instead of being denied
+   * by the stub. The relay broadcasts to connected WS clients (web dashboard)
+   * and resolves when a decision arrives. */
+  approvalRelay?: { request: (payload: { callId: string; tool: string; reason: string; requiredMode: string; currentMode: string; argsSummary?: string }) => Promise<{ decision: "Allow" | "Deny"; reason: string }> };
 }
 
 /** Subagent lifecycle status. */
@@ -230,6 +238,14 @@ export function createAgent(config: AgentConfig = {}): Agent {
     for (const bridge of autoDetectPiAiProviders(tryResolve)) {
       if (!existingIds.has(bridge.id)) providers.register(bridge);
     }
+    // B1: discover provider packages from ~/.mya/providers/*.json + node_modules.
+    try {
+      for (const manifest of scanProviders()) {
+        if (!isProviderConfigured(manifest)) continue;
+        const profile = manifestToProfile(manifest);
+        if (profile && !existingIds.has(profile.id)) providers.register(profile);
+      }
+    } catch { /* provider-discovery is best-effort */ }
     // Always register a mock fallback so the agent runs without a key.
     providers.register(textMock("(no provider configured — mock echo)", "mock-fallback"));
   }
@@ -408,6 +424,24 @@ export function createAgent(config: AgentConfig = {}): Agent {
       signal,
       // A1: forward maxToolRounds from config (default 25 in loop.ts).
       maxToolRounds: config.maxToolRounds,
+      // R4-2: wire relay-backed approval channel (replaces stub that denies bash).
+      approval: config.approvalRelay
+        ? {
+            request: async (r) => {
+              const result = await config.approvalRelay!.request({
+                callId: r.call.id,
+                tool: r.call.name,
+                reason: r.reason,
+                requiredMode: r.requiredMode,
+                currentMode: r.currentMode,
+                argsSummary: JSON.stringify(r.call.args).slice(0, 500),
+              });
+              return result.decision === "Allow"
+                ? { decision: "Allow" as const }
+                : { decision: "Deny" as const, reason: result.reason };
+            },
+          }
+        : undefined,
     });
   }
 
