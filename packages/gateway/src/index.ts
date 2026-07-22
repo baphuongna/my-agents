@@ -213,12 +213,20 @@ export interface GatewayOptions {
   mcpDiscover?: (id: string) => Promise<string[]>;
   /** Skills list. */
   skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
+  /** Skills create (H7: POST /skills/create). */
+  skillCreate?: (skill: { name: string; description: string; body: string }) => { ok: boolean; error?: string };
   /** Roles list (from ~/.mya/roles/*.json). */
   rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
   /** Memory/brain stats. */
   memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   /** Trigger a dream cycle manually. */
   dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
+  /** J2: Achievements list (GET /achievements). */
+  achievementsList?: () => { unlocked: Array<{ id: string; name: string; description: string; unlockedAt: number }>; locked: Array<{ id: string; name: string; description: string }>; stats: Record<string, number> };
+  /** H9: Webhooks list (GET /webhooks). */
+  webhooksList?: () => Array<{ id: string; url: string; events: string[]; createdAt: number }>;
+  /** H9: Webhook add (POST /webhooks). */
+  webhookAdd?: (webhook: { url: string; events: string[] }) => { id: string };
   /** Optional: trigger an immediate run of a cron job. */
   cronRunNow?: (jobId: string) => void | Promise<void>;
   /** Optional: remove a job from the underlying cron scheduler. */
@@ -310,9 +318,13 @@ export class Gateway {
   private readonly mcpConnect?: (id: string) => Promise<void>;
   private readonly mcpDiscover?: (id: string) => Promise<string[]>;
   private readonly skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
+  private readonly skillCreate?: (skill: { name: string; description: string; body: string }) => { ok: boolean; error?: string };
   private readonly rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
   private readonly memoryStats?: () => { facts: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
   private readonly dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
+  private readonly achievementsList?: () => { unlocked: Array<{ id: string; name: string; description: string; unlockedAt: number }>; locked: Array<{ id: string; name: string; description: string }>; stats: Record<string, number> };
+  private readonly webhooksList?: () => Array<{ id: string; url: string; events: string[]; createdAt: number }>;
+  private readonly webhookAdd?: (webhook: { url: string; events: string[] }) => { id: string };
   private readonly cronRunNow?: (jobId: string) => void | Promise<void>;
   private readonly cronRemove?: (jobId: string) => boolean;
   private readonly cronAdd?: (job: ControlCronJob) => void;
@@ -415,9 +427,13 @@ export class Gateway {
     this.mcpConnect = opts.mcpConnect;
     this.mcpDiscover = opts.mcpDiscover;
     this.skillsList = opts.skillsList;
+    this.skillCreate = opts.skillCreate;
     this.rolesList = opts.rolesList;
     this.memoryStats = opts.memoryStats;
     this.dreamTrigger = opts.dreamTrigger;
+    this.achievementsList = opts.achievementsList;
+    this.webhooksList = opts.webhooksList;
+    this.webhookAdd = opts.webhookAdd;
     this.cronRunNow = opts.cronRunNow;
     this.cronRemove = opts.cronRemove;
     this.cronAdd = opts.cronAdd;
@@ -1481,6 +1497,54 @@ export class Gateway {
         // ── Skills ──
         if (url.pathname === "/skills" && req.method === "GET" && this.skillsList) {
           return send(200, this.skillsList());
+        }
+        // H7: skill creation (POST /skills/create)
+        if (url.pathname === "/skills/create" && req.method === "POST" && this.skillCreate) {
+          let body = "";
+          req.on("data", (c: Buffer) => (body += c.toString()));
+          req.on("end", () => {
+            try {
+              const { name, description, body: skillBody } = JSON.parse(body || "{}") as { name?: string; description?: string; body?: string };
+              if (!name || !skillBody) return send(400, { error: "name + body required" });
+              const result = this.skillCreate!({ name, description: description ?? "", body: skillBody });
+              return result.ok ? send(200, { ok: true }) : send(400, { error: result.error ?? "failed" });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        // J2: achievements (GET /achievements)
+        if (url.pathname === "/achievements" && req.method === "GET" && this.achievementsList) {
+          return send(200, this.achievementsList());
+        }
+        // H9: webhooks (GET/POST /webhooks)
+        if (url.pathname === "/webhooks" && req.method === "GET" && this.webhooksList) {
+          return send(200, this.webhooksList());
+        }
+        if (url.pathname === "/webhooks" && req.method === "POST" && this.webhookAdd) {
+          let body = "";
+          req.on("data", (c: Buffer) => (body += c.toString()));
+          req.on("end", () => {
+            try {
+              const { url: hookUrl, events } = JSON.parse(body || "{}") as { url?: string; events?: string[] };
+              if (!hookUrl) return send(400, { error: "url required" });
+              const result = this.webhookAdd!({ url: hookUrl, events: events ?? [] });
+              return send(200, { ok: true, id: result.id });
+            } catch (e) { return send(400, { error: (e as Error).message }); }
+          });
+          return;
+        }
+        // H8: auth status (GET /auth/status) — returns configured provider list
+        if (url.pathname === "/auth/status" && req.method === "GET") {
+          const providers: Array<{ id: string; configured: boolean }> = [];
+          for (const [key, id] of [
+            ["OPENAI_API_KEY", "openai"], ["ANTHROPIC_API_KEY", "anthropic"],
+            ["GOOGLE_API_KEY", "google"], ["DEEPSEEK_API_KEY", "deepseek"],
+            ["GROQ_API_KEY", "groq"], ["MISTRAL_API_KEY", "mistral"],
+            ["XAI_API_KEY", "xai"], ["OPENROUTER_API_KEY", "openrouter"],
+          ] as const) {
+            providers.push({ id, configured: !!process.env[key] });
+          }
+          return send(200, { providers, webauthn: !!this.webAuthn });
         }
         // ── Roles ──
         if (url.pathname === "/roles" && req.method === "GET" && this.rolesList) {

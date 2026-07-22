@@ -19,10 +19,10 @@ import { nowWallclock } from "@my-agent/core";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config, achievements } from "./shared-instances.js";
 import { loadRoles as loadRolesRegistry } from "@my-agent/core";
 
 
@@ -488,6 +488,18 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // F2 fix: instantiate lifecycle guard for cron flapping detection.
   const lifecycleGuard = new LifecycleGuard();
 
+  // H9: simple in-memory webhook registry.
+  const webhookRegistry = new (class {
+    private hooks: Array<{ id: string; url: string; events: string[]; createdAt: number }> = [];
+    list() { return [...this.hooks]; }
+    add(hook: { url: string; events: string[] }) {
+      const ts = nowWallclock();
+      const id = `wh-${ts.toString(36)}`;
+      this.hooks.push({ id, ...hook, createdAt: ts });
+      return { id };
+    }
+  })();
+
   const gw = new Gateway({
     port,
     // Phase 0C: token-free rootHtml. The dashboard obtains the token via an
@@ -625,6 +637,26 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     dreamTrigger: async () => {
       return await dreamCycle.dream();
     },
+    // J2: achievements endpoint
+    achievementsList: () => {
+      return {
+        unlocked: achievements.listUnlocked(),
+        locked: achievements.listLocked(),
+        stats: (achievements as unknown as { stats: Record<string, number> }).stats,
+      };
+    },
+    // H7: skill creation endpoint
+    skillCreate: ({ name, description, body: skillBody }) => {
+      try {
+        const skillDir = join(homedir(), ".mya", "agent", "skills", name);
+        mkdirSync(skillDir, { recursive: true });
+        writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\n${skillBody}\n`);
+        return { ok: true };
+      } catch (e) { return { ok: false, error: (e as Error).message }; }
+    },
+    // H9: webhook registry (in-memory)
+    webhooksList: () => webhookRegistry.list(),
+    webhookAdd: (hook) => webhookRegistry.add(hook),
     // Pi tracks its own queue depth via session.isIdle + queue internals.
     // We expose busy=1/0 as a simple proxy (since pi's queue isn't directly observable).
     poolQueueDepth: (sessionId: string) => {
