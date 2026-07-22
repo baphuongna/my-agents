@@ -40,8 +40,11 @@ export class GatewaySupervisor {
     const port = this.opts.port ?? 3999;
     const autoRestart = this.opts.autoRestart ?? process.env.MYA_GATEWAY_AUTO_RESTART === "1";
 
+    let lastExitCode: number | null = null;
     do {
-      await this.runOnce(port);
+      lastExitCode = await this.runOnce(port);
+      // Clean exit (code 0) — don't restart
+      if (lastExitCode === 0) break;
       if (!autoRestart) break;
 
       // Prune old restart attempts (outside the window)
@@ -67,7 +70,7 @@ export class GatewaySupervisor {
   }
 
   /** Run the gateway once (spawn + wait for exit). */
-  private async runOnce(port: number): Promise<void> {
+  private async runOnce(port: number): Promise<number> {
     // Write PID file
     try {
       mkdirSync(join(homedir(), ".mya", "agent"), { recursive: true });
@@ -75,9 +78,14 @@ export class GatewaySupervisor {
     } catch { /* best-effort */ }
 
     return new Promise((resolve) => {
-      this.child = spawn(process.execPath, ["dist/mya.js", "serve", "--port", String(port)], {
+      // Resolve script path: try cwd-relative, then module-relative
+      const scriptPath = existsSync(join(process.cwd(), "dist", "mya.js"))
+        ? join(process.cwd(), "dist", "mya.js")
+        : join(__dirname, "..", "..", "dist", "mya.js");
+      this.child = spawn(process.execPath, [scriptPath, "serve", "--port", String(port)], {
         stdio: "inherit",
-        env: { ...process.env, MYA_GATEWAY_SUPERVISED: "1" },
+        // Don't propagate auto-restart env to child (prevents nested supervisor)
+        env: { ...process.env, MYA_GATEWAY_AUTO_RESTART: "", MYA_GATEWAY_SUPERVISED: "1" },
       });
 
       // Write PID file with the CHILD's PID (not supervisor's).
@@ -87,15 +95,13 @@ export class GatewaySupervisor {
 
       this.child.on("exit", (code) => {
         try { if (existsSync(PID_FILE)) { unlinkSync(PID_FILE); } } catch {}
-        // code 0 = clean exit (don't restart)
-        if (code === 0) this.restartAttempts = [];
-        resolve();
+        resolve(code ?? 0);
       });
 
       this.child.on("error", (err) => {
         console.error(`[supervisor] gateway process error: ${err.message}`);
         try { if (existsSync(PID_FILE)) { unlinkSync(PID_FILE); } } catch {}
-        resolve();
+        resolve(1);
       });
     });
   }

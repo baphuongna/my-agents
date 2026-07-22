@@ -201,6 +201,8 @@ async function main(): Promise<void> {
       extensionHost: packageHost,
       // A1: forward maxToolRounds from central config.
       ...(config.maxToolRounds ? { maxToolRounds: config.maxToolRounds } : {}),
+      // A2: forward maxSpawnDepth from central config.
+      ...(config.maxSpawnDepth ? { maxSpawnDepth: config.maxSpawnDepth } : {}),
       ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
     });

@@ -1364,16 +1364,24 @@ export class Gateway {
         }
         if (url.pathname === "/pair/request" && req.method === "POST" && this.devicePairing) {
           const qr = this.devicePairing.createPairingRequest();
-          return send(200, { ok: true, qr, encoded: encodePairingQR(qr) });
+          const encoded = encodePairingQR(qr);
+          // Map to frontend PairCode shape: { code } for display + qr/encoded for QR rendering
+          return send(200, { ok: true, code: encoded.slice(0, 8).toUpperCase(), qr, encoded });
         }
-        // DELETE /pair/devices/:id must be checked before GET /pair/devices
-        const pairRevokeMatch = url.pathname.match(/^\/pair\/devices\/([^/]+)$/);
-        if (pairRevokeMatch && req.method === "DELETE" && this.devicePairing) {
+        // DELETE /pair/devices/:id AND POST /pair/devices/:id/revoke (frontend compat)
+        const pairRevokeMatch = url.pathname.match(/^\/pair\/devices\/([^/]+)(\/revoke)?$/);
+        if (pairRevokeMatch && (req.method === "DELETE" || (req.method === "POST" && pairRevokeMatch[2])) && this.devicePairing) {
           this.devicePairing.revokeDevice(pairRevokeMatch[1]!);
           return send(200, { ok: true });
         }
-        if (url.pathname === "/pair/devices" && req.method === "GET" && this.devicePairing) {
-          return send(200, this.devicePairing.listDevices());
+        if (url.pathname === "/pair/devices" && req.method === "GET" && !req.headers.accept?.includes("text/html") && this.devicePairing) {
+          // Map PairedDevice → frontend Device shape { id, name, pairedAt }
+          const devices = this.devicePairing.listDevices().map((d) => ({
+            id: d.deviceId,
+            name: d.deviceId.slice(0, 12),
+            pairedAt: new Date(d.pairedAt).toISOString(),
+          }));
+          return send(200, devices);
         }
         if (url.pathname === "/pair/accept" && req.method === "POST" && this.devicePairing) {
           let body = "";
@@ -1546,6 +1554,23 @@ export class Gateway {
               return send(200, { ok: true, id: result.id });
             } catch (e) { return send(400, { error: (e as Error).message }); }
           });
+          return;
+        }
+        // H9: webhook test (POST /webhooks/:id/test) — fire test event
+        const webhookTestMatch = url.pathname.match(/^\/webhooks\/([^/]+)\/test$/);
+        if (webhookTestMatch && req.method === "POST" && this.webhooksList) {
+          const hook = this.webhooksList().find((h) => h.id === webhookTestMatch[1]);
+          if (!hook) return send(404, { error: "webhook not found" });
+          // Fire-and-forget test request
+          fetch(hook.url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ event: "test", timestamp: nowWallclock() }),
+            signal: AbortSignal.timeout(10_000),
+          }).then(
+            (res) => send(200, { ok: res.ok, status: res.status }),
+            (err) => send(200, { ok: false, error: (err as Error).message }),
+          );
           return;
         }
         // H8: auth status (GET /auth/status) — returns provider map matching frontend

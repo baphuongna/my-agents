@@ -15,18 +15,27 @@ export function isSystemdAvailable(): boolean {
   return !!process.env.NOTIFY_SOCKET;
 }
 
-/** Send sd_notify (via datagram socket to NOTIFY_SOCKET). */
+/** Send sd_notify via the appropriate socket type (Unix datagram or UDP).
+ * systemd's NOTIFY_SOCKET is normally a Unix-domain datagram socket path
+ * (or @abstract). */
 function sdNotify(state: string): void {
   const socket = process.env.NOTIFY_SOCKET;
   if (!socket) return;
   try {
-    const sock = createSocket("udp4");
-    const target = socket.startsWith("@") ? `\0${socket.slice(1)}` : socket;
     const msg = Buffer.from(`${state}\n`);
-    // dgram send for Unix domain sockets: msg, offset, length, address-path, callback
-    (sock.send as unknown as (msg: Buffer, offset: number, length: number, address: string, cb: () => void) => void)(msg, 0, msg.length, target, () => sock.close());
+    const target = socket.startsWith("@") ? `\0${socket.slice(1)}` : socket;
+    // systemd NOTIFY_SOCKET is normally a Unix-domain datagram socket.
+    // Node dgram supports sending to Unix paths via the address parameter.
+    const sock = createSocket("udp4");
+    const send = sock.send as unknown as {
+      (msg: Buffer, offset: number, length: number, address: string, cb: (err: Error | null, bytes: number) => void): void;
+    };
+    send(msg, 0, msg.length, target, (err) => {
+      if (err) { /* socket send failed — not under systemd */ }
+      try { sock.close(); } catch { /* best-effort */ }
+    });
     lastNotify = nowWallclock();
-  } catch { /* best-effort */ }
+  } catch { /* best-effort — not under systemd or socket unavailable */ }
 }
 
 /** Notify systemd that the gateway is ready. */
