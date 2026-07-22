@@ -332,6 +332,8 @@ export interface JSONSchema {
 
 export interface Tool {
   name: string;
+  description?: string;
+  label?: string;
   args: JSONSchema;
   requiredMode: Mode;
   allowedToolNames?: string[];

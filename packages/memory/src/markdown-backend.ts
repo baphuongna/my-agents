@@ -3,8 +3,8 @@
  * D1: FileBackend variant with frontmatter-aware markdown structure.
  * Source: §08 Memory, PLAN-FEATURES D1.
  */
-import type { MemoryBackend, MemoryEntry, MemoryHit, MemoryQuery } from "./backends.js";
-import type { WriteResult, MemoryRoleId, Durability } from "@my-agent/core";
+import type { MemoryBackend } from "./backends.js";
+import type { MemoryEntry, MemoryHit, MemoryQuery, WriteResult, MemoryRoleId, Durability } from "@my-agent/core";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { nowWallclock } from "@my-agent/core";
@@ -55,6 +55,7 @@ export class MarkdownBackend implements MemoryBackend {
       .filter((s) => !q || s.toLowerCase().includes(q))
       .map((s, i) => ({
         id: `md-${this.role}-${i}`,
+        role: this.role,
         content: s.trim(),
         score: q ? (s.toLowerCase().match(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))?.length ?? 0) : 1,
       }))

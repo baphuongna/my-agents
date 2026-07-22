@@ -1580,7 +1580,24 @@ export class Gateway {
               return;
             }
           } catch {
-            // Fall through to 404
+            // Fall through to SPA fallback or 404
+          }
+          // SPA history fallback: serve index.html for client-side routes
+          // (paths without a file extension that aren't API calls)
+          if (!extname(url.pathname) && !url.pathname.startsWith("/cron/") &&
+              !url.pathname.startsWith("/sessions/") && !url.pathname.startsWith("/channel/") &&
+              !url.pathname.startsWith("/mcp/") && !url.pathname.startsWith("/pool/")) {
+            const indexPath = join(this.staticDir, "index.html");
+            try {
+              if (existsSync(indexPath)) {
+                const html = readFileSync(indexPath);
+                res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+                res.end(html);
+                return;
+              }
+            } catch {
+              // Fall through to 404
+            }
           }
         }
         return send(404, { error: "not found" });

@@ -8,7 +8,7 @@
  * Source: §07 Tools + §12.3 Cron, PLAN-FEATURES C6.
  */
 import { randomUUID } from "node:crypto";
-import type { ToolImpl } from "../tools/src/registry.js";
+import type { ToolImpl } from "@my-agent/tools";
 import type { ToolResult } from "@my-agent/core";
 import type { CronScheduler, CronJob } from "./index.js";
 
@@ -33,7 +33,7 @@ export function makeCronTools(cron: CronScheduler): ToolImpl[] {
       },
       requiredMode: "WorkspaceWrite",
     },
-    async run(args): Promise<ToolResult> {
+    async run(args: unknown): Promise<ToolResult> {
       const a = args as { name?: string; schedule?: string; prompt?: string; trigger?: string };
       if (!a.name || !a.schedule || !a.prompt) {
         return { callId: "cron_create", ok: false, output: null, error: "name + schedule + prompt required" };
@@ -87,7 +87,7 @@ export function makeCronTools(cron: CronScheduler): ToolImpl[] {
       },
       requiredMode: "WorkspaceWrite",
     },
-    async run(args): Promise<ToolResult> {
+    async run(args: unknown): Promise<ToolResult> {
       const a = args as { id?: string };
       if (!a.id) return { callId: "cron_delete", ok: false, output: null, error: "id required" };
       if (!a.id.startsWith(AGENT_PREFIX)) {
@@ -114,7 +114,7 @@ export function makeCronTools(cron: CronScheduler): ToolImpl[] {
       },
       requiredMode: "WorkspaceWrite",
     },
-    async run(args): Promise<ToolResult> {
+    async run(args: unknown): Promise<ToolResult> {
       const a = args as { id?: string };
       if (!a.id) return { callId: "cron_run", ok: false, output: null, error: "id required" };
       const job = cron.getJob(a.id);

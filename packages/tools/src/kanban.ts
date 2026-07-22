@@ -100,6 +100,7 @@ export const kanbanTool: ToolImpl = {
         const idx = col.tasks.findIndex((t) => t.id === a.task || t.title === a.task);
         if (idx >= 0) {
           const [task] = col.tasks.splice(idx, 1);
+          if (!task) continue;
           task.column = targetCol.id;
           targetCol.tasks.push(task);
           moved = true;

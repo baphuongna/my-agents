@@ -11,6 +11,7 @@
  */
 import type { Channel, ChannelMessage } from "./channels.js";
 import { nowWallclock } from "@my-agent/core";
+import { MsGraphChannel, FeishuChannel, WeChatChannel, SpotifyChannel } from "./channel-adapters-extra.js";
 
 // ── Helper: discover all env vars for a credential ────────────────────────
 function discoverCredentials(prefix: string, defaultVar: string): Array<{ alias?: string; value: string }> {
@@ -634,5 +635,18 @@ export function registerBuiltinChannels(registry: { register: (c: Channel) => vo
       : process.env["MATRIX_ROOM_ID"];
     if (!homeserver || !roomId) continue; // need all three credentials
     registry.register(new MatrixChannel(homeserver, value, roomId, alias));
+  }
+  // E3: Extra channel adapters (MSGraph, Feishu, WeChat, Spotify)
+  for (const { alias } of discoverCredentials("MSGRAPH_CLIENT_ID", "MSGRAPH_CLIENT_ID")) {
+    registry.register(new MsGraphChannel(alias ? `msgraph:${alias}` : "msgraph"));
+  }
+  for (const { alias } of discoverCredentials("FEISHU_APP_ID", "FEISHU_APP_ID")) {
+    registry.register(new FeishuChannel(alias ? `feishu:${alias}` : "feishu"));
+  }
+  for (const { alias } of discoverCredentials("WECHAT_APP_ID", "WECHAT_APP_ID")) {
+    registry.register(new WeChatChannel(alias ? `wechat:${alias}` : "wechat"));
+  }
+  for (const { alias } of discoverCredentials("SPOTIFY_ACCESS_TOKEN", "SPOTIFY_ACCESS_TOKEN")) {
+    registry.register(new SpotifyChannel(alias ? `spotify:${alias}` : "spotify"));
   }
 }

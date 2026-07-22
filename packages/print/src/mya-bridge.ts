@@ -58,6 +58,8 @@ import {
   registerWebTools,
   registerFetchTools,
   loadWebConfig,
+  builtinTools,
+  type ToolImpl,
 } from "@my-agent/tools";
 import { applyEdits, computeLineHashes } from "@my-agent/tools";
 import { rankedCompact } from "@my-agent/prompts";
@@ -1263,6 +1265,33 @@ ${hitLines}`);
         });
       }).catch(() => {});
     } catch {}
+
+    // ── bridge builtinTools from @my-agent/tools into pi TUI ─────────
+    // These tools (osv_check, check_url_safety, image_generate, video_generate,
+    // kanban, disk_cleanup) exist in @my-agent/tools but the TUI uses pi's own
+    // tool system. We bridge them via pi.registerTool() so they appear in the TUI.
+    const BRIDGE_TOOL_NAMES = new Set([
+      "osv_check", "check_url_safety", "image_generate", "video_generate", "kanban", "disk_cleanup",
+    ]);
+    for (const tool of builtinTools) {
+      if (!BRIDGE_TOOL_NAMES.has(tool.meta.name)) continue;
+      try {
+        const meta = tool.meta as typeof tool.meta & { description?: string; label?: string };
+        pi.registerTool({
+          name: tool.meta.name,
+          label: meta.label ?? tool.meta.name,
+          description: meta.description ?? tool.meta.name,
+          parameters: tool.meta.args,
+          async execute(_id: string, params: Record<string, unknown>) {
+            const result = await tool.run(params, null as never);
+            const text = typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
+            return result.ok
+              ? { content: [{ type: "text", text }] }
+              : { content: [{ type: "text", text: result.error ?? "error" }], isError: true };
+          },
+        });
+      } catch { /* tool name already registered */ }
+    }
 
     if (opts.registerTools) {
       opts.registerTools(pi);

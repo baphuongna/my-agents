@@ -48,6 +48,8 @@ export const urlSafetyTool: ToolImpl = {
     const reasons: string[] = [];
     const warnings: string[] = [];
 
+    const hostname = parsed.hostname.toLowerCase();
+
     // 1. Internal heuristic check (hostname only — R1-fix)
     for (const pattern of BLOCKED_HOSTNAMES) {
       if (pattern.test(hostname)) {
@@ -56,7 +58,6 @@ export const urlSafetyTool: ToolImpl = {
     }
 
     // 2. Shortener warning
-    const hostname = parsed.hostname.toLowerCase();
     if (SHORTENERS.has(hostname)) {
       warnings.push(`URL shortener detected (${hostname}) — destination unknown`);
     }

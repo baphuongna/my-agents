@@ -4,7 +4,6 @@
  * Source: §08 Memory, PLAN-FEATURES D2.
  */
 import type { Brain } from "./brain.js";
-import type { Fact } from "./brain.js";
 
 export interface LearningNode { id: string; label: string; type: string; weight: number; }
 export interface LearningEdge { from: string; to: string; kind: "learned-from" | "related-to" | "built-on"; }
@@ -16,28 +15,20 @@ export function deriveLearningGraph(brain: Brain, topic?: string): LearningGraph
   const edges: LearningEdge[] = [];
   const nodeMap = new Map<string, LearningNode>();
 
-  // Get all facts from the brain
-  const facts = brain.extractFacts("");
-  const entityFacts: Fact[] = [];
-  // Access internal facts via backlinks/extractFacts
-  for (const f of facts) {
-    if (topic && !f.entity.toLowerCase().includes(topic.toLowerCase())) continue;
-    entityFacts.push(f);
-  }
+  // Get all facts from the brain (returns { factId, kind, value })
+  const facts = brain.extractFacts();
 
-  // Create nodes from entities
-  for (const f of entityFacts) {
-    if (!nodeMap.has(f.entity)) {
-      const node: LearningNode = {
-        id: f.entity.toLowerCase().replace(/\s+/g, "-"),
-        label: f.entity,
-        type: f.kind,
-        weight: 1,
-      };
-      nodeMap.set(f.entity, node);
+  // Create nodes from fact values
+  for (const f of facts) {
+    if (topic && !f.value.toLowerCase().includes(topic.toLowerCase())) continue;
+    const label = f.value.split(" ").slice(0, 3).join(" ");
+    const id = label.toLowerCase().replace(/\s+/g, "-");
+    if (!nodeMap.has(id)) {
+      const node: LearningNode = { id, label, type: f.kind, weight: 1 };
+      nodeMap.set(id, node);
       nodes.push(node);
     } else {
-      nodeMap.get(f.entity)!.weight++;
+      nodeMap.get(id)!.weight++;
     }
   }
 
@@ -47,25 +38,22 @@ export function deriveLearningGraph(brain: Brain, topic?: string): LearningGraph
     if (link.kind === "bare") continue;
     const fromId = link.from.toLowerCase().replace(/\s+/g, "-");
     const toId = link.to.toLowerCase().replace(/\s+/g, "-");
-    if (nodeMap.has(link.from) || nodeMap.has(link.to)) {
+    if (nodeMap.has(fromId) || nodeMap.has(toId)) {
       edges.push({ from: fromId, to: toId, kind: "related-to" });
     }
   }
 
-  // Create learned-from edges based on source grouping
-  const bySource = new Map<string, Fact[]>();
-  for (const f of entityFacts) {
-    const group = bySource.get(f.source) ?? [];
-    group.push(f);
-    bySource.set(f.source, group);
+  // Create learned-from edges based on kind grouping
+  const byKind = new Map<string, string[]>();
+  for (const f of facts) {
+    const group = byKind.get(f.kind) ?? [];
+    const id = f.value.split(" ").slice(0, 3).join(" ").toLowerCase().replace(/\s+/g, "-");
+    if (nodeMap.has(id)) group.push(id);
+    byKind.set(f.kind, group);
   }
-  for (const [, group] of bySource) {
+  for (const [, group] of byKind) {
     for (let i = 1; i < group.length; i++) {
-      edges.push({
-        from: group[0]!.entity.toLowerCase().replace(/\s+/g, "-"),
-        to: group[i]!.entity.toLowerCase().replace(/\s+/g, "-"),
-        kind: "learned-from",
-      });
+      edges.push({ from: group[0]!, to: group[i]!, kind: "learned-from" });
     }
   }
 

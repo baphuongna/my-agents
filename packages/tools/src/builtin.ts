@@ -511,10 +511,11 @@ export const builtinTools: ToolImpl[] = [
   // C4+C5: security tools
   osvCheckTool,
   urlSafetyTool,
-  // C1+C2+C3: generation + kanban tools
+  // C1+C2+C3+J4: generation + kanban + disk cleanup tools
   imageGenTool,
   videoGenTool,
   kanbanTool,
+  diskCleanupTool,
 ];
 
 function globToRegex(pattern: string): RegExp {

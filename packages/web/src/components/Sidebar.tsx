@@ -7,6 +7,7 @@ import {
   Activity, BarChart3, Clock, Cpu, FileText, FolderOpen, Settings,
   Terminal, MessageSquare, Radio, Plug, Package, Database,
   PanelLeftClose, PanelLeftOpen, Zap, Bell, Users, KeyRound,
+  UserCircle, Webhook, Smartphone, Award, Cat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
@@ -34,6 +35,11 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/skills", label: "Skills", icon: Package, group: "config" },
   { path: "/sync", label: "Sync", icon: Database, group: "config" },
   { path: "/keys", label: "API Keys", icon: KeyRound, group: "config" },
+  { path: "/profiles", label: "Profiles", icon: UserCircle, group: "config" },
+  { path: "/webhooks", label: "Webhooks", icon: Webhook, group: "config" },
+  { path: "/pairing", label: "Pairing", icon: Smartphone, group: "config" },
+  { path: "/achievements", label: "Achievements", icon: Award, group: "config" },
+  { path: "/pets", label: "Pets", icon: Cat, group: "config" },
   { path: "/config", label: "Config", icon: Settings, group: "config" },
   { path: "/status", label: "System", icon: Activity, group: "config" },
 ];

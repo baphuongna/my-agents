@@ -54,6 +54,13 @@ export default defineConfig({
       "/tools": "http://127.0.0.1:3999",
       "/health": "http://127.0.0.1:3999",
       "/ready": "http://127.0.0.1:3999",
+      "/profiles": "http://127.0.0.1:3999",
+      "/webhooks": "http://127.0.0.1:3999",
+      "/pair": "http://127.0.0.1:3999",
+      "/achievements": "http://127.0.0.1:3999",
+      "/skills": "http://127.0.0.1:3999",
+      "/auth": "http://127.0.0.1:3999",
+      "/approval": "http://127.0.0.1:3999",
     },
   },
 });

@@ -10,6 +10,21 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { nowWallclock } from "@my-agent/core";
 
+/** Calculate directory size recursively. */
+function dirSize(dir: string): number {
+  let total = 0;
+  try {
+    for (const entry of readdirSync(dir)) {
+      const fullPath = join(dir, entry);
+      try {
+        const stat = statSync(fullPath);
+        total += stat.isFile() ? stat.size : dirSize(fullPath);
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return total;
+}
+
 const SCAN_DIRS = [
   join(homedir(), ".mya", "sessions"),
   join(homedir(), ".mya", "logs"),
@@ -49,7 +64,7 @@ export const diskCleanupTool: ToolImpl = {
             const stat = statSync(fullPath);
             const age = now - stat.mtimeMs;
             if (age > maxAge) {
-              const sizeBytes = stat.isFile() ? stat.size : this.dirSize(fullPath);
+              const sizeBytes = stat.isFile() ? stat.size : dirSize(fullPath);
               stale.push({ path: fullPath, sizeBytes, ageDays: Math.round(age / 86_400_000) });
               totalSize += sizeBytes;
             }
@@ -81,17 +96,3 @@ export const diskCleanupTool: ToolImpl = {
     };
   },
 };
-
-// Helper not on ToolImpl — inline as utility
-function dirSize(dir: string): number {
-  let size = 0;
-  try {
-    for (const entry of readdirSync(dir)) {
-      const stat = statSync(join(dir, entry));
-      size += stat.isFile() ? stat.size : dirSize(join(dir, entry));
-    }
-  } catch { /* skip */ }
-  return size;
-}
-// Attach helper
-(diskCleanupTool as unknown as { _dirSize?: (d: string) => number })._dirSize = dirSize;
