@@ -512,6 +512,21 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     }
   })();
 
+  // Pre-start MCP servers (connect + discover tools) BEFORE gateway accepts
+  // sessions. This ensures MCP tools are available when the first session's
+  // system prompt is built. Without this, mcp.start() is fire-and-forget and
+  // tools register AFTER the prompt is already assembled → LLM can't see them.
+  for (const cfg of mcpConfigs) {
+    try {
+      console.log(`[mcp] starting ${cfg.id}...`);
+      await mcp.start(cfg.id);
+      const tools = mcp.getToolInfos(cfg.id);
+      console.log(`[mcp] ${cfg.id}: ${tools.length} tools discovered`);
+    } catch (e) {
+      console.warn(`[mcp] ${cfg.id} failed: ${(e as Error).message}`);
+    }
+  }
+
   const gw = new Gateway({
     port,
     // Phase 0C: token-free rootHtml. The dashboard obtains the token via an

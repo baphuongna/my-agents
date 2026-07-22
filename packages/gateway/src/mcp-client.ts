@@ -56,9 +56,13 @@ export class McpManager {
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffers = new Map<string, string>();
 
-  /** Register a server config (does not start it). */
+  /** Register a server config (does not start it).
+   * Idempotent: if the server is already started (Healthy/Degraded/Initializing),
+   * preserve its state — only update the config + create entry if new. */
   register(cfg: McpServerConfig): void {
     this.configs.set(cfg.id, cfg); // B6: retain full config (incl. env) for spawn-time merge.
+    const existing = this.servers.get(cfg.id);
+    if (existing) return; // already registered (possibly started) — don't overwrite
     const server: McpServer = {
       id: cfg.id,
       command: cfg.command,

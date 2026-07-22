@@ -1392,6 +1392,30 @@ ${hitLines}`);
 
       // Auto-start configured servers and register their tools
       for (const cfg of opts.mcpConfigs ?? []) {
+        // Check if server is already started (pre-started at gateway boot)
+        const existing = mcp.listServers().find((s) => s.id === cfg.id);
+        if (existing && (existing.phase === "Healthy" || existing.phase === "Degraded")) {
+          // Server already connected — register tools SYNCHRONOUSLY
+          const infos = mcp.getToolInfos(cfg.id);
+          for (const info of infos) {
+            const toolName = info.name;
+            const safe = sanitizeMcpToolInfo(info);
+            try {
+              pi.registerTool({
+                name: `mcp_${cfg.id}_${toolName}`,
+                label: `MCP: ${toolName}`,
+                description: safe.description,
+                parameters: safe.parameters,
+                async execute(_id: string, params: Record<string, unknown>) {
+                  const result = await mcp.callTool(cfg.id, toolName, params);
+                  return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+                },
+              });
+            } catch {}
+          }
+          continue; // skip async start
+        }
+        // Server not yet started — async start (fire-and-forget)
         void mcp.start(cfg.id).then((server) => {
           // B3 fix: use full McpToolInfo[] (incl. inputSchema) so the model sees
           // real parameter schemas instead of empty {}.
