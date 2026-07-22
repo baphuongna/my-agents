@@ -4,8 +4,8 @@
 > thành mya, bao gồm chiến lược, sai lầm gặp phải, bài học, và quy trình sync
 > upstream chính xác nhất.
 >
-> **Pi version hiện tại**: 0.80.10 (synced từ 0.80.6).
-> **Cập nhật cuối**: 2026-07-20 — commit `dc33923`.
+> **Pi version hiện tại**: 0.81.1 (synced từ 0.80.10, trước đó từ 0.80.6).
+> **Cập nhật cuối**: 2026-07-22 — commit `9ba5475`.
 
 ---
 
@@ -30,13 +30,18 @@ harness viết bằng TypeScript. mya thêm:
 
 - **Branding**: pi → mya (APP_NAME, config dir `.mya`, CLI name)
 - **Cron system**: full-featured (22 commits hardening)
-- **Memory system**: SQLite FTS5 + Weibull decay + embeddings
-- **Channels**: multi-platform delivery (Telegram/Discord/Slack/Email/WhatsApp/Signal)
+- **Memory system**: SQLite FTS5 + Weibull decay + embeddings + Brain dream cycle
+- **Channels**: multi-platform delivery (Telegram/Discord/Slack/Email/WhatsApp/Signal/MSGraph/Feishu/WeChat/Spotify)
 - **Skills**: MYA_SKILL_SOURCE gate + compactDescription
 - **Roles system**: role-based agent configuration
 - **Subagent footer**: subagentCount display
 - **Slim-prompt**: systemPrompt override support
-- **Key rotation**: x-mya-rotated-key → RuntimeCredentials.setRuntimeApiKey
+- **Key rotation**: RuntimeCredentials.setRuntimeApiKey
+- **MCP**: Model Context Protocol client (stdio + HTTP Streamable/SSE transport)
+- **Code execution**: `code` tool (JS/Python spawn, registered in mya-bridge)
+- **Tools**: 37+ tools (read/bash/edit/write + browser + web + cron + MCP + code + osv + kanban + disk_cleanup + ...)
+- **Gateway**: 86 HTTP routes + WebSocket streaming + SPA dashboard
+- **Security**: auth gate, CSRF, prompt injection detection (14 patterns), webhook URL validation
 
 **Stack**: TypeScript 7 / Rust-stable via napi-rs / Node ≥20 ESM.
 
@@ -252,32 +257,132 @@ find packages/ -name "*.ts" -exec sed -i \
    s/@earendil-works\/pi-tui/@my-agent\/tui/g' {} +
 
 # VERIFY: zero @earendil remaining
-grep -r "@earendil" packages/ --include="*.ts" | wc -l   # → MUST be 0
+find packages/ -name "*.ts" -not -path "*/source/pi/*" | xargs grep -c "@earendil" | grep -v ":0$"
+# → MUST output nothing (except legitimate refs: PACKAGE_NAME, bundled module keys)
 ```
 
 **Gotcha**: `pi-tui` → `@my-agent/tui` (không phải `pi-tui`). Package name khác
 folder name.
 
+**Legitimate @earendil refs (NOT bugs)**: ~9 refs giữ nguyên trong coding-agent:
+- `PACKAGE_NAME` constant (`config.ts`)
+- Extension loader keys (`extensions/loader.ts`)
+- `OFFICIAL_PACKAGE_NAME` (`startup-ui.ts`)
+- `Symbol.for("@earendil-works/...")` keys (`theme.ts`)
+- Documentation comments (`extensions/types.ts`, `package-manager.ts`)
+Đây là internal package identity, KHÔNG rename.
+
+---
+
+### L9: Monorepo source thiếu generated data files — phải extract từ npm
+
+Sync 0.80.10 → 0.81.1 dùng **GitHub monorepo** (`github.com/earendil-works/pi.git`)
+thay vì npm tarballs. Monorepo tốt hơn vì có TS source đầy đủ, NHƯNG thiếu
+**generated artifacts**:
+
+- `packages/ai/src/providers/data/*.json` (37 provider model catalogs) —
+  generated bởi `scripts/generate-models.ts` codegen. Monorepo không commit chúng.
+- Bundle fail: `Could not resolve "./data/openai.json"` ×37
+
+**Giải pháp**: Extract data files từ npm package:
+```bash
+npm pack @earendil-works/pi-ai@0.81.1
+tar xzf earendil-works-pi-ai-0.81.1.tgz
+cp package/dist/providers/data/*.json packages/pi-ai-src/src/providers/data/
+```
+
+**Quy tắc**: Monorepo source = code logic. npm package = code + generated data.
+Khi dùng monorepo, phải bổ sung generated files từ npm.
+
+---
+
+### L10: MCP framing phải là newline-delimited JSON, KHÔNG phải Content-Length
+
+**Bug CRITICAL phát hiện sync 0.81.1**: MCP client dùng LSP-style
+`Content-Length: N\r\n\r\n{json}` framing, nhưng MCP spec (2024-11-05) dùng
+**newline-delimited JSON** (`{json}\n`).
+
+Tất cả MCP servers (jina-ai, firecrawl, zai-mcp) không parse được requests
+→ `initialize` timeout 10s → ALL servers fail.
+
+**Fix**: `rpc()` gửi `{json}\n`. `extractMessages()` parse cả hai formats (Content-Length
+cho backward compat + newline-delimited cho spec).
+
+**Quy tắc**: MCP ≠ LSP. Kiểm tra protocol spec trước khi implement framing.
+
+---
+
+### L11: MCP `register()` phải IDEMPOTENT — không ghi đè server đang chạy
+
+**Bug CRITICAL**: `register()` unconditionally tạo McpServer mới với
+`phase=Discovered, tools=[]`, ghi đè server đang `Healthy` với tools đã discover.
+
+Mỗi session creation gọi `register()` → xóa sạch MCP state → LLM không thấy tools.
+
+**Fix**: `register()` check `if (existing) return;` — chỉ tạo entry mới nếu chưa tồn tại.
+
+**Quy tắc**: Register/config functions phải IDEMPOTENT. Không bao giờ ghi đè
+state đang chạy khi re-register.
+
+---
+
+### L12: MCP tools phải pre-start + register SYNCHRONOUSLY
+
+MCP tools register async (`void mcp.start().then(...)`) → tools register SAU
+khi system prompt đã build → LLM không thấy.
+
+**Fix**:
+1. Pre-start MCP servers tại gateway boot (trước khi accept sessions)
+2. Bridge check `mcp.listServers().find(s => s.phase === "Healthy")` — nếu đã
+   started, register tools SYNCHRONOUSLY (không async)
+3. Chỉ fallback async start khi server chưa running
+
+**Quy tắc**: Tools phải register BEFORE system prompt build. Async fire-and-forget
+registration = tools vô hình với LLM.
+
+---
+
+### L13: HTTP MCP transport cần Accept header đặc biệt
+
+MCP Streamable HTTP servers (z.ai) yêu cầu:
+```
+Accept: application/json, text/event-stream
+```
+
+Thiếu `text/event-stream` → HTTP 400: "Accept header must include both".
+
+Response có thể là SSE (`data: {json}\n\n`) hoặc plain JSON. Phải parse cả hai.
+
+**Quy tắc**: HTTP MCP ≠ simple REST. Phải handle SSE streaming responses +
+Accept negotiation theo MCP 2025-03-26 spec.
+
 ---
 
 ## 4. Cấu trúc fork hiện tại
 
-### Fork markers (27 locations sau sync 0.80.10)
+### Fork markers (15 locations sau sync 0.81.1)
 
 ```
 packages/coding-agent/src/
-├── main.ts                         # mya -ne hint + CLI flag fallback
+├── main.ts                         # mya -ne hint + CLI flag fallback + builtInExtensions merge
 ├── core/
+│   ├── agent-session.ts            # executeRegisteredTool (codeexec dispatch API)
 │   ├── auth-storage.ts             # 10 backward-compat shims + runtimeOverrides
 │   ├── footer-data-provider.ts     # subagentCount field + accessors
 │   ├── model-registry.ts           # setRuntimeApiKey shim (delegates to RuntimeCredentials)
 │   ├── resource-loader.ts          # MYA_SKILL_SOURCE env gate
 │   ├── settings-manager.ts         # systemPrompt / appendSystemPrompt accessors
-│   ├── skills.ts                   # compactDescription + MYA_SKILL_SOURCE path
-│   ├── sdk.ts                      # re-export AgentSession for subagent.ts
+│   ├── skills.ts                   # compactDescription + MYA_SKILL_SOURCE path + elide <location>
+│   ├── sdk.ts                      # extensionFactories + AgentSession re-export + DefaultResourceLoader ctor
 │   └── system-prompt.ts            # APP_NAME/APP_TITLE dynamic branding
-└── (main.js, core/*.js)            # compiled mirrors (auto-generated by tsc)
+└── core/subagent.ts                # mya-only (subagent spawning system)
 ```
+
+**Patch delta (0.80.10 → 0.81.1)**:
+- `system-prompt.ts` patch **removed** — upstream now uses `${APP_NAME}` dynamic
+- `sdk.ts` patch **expanded** — thêm extensionFactories option + DefaultResourceLoader ctor routing
+- `agent-session.ts` patch **new** — executeRegisteredTool for codeexec bridge
+- `main.ts` patch **adapted** — upstream added builtInExtensions merge, our extensionFactories still appended
 
 ### Files NEW (mya-only, không có trong pi)
 
@@ -357,19 +462,22 @@ grep -rn "mya fork" packages/coding-agent/src/ --include="*.ts" | \
 cat /tmp/existing-patches.txt
 echo "Total: $(wc -l < /tmp/existing-patches.txt) patch locations"
 
-# 0.5. Download upstream npm packages
-mkdir -p /tmp/pi-upstream
-cd /tmp/pi-upstream
-npm pack @earendil-works/coding-agent@${NEW_VERSION}
-npm pack @earendil-works/pi-agent-core@${NEW_VERSION}
-npm pack @earendil-works/pi-ai@${NEW_VERSION}
-npm pack @earendil-works/pi-tui@${NEW_VERSION}
+# 0.5. Clone upstream monorepo (PREFERRED — có TS source đầy đủ)
+#      Monorepo = github.com/earendil-works/pi.git
+#      Packages: agent (pi-agent-core), ai (pi-ai), coding-agent, server, tui
+if [ ! -d source/pi ]; then
+  git clone --depth 1 https://github.com/earendil-works/pi.git source/pi
+else
+  cd source/pi && git pull && cd ../..
+fi
 
-# 0.6. Extract
-for pkg in *.tgz; do
-  dir=$(basename "$pkg" .tgz)
-  mkdir -p "$dir" && tar xzf "$pkg" -C "$dir"
-done
+# 0.6. Extract generated data files từ npm (monorepo thiếu chúng)
+#      pi-ai providers/data/*.json — 37 provider model catalogs
+npm pack @earendil-works/pi-ai@${NEW_VERSION}
+mkdir -p /tmp/pi-data && tar xzf earendil-works-pi-ai-*.tgz -C /tmp/pi-data
+mkdir -p packages/pi-ai-src/src/providers/data
+cp /tmp/pi-data/package/dist/providers/data/*.json packages/pi-ai-src/src/providers/data/
+echo "Copied $(ls packages/pi-ai-src/src/providers/data/*.json | wc -l) data files"
 ```
 
 ### Giai đoạn 1: Sync packages có RỦI RO THẤP nhất trước (15 phút)
@@ -379,16 +487,16 @@ done
 ```bash
 # 1.1. Sync tui (0 patches)
 rm -rf packages/tui/src
-cp -r /tmp/pi-upstream/earendil-works-pi-tui*/package/dist/src/ packages/tui/src/ 2>/dev/null || \
-  cp -r /tmp/pi-upstream/earendil-works-pi-tui*/package/src/ packages/tui/src/
+cp -r source/pi/packages/tui/src/ packages/tui/src/
 
-# 1.2. Sync pi-agent-src (0 patches)
+# 1.2. Sync pi-agent-core → pi-agent-src (0 patches)
 rm -rf packages/pi-agent-src/src
-cp -r /tmp/pi-upstream/earendil-works-pi-agent-core*/package/src/ packages/pi-agent-src/src/
+cp -r source/pi/packages/agent/src/ packages/pi-agent-src/src/
 
-# 1.3. Sync pi-ai-src (0 patches)
+# 1.3. Sync pi-ai → pi-ai-src (0 patches)
 rm -rf packages/pi-ai-src/src
-cp -r /tmp/pi-upstream/earendil-works-pi-ai*/package/src/ packages/pi-ai-src/src/
+cp -r source/pi/packages/ai/src/ packages/pi-ai-src/src/
+# NOTE: providers/data/*.json already extracted in Phase 0.6
 
 # 1.4. Rename imports (all 3 packages)
 find packages/tui/src packages/pi-agent-src/src packages/pi-ai-src/src \
@@ -416,9 +524,9 @@ cp -r packages/coding-agent/src /tmp/coding-agent-src-backup/
 # 2.2. Save mya-only files (don't overwrite)
 cp packages/coding-agent/src/core/subagent.ts /tmp/subagent.ts.bak
 
-# 2.3. Overwrite with upstream
+# 2.3. Overwrite with upstream monorepo source
 rm -rf packages/coding-agent/src
-cp -r /tmp/pi-upstream/earendil-works-coding-agent*/package/src/ packages/coding-agent/src/
+cp -r source/pi/packages/coding-agent/src/ packages/coding-agent/src/
 
 # 2.4. Restore mya-only files
 cp /tmp/subagent.ts.bak packages/coding-agent/src/core/subagent.ts
@@ -475,25 +583,28 @@ file markers list):
 
 | # | Patch | File | Cách re-apply |
 |---|---|---|---|
-| 1 | Extension hint | `main.ts` | Tìm `EXTENSION_LOAD_FAILURE_HINT`, sửa chuỗi |
-| 2 | CLI flag fallback | `main.ts` | Tìm settings load logic, thêm `?? runtimeSettingsManager.getSystemPrompt()` |
-| 3 | MYA_SKILL_SOURCE | `resource-loader.ts` | Tìm `updateSkillsFromPaths`, thêm env gate |
-| 4 | subagentCount | `footer-data-provider.ts` | Thêm field + getter/setter |
-| 5 | systemPrompt accessors | `settings-manager.ts` | Thêm 4 methods + interface fields |
-| 6 | compactDescription | `skills.ts` | Thêm function + dùng trong skill listing |
-| 7 | setRuntimeApiKey shim | `model-registry.ts` | Delegate to `this.runtime.setRuntimeApiKey()` |
-| 8 | APP_NAME branding | `system-prompt.ts` | Thay hardcoded "pi" → `${APP_NAME}` |
-| 9 | AgentSession re-export | `sdk.ts` | `export type { AgentSession }` |
-| 10 | auth-storage shims | `auth-storage.ts` | Thêm `runtimeOverrides` Map + 10 methods |
+| 1 | Extension hint + CLI flag fallback | `main.ts` | Tìm `EXTENSION_LOAD_FAILURE_HINT`, sửa chuỗi. Thêm `?? runtimeSettingsManager.getSystemPrompt()`. **0.81.1**: upstream added `builtInExtensions` merge — our extensionFactories still appended via `options?.extensionFactories` |
+| 2 | MYA_SKILL_SOURCE | `resource-loader.ts` | Tìm `updateSkillsFromPaths`, thêm env gate |
+| 3 | subagentCount | `footer-data-provider.ts` | Thêm field + getter/setter |
+| 4 | systemPrompt accessors | `settings-manager.ts` | Thêm interface fields + getSystemPrompt/getAppendSystemPrompt/setSystemPrompt/setAppendSystemPrompt |
+| 5 | compactDescription + elide location | `skills.ts` | Thêm `compactDescription()` function + dùng thay `skill.description`. **0.81.1**: upstream added `<location>` tag — remove it |
+| 6 | setRuntimeApiKey shim | `model-registry.ts` | Delegate to `this.runtime.setRuntimeApiKey()` |
+| 7 | APP_NAME branding | `system-prompt.ts` | **0.81.1**: REMOVED — upstream now uses `${APP_NAME}` dynamic |
+| 8 | AgentSession re-export + extensionFactories | `sdk.ts` | `export type { AgentSession }`. **0.81.1 NEW**: add `extensionFactories?: InlineExtension[]` to options + pass to `DefaultResourceLoader` ctor |
+| 9 | auth-storage shims | `auth-storage.ts` | Thêm `runtimeOverrides` Map + 10 backward-compat methods |
+| 10 | executeRegisteredTool | `agent-session.ts` | **0.81.1 NEW**: public method for codeexec dispatch API. Also wired as extension action |
 
 ### Giai đoạn 4: Sync vendored (30 phút)
 
 ```bash
 # 4.1. Update vendored compiled JS
 rm -rf vendored/pi vendored/pi-agent-core vendored/pi-ai
-cp -r /tmp/pi-upstream/earendil-works-coding-agent*/package/dist/ vendored/pi/
-cp -r /tmp/pi-upstream/earendil-works-pi-agent-core*/package/dist/ vendored/pi-agent-core/
-cp -r /tmp/pi-upstream/earendil-works-pi-ai*/package/dist/ vendored/pi-ai/
+# Extract từ npm (compiled dist)
+cd /tmp && npm pack @earendil-works/coding-agent@${NEW_VERSION} && npm pack @earendil-works/pi-agent-core@${NEW_VERSION} && npm pack @earendil-works/pi-ai@${NEW_VERSION}
+tar xzf earendil-works-coding-agent-*.tgz && cp -r package/dist/ /home/bom/source/my-agent/vendored/pi/
+tar xzf earendil-works-pi-agent-core-*.tgz && cp -r package/dist/ /home/bom/source/my-agent/vendored/pi-agent-core/
+tar xzf earendil-works-pi-ai-*.tgz && cp -r package/dist/ /home/bom/source/my-agent/vendored/pi-ai/
+cd /home/bom/source/my-agent
 
 # 4.2. Check if upstream deps changed
 diff <(ls vendored/) /tmp/pi-upstream/earendil-works-coding-agent*/package/node_modules/ 2>/dev/null
@@ -782,6 +893,44 @@ Cho mỗi major change:
 2. **Security review** — trust boundaries, injection, auth bypass
 3. **Cold-verify** — independent verification, no prior context
 
+### Deep audit testing (post-sync)
+
+Sau mỗi sync, chạy deep audit với script `/tmp/MEGA-TEST.sh` covering:
+- **86 gateway routes** — mỗi route test method + path + expected non-500
+- **24 web pages** — SPA fallback serve HTML
+- **15+ slash commands** — không crash
+- **37 LLM tools** — LLM list + verify callable
+- **MCP servers** — connect + discover + LLM sees + LLM calls
+- **Browser/Camofox** — end-to-end navigate
+- **WebSocket streaming** — 10 event types
+- **Security** — auth gate, CSRF, XSS, path traversal, webhook URL
+- **Lifecycle flows** — cron, webhook, skill, push full CRUD
+- **Tổng**: ~300 checks, 0 fail
+
+---
+
+## 10. Bugs phát hiện trong deep audit sync 0.80.10 → 0.81.1
+
+15 bugs tìm + fix trong quá trình rà soát kỹ sau sync:
+
+| # | Bug | Mức | Root cause | Fix |
+|---|---|---|---|---|
+| 1 | MCP test dead match | Medium | Regex match `test` action nhưng không handler | Thêm handler (`71e7360`) |
+| 2 | Memory `takes` field missing | Low | `brain.takes` returns `Take[]` (array), code dùng `.size` | Dùng `brain.takeCount` (`71e7360`) |
+| 3 | SPA fallback broken (401) | High | GET `/cron` + Accept:html không trong allowlist | Allowlist + catch-all serving (`7e0666b`) |
+| 4 | EPIPE log spam | Low | WS client disconnect → uncaughtException write EPIPE | Suppress EPIPE in handler (`7db7c0a`) |
+| 5 | Webhook URL validation 400 | Medium | `webhookAdd` returns `{id:''}` but gateway wraps as `ok:true` | Check empty id → 400 (`f77dc1f`) |
+| 6 | Memory split-brain stats | High | `memoryStats()` dùng Brain counts, user tools dùng SQLite | Report SQLite as primary (`9382f24`) |
+| 7 | Code tool not registered | Medium | `makeCodeExecTool` chỉ trong `createAgent`, pi session không thấy | Register simplified `code` tool in bridge (`9382f24`) |
+| 8 | AgentSession dispatch API | Medium | Pi extension API thiếu `executeTool` | Thêm `executeRegisteredTool` method (`9382f24`) |
+| 9 | **MCP framing sai** | **CRITICAL** | Content-Length (LSP) thay vì newline-delimited JSON (MCP spec) | Đổi sang `{json}\n` (`9eec119`) |
+| 10 | **MCP timeout quá ngắn** | High | 10s timeout không đủ cho npx startup | 30s init / 60s call (`9eec119`+`cd710e2`) |
+| 11 | **MCP register() ghi đè** | **CRITICAL** | `register()` tạo McpServer mới `phase=Discovered` → xóa Healthy | Idempotent — skip if exists (`bf83e13`) |
+| 12 | MCP tools register async | High | `void mcp.start().then(...)` → register sau system prompt | Pre-start + sync registration (`bf83e13`) |
+| 13 | MCP callTool không try/catch | Medium | Error propagate unhandled → empty results | Wrap in try/catch → isError (`cd710e2`) |
+| 14 | **HTTP MCP transport** | **NEW FEATURE** | Chỉ stdio, user cần HTTP (Streamable/SSE) | Thêm rpcHttp + Accept negotiation (`9ba5475`) |
+| 15 | VAPID keys ephemeral | Low | Generated mỗi boot, break subscriptions | Persist to `~/.mya/agent/vapid-keys.json` (`34a4981`) |
+
 ---
 
 ## 9. Lịch sử version
@@ -794,6 +943,8 @@ Cho mỗi major change:
 | 2026-07-19 | 0.80.6 | `23c9389` | Pi clone map (3-round review) |
 | 2026-07-20 | **0.80.10** | `238558e` | **PI sync 0.80.6→0.80.10** (585 files, 4 patches obsolete) |
 | 2026-07-20 | 0.80.10 | `dc33923` | contain() undefined ctx fix |
+| 2026-07-22 | **0.81.1** | `f0eaf2e` | **PI sync 0.80.10→0.81.1** (monorepo source, 631 files changed) |
+| 2026-07-22 | 0.81.1 | `9ba5475` | Deep audit: 15 bugs fixed (MCP stdio+HTTP, memory, code tool, SPA) |
 
 ### Sync deltas (0.80.6 → 0.80.10)
 
@@ -808,6 +959,31 @@ Cho mỗi major change:
 | New patches needed | 2 (auth-storage shims, sdk re-export) |
 | Bug fixes during sync | 8 (P1 fixes) |
 | Test baseline | 1824/1824 pass |
+
+### Sync deltas (0.80.10 → 0.81.1)
+
+| Metric | Value |
+|---|---|
+| Files changed | 631 |
+| Source | GitHub monorepo (`earendil-works/pi.git`) |
+| Data files | 37 JSON extracted from npm (providers/data) |
+| Patches re-applied | 14 (from 15 markers; system-prompt.ts removed) |
+| New patches | 3 (sdk.ts extensionFactories, agent-session.ts executeRegisteredTool, main.ts builtInExtensions) |
+| Patches removed | 1 (system-prompt.ts — upstream now uses `${APP_NAME}`) |
+| Bug fixes during deep audit | 15 (MCP stdio+HTTP, memory split-brain, code tool, SPA, EPIPE, webhook) |
+| Test baseline | 1824/1824 pass |
+| MCP servers verified | 4 (jina-ai, firecrawl, zai-mcp stdio + web-search-prime HTTP) |
+| E2E checks | ~300 (gateway routes, TUI, browser, WebSocket, security) |
+
+### Upstream breaking changes (0.80.10 → 0.81.1)
+
+1. **`main.ts`**: upstream added `builtInExtensions` (llama.cpp) merged with `extensionFactories`
+2. **`sdk.ts`**: upstream added `setDefaultStreamFn(streamSimple)` — provider-agnostic default
+3. **`resource-loader.ts`**: upstream added `skillsOverride` callback in constructor
+4. **New package**: `pi-server` (0.81.1) — not used by mya yet
+5. **New extension**: `extensions/llama/` — HuggingFace llama.cpp provider
+6. **`skills.ts`**: upstream added `<location>` tag (mya patch elides it for slimmer prompt)
+7. **`model-runtime.ts`**: `setRuntimeApiKey` now takes `{ allowNetwork: false }` options
 
 ### Upstream breaking changes (0.80.6 → 0.80.10)
 
