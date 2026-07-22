@@ -1512,12 +1512,27 @@ export class Gateway {
           });
           return;
         }
-        // J2: achievements (GET /achievements)
-        if (url.pathname === "/achievements" && req.method === "GET" && this.achievementsList) {
-          return send(200, this.achievementsList());
+        // J2: achievements (GET /achievements) — returns flat array matching frontend
+        // SPA navigation check: if Accept header prefers text/html, skip to SPA fallback.
+        if (url.pathname === "/achievements" && req.method === "GET" && this.achievementsList && !req.headers.accept?.includes("text/html")) {
+          const data = this.achievementsList();
+          const flat = [
+            ...data.unlocked.map((a) => ({ ...a, progress: 1, target: 1, unlocked: true })),
+            ...data.locked.map((a) => {
+              // Derive progress from stats (e.g., tool:count → ten-tools target)
+              const statKey = a.id === "ten-tools" ? Object.keys(data.stats).filter((k) => k.startsWith("tool:")).length
+                : a.id === "first-prompt" ? data.stats.promptsSent ?? 0
+                : a.id === "cron-master" ? data.stats.cronJobsCreated ?? 0
+                : a.id === "memory-keeper" ? data.stats.memoryFacts ?? 0
+                : 0;
+              const target = a.id === "ten-tools" ? 10 : a.id === "cron-master" ? 5 : a.id === "memory-keeper" ? 100 : 1;
+              return { ...a, progress: statKey, target, unlocked: false };
+            }),
+          ];
+          return send(200, flat);
         }
         // H9: webhooks (GET/POST /webhooks)
-        if (url.pathname === "/webhooks" && req.method === "GET" && this.webhooksList) {
+        if (url.pathname === "/webhooks" && req.method === "GET" && this.webhooksList && !req.headers.accept?.includes("text/html")) {
           return send(200, this.webhooksList());
         }
         if (url.pathname === "/webhooks" && req.method === "POST" && this.webhookAdd) {
@@ -1533,18 +1548,19 @@ export class Gateway {
           });
           return;
         }
-        // H8: auth status (GET /auth/status) — returns configured provider list
-        if (url.pathname === "/auth/status" && req.method === "GET") {
-          const providers: Array<{ id: string; configured: boolean }> = [];
-          for (const [key, id] of [
-            ["OPENAI_API_KEY", "openai"], ["ANTHROPIC_API_KEY", "anthropic"],
-            ["GOOGLE_API_KEY", "google"], ["DEEPSEEK_API_KEY", "deepseek"],
-            ["GROQ_API_KEY", "groq"], ["MISTRAL_API_KEY", "mistral"],
-            ["XAI_API_KEY", "xai"], ["OPENROUTER_API_KEY", "openrouter"],
-          ] as const) {
-            providers.push({ id, configured: !!process.env[key] });
-          }
-          return send(200, { providers, webauthn: !!this.webAuthn });
+        // H8: auth status (GET /auth/status) — returns provider map matching frontend
+        if (url.pathname === "/auth/status" && req.method === "GET" && !req.headers.accept?.includes("text/html")) {
+          return send(200, {
+            providers: {
+              google: !!process.env.GOOGLE_API_KEY || !!process.env.GOOGLE_CLIENT_ID,
+              github: !!process.env.GITHUB_TOKEN || !!process.env.GITHUB_CLIENT_ID,
+              anthropic: !!process.env.ANTHROPIC_API_KEY,
+              openai: !!process.env.OPENAI_API_KEY,
+              deepseek: !!process.env.DEEPSEEK_API_KEY,
+              groq: !!process.env.GROQ_API_KEY,
+            },
+            webauthn: !!this.webAuthn,
+          });
         }
         // ── Roles ──
         if (url.pathname === "/roles" && req.method === "GET" && this.rolesList) {

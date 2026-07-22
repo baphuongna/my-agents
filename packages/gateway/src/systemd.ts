@@ -4,6 +4,8 @@
  * Source: §14b Crash Resilience, PLAN-FEATURES I1.
  */
 import { nowWallclock } from "@my-agent/core";
+import { createSocket } from "node:dgram";
+import { existsSync, readFileSync } from "node:fs";
 
 let watchdogTimer: NodeJS.Timeout | undefined;
 let lastNotify = 0;
@@ -13,15 +15,16 @@ export function isSystemdAvailable(): boolean {
   return !!process.env.NOTIFY_SOCKET;
 }
 
-/** Send sd_notify (via systemd-notify binary or datagram socket). */
+/** Send sd_notify (via datagram socket to NOTIFY_SOCKET). */
 function sdNotify(state: string): void {
   const socket = process.env.NOTIFY_SOCKET;
   if (!socket) return;
   try {
-    const { createSocket } = require("node:dgram");
     const sock = createSocket("udp4");
-    sock.send(`${state}\n`, socket.startsWith("@") ? `\0${socket.slice(1)}` : socket);
-    sock.close();
+    const target = socket.startsWith("@") ? `\0${socket.slice(1)}` : socket;
+    const msg = Buffer.from(`${state}\n`);
+    // dgram send for Unix domain sockets: msg, offset, length, address-path, callback
+    (sock.send as unknown as (msg: Buffer, offset: number, length: number, address: string, cb: () => void) => void)(msg, 0, msg.length, target, () => sock.close());
     lastNotify = nowWallclock();
   } catch { /* best-effort */ }
 }
@@ -63,10 +66,9 @@ export function checkScaleToZero(
 /** Get cgroup information for cleanup tracking. */
 export function getCgroupInfo(): { path?: string; memoryUsage?: number } {
   try {
-    const fs = require("node:fs");
     const cgroupPath = "/proc/self/cgroup";
-    if (fs.existsSync(cgroupPath)) {
-      const content = fs.readFileSync(cgroupPath, "utf8");
+    if (existsSync(cgroupPath)) {
+      const content = readFileSync(cgroupPath, "utf8");
       const match = content.match(/:(\/[^:]+)/);
       return { path: match?.[1] };
     }

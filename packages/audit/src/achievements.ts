@@ -55,7 +55,7 @@ export class AchievementTracker {
       "first-subagent": (this.stats.subagentsSpawned ?? 0) >= 1,
       "cron-master": (this.stats.cronJobsCreated ?? 0) >= 5,
       "memory-keeper": (this.stats.memoryFacts ?? 0) >= 100,
-      "night-owl": new Date().getHours() >= 0 && new Date().getHours() < 6,
+      "night-owl": new Date(nowWallclock()).getHours() >= 0 && new Date(nowWallclock()).getHours() < 6,
       "polyglot": new Set(Object.keys(this.stats).filter((k) => k.startsWith("code:"))).size >= 3,
       "speed-demon": (this.stats.fastTurns ?? 0) >= 1,
       "deep-thinker": (this.stats.thinkingTurns ?? 0) >= 10,

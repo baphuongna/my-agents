@@ -434,7 +434,7 @@ export function createAgent(config: AgentConfig = {}): Agent {
                 reason: r.reason,
                 requiredMode: r.requiredMode,
                 currentMode: r.currentMode,
-                argsSummary: JSON.stringify(r.call.args).slice(0, 500),
+                argsSummary: JSON.stringify(r.call.args).replace(/(password|token|secret|apiKey|key|auth)["']?\s*[:=]\s*["']?[^"', }]+/gi, '$1=***REDACTED***').slice(0, 500),
               });
               return result.decision === "Allow"
                 ? { decision: "Allow" as const }

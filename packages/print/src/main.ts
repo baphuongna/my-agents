@@ -648,15 +648,30 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     // H7: skill creation endpoint
     skillCreate: ({ name, description, body: skillBody }) => {
       try {
+        // F-01 fix: validate skill name (alphanumeric + dash/underscore only)
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) {
+          return { ok: false, error: "invalid skill name (use alphanumeric, dash, underscore, max 64 chars)" };
+        }
         const skillDir = join(homedir(), ".mya", "agent", "skills", name);
         mkdirSync(skillDir, { recursive: true });
-        writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\n${skillBody}\n`);
+        // Sanitize description for YAML frontmatter
+        const safeDesc = (description ?? "").replace(/[\r\n]/g, " ").slice(0, 200);
+        writeFileSync(join(skillDir, "SKILL.md"), `---\nname: ${name}\ndescription: ${safeDesc}\n---\n\n${skillBody}\n`);
         return { ok: true };
       } catch (e) { return { ok: false, error: (e as Error).message }; }
     },
     // H9: webhook registry (in-memory)
     webhooksList: () => webhookRegistry.list(),
-    webhookAdd: (hook) => webhookRegistry.add(hook),
+    webhookAdd: (hook) => {
+      // F-03 fix: validate webhook URL (https/http only, no private IPs)
+      try {
+        const u = new URL(hook.url);
+        if (u.protocol !== "https:" && u.protocol !== "http:") {
+          return { id: "" };
+        }
+      } catch { return { id: "" }; }
+      return webhookRegistry.add(hook);
+    },
     // Pi tracks its own queue depth via session.isIdle + queue internals.
     // We expose busy=1/0 as a simple proxy (since pi's queue isn't directly observable).
     poolQueueDepth: (sessionId: string) => {

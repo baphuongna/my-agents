@@ -3,7 +3,7 @@
  * F4: prevents double-sweep when multiple gateway processes share cron.json.
  * Source: §12.3 Cron, PLAN-FEATURES F4.
  */
-import { openSync, closeSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { openSync, closeSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { nowWallclock } from "@my-agent/core";
@@ -30,7 +30,6 @@ export function acquireCronLock(workerId: string): (() => void) | null {
         const c = readFileSync(LOCK_FILE, "utf8").trim();
         if (c.startsWith(`${process.pid}:`)) {
           // Only release if we still own it
-          const { unlinkSync } = require("node:fs");
           unlinkSync(LOCK_FILE);
         }
       } } catch { /* best-effort */ }
