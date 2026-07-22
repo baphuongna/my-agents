@@ -1560,6 +1560,7 @@ export class Gateway {
               const { url: hookUrl, events } = JSON.parse(body || "{}") as { url?: string; events?: string[] };
               if (!hookUrl) return send(400, { error: "url required" });
               const result = this.webhookAdd!({ url: hookUrl, events: events ?? [] });
+              if (!result.id) return send(400, { error: "invalid or rejected webhook URL" });
               return send(200, { ok: true, id: result.id });
             } catch (e) { return send(400, { error: (e as Error).message }); }
           });
