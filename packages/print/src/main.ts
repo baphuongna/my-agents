@@ -793,6 +793,10 @@ process.on("unhandledRejection", (reason) => {
   console.warn("[gateway] unhandledRejection:", reason instanceof Error ? reason.message : String(reason));
 });
 process.on("uncaughtException", (err) => {
+  // EPIPE = client disconnected while we were writing (WebSocket/HTTP).
+  // Expected when browsers/tabs close mid-stream — suppress to avoid log noise.
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === "EPIPE" || err.message === "write EPIPE") return;
   console.warn("[gateway] uncaughtException:", err.message);
 });
 
