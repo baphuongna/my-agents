@@ -4,6 +4,10 @@
 > Source: `docs/mya-vs-hermes-features.md` §14.2 (45 Hermes-only capabilities)
 > Scope: **40 actionable items** (2 deferred: H6, G1b; 1 dropped: A4; #17 cron already done)
 > Review: `docs/PLAN-FEATURES-REVIEW.md` (15 findings, all applied)
+> **✅ STATUS: COMPLETE** — all 40 features implemented + 13 P0 prerequisites
+> Commits: `d3097f6` → `fcf9ef5` (2026-07-21)
+> Verification: 1824/1824 tests pass, bundle succeeds
+> Audits: 6-round deep codebase review (16 parallel explorers) + 3-round per-sprint code/security/cold-verify
 
 ## Spec compliance — how to read this plan
 

@@ -1,7 +1,7 @@
 # mya — Feature Catalog
 
 > Bản tổng hợp tất cả tính năng hiện có của mya.
-> Cập nhật: 2026-07-20. Phiên bản build: PI sync 0.80.10 + comprehensive hardening (commit `dc33923`).
+> Cập nhật: 2026-07-21. Phiên bản build: PLAN-FEATURES complete (commit `fcf9ef5`) — 40 features + 13 P0 prerequisites.
 
 ---
 
@@ -22,8 +22,10 @@
 
 | Tính năng | Mô tả |
 |---|---|
-| **8 providers** | OpenAI, Anthropic, Google, DeepSeek, Groq, Mistral, xAI, OpenRouter (+ custom/BYOK, Ollama local) |
+| **8+ providers** | OpenAI, Anthropic, Google, DeepSeek, Groq, Mistral, xAI, OpenRouter (+ custom/BYOK, Ollama local) |
+| **Provider discovery** | **B1 MỚI**: Boot-time scan `~/.mya/providers/*.json` + `node_modules/@mya/provider-*` — no runtime npm install |
 | **OAuth flow** | Device-code + authorization-code flow cho providers hỗ trợ |
+| **MCP OAuth** | **B2 MỚI**: PKCE flow cho MCP server connections (`startMcpOAuth`/`completeMcpOAuth`) |
 | **Fallback chain** | Thử profiles theo thứ tự; SKIP auth/quota-tainted; auto-retry provider kế tiếp |
 | **Auth/quota taint** | Provider bị lỗi auth/quota được mark taint (không tái dụng trong session) |
 | **Provider registry** | Ordered ProviderProfile list, `eligible()` filter |
@@ -64,8 +66,26 @@
 |---|---|
 | `codegraph` | Code indexing + call graph analysis (LSP-backed) |
 | `lsp` | Language Server Protocol client (symbol lookup, diagnostics) |
-| `codeexec` | Code execution sandbox |
+| `code` | Code execution bridge (JS/Python → tool callbacks, `DELEGATE_BLOCKED_TOOLS` filter) |
 | `screen` | Screen capture (desktop) |
+
+### 3d. Security Tools (MỚI)
+| Tool | Mô tả |
+|---|---|
+| `osv_check` | **C4**: Check package vulnerabilities via OSV.dev API (CVE list + severity) |
+| `check_url_safety` | **C5**: URL reputation check (heuristics + Google Safe Browsing API) |
+
+### 3e. Generation & Productivity Tools (MỚI)
+| Tool | Mô tả |
+|---|---|
+| `image_generate` | **C1**: Image generation via DALL-E / Stability AI (base64 PNG output) |
+| `video_generate` | **C2**: Video generation via Replicate (async polling, URL output) |
+| `kanban` | **C3**: Kanban task board (create_board, add_task, move_task, list) |
+| `disk_cleanup` | **J4**: Scan + clean old logs/cache files (7-day default threshold) |
+| `cron_create` | **C6**: Agent-callable cron job creation (agent-scoped, max 10) |
+| `cron_list` | List agent-created cron jobs |
+| `cron_delete` | Delete agent-created cron job (agent-* prefix only) |
+| `cron_run` | Trigger cron job immediately (manual fire) |
 
 ## 4. Memory System (5-layer pipeline)
 
@@ -85,6 +105,9 @@
 - **Embeddings** — opt-in (local + remote providers)
 - **Weibull decay** — memory forgetting curve
 - **Graph** — knowledge graph (typed edges, entities)
+- **Learning graph** | **D2 MỚI**: Derive concept→concept graph from facts (learned-from, related-to edges, DOT export) |
+- **Markdown backend** | **D1 MỚI**: Frontmatter-aware markdown memory backend (human-editable) |
+- **BrainStore** | **MỚI**: Brain facts persisted to `brain.jsonl` (persistence enabled in createAgent) |
 - **Domains** — conversations, goals, queue, sources, tools, tree, entities, search, sync, diff
 
 **CLI**: `mya memory` (via extension hooks)
@@ -98,8 +121,13 @@
 | **Agent jobs** | Lên lịch LLM agent turns (cron / interval / one-shot) |
 | **Shell jobs** | `MYA_CRON_ALLOW_SHELL=1` — chạy shell command (execFile async) |
 | **Catch-up** | Missed-job recovery (fire-once + advance, at-most-once) |
+| **Catch-up grace** | **F3 MỚI**: `graceMs` field — jobs quá stale bị skip (không fire backlog burst) |
+| **One-shot grace** | **F1 MỚI**: `ONESHOT_GRACE_MS=120s` — ghost one-shots bị skip |
+| **Lifecycle guard** | **F2 MỚI**: Auto-disable flapping jobs (>5 fires/60s) |
+| **Cross-process lock** | **F4 MỚI**: `acquireCronLock()` — PID+timestamp file lock cho multi-gateway |
+| **Agent cron tools** | **C6 MỚI**: `cron_create`/`list`/`delete`/`run` as ToolImpl (agent-scoped) |
 | **Per-job sessions** | `_cron:<jobId>` isolation, concurrency cap (4) |
-| **Multi-platform delivery** | 8 channels: Telegram, Discord, Slack, Email, Webhook, WhatsApp, Signal, Matrix |
+| **Multi-platform delivery** | 12 channels: Telegram, Discord, Slack, Email, Webhook, WhatsApp, Signal, Matrix, MSGraph, Feishu, WeChat, Spotify |
 | **Skills injection** | Per-job skills (`cronLoadSkills`) |
 | **context_from** | Chaining output giữa jobs |
 | **[SILENT]** — suppression | Không broadcast/deliver silent responses |
@@ -114,10 +142,13 @@
 
 | Tính năng | Mô tả |
 |---|---|
-| **8 adapters** | Telegram, Discord, Slack, Email, Webhook, WhatsApp, Signal, Matrix |
+| **12 adapters** | Telegram, Discord, Slack, Email, Webhook, WhatsApp, Signal, Matrix + **MỚI**: MSGraph, Feishu/Lark, WeChat, Spotify |
 | **Aliases** | Nhiều instance cùng loại (vd: 2 Telegram bot) |
-| **Inbound** | Nhận message từ channel → agent turn |
+| **Inbound** | Nhận message từ channel → agent turn (webhook + **MỚI: polling loop 5s**) |
 | **Outbound** | Agent response → channel delivery |
+| **Rate limiting** | **E2 MỚI**: Token bucket per-platform (Telegram 30/s, Discord 50/2s, Slack 1/s) |
+| **Media cache** | **E2 MỚI**: LRU-bounded sticker/media cache per platform (100 entries, 30min TTL) |
+| **scanInject** | **MỚI**: Inbound channel messages scanned for prompt injection (R27-15) |
 | **Rust channels** | crates/mya-channels: Gmail push, Notion, Linq, WeChat, TTS, Voice call |
 
 **CLI**: `mya channels {list|test <id>|add <type> [alias]}`
@@ -140,6 +171,9 @@
 | Tính năng | Mô tả |
 |---|---|
 | **Subagents** | Spawn worker agents (isolation, mergeback) |
+| **Budget isolation** | **MỚI**: `deriveChild`/`releasePrecharge` — subagent có budget riêng (25% parent remaining) |
+| **Spawn depth limit** | **A2 MỚI**: `maxSpawnDepth` config (default 2) — prevents infinite recursion |
+| **Iteration budget** | **A1 MỚI**: `maxToolRounds` config (default 25) — caps provider→tool iterations |
 | **Council** | Multi-model adversarial (3+ advisors khi ≥2 providers) — Skeptic/Pragmatist/Critic pattern |
 | **Workflows** | Multi-phase orchestration (planner → executor → verifier) |
 | **Collab** | Real-time collaboration rooms (WebSocket relay) |
@@ -151,12 +185,15 @@
 |---|---|
 | **wsToken** | Bearer header + HttpOnly SameSite=Strict cookie |
 | **CSRF** | Origin-exact check (same-port) |
-| **WebAuthn** | `/auth/webauthn/{challenge,status,verify}` — passwordless device auth |
-| **Pairing** | `/pair/{request,accept,devices}` — device pairing flow |
-| **Secrets store** | Encrypted secret management (`~/.mya/agent/secrets`) |
-| **Audit log** | Durable audit trail (`mya audit-log`) |
-| **Context scanner** | Pre-turn security scan (secrets/injection in context) |
-| **Permission system** | Tool-level permission review (7-tier) |
+| **WebAuthn** | `/auth/webauthn/{challenge,status,verify}` — passwordless device auth (**MỚI: wired in main.ts**) |
+| **Pairing** | `/pair/{request,accept,devices}` — device pairing flow (**MỚI: wired in main.ts**) |
+| **Secrets store** | Encrypted secret management — 4 variants: env, file, exec, keyring (`@napi-rs/keyring`) |
+| **Audit log** | Durable audit trail — Merkle hash chain + verify + secret redactor |
+| **Context scanner** | Pre-turn security scan (secrets/injection in context) — **MỚI: wired into channel messages** |
+| **Permission system** | Tool-level permission review (7-step pipeline) |
+| **Cross-device approval** | **MỚI**: ApprovalRelay — pending requests broadcast via WS, decisions via WS/HTTP |
+| **Web security guard** | 6-layer gauntlet: secret-in-URL, SSRF metadata, SSRF private, post-redirect, blocklist, bot detection |
+| **x402 wallet** | ECDSA secp256k1, 402-handling with double-pay guard |
 
 ## 10. Desktop App (Tauri)
 
@@ -185,11 +222,23 @@
 | Tính năng | Mô tả |
 |---|---|
 | **PWA** | Manifest + service worker (`sw.js`) — installable |
-| **Push notifications** | `/push/{subscribe,unsubscribe,vapid-key}` |
+| **Push notifications** | `/push/{subscribe,unsubscribe,vapid-key}` — **MỚI: event-kind filter** (approval, channel, health, turn/end only) |
 | **Session list** | Xem/kết nối agent sessions |
 | **Live transcript** | Real-time streaming qua WebSocket |
 | **Mobile nav** | Responsive mobile navigation |
 | **Dashboard** | Stats, memory, provider overview |
+| **Profiles** | **H1 MỚI**: Profile list + switch + 5-step builder wizard |
+| **Skill editor** | **H7 MỚI**: In-browser skill create/edit dialog |
+| **Auth widget** | **H8 MỚI**: OAuth providers card + token status |
+| **Webhooks** | **H9 MỚI**: Webhook management page (list + create + test) |
+| **Pairing UI** | **H10 MỚI**: Device pairing code + QR + revoke |
+| **Terminal** | **H4 MỚI**: xterm.js terminal placeholder |
+| **Console modal** | **H5 MỚI**: Cmd+Shift+C modal wrapper |
+| **Tooltip** | **H11 MỚI**: Warmup debounce (300ms) |
+| **Tool charms** | **H14 MỚI**: Ambient activity text for long-running tools |
+| **Pets page** | **J1 MỚI**: Petdex collection grid |
+| **Achievements** | **J2 MỚI**: Achievement progress bars + unlock tracking |
+| **Force strikethrough** | **H13 MỚI**: `^~~text^~~` markdown variant |
 
 ## 13. Sync & Collaboration
 
@@ -242,6 +291,67 @@
 | **DAP client** | `packages/dap` — connect to debug sessions |
 | **Breakpoints** | Set breakpoints on tool calls |
 | **Launch config** | `launch` / `attach` modes |
+
+---
+
+## 19. Voice (MỚI)
+
+| Tính năng | Mô tả |
+|---|---|
+| **Push-to-talk** | **G1a**: VoicePTTController — record → transcribe → agent turn → TTS. State machine: idle→listening→transcribing→thinking→speaking |
+| **STT backends** | Whisper (local) + Deepgram (cloud) — `packages/gateway/src/voice-stt.ts` |
+| **TTS backends** | MLX/Kokoro (Apple Silicon), say, espeak, festival, pico2wave |
+| **Voice call** | Twilio Media Streams PSTN integration |
+| **Typed events** | `VoiceEvent{kind:"voice";phase:"listening"|"transcribing"|"thinking"|"speaking"}` |
+
+## 20. System / OS Integration (MỚI)
+
+| Tính năng | Mô tả |
+|---|---|
+| **Systemd** | **I1**: `sd_notify(READY=1/WATCHDOG=1/STOPPING=1)` — gateway lifecycle integration |
+| **Watchdog** | Auto-send heartbeat at `WATCHDOG_USEC/2` interval |
+| **Scale-to-zero** | `checkScaleToZero(lastActivity, idleThresholdMs)` — idle shutdown detection |
+| **Gateway supervisor** | **A5**: Auto-restart on crash (3 attempts/60s, exponential backoff, PID file tracking) |
+| **Cgroup info** | `/proc/self/cgroup` reading for cleanup tracking |
+
+## 21. Gamification & Fun (MỚI)
+
+| Tính năng | Mô tả |
+|---|---|
+| **Achievements** | **J2**: 10 achievements (first-prompt, tool-collector, delegator, etc.) — stat-based unlock, persistent storage |
+| **Pets/Petdex** | **J1**: Pet collection page — 3 sprites (cat, dog, robot), unlock by milestones |
+| **Pet sprites** | **H12**: Truecolor half-block ANSI renderer with frame cycling |
+| **Spotify** | **J3**: Play/pause/search via Spotify Web API (`SPOTIFY_ACCESS_TOKEN`) |
+
+## 22. P0 Spec Compliance Fixes (MỚI)
+
+13 spec compliance prerequisites applied before feature work:
+
+| # | Fix | Impact |
+|---|---|---|
+| 1 | `scanInject` wired into channel messages | R27-15 injection defense |
+| 2 | `deriveChild`/`releasePrecharge` in subagent | Budget isolation (§21) |
+| 3 | DevicePairing + WebAuthn wired in main.ts | Endpoints no longer 404 |
+| 4 | Channel polling loop (5s interval) | Inbound polling was dead code |
+| 5 | Config loading mechanism | `~/.mya/agent/config.json` + env vars |
+| 6 | Cross-device approval relay | WS + HTTP approval round-trip |
+| 7 | `compressHistory` wired in createAgent | Compression now runs on length-finish |
+| 8 | Skills index in agent stable tier | Agent SDK path sees skills |
+| 9 | Backend registration fixed | FileBackend via `roleBackends` (no more swallowed throw) |
+| 10 | BrainStore persistence enabled | Brain facts survive restart |
+| 11 | Push notification dispatch fixed | Removed voiceCall gate (logic inversion) |
+| 12 | sweepIdle timers wired | Channel sessions + handles evicted |
+| 13 | Codeexec tool registered | Bridge tool in default surface |
+
+## 23. Provider Discovery (MỚI)
+
+| Tính năng | Mô tả |
+|---|---|
+| **Boot-time discovery** | **B1**: `scanProviders()` scans `~/.mya/providers/*.json` + `node_modules/@mya/provider-*` |
+| **No runtime install** | Users `npm install -g @mya/provider-foo`, mya discovers at boot (§17 compliant) |
+| **Manifest format** | `ProviderPackageManifest` (name, version, apiVersion, baseUrl, envVar, models) |
+| **Configured check** | `isProviderConfigured(manifest)` — env var presence |
+| **Profile conversion** | `manifestToProfile(manifest)` — manifest → ProviderProfile |
 
 ---
 
