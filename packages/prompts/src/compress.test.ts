@@ -576,8 +576,9 @@ describe("CompressionState", () => {
       expect(state.shouldCompress(500, 200)).toBe(false);
     });
 
-    it("returns false when blocked (fallbackStreak ≥ 2)", () => {
+    it("returns false when blocked (fallbackStreak ≥ 2 + cooldown)", () => {
       state.fallbackStreak = 2;
+      state.setCooldown(); // fallbackStreak always comes with cooldown
       expect(state.shouldCompress(500, 200)).toBe(false);
     });
   });
@@ -630,11 +631,19 @@ describe("CompressionState", () => {
       expect(state.isBlocked()).toBe(true);
     });
 
-    it("returns true when fallbackStreak reaches 2", () => {
+    it("returns true when fallbackStreak reaches 2 with cooldown", () => {
       state.fallbackStreak = 1;
       expect(state.isBlocked()).toBe(false);
       state.fallbackStreak = 2;
+      state.setCooldown(); // fallbackStreak always comes with cooldown
       expect(state.isBlocked()).toBe(true);
+    });
+
+    it("resets fallbackStreak after cooldown expires", () => {
+      state.fallbackStreak = 2;
+      state.setCooldown(0); // expired immediately (0 seconds)
+      expect(state.isBlocked()).toBe(false); // cooldown expired + fallbackStreak reset
+      expect(state.fallbackStreak).toBe(0);
     });
   });
 

@@ -642,9 +642,15 @@ export class CompressionState {
 
   /** Is compression currently blocked by anti-thrashing? */
   isBlocked(): boolean {
-    if (this.cooldownUntil > nowWallclock()) return true;
+    const now = nowWallclock();
+    if (this.cooldownUntil > now) return true;
+    // Cooldown expired — reset fallbackStreak (set during the cooldown period).
+    // ineffectiveCount is reset by updateFromResponse when compression succeeds.
+    if (this.cooldownUntil > 0) {
+      this.cooldownUntil = 0;
+      this.fallbackStreak = 0;
+    }
     if (this.ineffectiveCount >= 2) return true;
-    if (this.fallbackStreak >= 2) return true;
     return false;
   }
 
