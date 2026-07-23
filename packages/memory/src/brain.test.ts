@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Brain } from "@my-agent/memory";
 import { nowWallclock } from "@my-agent/core";
+import { bow } from "./brain.js";
 describe("Brain — DoS caps (F7)", () => {
   it("truncates oversized fact content", () => {
     const brain = new Brain();
@@ -209,6 +210,50 @@ describe("§8 Phase 11 — 5 more zero-LLM dream-cycle phases", () => {
       { role: "assistant", content: "Alice is great" },
     ]);
     expect(n).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("§8 brain — bow() bag-of-words tokenizer", () => {
+  it("lowercases and splits on non-word characters", () => {
+    const v = bow("Hello, WORLD!");
+    expect(v.get("hello")).toBe(1);
+    expect(v.get("world")).toBe(1);
+  });
+
+  it("counts term frequency (duplicates accumulate)", () => {
+    const v = bow("the the the cat");
+    expect(v.get("the")).toBe(3);
+    expect(v.get("cat")).toBe(1);
+  });
+
+  it("skips tokens shorter than 2 characters", () => {
+    // "a" and "i" are length-1 → dropped; "it" / "go" (len 2) kept.
+    const v = bow("a i it go");
+    expect(v.has("a")).toBe(false);
+    expect(v.has("i")).toBe(false);
+    expect(v.get("it")).toBe(1);
+    expect(v.get("go")).toBe(1);
+  });
+
+  it("case-insensitively folds repeated words", () => {
+    const v = bow("Rust rust RUST");
+    expect(v.get("rust")).toBe(3);
+  });
+
+  it("does NOT filter stopwords (no stopword list) — 'the' is retained by design", () => {
+    const v = bow("the quick brown fox");
+    expect(v.get("the")).toBe(1);
+    expect(v.get("quick")).toBe(1);
+  });
+
+  it("returns an empty map for an empty string", () => {
+    expect(bow("").size).toBe(0);
+  });
+
+  it("keeps digit-only tokens of length >= 2", () => {
+    const v = bow("error 404 retry 7");
+    expect(v.get("404")).toBe(1);
+    expect(v.has("7")).toBe(false); // single digit dropped
   });
 });
 

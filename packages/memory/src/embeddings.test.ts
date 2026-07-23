@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   SqliteMemoryManager,
   _setEmbedImpl,
+  embedContent,
   warmQueryVec,
   getCachedQueryVec,
   cosine,
@@ -163,5 +164,33 @@ describe("embeddings — recall vector fusion", () => {
     } finally {
       delete process.env.MYA_NO_EMBEDDINGS;
     }
+  });
+});
+
+describe("embedContent — public embed entrypoint", () => {
+  it("returns null for an empty / whitespace-only string", async () => {
+    _setEmbedImpl(() => Promise.resolve(new Float32Array([1])));
+    expect(await embedContent("")).toBeNull();
+    expect(await embedContent("   ")).toBeNull();
+  });
+
+  it("returns null when MYA_NO_EMBEDDINGS is set (disabled wins over the test impl)", async () => {
+    process.env.MYA_NO_EMBEDDINGS = "1";
+    try {
+      _setEmbedImpl(() => Promise.resolve(new Float32Array([1])));
+      expect(await embedContent("rust memory")).toBeNull();
+    } finally {
+      delete process.env.MYA_NO_EMBEDDINGS;
+    }
+  });
+
+  it("delegates to the injected embed impl when enabled", async () => {
+    const expected = new Float32Array([0.5, 0.5]);
+    _setEmbedImpl((t) => Promise.resolve(t.includes("rust") ? expected : null));
+    const v = await embedContent("rust is great");
+    expect(v).not.toBeNull();
+    expect(Array.from(v!)).toEqual([0.5, 0.5]);
+    // non-matching text → impl returns null
+    expect(await embedContent("nothing here")).toBeNull();
   });
 });

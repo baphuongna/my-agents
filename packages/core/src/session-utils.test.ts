@@ -6,6 +6,7 @@ import {
   preflightContextWindow,
   migrateEntry,
   sortKeys,
+  TodoList,
   MAX_GOLDEN_AGE_DAYS,
   MAX_SIZE,
   MODE_RANK,
@@ -342,5 +343,89 @@ describe("core constants", () => {
     expect(Object.keys(MODE_RANK).sort()).toEqual(
       ["Allow", "DangerFullAccess", "Prompt", "ReadOnly", "WorkspaceWrite"],
     );
+  });
+});
+
+// ─── TodoList (structured per-session task list, TodoWrite) ───────────────
+
+describe("TodoList — write / list", () => {
+  it("starts empty", () => {
+    expect(new TodoList().list()).toEqual([]);
+  });
+
+  it("write creates todos defaulting to status 'pending'", () => {
+    const tl = new TodoList();
+    const out = tl.write([{ text: "a" }, { text: "b" }]);
+    expect(out).toHaveLength(2);
+    expect(out.every((t) => t.status === "pending")).toBe(true);
+    expect(out.map((t) => t.text)).toEqual(["a", "b"]);
+  });
+
+  it("assigns each new todo a unique id", () => {
+    const tl = new TodoList();
+    const out = tl.write([{ text: "x" }, { text: "y" }]);
+    expect(out[0]!.id).toBeTruthy();
+    expect(out[1]!.id).toBeTruthy();
+    expect(out[0]!.id).not.toBe(out[1]!.id);
+  });
+
+  it("write with an explicit id creates a todo with that id", () => {
+    const tl = new TodoList();
+    tl.write([{ id: "fixed", text: "x" }]);
+    expect(tl.list()[0]!.id).toBe("fixed");
+  });
+
+  it("list preserves insertion order", () => {
+    const tl = new TodoList();
+    tl.write([{ text: "first" }, { text: "second" }, { text: "third" }]);
+    expect(tl.list().map((t) => t.text)).toEqual(["first", "second", "third"]);
+  });
+});
+
+describe("TodoList — updates by id", () => {
+  it("an update referencing an existing id mutates text + status", () => {
+    const tl = new TodoList();
+    tl.write([{ id: "t1", text: "original" }]);
+    tl.write([{ id: "t1", text: "renamed", status: "completed" }]);
+    const t = tl.list()[0]!;
+    expect(t.text).toBe("renamed");
+    expect(t.status).toBe("completed");
+  });
+
+  it("an update without a status leaves the existing status untouched", () => {
+    const tl = new TodoList();
+    tl.write([{ id: "t1", text: "x", status: "in_progress" }]);
+    tl.write([{ id: "t1", text: "y" }]);
+    expect(tl.list()[0]!.status).toBe("in_progress");
+  });
+
+  it("an update without text leaves the existing text untouched", () => {
+    const tl = new TodoList();
+    tl.write([{ id: "t1", text: "keep-me" }]);
+    tl.write([{ id: "t1", status: "completed" }]);
+    expect(tl.list()[0]!.text).toBe("keep-me");
+  });
+});
+
+describe("TodoList — single in_progress invariant", () => {
+  it("allows exactly one in_progress todo", () => {
+    const tl = new TodoList();
+    tl.write([{ text: "a", status: "in_progress" }]);
+    const inProg = tl.list().filter((t) => t.status === "in_progress");
+    expect(inProg).toHaveLength(1);
+  });
+
+  it("demotes earlier in_progress todos to completed when a new one starts", () => {
+    const tl = new TodoList();
+    tl.write([
+      { text: "first", status: "in_progress" },
+      { text: "second", status: "in_progress" },
+    ]);
+    const list = tl.list();
+    // the LATEST in_progress wins; the earlier is demoted to completed
+    const inProg = list.filter((t) => t.status === "in_progress");
+    expect(inProg).toHaveLength(1);
+    expect(inProg[0]!.text).toBe("second");
+    expect(list.find((t) => t.text === "first")!.status).toBe("completed");
   });
 });

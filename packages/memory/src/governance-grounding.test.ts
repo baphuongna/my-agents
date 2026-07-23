@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { openDB, closeDB, initSchema, storeWorking, recall, applyFeedback, detectContradictions, trackReferent, checkReferent, staleMemories, type DatabasePath } from "@my-agent/memory";
+import { openDB, closeDB, initSchema, storeWorking, recall, applyFeedback, recallWeight, detectContradictions, trackReferent, checkReferent, staleMemories, type DatabasePath } from "@my-agent/memory";
 
 let dbPath: DatabasePath;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,5 +131,26 @@ describe("Phase 5 — Grounding (referent re-verification)", () => {
   afterEach(() => {
     if (db) { try { closeDB(db); } catch { /* */ } }
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* */ }
+  });
+});
+
+describe("recallWeight — pure score × trust", () => {
+  it("multiplies the base score by the trust score", () => {
+    expect(recallWeight(1, 1)).toBeCloseTo(1, 6);
+    expect(recallWeight(0.8, 0.5)).toBeCloseTo(0.4, 6);
+    expect(recallWeight(0.5, 0)).toBe(0);
+  });
+
+  it("is linear in each argument", () => {
+    expect(recallWeight(0.5, 0.5)).toBeCloseTo(0.25, 6);
+    // double the base score at constant trust → double the weight
+    expect(recallWeight(1.0, 0.5)).toBeCloseTo(0.5, 6);
+    // double the trust at constant base score → double the weight
+    expect(recallWeight(0.5, 1.0)).toBeCloseTo(0.5, 6);
+  });
+
+  it("zero trust zeroes the weight regardless of the base score", () => {
+    expect(recallWeight(1, 0)).toBe(0);
+    expect(recallWeight(0.99, 0)).toBe(0);
   });
 });
