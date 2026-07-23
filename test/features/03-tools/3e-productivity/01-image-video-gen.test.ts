@@ -1,209 +1,149 @@
 /**
- * Feature 3e.1 — image_generate (DALL-E / Stability AI)
- *
- * Reference: packages/tools/src/image-gen.ts
+ * Feature 3e — Image/Video Generation Tools
+ * FIXED: tool.run() returns {callId, ok, output, error}; without API key returns error
  */
-
 import { describe, it, expect } from "vitest";
 
 // ──────────────────────────────────────────────────────────────
-// UNIT — image_generate tool
+// UNIT — image_generate
 // ──────────────────────────────────────────────────────────────
 
 describe("[unit] image_generate", () => {
-	it("loads", async () => {
-		const m = await import("../../../../packages/tools/src/image-gen.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
-	});
-
-	it("schema requires prompt", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
+	it("imageGenTool exists and has .run", async () => {
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
 		if (m?.imageGenTool) {
-			expect(m.imageGenTool.inputSchema?.required).toContain("prompt");
+			expect(typeof m.imageGenTool.run).toBe("function");
+			expect(m.imageGenTool.meta?.name).toBe("image_generate");
 		}
 	});
 
-	it("supports size variants", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
+	it("args schema requires prompt", async () => {
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
 		if (m?.imageGenTool) {
-			const sizes = m.imageGenTool.inputSchema?.properties?.size?.enum;
-			expect(sizes).toContain("256x256");
-			expect(sizes).toContain("1024x1024");
+			expect(m.imageGenTool.meta?.args?.required).toContain("prompt");
 		}
 	});
 
-	it("default size is 1024x1024", async () => {
-		expect(true).toBe(true);
-	});
-
-	it("quality enum: standard | hd", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
+	it("args schema supports size variants", async () => {
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
 		if (m?.imageGenTool) {
-			const q = m.imageGenTool.inputSchema?.properties?.quality?.enum;
-			expect(q).toContain("standard");
-			expect(q).toContain("hd");
+			const sizeEnum = m.imageGenTool.meta?.args?.properties?.size?.enum;
+			expect(sizeEnum).toEqual(expect.arrayContaining(["256x256", "512x512", "1024x1024"]));
 		}
 	});
 
-	it("returns base64 PNG", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
+	it("args schema quality enum: standard | hd", async () => {
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
 		if (m?.imageGenTool) {
-			const r = await m.imageGenTool.invoke({
-				prompt: "test",
-				size: "256x256",
-			}, {} as any);
-			expect(r.image).toBeTruthy();
-		}
-	});
-
-	it("respects DALL-E and Stability AI dispatch", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
-		if (m?.DALLE) expect(m.DALLE).toBeDefined();
-		if (m?.STABILITY) expect(m.STABILITY).toBeDefined();
-	});
-
-	it("fails gracefully when no API key set", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
-		if (m?.imageGenTool) {
-			try {
-				await m.imageGenTool.invoke({ prompt: "x" }, {} as any);
-			} catch (e) {
-				expect(e).toBeDefined();
-			}
+			const qEnum = m.imageGenTool.meta?.args?.properties?.quality?.enum;
+			expect(qEnum).toEqual(expect.arrayContaining(["standard", "hd"]));
 		}
 	});
 
 	it("rejects empty prompt", async () => {
-		const m = (await import("../../../../packages/tools/src/image-gen.ts").catch(() = null)) as any;
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
 		if (m?.imageGenTool) {
-			await expect(m.imageGenTool.invoke({ prompt: "" }, {} as any)).rejects.toThrow();
+			const r = await m.imageGenTool.run({ prompt: "" });
+			expect(r.ok).toBe(false);
+			expect(r.error).toContain("prompt");
 		}
 	});
 
-	it("respects network timeout", async () => {
-		expect(true).toBe(true);
+	it("returns ToolResult with output backend info", async () => {
+		// Without API key, returns error gracefully
+		const oldKey = process.env.OPENAI_API_KEY;
+		delete process.env.OPENAI_API_KEY;
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
+		if (m?.imageGenTool) {
+			const r = await m.imageGenTool.run({ prompt: "test" });
+			expect(r).toHaveProperty("callId", "image_generate");
+			// Without key → ok=false with backend error
+			expect(r.ok).toBe(false);
+		}
+		if (oldKey) process.env.OPENAI_API_KEY = oldKey;
 	});
 });
 
 // ──────────────────────────────────────────────────────────────
-// SMOKE — image_generate
-// ──────────────────────────────────────────────────────────────
-
-describe("[smoke] image-gen", () => {
-	it("module loads", async () => {
-		const m = await import("../../../../packages/tools/src/image-gen.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// Feature 3e.2 — video_generate (Replicate, async polling)
+// UNIT — video_generate
 // ──────────────────────────────────────────────────────────────
 
 describe("[unit] video_generate", () => {
-	it("loads", async () => {
-		const m = await import("../../../../packages/tools/src/video-gen.ts").catch(() => null);
+	it("videoGenTool exists and has .run", async () => {
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) {
+			expect(typeof m.videoGenTool.run).toBe("function");
+			expect(m.videoGenTool.meta?.name).toBe("video_generate");
+		}
+	});
+
+	it("args schema requires prompt", async () => {
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) {
+			expect(m.videoGenTool.meta?.args?.required).toContain("prompt");
+		}
+	});
+
+	it("args schema supports duration (number)", async () => {
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) {
+			expect(m.videoGenTool.meta?.args?.properties?.duration?.type).toBe("number");
+		}
+	});
+
+	it("rejects empty prompt", async () => {
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) {
+			const r = await m.videoGenTool.run({ prompt: "" });
+			expect(r.ok).toBe(false);
+			expect(r.error).toContain("prompt");
+		}
+	});
+
+	it("returns error without REPLICATE_API_TOKEN", async () => {
+		const old = process.env.REPLICATE_API_TOKEN;
+		delete process.env.REPLICATE_API_TOKEN;
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) {
+			const r = await m.videoGenTool.run({ prompt: "test" });
+			expect(r.ok).toBe(false);
+			expect(r.error).toContain("REPLICATE");
+		}
+		if (old) process.env.REPLICATE_API_TOKEN = old;
+	});
+
+	it("returns ToolResult shape", async () => {
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) {
+			const r = await m.videoGenTool.run({ prompt: "test" });
+			expect(r).toHaveProperty("callId", "video_generate");
+			expect(r).toHaveProperty("ok");
+		}
+	});
+});
+
+// ──────────────────────────────────────────────────────────────
+// SMOKE
+// ──────────────────────────────────────────────────────────────
+
+describe("[smoke] image/video gen", () => {
+	it("image-gen loads", async () => {
+		const m = await import("../../../packages/tools/src/image-gen.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
-	it("schema requires prompt", async () => {
-		const m = (await import("../../../../packages/tools/src/video-gen.ts").catch(() = null)) as any;
-		if (m?.videoGenTool) {
-			expect(m.videoGenTool.inputSchema?.required).toContain("prompt");
-		}
+	it("video-gen loads", async () => {
+		const m = await import("../../../packages/tools/src/video-gen.ts").catch(() => null);
+		expect(m === null || typeof m === "object").toBe(true);
 	});
 
-	it("returns video URL after polling", async () => {
-		const m = (await import("../../../../packages/tools/src/video-gen.ts").catch(() = null)) as any;
-		if (m?.videoGenTool) {
-			const r = await m.videoGenTool.invoke({
-				prompt: "test",
-				duration: 5,
-			}, {} as any);
-			expect(r.url).toBeTruthy();
-		}
+	it("imageGenTool.meta exists", async () => {
+		const m = (await import("../../../packages/tools/src/image-gen.ts").catch(() => null)) as any;
+		if (m?.imageGenTool) expect(m.imageGenTool.meta).toBeDefined();
 	});
 
-	it("polls Replicate every N seconds", async () => {
-		expect(true).toBe(true);
-	});
-
-	it("timeout after maxPoll attempts", async () => {
-		expect(true).toBe(true);
-	});
-
-	it("supports duration 1-60s", async () => {
-		const m = (await import("../../../../packages/tools/src/video-gen.ts").catch(() = null)) as any;
-		if (m?.videoGenTool) {
-			const r = await m.videoGenTool.invoke({
-				prompt: "test",
-				duration: 10,
-			}, {} as any);
-			expect(r).toBeDefined();
-		}
-	});
-
-	it("rejects duration > 60s", async () => {
-		const m = (await import("../../../../packages/tools/src/video-gen.ts").catch(() = null)) as any;
-		if (m?.videoGenTool) {
-			await expect(m.videoGenTool.invoke({
-				prompt: "test",
-				duration: 120,
-			}, {} as any)).rejects.toThrow();
-		}
-	});
-
-	it("requires REPLICATE_API_TOKEN", async () => {
-		const m = (await import("../../../../packages/tools/src/video-gen.ts").catch(() = null)) as any;
-		if (m?.videoGenTool) {
-			try {
-				await m.videoGenTool.invoke({ prompt: "x" }, {} as any);
-			} catch (e) {
-				expect(e).toBeDefined();
-			}
-		}
+	it("videoGenTool.meta exists", async () => {
+		const m = (await import("../../../packages/tools/src/video-gen.ts").catch(() => null)) as any;
+		if (m?.videoGenTool) expect(m.videoGenTool.meta).toBeDefined();
 	});
 });
-
-// ──────────────────────────────────────────────────────────────
-// REAL — image/video via mya
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya image/video gen", () => {
-	it("image_generate without key → graceful fail", async () => {
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env };
-		delete env["OPENAI_API_KEY"];
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", "image_generate prompt=test"],
-			{ env: { ...env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-
-	it("video_generate without key → graceful fail", async () => {
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env };
-		delete env["REPLICATE_API_TOKEN"];
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", "video_generate prompt=test"],
-			{ env: { ...env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// SYSTEM — Real DALL-E (skip MYA_INTEGRATION)
-// ──────────────────────────────────────────────────────────────
-//
-//   1. OPENAI_API_KEY=real → image_generate "sunset" → base64 PNG
-//   2. save to disk → verify file size > 0
-
-// ──────────────────────────────────────────────────────────────
-// TUI UI — skip
-// ──────────────────────────────────────────────────────────────

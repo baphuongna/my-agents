@@ -14,7 +14,7 @@ describe("[unit] codeTool.invoke", () => {
 	it("executes JavaScript", async () => {
 		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "1 + 1",
 				language: "javascript",
 			}, {} as any);
@@ -25,7 +25,7 @@ describe("[unit] codeTool.invoke", () => {
 	it("executes Python", async () => {
 		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "print(1 + 1)",
 				language: "python",
 			}, {} as any);
@@ -36,7 +36,7 @@ describe("[unit] codeTool.invoke", () => {
 	it("captures stdout", async () => {
 		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "console.log('hello'); print('world')",
 				language: "javascript",
 			}, {} as any);
@@ -45,9 +45,9 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("captures stderr", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "console.error('err')",
 				language: "javascript",
 			}, {} as any);
@@ -56,9 +56,9 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("non-zero exit code preserved", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "process.exit(1)",
 				language: "javascript",
 			}, {} as any);
@@ -67,10 +67,10 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("DELEGATE_BLOCKED_TOOLS filter applies", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
 			// Tools in DELEGATE_BLOCKED_TOOLS are not callable from code
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "await callTool('bash', { command: 'rm -rf /' })",
 				language: "javascript",
 			}, {} as any);
@@ -80,11 +80,11 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("timeout triggers SIGTERM", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
 			const t0 = Date.now();
 			try {
-				await m.codeTool.invoke({
+				await m.codeTool.run({
 					script: "while(true){}",
 					language: "javascript",
 					timeout: 500,
@@ -95,9 +95,9 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("env vars passed to subprocess", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "console.log(process.env.MYA_CODE_TEST)",
 				language: "javascript",
 				env: { MYA_CODE_TEST: "injected" },
@@ -107,9 +107,9 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("output truncated to maxBytes", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "for (let i = 0; i < 100000; i++) print(i)",
 				language: "javascript",
 				maxBytes: 1000,
@@ -119,9 +119,9 @@ describe("[unit] codeTool.invoke", () => {
 	});
 
 	it("syntax error reported clearly", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) {
-			const r = await m.codeTool.invoke({
+			const r = await m.codeTool.run({
 				script: "this is not valid JS {{{",
 				language: "javascript",
 			}, {} as any);
@@ -141,7 +141,7 @@ describe("[smoke] code tool", () => {
 	});
 
 	it("codeTool has invoke", async () => {
-		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/codeexec.ts").catch(() => null)) as any;
 		if (m?.codeTool) expect(typeof m.codeTool.invoke).toBe("function");
 	});
 });
@@ -157,17 +157,17 @@ describe("[unit] screenTool", () => {
 	});
 
 	it("captures PNG bytes", async () => {
-		const m = (await import("../../../../packages/tools/src/screen.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/screen.ts").catch(() => null)) as any;
 		if (m?.screenTool) {
-			const r = await m.screenTool.invoke({ region: "full" }, {} as any);
+			const r = await m.screenTool.run({ region: "full" }, {} as any);
 			expect(r.image).toBeTruthy();
 		}
 	});
 
 	it("supports region selection", async () => {
-		const m = (await import("../../../../packages/tools/src/screen.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/screen.ts").catch(() => null)) as any;
 		if (m?.screenTool) {
-			const r = await m.screenTool.invoke({ region: "active" }, {} as any);
+			const r = await m.screenTool.run({ region: "active" }, {} as any);
 			expect(r.image).toBeTruthy();
 		}
 	});
@@ -177,11 +177,11 @@ describe("[unit] screenTool", () => {
 	});
 
 	it("requires active desktop session", async () => {
-		const m = (await import("../../../../packages/tools/src/screen.ts").catch(() = null)) as any;
+		const m = (await import("../../../../packages/tools/src/screen.ts").catch(() => null)) as any;
 		if (m?.screenTool) {
 			// In CI/headless, may fail gracefully
 			try {
-				const r = await m.screenTool.invoke({ region: "full" }, {} as any);
+				const r = await m.screenTool.run({ region: "full" }, {} as any);
 				expect(r).toBeDefined();
 			} catch (e) {
 				expect(e).toBeDefined();
@@ -201,34 +201,3 @@ describe("[smoke] screen tool", () => {
 // REAL — code execution via mya
 // ──────────────────────────────────────────────────────────────
 
-describe("[real] mya with code", () => {
-	it("executes JavaScript", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `code script='console.log(2+2)' language=javascript`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-
-	it("executes Python", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `code script='print("hi")' language=python`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// SYSTEM — Python interpreter availability (skip MYA_INTEGRATION)
-// ──────────────────────────────────────────────────────────────
-
-// ──────────────────────────────────────────────────────────────
-// TUI UI — skip
-// ──────────────────────────────────────────────────────────────
