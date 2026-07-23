@@ -64,6 +64,17 @@ export { urlSafetyTool } from "./url-safety.js";
 export { imageGenTool } from "./image-gen.js";
 export { videoGenTool } from "./video-gen.js";
 export { kanbanTool } from "./kanban.js";
+export { KanbanDB, migrateJsonToSqlite, kanbanSqliteTool, DB_PATH } from "./kanban-sqlite.js";
+export type {
+  Task,
+  TaskStatus,
+  BlockKind,
+  TaskEvent,
+  TaskComment,
+  NotifySub,
+  CreateTaskInput,
+  ListFilter,
+} from "./kanban-sqlite.js";
 export * from "./lsp-client.js";
 export * from "./lsp-cascade.js";
 export * from "./approval.js";

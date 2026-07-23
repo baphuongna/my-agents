@@ -44,3 +44,16 @@ export { generatePkce, buildAuthUrl, exchangeCode, refreshAccessToken, verifyPkc
 export type { PkcePair, AuthRequest, CallbackResult, TokenResponse } from "./oauth.js";
 export { scanProviders, isProviderConfigured, manifestToProfile, getConfiguredProviders } from "./provider-discovery.js";
 export type { ProviderPackageManifest } from "./provider-discovery.js";
+
+// ── Phase 8: Provider Routing (sticky sessions, route identity) ────────────
+// These helpers are standalone utilities. ProviderProfile is defined in
+// @my-agent/core; to use sticky routing, merge buildStickyExtraBody() output
+// into the adapter's extra_body before streaming.
+export {
+  normalizeRouteBaseUrl,
+  contextRouteMismatch,
+  shouldClearContextPin,
+} from "./route-identity.js";
+export type { RouteConfig, RouteActive } from "./route-identity.js";
+export { buildStickyExtraBody } from "./sticky-session.js";
+export type { StickySessionOpts } from "./sticky-session.js";
