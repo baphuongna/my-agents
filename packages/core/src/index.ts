@@ -18,3 +18,5 @@ export type { TelemetrySnapshot, TelemetryProjection, TelemetryExporter, Span } 
 export * from "./canonical-json.js";
 export * from "./session-utils.js";
 export * from "./roles.js";
+export * from "./redact.js";
+export * from "./threat-scan.js";

@@ -9,8 +9,71 @@
  * Transport: stdio (JSON-RPC 2.0 over child process stdin/stdout).
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import type { McpServer, McpPhase } from "./mcp-lifecycle.js";
+import { nowWallclock } from "@my-agent/core";
+import type { McpServer } from "./mcp-lifecycle.js";
 import { transition, aggregateHealth, availableTools } from "./mcp-lifecycle.js";
+
+// ─── Reliability: failure classification, exception unwrapping ───────────
+// Pure helpers (no state) — exported for direct unit testing.
+
+export type McpFailureClass = "permanent" | "transient";
+
+/** Classify an MCP connect/call failure.
+ * `permanent` failures (bad command, auth, invalid URL, refused host/port) are
+ * unrecoverable without operator action — they get the max cooldown so we don't
+ * hammer a broken server. `transient` failures (timeouts, transient network)
+ * get normal exponential backoff. */
+export function classifyMcpFailure(err: unknown): McpFailureClass {
+  const msg = err instanceof Error ? err.message : String(err);
+  // Permanent: command not found, auth errors, invalid URL
+  if (msg.includes("ENOENT") || msg.includes("not found")) return "permanent";
+  if (msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized")) return "permanent";
+  if (msg.includes("invalid url") || msg.includes("Invalid URL")) return "permanent";
+  if (msg.includes("ECONNREFUSED") && msg.includes("connect")) return "permanent"; // bad port/host
+  return "transient";
+}
+
+/** Unwrap anyio-style exception groups / Node AggregateErrors.
+ * Python MCP servers raise BaseExceptionGroup from anyio TaskGroups; the Node
+ * equivalent is AggregateError (error.cause chains / Promise.allSettled). Prefer
+ * the first non-cancellation (non-AbortError) sub-error so callers see the real
+ * cause instead of a generic group wrapper. */
+export function unwrapExceptionGroup(err: unknown): unknown {
+  if (err instanceof AggregateError && err.errors.length > 0) {
+    for (const sub of err.errors) {
+      if (!(sub instanceof Error) || sub.name !== "AbortError") return sub;
+    }
+    return err.errors[0];
+  }
+  return err;
+}
+
+/** Per-server reconnect-budget tracking (§PLAN-HERMES-PORT Phase 1). */
+interface ReconnectState {
+  sessionProven: boolean; // false until a successful tool call or keepalive
+  reconnectRetries: number; // consecutive unproven reconnects
+  wasParked: boolean; // currently parked (budget exhausted)
+}
+
+const _MAX_RECONNECT_RETRIES = 5; // unproven connects before parking
+const _PARKED_RETRY_INTERVAL = 300_000; // 5 min self-probe for parked servers
+const _BACKOFF_JITTER = 0.2; // ±20% jitter on reconnect/probe delays
+
+const _CONNECT_RETRY_BASE_MS = 30_000;
+const _CONNECT_RETRY_MAX_MS = 600_000;
+
+const _DEFAULT_KEEPALIVE_INTERVAL = 180_000; // 3 min
+const _MIN_KEEPALIVE_INTERVAL = 5_000;
+
+/** Apply ±_BACKOFF_JITTER jitter to a base delay (ms). */
+function jitteredDelay(baseMs: number): number {
+  return Math.round(baseMs * (1 + (Math.random() - 0.5) * 2 * _BACKOFF_JITTER));
+}
+
+/** Unref a timer so it never keeps the event loop alive on its own. */
+function unrefTimer(t: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>): void {
+  t.unref?.();
+}
 
 /** An MCP tool definition returned by tools/list. */
 export interface McpToolInfo {
@@ -64,6 +127,15 @@ export class McpManager {
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffers = new Map<string, string>();
 
+  // ─── Reliability state (per-server, instance-scoped) ───────────────────
+  private reconnectState = new Map<string, ReconnectState>();
+  private connectFailures = new Map<string, number>(); // server → consecutive fail count
+  private connectRetryAfter = new Map<string, number>(); // server → wallclock-ms deadline
+  private keepaliveTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private parkedProbes = new Map<string, ReturnType<typeof setTimeout>>();
+  private reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pingUnsupported = new Set<string>();
+
   /** Register a server config (does not start it).
    * Idempotent: if the server is already started (Healthy/Degraded/Initializing),
    * preserve its state — only update the config + create entry if new. */
@@ -88,6 +160,10 @@ export class McpManager {
   async start(id: string): Promise<McpServer> {
     let server = this.servers.get(id);
     if (!server) throw new Error(`MCP server "${id}" not registered`);
+    // Reliability: respect per-server connect cooldown (exponential backoff).
+    if (this.connectCooldownActive(id)) {
+      throw new Error(`MCP server "${id}" in cooldown (retry later)`);
+    }
     if (server.phase === "Healthy" || server.phase === "Degraded") return server;
     // Allow restart from Stopped: Stopped → Discovered (legal), then the normal path.
     if (server.phase === "Stopped") {
@@ -121,6 +197,7 @@ export class McpManager {
         this.toolSchemas.set(id, toolInfos);
         const healthy = transition(initializing, "Healthy");
         this.servers.set(id, { ...healthy, capabilities, tools: toolInfos.map((t) => t.name) });
+        this.onConnectSuccess(id);
         return this.servers.get(id)!;
       }
 
@@ -175,10 +252,15 @@ export class McpManager {
       const healthy = transition(this.servers.get(id)!, "Healthy");
       this.servers.set(id, { ...healthy, tools, capabilities });
 
+      this.onConnectSuccess(id);
       return this.servers.get(id)!;
     } catch (e) {
-      this.toFailed(id, (e as Error).message); // idempotent — 'error'/'exit' may have set Failed already
-      throw e;
+      // Reliability: unwrap group errors, classify, arm cooldown.
+      const unwrapped = unwrapExceptionGroup(e);
+      const cls = classifyMcpFailure(unwrapped);
+      this.recordConnectFailure(id, { permanent: cls === "permanent" });
+      this.toFailed(id, unwrapped instanceof Error ? unwrapped.message : String(unwrapped));
+      throw e; // throw ORIGINAL to preserve stack/cause for the caller
     }
   }
 
@@ -188,17 +270,26 @@ export class McpManager {
     if (!server || (server.phase !== "Healthy" && server.phase !== "Degraded")) {
       throw new Error(`MCP server "${serverId}" not healthy (phase: ${server?.phase ?? "unknown"})`);
     }
-    return this.rpc(serverId, "tools/call", { name: toolName, arguments: args });
+    const result = await this.rpc(serverId, "tools/call", { name: toolName, arguments: args });
+    // Reliability: a successful tool call proves the session is live.
+    this.markSessionProven(serverId);
+    return result;
   }
 
   /** Stop a server: kill process → Stopped phase. */
   stop(id: string): void {
+    this.clearReliabilityTimers(id);
     const proc = this.procs.get(id);
     if (proc) {
       proc.kill();
       this.procs.delete(id);
     }
     this.toolSchemas.delete(id); // clear stale schemas (re-discovered on restart)
+    // Reliability: clear per-server budget/cooldown so a restart begins fresh.
+    this.reconnectState.delete(id);
+    this.connectFailures.delete(id);
+    this.connectRetryAfter.delete(id);
+    this.pingUnsupported.delete(id);
     const server = this.servers.get(id);
     if (server) {
       this.servers.set(id, transition(server, "Stopped"));
@@ -401,5 +492,206 @@ export class McpManager {
       }
     }
     return { parsed, remainder: remaining };
+  }
+
+  // ─── Reliability: connect cooldown, reconnect budget, keepalive ─────────
+
+  /** Record a connect failure and arm an exponential-backoff cooldown.
+   * `permanent` failures (bad command/auth/url) get the max cooldown so we
+   * don't hammer an unrecoverable server. */
+  recordConnectFailure(serverId: string, opts: { permanent?: boolean } = {}): void {
+    const n = (this.connectFailures.get(serverId) ?? 0) + 1;
+    this.connectFailures.set(serverId, n);
+    // time: nowWallclock is the sanctioned ms clock (core.time invariant #10).
+    // nowMonotonic's real provider returns performance.now()*1000 (µs) which is
+    // inconsistent with ms-based deadlines, so wallclock ms is used for cooldowns.
+    const base = opts.permanent
+      ? _CONNECT_RETRY_MAX_MS
+      : Math.min(_CONNECT_RETRY_BASE_MS * (2 ** (n - 1)), _CONNECT_RETRY_MAX_MS);
+    this.connectRetryAfter.set(serverId, nowWallclock() + base);
+  }
+
+  /** Clear cooldown state after a successful connect. */
+  clearConnectFailure(serverId: string): void {
+    this.connectFailures.delete(serverId);
+    this.connectRetryAfter.delete(serverId);
+  }
+
+  /** True while the server is still inside its post-failure cooldown window. */
+  connectCooldownActive(serverId: string): boolean {
+    const deadline = this.connectRetryAfter.get(serverId);
+    if (deadline === undefined) return false;
+    if (nowWallclock() >= deadline) {
+      this.connectRetryAfter.delete(serverId); // window elapsed — allow another try
+      return false;
+    }
+    return true;
+  }
+
+  /** Called on every successful start(): clears the cooldown, consumes one
+   * unit of the unproven-reconnect budget, and starts keepalive. */
+  private onConnectSuccess(serverId: string): void {
+    this.clearConnectFailure(serverId);
+    const parked = this.recordUnprovenConnect(serverId);
+    if (!parked) this.setupKeepalive(serverId);
+  }
+
+  private getReconnectState(serverId: string): ReconnectState {
+    let rs = this.reconnectState.get(serverId);
+    if (!rs) {
+      rs = { sessionProven: false, reconnectRetries: 0, wasParked: false };
+      this.reconnectState.set(serverId, rs);
+    }
+    return rs;
+  }
+
+  /** A successful connect that has NOT yet been proven (tool call / keepalive)
+   * consumes one unit of the reconnect budget. Once the budget is exhausted the
+   * server is parked. Returns true if this call parked the server. */
+  recordUnprovenConnect(serverId: string): boolean {
+    const rs = this.getReconnectState(serverId);
+    if (rs.sessionProven) return false; // proven sessions don't consume budget
+    rs.reconnectRetries += 1;
+    if (rs.reconnectRetries > _MAX_RECONNECT_RETRIES) {
+      this.parkServer(serverId);
+      rs.wasParked = true;
+      return true;
+    }
+    return false;
+  }
+
+  /** Mark a session proven (successful tool call or keepalive). Resets the
+   * reconnect budget and revives a parked server ("revived"). */
+  markSessionProven(serverId: string): void {
+    const rs = this.getReconnectState(serverId);
+    const wasParked = rs.wasParked;
+    rs.sessionProven = true;
+    rs.reconnectRetries = 0;
+    rs.wasParked = false;
+    if (wasParked) this.unparkServer(serverId);
+  }
+
+  /** Park a server: hide its tools (phase=Parked), stop keepalive, schedule a
+   * periodic self-probe. Deliberate internal op — allowUnsafe from any live phase. */
+  private parkServer(serverId: string): void {
+    this.clearKeepalive(serverId);
+    const s = this.servers.get(serverId);
+    if (!s || s.phase === "Stopped" || s.phase === "Quarantine" || s.phase === "Parked") return;
+    this.servers.set(serverId, transition(s, "Parked", { allowUnsafe: true }));
+    this.scheduleParkedProbe(serverId);
+  }
+
+  /** Revive a parked server whose session just proved itself. */
+  private unparkServer(serverId: string): void {
+    const s = this.servers.get(serverId);
+    if (!s || s.phase !== "Parked") return;
+    this.servers.set(serverId, transition(s, "Healthy", { allowUnsafe: true }));
+    this.setupKeepalive(serverId);
+  }
+
+  /** Probe a parked server after _PARKED_RETRY_INTERVAL (jittered). */
+  private scheduleParkedProbe(serverId: string): void {
+    this.clearParkedProbe(serverId);
+    const timer = setTimeout(() => {
+      this.parkedProbes.delete(serverId);
+      void this.parkedProbe(serverId);
+    }, jitteredDelay(_PARKED_RETRY_INTERVAL));
+    unrefTimer(timer);
+    this.parkedProbes.set(serverId, timer);
+  }
+
+  private clearParkedProbe(serverId: string): void {
+    const t = this.parkedProbes.get(serverId);
+    if (t) { clearTimeout(t); this.parkedProbes.delete(serverId); }
+  }
+
+  private async parkedProbe(serverId: string): Promise<void> {
+    const s = this.servers.get(serverId);
+    if (!s || s.phase !== "Parked") return; // revived/stopped elsewhere
+    try {
+      await this.keepaliveProbe(serverId); // success → markSessionProven → unpark
+    } catch {
+      // still unproven/dead — stay parked and keep probing
+      this.scheduleParkedProbe(serverId);
+    }
+  }
+
+  /** Keepalive probe: prefer `ping`, fall back to `tools/list` for servers that
+   * don't implement ping. A real failure re-throws so the interval handler can
+   * trigger reconnect. Success proves the session. */
+  async keepaliveProbe(serverId: string): Promise<void> {
+    if (this.pingUnsupported.has(serverId)) {
+      await this.rpc(serverId, "tools/list", {});
+      this.markSessionProven(serverId);
+      return;
+    }
+    try {
+      await this.rpc(serverId, "ping", {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Method not found") || msg.includes("not found")) {
+        this.pingUnsupported.add(serverId);
+        await this.rpc(serverId, "tools/list", {}); // fallback
+        this.markSessionProven(serverId);
+        return;
+      }
+      throw err; // real failure → caller triggers reconnect/park
+    }
+    this.markSessionProven(serverId);
+  }
+
+  /** Start a periodic keepalive ping for a server. */
+  setupKeepalive(serverId: string, intervalMs: number = _DEFAULT_KEEPALIVE_INTERVAL): void {
+    this.clearKeepalive(serverId);
+    const interval = Math.max(intervalMs, _MIN_KEEPALIVE_INTERVAL);
+    const timer = setInterval(() => {
+      void this.keepaliveProbe(serverId).catch(() => {
+        // keepalive failed (transport dead / real error) → close, mark failed,
+        // arm cooldown, and re-enter the start loop once the window elapses.
+        this.clearKeepalive(serverId);
+        const proc = this.procs.get(serverId);
+        if (proc) { proc.kill(); this.procs.delete(serverId); }
+        this.toFailed(serverId, "keepalive probe failed");
+        this.recordConnectFailure(serverId);
+        this.scheduleReconnect(serverId);
+      });
+    }, interval);
+    unrefTimer(timer);
+    this.keepaliveTimers.set(serverId, timer);
+  }
+
+  private clearKeepalive(serverId: string): void {
+    const t = this.keepaliveTimers.get(serverId);
+    if (t) { clearInterval(t); this.keepaliveTimers.delete(serverId); }
+  }
+
+  /** Re-enter the start() loop after the cooldown window (single attempt). */
+  private scheduleReconnect(serverId: string): void {
+    this.clearReconnect(serverId);
+    const deadline = this.connectRetryAfter.get(serverId);
+    const now = nowWallclock();
+    const delay = deadline ? Math.max(deadline - now, 0) : jitteredDelay(_CONNECT_RETRY_BASE_MS);
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(serverId);
+      void this.start(serverId).catch(() => {
+        /* still failing — cooldown re-armed by start()'s catch; a future
+         * trigger (manual connect / supervisor) will retry. Bounded: only one
+         * reconnect is scheduled per keepalive failure. */
+      });
+    }, delay);
+    unrefTimer(timer);
+    this.reconnectTimers.set(serverId, timer);
+  }
+
+  private clearReconnect(serverId: string): void {
+    const t = this.reconnectTimers.get(serverId);
+    if (t) { clearTimeout(t); this.reconnectTimers.delete(serverId); }
+  }
+
+  /** Clear all reliability timers for a server (used by stop()/shutdown). */
+  private clearReliabilityTimers(serverId: string): void {
+    this.clearKeepalive(serverId);
+    this.clearParkedProbe(serverId);
+    this.clearReconnect(serverId);
   }
 }

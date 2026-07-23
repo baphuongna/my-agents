@@ -162,9 +162,20 @@ describe("output-compress: npm reducer", () => {
   });
 
   it("estimates tokens as chars/4 (min 1)", () => {
-    expect(estimateTokens("")).toBe(1);
+    expect(estimateTokens("")).toBe(0);
     expect(estimateTokens("abcd")).toBe(1);
     expect(estimateTokens("abcdefgh")).toBe(2);
+  });
+
+  it("CJK-aware: dense chars count as ~1 token each", () => {
+    // 8 Hangul syllables → 8 dense tokens + 0 sparse
+    expect(estimateTokens("캘린더입니다안녕")).toBe(8);
+    // 4 ASCII + 3 CJK → 3 + ceil(4/4) = 4
+    expect(estimateTokens("test캘린더")).toBe(4);
+    // Pure CJK → dense count
+    expect(estimateTokens("你好世界")).toBe(4);
+    // Mixed CJK + Latin: "hello世界" = 5 sparse + 2 dense = 2 + 2 = 4
+    expect(estimateTokens("hello世界")).toBe(4);
   });
 });
 

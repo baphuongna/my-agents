@@ -17,12 +17,39 @@
  */
 
 // ---------------------------------------------------------------------------
-// Token counter — source: CharDivTokenCounter.cs
+// Token counter — CJK-aware (source: Hermes agent/model_metadata.py)
 // ---------------------------------------------------------------------------
 
-/** Estimate tokens as max(1, floor(len/4)) — integer-div matches the C# port. */
+// CJK codepoint ranges where each character ≈ 1 token under common tokenizers.
+// Mirrors Hermes _CJK_DENSE_RE (13 ranges from native/fts5_cjk/fts5_cjk.c).
+const _CJK_DENSE_RE =
+  /[\u1100-\u11ff\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g;
+
+/**
+ * CJK-aware rough token estimate for pre-flight / display.
+ *
+ * - Pure ASCII fast path: `(len + 3) >> 2` (~4 chars/token). O(n) but no
+ *   regex — the vast majority of tool output is ASCII.
+ * - CJK-dense characters (Hangul, Han, Kana, fullwidth) count as ~1
+ *   token each because common LLM tokenizers fragment them more finely.
+ * - Remaining non-CJK characters use the ~4 chars/token rule.
+ *
+ * Ported from Hermes `estimate_tokens_rough()` (deep-dive-r2.md §1.8).
+ */
 export function estimateTokens(text: string): number {
-  return Math.max(1, Math.floor(text.length / 4));
+  if (!text) return 0;
+  // Fast path: pure ASCII (no CJK, no regex scan needed).
+  if (/^[\x00-\x7f]*$/.test(text)) {
+    return Math.max(1, (text.length + 3) >> 2);
+  }
+  const matches = text.match(_CJK_DENSE_RE);
+  const dense = matches ? matches.length : 0;
+  if (!dense) {
+    // Non-ASCII but no CJK (accents, Cyrillic, emoji): keep ~4 chars/token.
+    return Math.max(1, (text.length + 3) >> 2);
+  }
+  const sparse = text.length - dense;
+  return dense + ((sparse + 3) >> 2);
 }
 
 // ---------------------------------------------------------------------------

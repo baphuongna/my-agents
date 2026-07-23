@@ -23,7 +23,8 @@ export type McpPhase =
   | "Restarting"
   | "Draining"
   | "Stopped"
-  | "Quarantine";
+  | "Quarantine"
+  | "Parked"; // reliability: held back (unproven reconnect budget exhausted)
 
 export interface McpServer {
   id: string;
@@ -51,11 +52,12 @@ const ALLOWED_TRANSITIONS: Record<McpPhase, readonly McpPhase[]> = {
   Initializing: ["Healthy", "Degraded", "Failed", "Stopped"],
   Healthy: ["Degraded", "Failed", "Restarting", "Draining", "Stopped"],
   Degraded: ["Healthy", "Failed", "Restarting", "Draining", "Stopped"],
-  Failed: ["Restarting", "Stopped"],
+  Failed: ["Restarting", "Stopped", "Parked"], // Parked: reliability budget exhausted
   Restarting: ["Initializing", "Failed", "Stopped"],
   Draining: ["Stopped"],
   Quarantine: ["Stopped"], // manual review required to leave quarantine
   Stopped: ["Unconfigured", "Discovered"],
+  Parked: ["Restarting", "Stopped"], // revive via proven session, or stop
 };
 
 /** Transition a server to the next phase; returns the updated server. */
@@ -80,6 +82,9 @@ export function transition(s: McpServer, to: McpPhase, opts: { error?: string; a
     next.health = "Healthy";
   } else if (to === "Degraded") {
     next.health = "Degraded";
+  } else if (to === "Parked") {
+    // Reliability: intentionally held back (not a crash) — Degraded, not Failed.
+    next.health = "Degraded";
   }
   return next;
 }
@@ -88,7 +93,9 @@ export function transition(s: McpServer, to: McpPhase, opts: { error?: string; a
 export function aggregateHealth(servers: McpServer[]): ComponentHealth {
   if (servers.length === 0) return "Healthy"; // no servers = no failure
   const usable = servers.filter((s) => s.phase === "Healthy" || s.phase === "Degraded").length;
-  const failed = servers.filter((s) => s.phase === "Failed" || s.phase === "Quarantine").length;
+  const failed = servers.filter(
+    (s) => s.phase === "Failed" || s.phase === "Quarantine" || s.phase === "Parked",
+  ).length;
   if (usable === servers.length) return "Healthy";
   if (usable === 0) return "Failed";
   return "Degraded";
