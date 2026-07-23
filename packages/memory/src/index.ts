@@ -69,7 +69,7 @@ export { ToolsDomain, toolsDomain } from "./domains/tools.js";
 export { QueueDomain, queueDomain } from "./domains/queue.js";
 
 // ── Phase 1: SQLite foundation ──
-export { openDB, transaction, closeDB, checkpoint } from "./sqlite-db.js";
+export { openDB, transaction, closeDB, checkpoint, repairStaleIndexes, probeFts5Health } from "./sqlite-db.js";
 export type { DatabasePath } from "./sqlite-db.js";
 export { initSchema, getSchemaVersion } from "./sqlite-schema.js";
 
@@ -82,7 +82,10 @@ export {
 export type { WorkingMemoryInput, EpisodicMemoryInput, FactInput, MemoryRecord } from "./sqlite-store.js";
 
 // ── Phase 3: Recall pipeline + Weibull ──
-export { recall, recallFacts } from "./sqlite-recall.js";
+export { recall, recallFacts, describeSearchPath } from "./sqlite-recall.js";
+// ── Phase 3: CJK tokenizer + Weibull ──
+export { isCjk, tokenize, containsCjk } from "./cjk-tokenizer.js";
+export type { Token } from "./cjk-tokenizer.js";
 export type { MemoryStore, MemoryEngine, VectorIndex, TextIndex, Embedder, MemoryCache, GraphStore } from "./ports.js";
 export { applyFeedback, recallWeight, detectContradictions, TRUST_DEFAULT } from "./governance.js";
 export { trackReferent, checkReferent, staleMemories } from "./grounding.js";

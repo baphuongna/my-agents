@@ -27,6 +27,53 @@ function runAll(db: SqliteDatabase, statements: readonly string[]): void {
   for (const stmt of statements) db.exec(stmt);
 }
 
+/** Migrate old inline-content `fts_working` to external-content format.
+ *
+ *  For databases created before the external-content schema change, the
+ *  `CREATE VIRTUAL TABLE IF NOT EXISTS` above is a no-op (table exists).
+ *  This function detects the old format via `sqlite_master.sql`, drops the
+ *  old table + triggers, recreates with external-content, and repopulates
+ *  the index from `working_memory`.
+ *
+ *  Idempotent: if the table already uses external-content, does nothing. */
+function migrateFtsWorkingToExternalContent(db: SqliteDatabase): void {
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='fts_working'`,
+  ).get() as { sql: string } | undefined;
+  if (!row?.sql) return; // table doesn't exist yet (CREATE IF NOT EXISTS will handle)
+
+  // Already external-content?
+  if (/content\s*=\s*'working_memory'/i.test(row.sql)) return;
+
+  // Old inline-content format detected — migrate
+  // 1. Drop old triggers (will be recreated below with new SQL)
+  db.exec("DROP TRIGGER IF EXISTS wm_ai");
+  db.exec("DROP TRIGGER IF EXISTS wm_ad");
+  db.exec("DROP TRIGGER IF EXISTS wm_au");
+
+  // 2. Drop old FTS table (inline content)
+  db.exec("DROP TABLE IF EXISTS fts_working");
+
+  // 3. Create new external-content FTS table
+  db.exec(`
+    CREATE VIRTUAL TABLE fts_working USING fts5(
+      content,
+      content='working_memory',
+      content_rowid='rowid',
+      tokenize='porter unicode61 remove_diacritics 2'
+    )
+  `);
+
+  // 4. Repopulate index from existing working_memory rows
+  try {
+    db.exec(`
+      INSERT INTO fts_working(rowid, content)
+      SELECT rowid, COALESCE(content, '') || COALESCE(embed_text, '')
+      FROM working_memory
+    `);
+  } catch { /* embed_text column may not exist on very old DBs */ }
+}
+
 /**
  * Initialize the full schema. Idempotent — safe to call on every startup.
  * Creates tables, FTS5 virtual tables, triggers, and indexes.
@@ -138,12 +185,15 @@ export function initSchema(db: SqliteDatabase): void {
     "CREATE INDEX IF NOT EXISTS idx_triples_object ON triples(object)",
   ]);
 
-  // ── FTS5: Full-text search (trigger-synced, BM25 native) ────────────────
-  // Working memory FTS (standalone — content indexed on INSERT)
+  // ── FTS5: Full-text search (external-content, BM25 native) ────────────────
+  // Working memory FTS — external-content: reads column values from
+  // working_memory on demand (no inline text copy → ~75% size saving vs
+  // contentless). content_rowid maps to the base table's implicit rowid.
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS fts_working USING fts5(
-      id UNINDEXED,
       content,
+      content='working_memory',
+      content_rowid='rowid',
       tokenize='porter unicode61 remove_diacritics 2'
     )
   `);
@@ -167,18 +217,25 @@ export function initSchema(db: SqliteDatabase): void {
     )
   `);
 
+  // ── Migration: convert old inline-content fts_working to external-content ──
+  migrateFtsWorkingToExternalContent(db);
+
   // ── FTS5 Triggers (auto-sync on INSERT/UPDATE/DELETE) ───────────────────
-  // Working memory: standalone FTS (id-keyed)
+  // Working memory: external-content FTS (rowid-keyed). DROP+CREATE ensures
+  // triggers are always the latest version after a schema migration.
   runAll(db, [
-    `CREATE TRIGGER IF NOT EXISTS wm_ai AFTER INSERT ON working_memory BEGIN
-      INSERT INTO fts_working(id, content) VALUES (new.id, COALESCE(new.content, '') || COALESCE(new.embed_text, ''));
+    `DROP TRIGGER IF EXISTS wm_ai`,
+    `DROP TRIGGER IF EXISTS wm_ad`,
+    `DROP TRIGGER IF EXISTS wm_au`,
+    `CREATE TRIGGER wm_ai AFTER INSERT ON working_memory BEGIN
+      INSERT INTO fts_working(rowid, content) VALUES (new.rowid, COALESCE(new.content, '') || COALESCE(new.embed_text, ''));
     END`,
-    `CREATE TRIGGER IF NOT EXISTS wm_ad AFTER DELETE ON working_memory BEGIN
-      DELETE FROM fts_working WHERE id = old.id;
+    `CREATE TRIGGER wm_ad AFTER DELETE ON working_memory BEGIN
+      INSERT INTO fts_working(fts_working, rowid, content) VALUES ('delete', old.rowid, COALESCE(old.content, '') || COALESCE(old.embed_text, ''));
     END`,
-    `CREATE TRIGGER IF NOT EXISTS wm_au AFTER UPDATE OF content, embed_text ON working_memory BEGIN
-      DELETE FROM fts_working WHERE id = old.id;
-      INSERT INTO fts_working(id, content) VALUES (new.id, COALESCE(new.content, '') || COALESCE(new.embed_text, ''));
+    `CREATE TRIGGER wm_au AFTER UPDATE OF content, embed_text ON working_memory BEGIN
+      INSERT INTO fts_working(fts_working, rowid, content) VALUES ('delete', old.rowid, COALESCE(old.content, '') || COALESCE(old.embed_text, ''));
+      INSERT INTO fts_working(rowid, content) VALUES (new.rowid, COALESCE(new.content, '') || COALESCE(new.embed_text, ''));
     END`,
   ]);
 

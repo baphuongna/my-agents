@@ -13,9 +13,43 @@
  *   6. Update recall_count + last_recalled
  */
 import type { SqliteDatabase } from "./sqlite-db.js";
+import { nowWallclock } from "@my-agent/core";
 import { weibullBoost } from "./weibull.js";
 import { recordRecall } from "./sqlite-store.js";
 import { getCachedQueryVec, warmQueryVec, bufferToVec, cosine, embeddingDim, type Vec } from "./embeddings.js";
+import { containsCjk, isCjk } from "./cjk-tokenizer.js";
+
+// ── Search-path routing (CJK detection) ───────────────────────────────────
+
+/** Classify a query into a search-path WITHOUT executing it.
+ *
+ *  - ``"empty"``     — blank query (no work to do)
+ *  - ``"fts5"``      — standard FTS5 MATCH (unicode61 tokenizer)
+ *  - ``"fts_cjk"``   — CJK bigram-based search (requires cjkAvailable)
+ *  - ``"like_scan"`` — LIKE %term% substring scan (short CJK or unavailable)
+ */
+export function describeSearchPath(
+  query: string,
+  cjkAvailable: boolean,
+): "fts5" | "fts_cjk" | "like_scan" | "empty" {
+  const trimmed = query.trim();
+  if (!trimmed) return "empty";
+  if (!containsCjk(trimmed)) return "fts5";
+  // Query contains CJK — check character count
+  let cjkCount = 0;
+  for (let i = 0; i < trimmed.length; ) {
+    const cp = trimmed.codePointAt(i);
+    if (cp === undefined) break;
+    if (isCjk(cp)) cjkCount++;
+    i += cp > 0xffff ? 2 : 1;
+  }
+  if (cjkCount <= 1) return "like_scan"; // short CJK term (1 char)
+  return cjkAvailable ? "fts_cjk" : "like_scan";
+}
+
+// ── Slow-query log ────────────────────────────────────────────────────────
+
+const SLOW_MS = parseInt(process.env.MYA_SEARCH_SLOW_MS ?? "1000", 10);
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -113,6 +147,7 @@ function sanitizeQuery(query: string): string {
  *   5. Update recall_count for hits
  */
 export function recall(db: SqliteDatabase, query: string, options?: RecallOptions): MemoryHit[] {
+  const _startMs = nowWallclock();
   const topK = options?.topK ?? 10;
   const ftsQuery = sanitizeQuery(query);
   if (!ftsQuery) return [];
@@ -130,7 +165,7 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
            wm.veracity, wm.memory_type, wm.scope, wm.agent_id, wm.trust, wm.embedding,
            bm25(fts_working) AS bm25_rank
     FROM fts_working
-    JOIN working_memory wm ON wm.id = fts_working.id
+    JOIN working_memory wm ON wm.rowid = fts_working.rowid
     WHERE fts_working MATCH ?
       AND wm.superseded_by IS NULL
       AND (wm.valid_until IS NULL OR wm.valid_until > ?)
@@ -315,6 +350,16 @@ export function recall(db: SqliteDatabase, query: string, options?: RecallOption
   if (!options?.internal) {
     if (workingIds.length > 0) recordRecall(db, workingIds, "working_memory");
     if (episodicIds.length > 0) recordRecall(db, episodicIds, "episodic_memory");
+  }
+
+  // ── Slow-query log ───────────────────────────────────────────────────
+  if (SLOW_MS > 0) {
+    const elapsed = nowWallclock() - _startMs;
+    if (elapsed > SLOW_MS) {
+      console.warn(
+        `slow search: path=${describeSearchPath(query, false)} elapsed=${elapsed}ms rows=${top.length} query=${query}`,
+      );
+    }
   }
 
   return top;

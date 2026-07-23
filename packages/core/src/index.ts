@@ -20,3 +20,6 @@ export * from "./session-utils.js";
 export * from "./roles.js";
 export * from "./redact.js";
 export * from "./threat-scan.js";
+export * from "./exit.js";
+export * from "./session-branch.js";
+export * from "./durable-ack.js";

@@ -135,9 +135,9 @@ describe("Phase 1: SQLite foundation", () => {
     db.prepare(
       "INSERT INTO working_memory (id, content, source, timestamp) VALUES (?, ?, ?, ?)"
     ).run("f1", "Alice loves TypeScript", "test", new Date().toISOString());
-    // FTS should have the content
+    // FTS should have the content (external-content: join via rowid)
     const ftsRow = db.prepare(
-      "SELECT id FROM fts_working WHERE fts_working MATCH ? ORDER BY rank LIMIT 1"
+      "SELECT wm.id FROM fts_working JOIN working_memory wm ON wm.rowid = fts_working.rowid WHERE fts_working MATCH ? ORDER BY rank LIMIT 1"
     ).get("TypeScript") as { id: string } | undefined;
     expect(ftsRow?.id).toBe("f1");
     closeDB(db);
@@ -164,7 +164,7 @@ describe("Phase 1: SQLite foundation", () => {
     ).run("f1", "TypeScript fact", "test", new Date().toISOString());
     db.prepare("DELETE FROM working_memory WHERE id = ?").run("f1");
     const ftsRow = db.prepare(
-      "SELECT id FROM fts_working WHERE fts_working MATCH ?"
+      "SELECT wm.id FROM fts_working JOIN working_memory wm ON wm.rowid = fts_working.rowid WHERE fts_working MATCH ?"
     ).get("TypeScript") as { id: string } | undefined;
     expect(ftsRow).toBeUndefined();
     closeDB(db);
@@ -187,9 +187,9 @@ describe("Phase 1: SQLite foundation", () => {
     insert.run("f1", "TypeScript TypeScript TypeScript is great", "test", new Date().toISOString());
     insert.run("f2", "Python is also good but TypeScript is better", "test", new Date().toISOString());
     insert.run("f3", "Rust has memory safety", "test", new Date().toISOString());
-    // BM25 search — doc with more "TypeScript" should rank higher
+    // BM25 search — doc with more "TypeScript" should rank higher (external-content: join via rowid)
     const results = db.prepare(
-      "SELECT wm.id, bm25(fts_working) as rank FROM fts_working JOIN working_memory wm ON wm.id = fts_working.id WHERE fts_working MATCH ? ORDER BY rank"
+      "SELECT wm.id, bm25(fts_working) as rank FROM fts_working JOIN working_memory wm ON wm.rowid = fts_working.rowid WHERE fts_working MATCH ? ORDER BY rank"
     ).all("TypeScript") as Array<{ id: string; rank: number }>;
     expect(results.length).toBe(2); // f1 + f2 match
     // f1 has 3x "TypeScript" → lower BM25 rank (more negative = better)

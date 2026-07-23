@@ -18,3 +18,27 @@ export { DriftGrader, identityCompressor } from "./drift.js";
 export type { DriftGrade } from "./drift.js";
 export { windowCompressor, summarizeCompressor, nativeContentCompressor, overflowRecovery } from "./compressors.js";
 export { rankedCompact } from "./ranked-compaction.js";
+export {
+  compress,
+  generateSummary,
+  shouldIdleCompact,
+  resolveModelThreshold,
+  computeThresholdTokens,
+  pruneOldToolResults,
+  assembleCompressed,
+  CompressionState,
+  isCompressedSummaryMessage,
+  DEFAULT_COMPRESSION_CONFIG,
+  MINIMUM_CONTEXT_LENGTH,
+  SMALL_CTX_WINDOW_LIMIT,
+  SMALL_CTX_THRESHOLD_PERCENT,
+  MIN_CTX_TRIGGER_RATIO,
+  COMPRESSED_SUMMARY_METADATA_KEY,
+  SUMMARY_FAILURE_COOLDOWN_SECONDS,
+} from "./compress.js";
+export type {
+  CompressionConfig,
+  Message,
+  ToolCallEntry,
+  SummaryFn,
+} from "./compress.js";

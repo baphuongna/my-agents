@@ -145,3 +145,77 @@ export function closeDB(db: SqliteDatabase | null | undefined): void {
 export function checkpoint(db: SqliteDatabase): void {
   try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* best-effort */ }
 }
+
+// ── Index health / auto-repair ────────────────────────────────────────────
+
+/** Parse index names from integrity_check messages like
+ *  "wrong # of entries in index idx_foo". */
+function parseCorruptIndexNames(messages: readonly string[]): string[] {
+  const names: string[] = [];
+  for (const msg of messages) {
+    const m = msg.match(/wrong # of entries in index\s+(\S+)/i);
+    if (m?.[1]) names.push(m[1]);
+  }
+  return [...new Set(names)];
+}
+
+/** Run `PRAGMA integrity_check` and auto-REINDEX any stale indexes.
+ *
+ *  Detects the "wrong # of entries in index XXX" diagnostic, runs
+ *  `REINDEX` on each affected index, then re-checks. Returns the list
+ *  of repaired index names and whether the DB is now clean.
+ *
+ *  No data or FTS schema is touched — REINDEX only rewrites b-tree
+ *  structures from canonical table rows. */
+export function repairStaleIndexes(db: SqliteDatabase): { repaired: string[]; ok: boolean } {
+  const rows = db.prepare("PRAGMA integrity_check").all() as Array<Record<string, unknown>>;
+  const messages = rows.map((r) => {
+    // integrity_check returns a single column; name varies by SQLite build
+    const val = r["integrity_check"] ?? Object.values(r)[0];
+    return String(val ?? "");
+  });
+
+  const indexNames = parseCorruptIndexNames(messages);
+  if (indexNames.length === 0) {
+    return { repaired: [], ok: true };
+  }
+
+  const repaired: string[] = [];
+  for (const name of indexNames) {
+    try {
+      db.exec(`REINDEX "${name.replace(/"/g, '""')}"`);
+      repaired.push(name);
+    } catch { /* skip individual failures — REINDEX is best-effort */ }
+  }
+
+  // Re-verify
+  const recheck = db.prepare("PRAGMA integrity_check").all() as Array<Record<string, unknown>>;
+  const recheckMessages = recheck.map((r) => {
+    const val = r["integrity_check"] ?? Object.values(r)[0];
+    return String(val ?? "");
+  });
+  const stillBroken = recheckMessages.some((m) => /wrong # of entries in index/i.test(m));
+
+  return { repaired, ok: !stillBroken };
+}
+
+/** FTS5 read-health probe: run a benign MATCH against each table.
+ *
+ *  For each FTS5 table: `SELECT 1 FROM <table> WHERE <table> MATCH '""' LIMIT 1`.
+ *  If the query throws (corruption / malformed / missing table), the table
+ *  is reported as broken. Returns the overall health verdict. */
+export function probeFts5Health(
+  db: SqliteDatabase,
+  tables: readonly string[],
+): { healthy: boolean; broken: string[] } {
+  const broken: string[] = [];
+  for (const table of tables) {
+    const escaped = table.replace(/"/g, '""');
+    try {
+      db.prepare(`SELECT 1 FROM "${escaped}" WHERE "${escaped}" MATCH '""' LIMIT 1`).get();
+    } catch {
+      broken.push(table);
+    }
+  }
+  return { healthy: broken.length === 0, broken };
+}
