@@ -64,3 +64,46 @@ describe("cron-observability (Phase 4A/4C)", () => {
     expect(ages.successAgeMs!).toBeLessThan(2000);
   });
 });
+
+describe("getLastOutput (Phase 5 context_from chaining)", () => {
+  it("returns undefined for a job with no history", async () => {
+    const mod = await import("./cron-observability.js");
+    expect(mod.getLastOutput("no-such-job")).toBeUndefined();
+  });
+
+  it("returns undefined when runs have no output", async () => {
+    const mod = await import("./cron-observability.js");
+    mod.recordRunStart({ runId: "r1", jobId: "j", startedAt: 1000, status: "claimed" });
+    mod.recordRunEnd("r1", "succeeded", null, 2000);
+    expect(mod.getLastOutput("j")).toBeUndefined();
+  });
+
+  it("returns the most-recent non-empty output", async () => {
+    const mod = await import("./cron-observability.js");
+    mod.recordRunStart({ runId: "r1", jobId: "j", startedAt: 1000, status: "claimed" });
+    mod.recordRunEnd("r1", "succeeded", null, 2000, "first output");
+    mod.recordRunStart({ runId: "r2", jobId: "j", startedAt: 3000, status: "claimed" });
+    mod.recordRunEnd("r2", "succeeded", null, 4000, "second output");
+    expect(mod.getLastOutput("j")).toBe("second output");
+  });
+
+  it("skips runs with empty/null output and returns the latest non-empty", async () => {
+    const mod = await import("./cron-observability.js");
+    mod.recordRunStart({ runId: "r1", jobId: "j", startedAt: 1000, status: "claimed" });
+    mod.recordRunEnd("r1", "succeeded", null, 2000, "real output");
+    mod.recordRunStart({ runId: "r2", jobId: "j", startedAt: 3000, status: "claimed" });
+    mod.recordRunEnd("r2", "succeeded", null, 4000, "");
+    // r2 is newer but has empty output → should return r1's output
+    expect(mod.getLastOutput("j")).toBe("real output");
+  });
+
+  it("isolates output per jobId", async () => {
+    const mod = await import("./cron-observability.js");
+    mod.recordRunStart({ runId: "a1", jobId: "jobA", startedAt: 1000, status: "claimed" });
+    mod.recordRunEnd("a1", "succeeded", null, 2000, "A-output");
+    mod.recordRunStart({ runId: "b1", jobId: "jobB", startedAt: 1000, status: "claimed" });
+    mod.recordRunEnd("b1", "succeeded", null, 2000, "B-output");
+    expect(mod.getLastOutput("jobA")).toBe("A-output");
+    expect(mod.getLastOutput("jobB")).toBe("B-output");
+  });
+});

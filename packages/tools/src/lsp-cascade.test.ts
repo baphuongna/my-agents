@@ -11,6 +11,8 @@
 
 import { describe, it, expect } from "vitest";
 import type { LspDiagnostic } from "./lsp-client.js";
+import { LspClient } from "./lsp-client.js";
+import { EventEmitter } from "node:events";
 import { computeImpact, touchFile, runCascade } from "./lsp-cascade.js";
 import type { CascadeLspClient, Diagnostic, ReferenceGraph } from "./lsp-cascade.js";
 
@@ -167,5 +169,57 @@ describe("Phase 3-4 — LSP Cascade Diagnostics", () => {
     // src/a is a leaf importer — nobody imports it.
     const impact = computeImpact("src/a.ts", graph);
     expect(impact).toEqual([]);
+  });
+});
+
+describe("LspClient — construction & graceful degradation (no LSP server)", () => {
+  it("constructs without spawning a process and is an EventEmitter", () => {
+    const client = new LspClient({
+      command: "this-lsp-binary-does-not-exist-xyz",
+      rootUri: "file:///tmp",
+    });
+    // Constructor must not perform any I/O.
+    expect(client).toBeInstanceOf(EventEmitter);
+  });
+
+  it("stop() before start() is a safe no-op", async () => {
+    const client = new LspClient({
+      command: "this-lsp-binary-does-not-exist-xyz",
+      rootUri: "file:///tmp",
+    });
+    // No process spawned yet — stop must resolve without throwing.
+    await expect(client.stop()).resolves.toBeUndefined();
+  });
+
+  it("getDiagnostics returns [] for an unknown uri before any diagnostics arrive", () => {
+    const client = new LspClient({
+      command: "this-lsp-binary-does-not-exist-xyz",
+      rootUri: "file:///tmp",
+    });
+    expect(client.getDiagnostics("file:///never-opened.ts")).toEqual([]);
+  });
+
+  it("openDocument / changeDocument are safe no-ops before start (optional-chaining on stdin)", () => {
+    const client = new LspClient({
+      command: "this-lsp-binary-does-not-exist-xyz",
+      rootUri: "file:///tmp",
+    });
+    // No subprocess stdin to write to — these must not throw.
+    expect(() => {
+      client.openDocument("file:///x.ts", "typescript", "const a = 1;", 1);
+      client.changeDocument("file:///x.ts", 2, "const a = 2;");
+    }).not.toThrow();
+  });
+
+  it("does not auto-start on construction — no process is spawned until start()", () => {
+    // Graceful-degradation guarantee: a client may be created eagerly and held
+    // idle; the only I/O happens inside start(). We assert this indirectly by
+    // confirming the synchronous surface is fully usable with zero servers.
+    const client = new LspClient({
+      command: "this-lsp-binary-does-not-exist-xyz",
+      rootUri: "file:///tmp",
+    });
+    expect(client.getDiagnostics("file:///x.ts")).toEqual([]);
+    expect(() => client.openDocument("file:///x.ts", "typescript", "", 1)).not.toThrow();
   });
 });
