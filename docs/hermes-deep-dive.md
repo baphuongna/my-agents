@@ -4,6 +4,9 @@
 Không chỉ commit messages — đây là **implementation-level analysis** với code snippets,
 data structures, và algorithms đủ chi tiết để port sang TypeScript.
 
+> **📌 Port Status: COMPLETED** — All sections below were ported to mya in PLAN-HERMES-PORT.md.
+> See `PLAN-HERMES-PORT.md` for final stats (6,316 lines, 553 tests, 35 bugs found across 7 review rounds).
+
 ---
 
 ## 🔥 1. COMPRESSION / CONTEXT COMPACTION (72 commits)

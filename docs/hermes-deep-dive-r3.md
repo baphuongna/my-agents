@@ -4,6 +4,18 @@
 Builds on round 1 (architecture) + round 2 (algorithm-level) with security, infrastructure,
 and orchestration system details.
 
+> **📌 Port Status: COMPLETED** — All systems below were ported to mya.
+> See `PLAN-HERMES-PORT.md` for results. Notable review findings:
+> - **Redaction §1**: `decodeURIComponent(key)` must be wrapped in try/catch — malformed `%` sequences throw URIError, bypassing all redaction. Round 1 CRITICAL fix.
+> - **Redaction §1.2**: `force: false` must use `=== true || _REDACT_ENABLED`, NOT `?? _REDACT_ENABLED` (false falls through). Round 1 HIGH fix.
+> - **Redaction §1.1**: `sk_` prefix must be in `_PREFIX_SUBSTRINGS` pre-check list, not just the regex. Round 1 HIGH fix.
+> - **Redaction §1.1**: E.164 phone must redact with `force=true` (persistence boundaries), not only `redactUrlCredentials`. Round 1 MEDIUM fix.
+> - **MCP §2**: `start()` from `Failed`/`Parked` must transition through `Restarting → Initializing` (FSM rule). Round 2 CRITICAL fix.
+> - **MCP §5**: `toFailed()` must skip `Parked` phase, else uncaught exception. Round 2 HIGH fix.
+> - **Gateway §6.1**: Lock acquisition must use `O_EXCL` (wx flag) for atomic create, not `writeFileSync`. Round 2 HIGH fix.
+> - **MCP §6**: RPC timeout timer must be `.unref()`'d and cleared on response. Round 2 HIGH fix.
+> - **MCP §2.3**: `classifyMcpFailure` must use word boundaries (`\b40[13]\b`), not substring matching. Round 2 MEDIUM fix.
+
 ---
 
 ## 🔥 1. REDACTION ENGINE — 43 Secret Patterns + Force Boundaries

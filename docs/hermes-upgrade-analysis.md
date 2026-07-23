@@ -215,17 +215,22 @@ CJK bigram + external-content FTS sẽ cải thiện recall cho Vietnamese/Chine
 
 ---
 
-## 📊 Thống Kê Code
+## 📊 Thống Kê Code (Gốc → Port Status)
 
-| Area | Commits | New Files | Impact |
-|------|---------|-----------|--------|
-| Compression | 72 | ~15 | Massive |
-| TUI/Theme | 61 | ~30 | Major |
-| Gateway | 40 | ~10 | High |
-| Desktop | 35 | ~40 | Major |
-| Slack | 28 | ~5 | Medium |
-| State/DB | 22 | ~8 | High |
-| MCP | 23 | ~2 | High |
-| Secrets | 19 | ~6 | Medium |
-| Other | 64 | — | Mixed |
-| **Total** | **364** | **~116** | |
+| Area | Commits | New Files | Impact | Port Status |
+|------|---------|-----------|--------|-------------|
+| Compression | 72 | ~15 | Massive | ✅ Phase 2 (1700 LOC, 75 tests) |
+| TUI/Theme | 61 | ~30 | Major | ⚠️ Deferred (future TUI dashboard) |
+| Gateway | 40 | ~10 | High | ✅ Phase 4 (510 LOC, 59 tests) |
+| Desktop | 35 | ~40 | Major | ⚠️ Deferred (no desktop app) |
+| Slack | 28 | ~5 | Medium | ⚠️ Deferred (not P0) |
+| State/DB | 22 | ~8 | High | ✅ Phase 3 (500 LOC, 53 tests) |
+| MCP | 23 | ~2 | High | ✅ Phase 1+6 (630 LOC, 89 tests) |
+| Secrets | 19 | ~6 | Medium | ⚠️ Deferred (storage layer only) |
+| Kanban | 4 | — | Medium | ✅ Phase 7 (810 LOC, 33 tests) |
+| DDGS | — | — | Medium | ✅ Phase 5 (210 LOC, 7 tests) |
+| Provider | — | — | Low | ✅ Phase 8 (160 LOC, 50 tests) |
+| Other | 64 | — | Mixed | — |
+| **Total** | **364** | **~116** | | **6,316 LOC, 553 tests, 35 bugs fixed** |
+
+> **Note**: Final port completed via 3 batches (A/B/C) + 7 review rounds. See `PLAN-HERMES-PORT.md` for detailed status and commit history.

@@ -3,6 +3,12 @@
 **6 parallel explorer agents** đọc source code trực tiếp, đến từng dòng.
 Phân tích đủ chi tiết để port sang TypeScript/napi-rs.
 
+> **📌 Port Status: COMPLETED** — All algorithms below were ported to mya.
+> See `PLAN-HERMES-PORT.md` for results. Notable findings during review:
+> - **computeThresholdTokens**: `Math.min(threshold, maxTokens)` was wrong — should SUBTRACT maxTokens from context window (Hermes `effective_window` pattern). Round 5 fix.
+> - **updateFromResponse**: must reset `ineffectiveCount` to 0 when `realTokens < thresholdTokens`, else permanent deadlock. Round 5 fix.
+> - **compress() rolling summary**: must use `isCompressedSummaryMessage(m)` (top-level), not `m.meta?.[key]` (nested). Round 3 fix.
+
 ---
 
 ## 🔥 1. CJK FTS5 BIGRAM TOKENIZER — Line-by-Line C Code
