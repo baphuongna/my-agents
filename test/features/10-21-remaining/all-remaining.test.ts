@@ -40,7 +40,7 @@ describe("[§10 unit] Desktop App (Tauri)", () => {
 	});
 
 	it("desktop package (TS) loads", async () => {
-		const m = await import("../../../../packages/desktop/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/desktop/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -55,7 +55,7 @@ describe("[§10 unit] Desktop App (Tauri)", () => {
 
 describe("[§11 unit] Launcher (TUI)", () => {
 	it("launcher.ts loads", async () => {
-		const m = await import("../../../../packages/print/src/launcher.ts").catch(() => null);
+		const m = await import("../../../packages/print/src/launcher.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -90,12 +90,12 @@ describe("[§11 unit] Launcher (TUI)", () => {
 
 describe("[§12 unit] Web Dashboard", () => {
 	it("web package loads", async () => {
-		const m = await import("../../../../packages/web/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("dashboard.ts loads", async () => {
-		const m = await import("../../../../packages/web/src/dashboard.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/dashboard.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -106,57 +106,57 @@ describe("[§12 unit] Web Dashboard", () => {
 	});
 
 	it("push subscription module", async () => {
-		const m = await import("../../../../packages/web/src/push-subscription.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/push-subscription.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("session list module", async () => {
-		const m = await import("../../../../packages/web/src/components/session-list.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/components/session-list.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("API client", async () => {
-		const m = await import("../../../../packages/web/src/lib/api.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/lib/api.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("WebSocket client", async () => {
-		const m = await import("../../../../packages/web/src/lib/ws.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/lib/ws.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("i18n (language toggle)", async () => {
-		const m = await import("../../../../packages/web/src/lib/i18n.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/lib/i18n.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("theme switcher", async () => {
-		const m = await import("../../../../packages/web/src/lib/theme.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/lib/theme.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("toast notifications", async () => {
-		const m = await import("../../../../packages/web/src/lib/toast.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/lib/toast.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("modal system", async () => {
-		const m = await import("../../../../packages/web/src/lib/modal.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/lib/modal.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("error boundary", async () => {
-		const m = await import("../../../../packages/web/src/components/ErrorBoundary.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/components/ErrorBoundary.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("mobile navigation", async () => {
-		const m = await import("../../../../packages/web/src/mobile-nav.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/mobile-nav.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("PWA register", async () => {
-		const m = await import("../../../../packages/web/src/pwa-register.ts").catch(() => null);
+		const m = await import("../../../packages/web/src/pwa-register.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -174,22 +174,22 @@ describe("[§12 unit] Web Dashboard", () => {
 	});
 
 	it("markdown renderer", async () => {
-		const m = await import("../../../../packages/web/src/components/Markdown.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/components/Markdown.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("command palette", async () => {
-		const m = await import("../../../../packages/web/src/components/CommandPalette.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/components/CommandPalette.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("charts", async () => {
-		const m = await import("../../../../packages/web/src/components/Charts.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/components/Charts.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("schedule builder", async () => {
-		const m = await import("../../../../packages/web/src/components/ScheduleBuilder.tsx").catch(() => null);
+		const m = await import("../../../packages/web/src/components/ScheduleBuilder.tsx").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });
@@ -200,12 +200,12 @@ describe("[§12 unit] Web Dashboard", () => {
 
 describe("[§13 unit] Sync & Collab", () => {
 	it("sync package loads", async () => {
-		const m = await import("../../../../packages/sync/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/sync/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("collab package loads", async () => {
-		const m = await import("../../../../packages/collab/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/collab/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -232,32 +232,32 @@ describe("[§13 unit] Sync & Collab", () => {
 
 describe("[§14 unit] Eval & Observability", () => {
 	it("eval package loads", async () => {
-		const m = await import("../../../../packages/eval/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/eval/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("drift grader (compression drift)", async () => {
-		const m = await import("../../../../packages/eval/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/eval/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("tier eval (multi-tier harness)", async () => {
-		const m = await import("../../../../packages/eval/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/eval/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("telemetry module loads", async () => {
-		const m = await import("../../../../packages/core/src/telemetry.ts").catch(() => null);
+		const m = await import("../../../packages/core/src/telemetry.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("audit module loads", async () => {
-		const m = await import("../../../../packages/audit/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/audit/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("egress filter", async () => {
-		const m = await import("../../../../packages/eval/src/egress.ts").catch(() => null);
+		const m = await import("../../../packages/eval/src/egress.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -278,22 +278,22 @@ describe("[§14 unit] Eval & Observability", () => {
 
 describe("[§15 unit] MCP", () => {
 	it("mcp-client module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/mcp-client.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/mcp-client.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("mcp-lifecycle module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/mcp-lifecycle.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/mcp-lifecycle.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("mcp-oauth module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/mcp-oauth.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/mcp-oauth.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("mcp-oauth-store module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/mcp-oauth-store.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/mcp-oauth-store.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -351,17 +351,17 @@ describe("[§15 unit] MCP", () => {
 
 describe("[§16 unit] TTS", () => {
 	it("tts package loads", async () => {
-		const m = await import("../../../../packages/tts/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/tts/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("MLX/Kokoro (Apple Silicon)", async () => {
-		const m = await import("../../../../packages/tts/src/mlx.ts").catch(() => null);
+		const m = await import("../../../packages/tts/src/mlx.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("model manager (auto-download + cache)", async () => {
-		const m = await import("../../../../packages/tts/src/model-manager.ts").catch(() => null);
+		const m = await import("../../../packages/tts/src/model-manager.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -376,12 +376,12 @@ describe("[§16 unit] TTS", () => {
 
 describe("[§17 unit] x402 / Wallet", () => {
 	it("x402 package loads", async () => {
-		const m = await import("../../../../packages/x402/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/x402/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("signing module loads", async () => {
-		const m = await import("../../../../packages/signing/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/signing/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -408,12 +408,12 @@ describe("[§17 unit] x402 / Wallet", () => {
 
 describe("[§18 unit] DAP", () => {
 	it("dap package loads", async () => {
-		const m = await import("../../../../packages/dap/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/dap/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("dap-server package loads", async () => {
-		const m = await import("../../../../packages/dap-server/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/dap-server/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -436,12 +436,12 @@ describe("[§18 unit] DAP", () => {
 
 describe("[§19 unit] Voice", () => {
 	it("voice-ptt module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/voice-ptt.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/voice-ptt.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("voice-call module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/voice-call.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/voice-call.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -473,12 +473,12 @@ describe("[§19 unit] Voice", () => {
 
 describe("[§20 unit] System / OS", () => {
 	it("systemd module loads", async () => {
-		const m = await import("../../../../packages/gateway/src/systemd.ts").catch(() => null);
+		const m = await import("../../../packages/gateway/src/systemd.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("gateway-supervisor module loads", async () => {
-		const m = await import("../../../../packages/print/src/gateway-supervisor.ts").catch(() => null);
+		const m = await import("../../../packages/print/src/gateway-supervisor.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -514,7 +514,7 @@ describe("[§20 unit] System / OS", () => {
 
 describe("[§21 unit] Gamification", () => {
 	it("achievements module loads", async () => {
-		const m = await import("../../../../packages/audit/src/achievements.ts").catch(() => null);
+		const m = await import("../../../packages/audit/src/achievements.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -527,7 +527,7 @@ describe("[§21 unit] Gamification", () => {
 	});
 
 	it("pet sprite renderer (truecolor ANSI)", async () => {
-		const m = await import("../../../../packages/tui/src/components/pet-sprite.ts").catch(() => null);
+		const m = await import("../../../packages/tui/src/components/pet-sprite.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -559,7 +559,7 @@ describe("[smoke] all packages", () => {
 		"audit", "signing", "secrets", "collab", "council", "workflows",
 	];
 	it.each(packages)("package %s loads", async (name) => {
-		const m = await import(`../../../../packages/${name}/src/index.ts`).catch(() => null);
+		const m = await import(`../../../packages/${name}/src/index.ts`).catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });

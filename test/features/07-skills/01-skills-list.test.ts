@@ -29,7 +29,7 @@ description: A test skill
 
 # Body
 Skill body content`;
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.name).toBe("test-skill");
 		expect(s.description).toBe("A test skill");
 		expect(s.body).toContain("Skill body content");
@@ -37,12 +37,12 @@ Skill body content`;
 
 	it("handles missing frontmatter", () => {
 		const md = "# Just a body\nNo frontmatter here";
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.body).toBeTruthy();
 	});
 
 	it("handles empty string", () => {
-		const s = parseSkillMarkdown("");
+		const s = parseSkillMarkdown("", "test");
 		expect(s).toBeDefined();
 	});
 
@@ -52,7 +52,7 @@ name: kỹ-năng
 description: Mô tả với ký tự đặc biệt
 ---
 Body`;
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.name).toBe("kỹ-năng");
 		expect(s.description).toContain("Mô tả");
 	});
@@ -63,7 +63,7 @@ name: bad
 no closing fence
 Body`;
 		// Either parses as plain or throws
-		expect(() => parseSkillMarkdown(md)).not.toThrow();
+		expect(() => parseSkillMarkdown(md, "test")).not.toThrow();
 	});
 
 	it("preserves multi-line description", () => {
@@ -74,7 +74,7 @@ description: |
   Line two
 ---
 Body`;
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.description).toContain("Line one");
 		expect(s.description).toContain("Line two");
 	});
@@ -87,7 +87,7 @@ triggers:
   - "/multi"
 ---
 Body`;
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.triggers).toEqual(expect.arrayContaining(["use this"]));
 	});
 
@@ -98,7 +98,7 @@ name: code
 \`\`\`bash
 ls -la
 \`\`\``;
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.body).toContain("```bash");
 		expect(s.body).toContain("ls -la");
 	});
@@ -112,7 +112,7 @@ tools:
   - bash
 ---
 Body`;
-		const s = parseSkillMarkdown(md);
+		const s = parseSkillMarkdown(md, "test");
 		expect(s.tools).toEqual(expect.arrayContaining(["read", "write", "bash"]));
 	});
 
@@ -121,7 +121,7 @@ Body`;
 invalid:: ::: :::yaml
 ---
 Body`;
-		expect(() => parseSkillMarkdown(md)).not.toThrow();
+		expect(() => parseSkillMarkdown(md, "test")).not.toThrow();
 	});
 });
 
@@ -251,7 +251,7 @@ describe("[real] scan ~/.mya/agent/skills", () => {
 		});
 		for (const skillDir of skills) {
 			const md = readFileSync(join(dir, skillDir, "SKILL.md"), "utf8");
-			expect(() => parseSkillMarkdown(md)).not.toThrow();
+			expect(() => parseSkillMarkdown(md, "test")).not.toThrow();
 		}
 	});
 

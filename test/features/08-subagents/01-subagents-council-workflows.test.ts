@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 
 describe("[unit] subagents", () => {
 	it("agent package loads", async () => {
-		const m = await import("../../../../packages/agent/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/agent/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -133,7 +133,7 @@ describe("[unit] maxToolRounds", () => {
 
 describe("[unit] Council", () => {
 	it("CouncilProvider loads", async () => {
-		const m = await import("../../../../packages/council/src/index.ts");
+		const m = await import("../../../packages/council/src/index.ts");
 		expect(typeof m.CouncilProvider).toBe("function");
 	});
 
@@ -143,27 +143,27 @@ describe("[unit] Council", () => {
 	});
 
 	it("Skeptic/Pragmatist/Critic pattern (3+ advisors)", async () => {
-		const { CouncilProvider } = await import("../../../../packages/council/src/index.ts");
+		const { CouncilProvider } = await import("../../../packages/council/src/index.ts");
 		expect(CouncilProvider).toBeDefined();
 	});
 
 	it("HindsightReviewer loads", async () => {
-		const m = await import("../../../../packages/council/src/index.ts");
+		const m = await import("../../../packages/council/src/index.ts");
 		expect(typeof m.HindsightReviewer).toBe("function");
 	});
 
 	it("adversarialReview function", async () => {
-		const m = await import("../../../../packages/council/src/index.ts");
+		const m = await import("../../../packages/council/src/index.ts");
 		expect(typeof m.adversarialReview).toBe("function");
 	});
 
 	it("council.ts loads", async () => {
-		const m = await import("../../../../packages/council/src/council.ts").catch(() => null);
+		const m = await import("../../../packages/council/src/council.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("hindsight.ts loads", async () => {
-		const m = await import("../../../../packages/council/src/hindsight.ts").catch(() => null);
+		const m = await import("../../../packages/council/src/hindsight.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });
@@ -174,17 +174,17 @@ describe("[unit] Council", () => {
 
 describe("[unit] Workflows", () => {
 	it("runWorkflow function", async () => {
-		const m = await import("../../../../packages/workflows/src/index.ts");
+		const m = await import("../../../packages/workflows/src/index.ts");
 		expect(typeof m.runWorkflow).toBe("function");
 	});
 
 	it("runWorkflowSource function", async () => {
-		const m = await import("../../../../packages/workflows/src/index.ts");
+		const m = await import("../../../packages/workflows/src/index.ts");
 		expect(typeof m.runWorkflowSource).toBe("function");
 	});
 
 	it("runWorkflowIsolated function", async () => {
-		const m = await import("../../../../packages/workflows/src/index.ts");
+		const m = await import("../../../packages/workflows/src/index.ts");
 		expect(typeof m.runWorkflowIsolated).toBe("function");
 	});
 
@@ -193,12 +193,12 @@ describe("[unit] Workflows", () => {
 	});
 
 	it("runner.ts loads", async () => {
-		const m = await import("../../../../packages/workflows/src/runner.ts").catch(() => null);
+		const m = await import("../../../packages/workflows/src/runner.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("worker.ts loads", async () => {
-		const m = await import("../../../../packages/workflows/src/worker.ts").catch(() => null);
+		const m = await import("../../../packages/workflows/src/worker.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });
@@ -209,12 +209,12 @@ describe("[unit] Workflows", () => {
 
 describe("[unit] Collab", () => {
 	it("collab index loads", async () => {
-		const m = await import("../../../../packages/collab/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/collab/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("relay.ts loads", async () => {
-		const m = await import("../../../../packages/collab/src/relay.ts").catch(() => null);
+		const m = await import("../../../packages/collab/src/relay.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -229,7 +229,7 @@ describe("[unit] Collab", () => {
 
 describe("[unit] AgentPool", () => {
 	it("pool.ts loads", async () => {
-		const m = await import("../../../../packages/agent/src/pool.ts").catch(() => null);
+		const m = await import("../../../packages/agent/src/pool.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
@@ -238,7 +238,7 @@ describe("[unit] AgentPool", () => {
 	});
 
 	it("pi-pool.ts loads", async () => {
-		const m = await import("../../../../packages/agent/src/pi-pool.ts").catch(() => null);
+		const m = await import("../../../packages/agent/src/pi-pool.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });
@@ -249,22 +249,22 @@ describe("[unit] AgentPool", () => {
 
 describe("[smoke] multi-agent modules", () => {
 	it("council package loads", async () => {
-		const m = await import("../../../../packages/council/src/index.ts");
+		const m = await import("../../../packages/council/src/index.ts");
 		expect(m).toBeDefined();
 	});
 
 	it("workflows package loads", async () => {
-		const m = await import("../../../../packages/workflows/src/index.ts");
+		const m = await import("../../../packages/workflows/src/index.ts");
 		expect(m).toBeDefined();
 	});
 
 	it("collab package loads", async () => {
-		const m = await import("../../../../packages/collab/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/collab/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
 	it("agent package loads", async () => {
-		const m = await import("../../../../packages/agent/src/index.ts").catch(() => null);
+		const m = await import("../../../packages/agent/src/index.ts").catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });

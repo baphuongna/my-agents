@@ -20,14 +20,14 @@ describe("[unit] Layer 1: Ingest (capture)", () => {
 	afterEach(() => rmSync(tmpDir, { recursive: true }));
 
 	it("captures a memory entry", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		const id = await m.capture({ kind: "episodic", text: "hello" });
 		expect(id).toBeTruthy();
 	});
 
 	it("capture returns unique id each call", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		const a = await m.capture({ kind: "episodic", text: "a" });
 		const b = await m.capture({ kind: "episodic", text: "b" });
@@ -35,7 +35,7 @@ describe("[unit] Layer 1: Ingest (capture)", () => {
 	});
 
 	it("capture deduplicates identical entries", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m.capture({ kind: "episodic", text: "x" });
 		await m.capture({ kind: "episodic", text: "x" });
@@ -45,7 +45,7 @@ describe("[unit] Layer 1: Ingest (capture)", () => {
 	});
 
 	it("capture compresses large payloads", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		const big = "x".repeat(50_000);
 		const id = await m.capture({ kind: "episodic", text: big });
@@ -53,14 +53,14 @@ describe("[unit] Layer 1: Ingest (capture)", () => {
 	});
 
 	it("capture handles Unicode", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		const id = await m.capture({ kind: "episodic", text: "🌍 한국어" });
 		expect(id).toBeTruthy();
 	});
 
 	it("capture accepts metadata", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m.capture({ kind: "episodic", text: "x", metadata: { source: "test" } });
 		const r = await m.query({ text: "x" });
@@ -68,7 +68,7 @@ describe("[unit] Layer 1: Ingest (capture)", () => {
 	});
 
 	it("capture empty text does not crash", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await expect(m.capture({ kind: "episodic", text: "" })).rejects.toThrow();
 	});
@@ -85,7 +85,7 @@ describe("[unit] Layer 2: Store (UnifiedStore)", () => {
 	afterEach(() => rmSync(tmpDir, { recursive: true }));
 
 	it("persists to SQLite", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m.capture({ kind: "episodic", text: "x" });
 		// Reopen — should still have data
@@ -95,7 +95,7 @@ describe("[unit] Layer 2: Store (UnifiedStore)", () => {
 	});
 
 	it("FTS5 search returns ranked results", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m.capture({ kind: "episodic", text: "The quick brown fox" });
 		await m.capture({ kind: "episodic", text: "The lazy dog" });
@@ -104,7 +104,7 @@ describe("[unit] Layer 2: Store (UnifiedStore)", () => {
 	});
 
 	it("BM25 ranking (TF-IDF)", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		for (let i = 0; i < 10; i++) {
 			await m.capture({ kind: "episodic", text: `document ${i}` });
@@ -120,17 +120,17 @@ describe("[unit] Layer 2: Store (UnifiedStore)", () => {
 
 describe("[unit] Layer 3: Lifecycle", () => {
 	it("DreamCycle module loads", async () => {
-		const m = await import("../../../../packages/memory/src/dream-cycle.ts");
+		const m = await import("../../../packages/memory/src/dream-cycle.ts");
 		expect(typeof m.DreamCycle).toBe("function");
 	});
 
 	it("DEFAULT_DREAM_INTERVAL_MS = 4h", async () => {
-		const m = await import("../../../../packages/memory/src/dream-cycle.ts");
+		const m = await import("../../../packages/memory/src/dream-cycle.ts");
 		expect(m.DEFAULT_DREAM_INTERVAL_MS).toBe(4 * 60 * 60 * 1000);
 	});
 
 	it("Weibull decay module loads", async () => {
-		const m = await import("../../../../packages/memory/src/weibull.ts");
+		const m = await import("../../../packages/memory/src/weibull.ts");
 		expect(m).toBeDefined();
 	});
 
@@ -147,12 +147,12 @@ describe("[unit] Layer 3: Lifecycle", () => {
 	});
 
 	it("conflict detection module loads", async () => {
-		const m = await import("../../../../packages/memory/src/conflict.ts");
+		const m = await import("../../../packages/memory/src/conflict.ts");
 		expect(m).toBeDefined();
 	});
 
 	it("governance module loads", async () => {
-		const m = await import("../../../../packages/memory/src/governance.ts");
+		const m = await import("../../../packages/memory/src/governance.ts");
 		expect(m).toBeDefined();
 	});
 });
@@ -163,12 +163,12 @@ describe("[unit] Layer 3: Lifecycle", () => {
 
 describe("[unit] Layer 4: Retrieve (RRF)", () => {
 	it("RRF module loads", async () => {
-		const m = await import("../../../../packages/memory/src/rrf.ts");
+		const m = await import("../../../packages/memory/src/rrf.ts");
 		expect(typeof m.reciprocalRankFuse).toBe("function");
 	});
 
 	it("reciprocalRankFuse combines ranks", async () => {
-		const { reciprocalRankFuse } = await import("../../../../packages/memory/src/rrf.ts");
+		const { reciprocalRankFuse } = await import("../../../packages/memory/src/rrf.ts");
 		const r = reciprocalRankFuse([
 			{ arm: "bm25", results: [{ id: "a", score: 1 }, { id: "b", score: 0.5 }] },
 			{ arm: "substring", results: [{ id: "b", score: 1 }, { id: "c", score: 0.3 }] },
@@ -177,7 +177,7 @@ describe("[unit] Layer 4: Retrieve (RRF)", () => {
 	});
 
 	it("RRF weights unique-id contributions", async () => {
-		const { reciprocalRankFuse } = await import("../../../../packages/memory/src/rrf.ts");
+		const { reciprocalRankFuse } = await import("../../../packages/memory/src/rrf.ts");
 		const r = reciprocalRankFuse([
 			{ arm: "bm25", results: [{ id: "a", score: 1 }] },
 			{ arm: "vector", results: [{ id: "a", score: 1 }] },
@@ -187,28 +187,28 @@ describe("[unit] Layer 4: Retrieve (RRF)", () => {
 	});
 
 	it("RRF handles empty arms", async () => {
-		const { reciprocalRankFuse } = await import("../../../../packages/memory/src/rrf.ts");
+		const { reciprocalRankFuse } = await import("../../../packages/memory/src/rrf.ts");
 		const r = reciprocalRankFuse([]);
 		expect(r).toEqual([]);
 	});
 
 	it("bm25Arm", async () => {
-		const { bm25Arm } = await import("../../../../packages/memory/src/rrf.ts");
+		const { bm25Arm } = await import("../../../packages/memory/src/rrf.ts");
 		expect(typeof bm25Arm).toBe("function");
 	});
 
 	it("substringArm", async () => {
-		const { substringArm } = await import("../../../../packages/memory/src/rrf.ts");
+		const { substringArm } = await import("../../../packages/memory/src/rrf.ts");
 		expect(typeof substringArm).toBe("function");
 	});
 
 	it("vectorArm", async () => {
-		const { vectorArm } = await import("../../../../packages/memory/src/rrf.ts");
+		const { vectorArm } = await import("../../../packages/memory/src/rrf.ts");
 		expect(typeof vectorArm).toBe("function");
 	});
 
 	it("graphArm", async () => {
-		const { graphArm } = await import("../../../../packages/memory/src/rrf.ts");
+		const { graphArm } = await import("../../../packages/memory/src/rrf.ts");
 		expect(typeof graphArm).toBe("function");
 	});
 });
@@ -224,7 +224,7 @@ describe("[unit] Layer 5: Persist", () => {
 	afterEach(() => rmSync(tmpDir, { recursive: true }));
 
 	it("snapshot() returns MemorySnapshot", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m.capture({ kind: "episodic", text: "x" });
 		const snap = await m.snapshot();
@@ -232,7 +232,7 @@ describe("[unit] Layer 5: Persist", () => {
 	});
 
 	it("snapshot survives restart", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m1 = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m1.capture({ kind: "episodic", text: "persist" });
 		const m2 = new MemoryManagerImpl({ dataDir: tmpDir });
@@ -241,7 +241,7 @@ describe("[unit] Layer 5: Persist", () => {
 	});
 
 	it("stubMemoryManager returns empty snapshot", async () => {
-		const { stubMemoryManager } = await import("../../../../packages/memory/src/manager.ts");
+		const { stubMemoryManager } = await import("../../../packages/memory/src/manager.ts");
 		const m = stubMemoryManager();
 		const snap = await m.snapshot();
 		expect(snap.entries).toEqual([]);
@@ -260,7 +260,7 @@ describe("[smoke] memory modules", () => {
 	];
 
 	it.each(modules)("%s.ts loads", async (name) => {
-		const m = await import(`../../../../packages/memory/src/${name}.ts`).catch(() => null);
+		const m = await import(`../../../packages/memory/src/${name}.ts`).catch(() => null);
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 });
@@ -276,7 +276,7 @@ describe("[real] memory E2E", () => {
 	afterEach(() => rmSync(tmpDir, { recursive: true }));
 
 	it("capture → query → ranked result", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m.capture({ kind: "episodic", text: "OpenAI is a company" });
 		await m.capture({ kind: "episodic", text: "Anthropic makes Claude" });
@@ -285,7 +285,7 @@ describe("[real] memory E2E", () => {
 	});
 
 	it("memory persists across restart", async () => {
-		const { MemoryManagerImpl } = await import("../../../../packages/memory/src/manager.ts");
+		const { MemoryManagerImpl } = await import("../../../packages/memory/src/manager.ts");
 		const m1 = new MemoryManagerImpl({ dataDir: tmpDir });
 		await m1.capture({ kind: "episodic", text: "persist this" });
 		const m2 = new MemoryManagerImpl({ dataDir: tmpDir });

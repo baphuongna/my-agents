@@ -103,12 +103,15 @@ describe("[unit] eligible", () => {
 		expect(r.eligible("a")).toBe(false);
 	});
 
-	it("uses injected time if provided", () => {
+	it("eligible() accepts injected now param", () => {
+		// taint() uses nowWallclock() internally (Invariant #10)
+		// eligible(id, now) accepts override for testing
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("a"));
-		r.taint("a", "auth", 1000); // since=1000
-		expect(r.eligible("a", 1050)).toBe(false);
-		expect(r.eligible("a", 1101)).toBe(true);
+		r.taint("a", "auth");
+		expect(r.eligible("a")).toBe(false); // tainted now
+		// After cooldown (inject future time): should clear
+		expect(r.eligible("a", Date.now() + 200)).toBe(true);
 	});
 });
 
@@ -192,20 +195,21 @@ describe("[unit] registry health", () => {
 		expect(r.health()).toBe("Failed");
 	});
 
-	it("health() accepts now parameter (snapshot)", () => {
+	it("health() does NOT accept now param (uses nowWallclock internally)", () => {
+		// health() has no parameters — it calls nowWallclock() internally
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("a"));
 		r.taint("a", "auth");
-		expect(r.health(50)).toBe("Failed");
-		expect(r.health(200)).toBe("Healthy");
+		expect(r.health()).toBe("Failed");
 	});
 
-	it("health auto-transitions Failed → Healthy on recovery", () => {
+	it("health transitions Failed → Healthy after real cooldown", async () => {
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("a"));
 		r.taint("a", "auth");
-		expect(r.health(Date.now())).toBe("Failed");
-		expect(r.health(Date.now() + 200)).toBe("Healthy");
+		expect(r.health()).toBe("Failed");
+		await new Promise((res) => setTimeout(res, 150));
+		expect(r.health()).toBe("Healthy");
 	});
 });
 
