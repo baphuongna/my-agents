@@ -211,7 +211,8 @@ export class OAuth401Dedup {
     if (existing) return existing;
     const promise = recovery().finally(() => {
       // Clean up after a short delay to catch late-arriving 401s.
-      setTimeout(() => this.pending.delete(key), this.reapMs);
+      const t = setTimeout(() => this.pending.delete(key), this.reapMs);
+      t.unref?.();
     });
     this.pending.set(key, promise);
     return promise;

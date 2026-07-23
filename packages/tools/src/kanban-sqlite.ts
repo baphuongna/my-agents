@@ -635,6 +635,8 @@ export function migrateJsonToSqlite(jsonPath: string, db: KanbanDB): number {
       for (const t of c.tasks) {
         if (typeof t !== "object" || t === null) continue;
         const task = t as { id?: string; title?: string; column?: string };
+        // Idempotency: skip if task already exists (re-run safety)
+        if (task.id && db.getTask(task.id)) continue;
         const status = (task.column && colToStatus[task.column]) || "todo";
         db.createTask({
           id: task.id,

@@ -17,7 +17,6 @@
 import { nowWallclock } from "@my-agent/core";
 import {
   readFileSync,
-  writeFileSync,
   writeSync,
   openSync,
   closeSync,
@@ -152,12 +151,19 @@ export function acquireOrReplaceStaleLock(lockPath: string, pid: number): boolea
     return false;
   }
 
-  // Lock held by a dead process — atomically remove then acquire.
+  // Lock held by a dead process — atomically remove then acquire via O_EXCL.
   if (!removeStaleLockAtomic(lockPath)) {
     // Another racer won the tombstone rename.
     return false;
   }
 
-  writeFileSync(lockPath, JSON.stringify({ pid, createdAt: nowWallclock() }));
-  return true;
+  // Use O_EXCL to avoid overwriting a racer that acquired in the gap.
+  try {
+    const fd = openSync(lockPath, "wx", 0o600);
+    writeSync(fd, JSON.stringify({ pid, createdAt: nowWallclock() }));
+    closeSync(fd);
+    return true;
+  } catch {
+    return false; // another racer won the gap
+  }
 }

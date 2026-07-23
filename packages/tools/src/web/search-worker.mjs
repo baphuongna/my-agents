@@ -40,7 +40,7 @@ try {
   process.exit(0);
 } catch (e) {
   process.stdout.write(
-    JSON.stringify({ ok: false, error: `${e.constructor.name}: ${e.message}` }),
+    JSON.stringify({ ok: false, error: e instanceof Error ? `${e.constructor.name}: ${e.message}` : String(e) }),
   );
   process.exit(1);
 }

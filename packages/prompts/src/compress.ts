@@ -689,7 +689,7 @@ export async function compress(
   // Min-size guard: not enough messages to meaningfully compress
   const minSize = config.protectFirstN + 4;
   if (messages.length <= minSize) {
-    state.ineffectiveCount++;
+    if (!opts?.force) state.ineffectiveCount++;
     return messages;
   }
 
@@ -710,7 +710,7 @@ export async function compress(
 
   // Check if there are turns to summarize
   if (tailStart - headEnd <= 0) {
-    state.ineffectiveCount++;
+    if (!opts?.force) state.ineffectiveCount++;
     return messages;
   }
 
@@ -722,7 +722,7 @@ export async function compress(
   // Strip them from turns so they don't get re-summarized.
   const previousSummaries: string[] = [];
   const cleanTurns = turns.filter((m) => {
-    if (m.meta?.[COMPRESSED_SUMMARY_METADATA_KEY]) {
+    if (isCompressedSummaryMessage(m)) {
       const text = typeof m.content === "string" ? m.content : String(m.content ?? "");
       previousSummaries.push(text);
       return false; // remove from turns
@@ -745,7 +745,7 @@ export async function compress(
 
   if (summary === null) {
     // Fallback to static template (no LLM)
-    summary = buildStaticFallback(turns);
+    summary = buildStaticFallback(cleanTurns);
     state.fallbackStreak++;
     state.setCooldown();
   } else {

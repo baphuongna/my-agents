@@ -126,7 +126,6 @@ export class McpManager {
   private toolSchemas = new Map<string, McpToolInfo[]>();
   private rpcId = 0;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout> }>();
-  private buffers = new Map<string, string>();
 
   // ─── Reliability state (per-server, instance-scoped) ───────────────────
   private reconnectState = new Map<string, ReconnectState>();
@@ -225,7 +224,7 @@ export class McpManager {
           this.handleResponse(msg);
         }
       });
-      this.buffers.set(id, buf);
+
 
       proc.on("error", (err) => {
         if (this.procs.get(id) !== proc) return; // stale proc (restart replaced it)
@@ -402,12 +401,13 @@ export class McpManager {
   /** HTTP transport: POST JSON-RPC to the server's URL. */
   private async rpcHttp(serverId: string, method: string, params: unknown): Promise<unknown> {
     const cfg = this.configs.get(serverId)!;
+    if (!cfg.url) throw new Error(`MCP server "${serverId}" has no URL configured`);
     const id = ++this.rpcId;
     const req: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
     const timeout = method === "initialize" ? 30_000 : method === "tools/call" ? 60_000 : 15_000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeout);
       // Streamable HTTP: Accept must include both JSON and SSE (MCP 2025-03-26 spec)
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -450,6 +450,8 @@ export class McpManager {
     } catch (e) {
       if ((e as Error).name === "AbortError") throw new Error(`MCP request "${method}" timed out (${timeout / 1000}s)`);
       throw new Error(`MCP HTTP error: ${(e as Error).message}`);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
