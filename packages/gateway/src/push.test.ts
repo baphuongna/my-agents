@@ -84,3 +84,137 @@ describe("sendPushAll (C-3 Web Push)", () => {
     expect(webpush.sendNotification).not.toHaveBeenCalled();
   });
 });
+
+// ─── generateVapidKeys ───────────────────────────────────────────────────────
+
+describe("generateVapidKeys", () => {
+  it("returns base64url public + private keys", async () => {
+    const { generateVapidKeys } = await import("./push.js");
+    const keys = generateVapidKeys();
+    expect(typeof keys.publicKey).toBe("string");
+    expect(typeof keys.privateKey).toBe("string");
+    expect(keys.publicKey.length).toBeGreaterThan(0);
+    expect(keys.privateKey.length).toBeGreaterThan(0);
+    // Distinct keys.
+    expect(keys.publicKey).not.toBe(keys.privateKey);
+  });
+
+  it("produces a 65-byte uncompressed public key (0x04 + X + Y)", async () => {
+    const { generateVapidKeys } = await import("./push.js");
+    const keys = generateVapidKeys();
+    const pub = Buffer.from(keys.publicKey, "base64url");
+    expect(pub.length).toBe(65);
+    expect(pub[0]).toBe(0x04); // uncompressed point prefix
+  });
+
+  it("produces a 32-byte private scalar", async () => {
+    const { generateVapidKeys } = await import("./push.js");
+    const keys = generateVapidKeys();
+    const priv = Buffer.from(keys.privateKey, "base64url");
+    expect(priv.length).toBe(32);
+  });
+
+  it("generates fresh keys on each call", async () => {
+    const { generateVapidKeys } = await import("./push.js");
+    const a = generateVapidKeys();
+    const b = generateVapidKeys();
+    expect(a.publicKey).not.toBe(b.publicKey);
+    expect(a.privateKey).not.toBe(b.privateKey);
+  });
+});
+
+// ─── getVapidPublicKey ──────────────────────────────────────────────────────
+
+describe("getVapidPublicKey", () => {
+  it("reflects the VAPID_PUBLIC_KEY env var", async () => {
+    const { getVapidPublicKey } = await import("./push.js");
+    vi.stubEnv("VAPID_PUBLIC_KEY", "BG3b-explicit-public");
+    expect(getVapidPublicKey()).toBe("BG3b-explicit-public");
+  });
+
+  it("returns an empty string when VAPID_PUBLIC_KEY is unset", async () => {
+    const { getVapidPublicKey } = await import("./push.js");
+    vi.stubEnv("VAPID_PUBLIC_KEY", "");
+    expect(getVapidPublicKey()).toBe("");
+  });
+});
+
+// ─── subscription store ─────────────────────────────────────────────────────
+
+describe("subscription store", () => {
+  beforeEach(() => {
+    for (const sub of listSubscriptions()) {
+      removeSubscription(sub.endpoint);
+    }
+  });
+
+  const subA = { endpoint: "https://push/a", keys: { p256dh: "pa", auth: "aa" } };
+  const subB = { endpoint: "https://push/b", keys: { p256dh: "pb", auth: "ab" } };
+
+  it("addSubscription then listSubscriptions returns it", () => {
+    expect(listSubscriptions()).toHaveLength(0);
+    addSubscription(subA);
+    expect(listSubscriptions()).toHaveLength(1);
+    expect(listSubscriptions()[0]!.endpoint).toBe(subA.endpoint);
+  });
+
+  it("removeSubscription returns true for an existing endpoint", () => {
+    addSubscription(subA);
+    expect(removeSubscription(subA.endpoint)).toBe(true);
+    expect(listSubscriptions()).toHaveLength(0);
+  });
+
+  it("removeSubscription returns false for a non-existent endpoint", () => {
+    expect(removeSubscription("https://push/ghost")).toBe(false);
+  });
+
+  it("adding the same endpoint twice dedupes (overwrites)", () => {
+    addSubscription(subA);
+    addSubscription({ ...subA, keys: { p256dh: "pa2", auth: "aa2" } });
+    expect(listSubscriptions()).toHaveLength(1);
+    expect(listSubscriptions()[0]!.keys.p256dh).toBe("pa2");
+  });
+
+  it("supports multiple distinct subscriptions", () => {
+    addSubscription(subA);
+    addSubscription(subB);
+    expect(listSubscriptions()).toHaveLength(2);
+  });
+});
+
+// ─── notifyEvent ────────────────────────────────────────────────────────────
+
+describe("notifyEvent", () => {
+  beforeEach(() => {
+    for (const sub of listSubscriptions()) {
+      removeSubscription(sub.endpoint);
+    }
+    vi.mocked(webpush.sendNotification).mockReset();
+    vi.stubEnv("VAPID_PUBLIC_KEY", "BG3b-test-public");
+    vi.stubEnv("VAPID_PRIVATE_KEY", "nDk0-test-private");
+    vi.mocked(webpush.sendNotification).mockResolvedValue({ statusCode: 201, body: "", headers: {} });
+  });
+
+  it("is a no-op when there are no subscriptions", async () => {
+    const { notifyEvent } = await import("./push.js");
+    notifyEvent({ kind: "done", summary: "hello" });
+    // Allow any pending microtask (void sendPushAll) to flush.
+    await new Promise((r) => setTimeout(r, 5));
+    expect(webpush.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a push when a subscription exists", async () => {
+    const { notifyEvent } = await import("./push.js");
+    addSubscription({ endpoint: "https://push/notify", keys: { p256dh: "p", auth: "a" } });
+    notifyEvent({ kind: "done", sessionId: "sess-1", summary: "a".repeat(200) });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(webpush.sendNotification).toHaveBeenCalled();
+    const payload = JSON.parse(
+      (vi.mocked(webpush.sendNotification).mock.calls[0]![1] as string),
+    );
+    expect(payload.title).toContain("done");
+    expect(payload.url).toBe("/?session=sess-1");
+    // summary is truncated to 100 chars.
+    expect(payload.body.length).toBeLessThanOrEqual(100);
+  });
+});

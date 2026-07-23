@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { Wallet, X402Client, verifyEcdsaSignature } from "@my-agent/x402";
+import { Wallet, X402Client, verifyEcdsaSignature, makePaidFetchTool } from "@my-agent/x402";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -148,5 +148,70 @@ describe("Wallet — ECDSA secp256k1 + HKDF key derivation + rotation", () => {
     // Rotation does NOT change the tri-state (no failure mode in tier 3 stub).
     w.rotateKey();
     expect(w.health()).toBe("Healthy");
+  });
+});
+
+// ─── makePaidFetchTool (agent-facing paid fetch tool) ──────────────────────
+
+describe("makePaidFetchTool — exposes x402 to the agent", () => {
+  it("returns a tool named paid_fetch with WorkspaceWrite mode (paying = write)", () => {
+    const w = new Wallet({ initial: { USDC: 5 } });
+    const tool = makePaidFetchTool(w);
+    expect(tool.meta.name).toBe("paid_fetch");
+    expect(tool.meta.requiredMode).toBe("WorkspaceWrite");
+  });
+
+  it("declares url as required in its JSON-Schema args", () => {
+    const tool = makePaidFetchTool(new Wallet());
+    expect(tool.meta.args.required).toContain("url");
+  });
+
+  it("run() fails (err) when no url is provided", async () => {
+    const tool = makePaidFetchTool(new Wallet());
+    const r = await tool.run({});
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/url/i);
+  });
+
+  it("run() fails when url is present but not a string", async () => {
+    const tool = makePaidFetchTool(new Wallet());
+    const r = await tool.run({ url: 123 });
+    expect(r.ok).toBe(false);
+  });
+
+  it("run() returns ok with the response body on a free 200 resource", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("free-content", { status: 200 })),
+    );
+    const tool = makePaidFetchTool(new Wallet());
+    const r = await tool.run({ url: "https://example.com/free" });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const out = r.output as { ok: boolean; status: number; body?: string };
+      expect(out.status).toBe(200);
+      expect(out.body).toBe("free-content");
+    }
+  });
+
+  it("run() pays + retries on 402, deducting from the wallet", async () => {
+    const wallet = new Wallet({ initial: { USDC: 10 } });
+    const challenge = { x402: { amount: 3, currency: "USDC", payee: "p", nonce: "n" } };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const headers = init?.headers as Record<string, string> | undefined;
+        if (headers && headers["x402-proof"]) return new Response("premium", { status: 200 });
+        return new Response(JSON.stringify(challenge), {
+          status: 402,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const tool = makePaidFetchTool(wallet);
+    const r = await tool.run({ url: "https://example.com/premium" });
+    expect(r.ok).toBe(true);
+    expect(wallet.balance("USDC")).toBe(7); // 10 - 3
+    expect(wallet.receipts).toHaveLength(1);
   });
 });

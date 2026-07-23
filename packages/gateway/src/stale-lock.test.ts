@@ -172,4 +172,64 @@ describe("acquireOrReplaceStaleLock", () => {
     expect(typeof lock!.createdAt).toBe("number");
     expect(lock!.createdAt).toBeGreaterThan(0);
   });
+
+  it("leaves no .stale tombstone after a successful replace", () => {
+    const p = lockPath();
+    writeLock(p, { pid: 2_000_000, createdAt: 0 }); // dead PID
+    expect(acquireOrReplaceStaleLock(p, process.pid)).toBe(true);
+    expect(existsSync(`${p}.stale`)).toBe(false);
+    expect(existsSync(p)).toBe(true);
+  });
+
+  it("re-acquire by the SAME live holder fails (lock still held)", () => {
+    const p = lockPath();
+    // First acquire by our PID.
+    expect(acquireOrReplaceStaleLock(p, process.pid)).toBe(true);
+    // A second acquire (same live PID) must fail — the holder is still alive.
+    expect(acquireOrReplaceStaleLock(p, process.pid)).toBe(false);
+    expect(readLock(p)?.pid).toBe(process.pid);
+  });
+});
+
+// ─── edge cases ─────────────────────────────────────────────────────────────
+
+describe("readLock — robustness", () => {
+  it("ignores extra unknown fields", () => {
+    const p = lockPath();
+    writeFileSync(p, JSON.stringify({ pid: 42, createdAt: 7, extra: "ignore-me", nested: { a: 1 } }));
+    expect(readLock(p)).toEqual({ pid: 42, createdAt: 7 });
+  });
+
+  it("returns null for an empty object", () => {
+    const p = lockPath();
+    writeFileSync(p, "{}");
+    expect(readLock(p)).toBe(null);
+  });
+
+  it("returns null when createdAt is a non-number", () => {
+    const p = lockPath();
+    writeFileSync(p, JSON.stringify({ pid: 1, createdAt: "soon" }));
+    expect(readLock(p)).toBe(null);
+  });
+});
+
+describe("isLockStale — boundary semantics", () => {
+  it("is stale exactly at the TTL boundary (age === TTL)", () => {
+    const p = lockPath();
+    writeLock(p, { pid: 2_000_000, createdAt: 0 });
+    // age === TTL → `>=` triggers stale.
+    expect(isLockStale(p, LOCK_STALE_TTL_MS)).toBe(true);
+  });
+
+  it("is not stale one millisecond before the TTL", () => {
+    const p = lockPath();
+    writeLock(p, { pid: process.pid, createdAt: 0 });
+    expect(isLockStale(p, LOCK_STALE_TTL_MS - 1)).toBe(false);
+  });
+});
+
+describe("isPidAlive — current process", () => {
+  it("the current process is alive", () => {
+    expect(isPidAlive(process.pid)).toBe(true);
+  });
 });
