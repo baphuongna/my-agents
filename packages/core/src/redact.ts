@@ -158,8 +158,10 @@ function _redactQueryString(query: string): string {
       const eq = kv.indexOf("=");
       if (eq < 0) return kv;
       const key = kv.slice(0, eq);
-      // Check base key (before any % encoding)
-      const baseKey = decodeURIComponent(key).toLowerCase();
+      // Check base key (before any % encoding) — wrap in try/catch for malformed %
+      let baseKey: string;
+      try { baseKey = decodeURIComponent(key).toLowerCase(); }
+      catch { baseKey = key.toLowerCase(); }
       if (_SENSITIVE_QUERY_PARAMS.has(baseKey)) {
         return `${key}=***`;
       }
@@ -179,8 +181,8 @@ const _PREFIX_SUBSTRINGS = [
   "sk-", "ghp_", "github_pat_", "gho_", "ghu_", "ghs_", "ghr_", "xapp-",
   "xox", "AIza", "pplx-", "fal_", "fc-", "bb_live_", "AKIA", "sk_live_",
   "sk_test_", "rk_live_", "SG.", "hf_", "r8_", "npm_", "pypi-", "dop_v1_",
-  "doo_v1_", "am_", "tvly-", "exa_", "gsk_", "syt_", "retaindb_", "hsk-",
-  "mem0_", "brv_", "xai-", "ntn_", "fw-", "fw_", "fpk_",
+  "doo_v1_", "am_", "sk_", "tvly-", "exa_", "gsk_", "syt_", "retaindb_",
+  "hsk-", "mem0_", "brv_", "xai-", "ntn_", "fw-", "fw_", "fpk_",
 ];
 
 function _hasKnownPrefix(text: string): boolean {
@@ -213,7 +215,7 @@ export function redactSensitiveText(
   opts?: RedactOptions,
 ): string {
   if (typeof text !== "string") return text;
-  const enabled = opts?.force ?? _REDACT_ENABLED;
+  const enabled = opts?.force === true || _REDACT_ENABLED;
   if (!enabled) return text;
 
   let result = text;
@@ -262,7 +264,7 @@ export function redactSensitiveText(
     result = result.replace(_TELEGRAM_RE, "$1$2:***");
   }
 
-  // 10. URL credentials (opt-in)
+  // 10. URL credentials (opt-in) + phone (force or redactUrlCredentials)
   if (opts?.redactUrlCredentials) {
     // Query params
     result = result.replace(_URL_WITH_QUERY_RE, (_m, base, q, query) => {
@@ -270,10 +272,13 @@ export function redactSensitiveText(
     });
     // Userinfo
     result = result.replace(_URL_USERINFO_RE, "$1$2:***@");
-    // E.164 phone
+  }
+
+  // E.164 phone — redact at force boundaries or when URL credentials opt-in
+  if (opts?.force || opts?.redactUrlCredentials) {
     result = result.replace(_PHONE_RE, (m) => {
       const mid = m.length - 4;
-      return m.slice(0, 4) + "****" + m.slice(mid);
+      return m.slice(0, 5) + "****" + m.slice(mid);
     });
   }
 

@@ -708,8 +708,8 @@ export async function compress(
   const headEnd = Math.min(config.protectFirstN, working.length);
   const tailStart = Math.max(headEnd + 1, working.length - config.protectLastN);
 
-  if (tailStart <= headEnd) {
-    // No turns to summarize
+  // Check if there are turns to summarize
+  if (tailStart - headEnd <= 0) {
     state.ineffectiveCount++;
     return messages;
   }
@@ -718,12 +718,25 @@ export async function compress(
   const turns = working.slice(headEnd, tailStart);
   const tail = working.slice(tailStart);
 
+  // Extract existing compressed summaries for rolling update.
+  // Strip them from turns so they don't get re-summarized.
+  const previousSummaries: string[] = [];
+  const cleanTurns = turns.filter((m) => {
+    if (m.meta?.[COMPRESSED_SUMMARY_METADATA_KEY]) {
+      const text = typeof m.content === "string" ? m.content : String(m.content ?? "");
+      previousSummaries.push(text);
+      return false; // remove from turns
+    }
+    return true;
+  });
+
   // Phase 3: summary generation
   let summary: string | null = null;
   try {
-    summary = await generateSummary(turns, {
+    summary = await generateSummary(cleanTurns, {
       focusTopic: opts?.focusTopic,
       memoryContext: opts?.memoryContext,
+      previousSummary: previousSummaries.length > 0 ? previousSummaries.join("\n\n") : undefined,
       summaryFn,
     });
   } catch {

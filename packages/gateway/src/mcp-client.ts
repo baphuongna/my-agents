@@ -25,11 +25,12 @@ export type McpFailureClass = "permanent" | "transient";
  * get normal exponential backoff. */
 export function classifyMcpFailure(err: unknown): McpFailureClass {
   const msg = err instanceof Error ? err.message : String(err);
+  // Use word boundaries / error codes to avoid false positives on substring matches.
   // Permanent: command not found, auth errors, invalid URL
-  if (msg.includes("ENOENT") || msg.includes("not found")) return "permanent";
-  if (msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized")) return "permanent";
-  if (msg.includes("invalid url") || msg.includes("Invalid URL")) return "permanent";
-  if (msg.includes("ECONNREFUSED") && msg.includes("connect")) return "permanent"; // bad port/host
+  if (/\bENOENT\b/.test(msg) || /\bnot found\b/i.test(msg)) return "permanent";
+  if (/\b40[13]\b/.test(msg) || /\bunauthorized\b|\bforbidden\b|\bauth(entication|orization)?\s*(failed|error)\b/i.test(msg)) return "permanent";
+  if (/\binvalid\s+url\b/i.test(msg)) return "permanent";
+  if (/\bECONNREFUSED\b/.test(msg) && /\bconnect\b/i.test(msg)) return "permanent";
   return "transient";
 }
 
@@ -124,7 +125,7 @@ export class McpManager {
   /** B3 fix: retain full McpToolInfo[] (incl. inputSchema) per server. */
   private toolSchemas = new Map<string, McpToolInfo[]>();
   private rpcId = 0;
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout> }>();
   private buffers = new Map<string, string>();
 
   // ─── Reliability state (per-server, instance-scoped) ───────────────────
@@ -170,18 +171,23 @@ export class McpManager {
       server = transition(server, "Discovered");
       this.servers.set(id, server);
     }
-
-    // B2 fix: phase order MUST follow ALLOWED_TRANSITIONS:
-    //   Discovered → Validated → Initializing → Healthy.
-    // The prior order (Discovered → Initializing → Validated → Healthy) hit THREE
-    // illegal transitions and threw on the very first call — MCP was unusable.
-    const validated = transition(server, "Validated");
-    this.servers.set(id, validated);
+    // Allow reconnect from Failed/Parked: Failed → Restarting → Initializing.
+    let initializing: McpServer;
+    if (server.phase === "Failed" || server.phase === "Parked") {
+      const restarting = transition(server, "Restarting");
+      this.servers.set(id, restarting);
+      initializing = transition(restarting, "Initializing");
+      this.servers.set(id, initializing);
+    } else {
+      // B2 fix: phase order MUST follow ALLOWED_TRANSITIONS:
+      //   Discovered → Validated → Initializing → Healthy.
+      const validated = transition(server, "Validated");
+      this.servers.set(id, validated);
+      initializing = transition(validated, "Initializing");
+      this.servers.set(id, initializing);
+    }
 
     try {
-      // Validated → Initializing.
-      const initializing = transition(validated, "Initializing");
-      this.servers.set(id, initializing);
       const cfg = this.configs.get(id);
 
       // HTTP transport: no process to spawn — skip directly to initialize via HTTP
@@ -347,7 +353,7 @@ export class McpManager {
   private toFailed(id: string, error: string): void {
     const s = this.servers.get(id);
     if (!s) return;
-    if (s.phase === "Failed" || s.phase === "Quarantine" || s.phase === "Stopped") return;
+    if (s.phase === "Failed" || s.phase === "Quarantine" || s.phase === "Stopped" || s.phase === "Parked") return;
     this.servers.set(id, transition(s, "Failed", { error }));
   }
 
@@ -374,18 +380,22 @@ export class McpManager {
     const frame = JSON.stringify(req) + "\n";
 
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      stdin.write(frame, (err) => {
-        if (err) reject(new Error(`MCP write failed: ${err.message}`));
-      });
-      // Timeout for MCP calls (npx startup is slow; real API calls can take 30s+)
       const timeout = method === "initialize" ? 30_000 : method === "tools/call" ? 60_000 : 15_000;
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
           reject(new Error(`MCP request "${method}" timed out (${timeout / 1000}s)`));
         }
       }, timeout);
+      unrefTimer(timer);
+      this.pending.set(id, { resolve, reject, timer });
+      stdin.write(frame, (err) => {
+        if (err) {
+          clearTimeout(timer);
+          this.pending.delete(id);
+          reject(new Error(`MCP write failed: ${err.message}`));
+        }
+      });
     });
   }
 
@@ -448,6 +458,7 @@ export class McpManager {
     const pending = this.pending.get(msg.id);
     if (!pending) return;
     this.pending.delete(msg.id);
+    if (pending.timer) clearTimeout(pending.timer);
     if (msg.error) {
       pending.reject(new Error(`MCP error ${msg.error.code}: ${msg.error.message}`));
     } else {

@@ -18,6 +18,9 @@ import { nowWallclock } from "@my-agent/core";
 import {
   readFileSync,
   writeFileSync,
+  writeSync,
+  openSync,
+  closeSync,
   renameSync,
   unlinkSync,
 } from "node:fs";
@@ -133,9 +136,15 @@ export function acquireOrReplaceStaleLock(lockPath: string, pid: number): boolea
   const existing = readLock(lockPath);
 
   if (!existing) {
-    // No lock — acquire.
-    writeFileSync(lockPath, JSON.stringify({ pid, createdAt: nowWallclock() }));
-    return true;
+    // No lock — acquire via O_EXCL (atomic exclusive create, prevents TOCTOU).
+    try {
+      const fd = openSync(lockPath, "wx", 0o600);
+      writeSync(fd, JSON.stringify({ pid, createdAt: nowWallclock() }));
+      closeSync(fd);
+      return true;
+    } catch {
+      return false; // another racer just created it
+    }
   }
 
   if (isPidAlive(existing.pid)) {
