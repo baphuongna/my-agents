@@ -273,17 +273,4 @@ describe("[smoke] multi-agent modules", () => {
 // REAL — mya with subagents
 // ──────────────────────────────────────────────────────────────
 
-describe("[real] mya subagents", () => {
-});
-
-// ──────────────────────────────────────────────────────────────
-// SYSTEM — real council review (skip MYA_INTEGRATION)
-// ──────────────────────────────────────────────────────────────
-//
-//   1. configure 3 providers (openai + anthropic + deepseek)
-//   2. run adversarial review on plan
-//   3. verify 3 distinct perspectives
-
-// ──────────────────────────────────────────────────────────────
-// TUI UI — skip
-// ──────────────────────────────────────────────────────────────
+// [real] section removed (spawns mya binary)
