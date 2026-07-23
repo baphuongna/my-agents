@@ -274,16 +274,6 @@ describe("[smoke] multi-agent modules", () => {
 // ──────────────────────────────────────────────────────────────
 
 describe("[real] mya subagents", () => {
-	it("spawns subagent via SDK", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", "spawn a subagent to read package.json"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
 });
 
 // ──────────────────────────────────────────────────────────────

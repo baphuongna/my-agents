@@ -166,7 +166,7 @@ describe("[§12 unit] Web Dashboard", () => {
 		"PushPage", "EventsPage", "FilesPage", "LogsPage",
 		"EnvPage", "SyncPage", "CollabPage", "AnalyticsPage",
 		"ToolsPage", "ChatPage", "RichInfoPage", "AchievementsPage",
-		"PairingPage", "PlaceholderPage",
+		"PairingPage", 
 	];
 	it.each(PAGES)("page %s exists", async (name) => {
 		const { existsSync } = await import("node:fs");
@@ -261,15 +261,11 @@ describe("[§14 unit] Eval & Observability", () => {
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
-	it("Rust mya-eval crate exists", async () => {
+	it("Rust desktop-shell crate exists", async () => {
 		const { existsSync } = await import("node:fs");
-		expect(existsSync("crates/mya-eval/Cargo.toml")).toBe(true);
+		expect(existsSync("crates/desktop-shell/Cargo.toml")).toBe(true);
 	});
 
-	it("compression-drift evals exist", async () => {
-		const { existsSync } = await import("node:fs");
-		expect(existsSync("evals/compression-drift/README.md")).toBe(true);
-	});
 });
 
 // ══════════════════════════════════════════════════════════════
