@@ -5,6 +5,8 @@
 > 3-round per-sprint review (code + security + cold-verify) applied.
 > Verification: 1824/1824 tests pass, bundle succeeds.
 
+> **Update 2026-07-23**: Hermes Agent port completed — 8 phases shipped + 7 review rounds. 553 tests, 35 bugs found and fixed across 6,316 LOC of new code. See `PLAN-HERMES-PORT.md` for full details.
+
 ---
 
 ## Part 0 — P0 Spec Compliance Prerequisites (13 fixes)

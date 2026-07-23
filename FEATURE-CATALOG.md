@@ -17,6 +17,7 @@
 | **Background sessions** | `mya --bg` — chạy agent trong background TCP RPC server (`--bg-list`, `--bg-kill`, `--bg-kill-all`) |
 | **Session management** | `--session`, `--resume`, `--continue`, `--fork` — tạo/tiếp tục/nhánh session |
 | **Model override** | `--model <id>` — chọn model từng lệnh |
+| **Context compression** | **MỚI**: Full compression engine — idle compaction, per-model threshold, prune old tool results, summary generation, anti-thrashing (`packages/prompts/src/compress.ts`, 75 tests) |
 
 ## 2. Multi-Provider Gateway
 
@@ -109,6 +110,10 @@
 - **Markdown backend** | **D1 MỚI**: Frontmatter-aware markdown memory backend (human-editable) |
 - **BrainStore** | **MỚI**: Brain facts persisted to `brain.jsonl` (persistence enabled in createAgent) |
 - **Domains** — conversations, goals, queue, sources, tools, tree, entities, search, sync, diff
+- **CJK bigram tokenizer** | **MỚI**: 13 codepoint ranges, overlapping bigrams, ASCII fast path, UTF-8 byte offsets (`packages/memory/src/cjk-tokenizer.ts`)
+- **FTS query routing** | **MỚI**: Non-CJK → unicode61, CJK → bigram index, short terms → LIKE fallback, slow-query log
+- **REINDEX auto-repair** | **MỚI**: integrity_check → REINDEX for stale B-tree indexes
+- **External-content FTS5** | **MỚI**: fts_working uses `content='working_memory', content_rowid='rowid'` (~75% size reduction)
 
 **CLI**: `mya memory` (via extension hooks)
 
@@ -166,6 +171,21 @@
 
 **CLI**: `mya skills`, `mya skill-search`
 
+## 7a. Kanban (Task Board) [UPGRADED]
+
+| Tính năng | Mô tả |
+|---|---|
+| **SQLite backend** | **MỚI**: 5-table schema (tasks, task_links DAG, task_events, task_comments, kanban_notify_subs) with WAL mode |
+| **8 tools** | create, show, list, complete, block, comment, link, heartbeat |
+| **DAG dependencies** | Parent → child task links |
+| **Atomic claim** | `claimTask` with TTL + heartbeat for worker ownership |
+| **Notifications** | Subscription-based event delivery with cursor (3-strike dead chat detection) |
+| **JSON migration** | Idempotent `migrateJsonToSqlite` from `~/.mya/kanban.json` |
+| **WAL checkpoint** | Periodic `PRAGMA wal_checkpoint(TRUNCATE)` every 300s |
+| **REINDEX repair** | Auto-repair index-only corruption from `integrity_check` |
+
+**CLI**: `mya kanban repair` (index auto-repair), `mya kanban` (general ops)
+
 ## 8. Subagents & Multi-Agent
 
 | Tính năng | Mô tả |
@@ -194,6 +214,8 @@
 | **Cross-device approval** | **MỚI**: ApprovalRelay — pending requests broadcast via WS, decisions via WS/HTTP |
 | **Web security guard** | 6-layer gauntlet: secret-in-URL, SSRF metadata, SSRF private, post-redirect, blocklist, bot detection |
 | **x402 wallet** | ECDSA secp256k1, 402-handling with double-pay guard |
+| **Redaction engine** | **MỚI**: 40+ secret patterns (API keys, JWTs, PEM, URL credentials) with `force=true` for persistence boundaries (`packages/core/src/redact.ts`) |
+| **Threat scanner** | **MỚI**: 3-tier prompt injection detection (all⊂context⊂strict) with Unicode homograph defense (`packages/core/src/threat-scan.ts`) |
 
 ## 10. Desktop App (Tauri)
 
@@ -264,8 +286,21 @@
 | Tính năng | Mô tả |
 |---|---|
 | **MCP client** | `/mcp/servers` — connect external MCP servers |
-| **MCP lifecycle** | Auto-discover, register, health-check |
+| **MCP lifecycle** | Auto-discover, register, health-check, Parked FSM |
 | **Config** | `~/.mya/agent/mcp.json` — server configs |
+| **Reliability** | Reconnect budget, failure classification, keepalive ping |
+| **OAuth** | 0600 token storage, dead-client auto-reregistration |
+
+**MCP Reliability Features** (ported from Hermes Agent, 23 commits):
+
+| Component | File | Description |
+|---|---|---|
+| `classifyMcpFailure` | `packages/gateway/src/mcp-client.ts` | Type/code-based classification (permanent vs transient) |
+| Reconnect Budget | `packages/gateway/src/mcp-client.ts` | `_sessionProven` + `_reconnectRetries` — max 5 unproven reconnects → park |
+| Per-Server Cooldown | `packages/gateway/src/mcp-client.ts` | Exponential backoff (30s→600s) per failing server |
+| Keepalive Ping | `packages/gateway/src/mcp-client.ts` | `ping` with `tools/list` fallback, 180s interval |
+| MCP OAuth Storage | `packages/gateway/src/mcp-oauth-store.ts` | Atomic 0600 file writes, dead-client poisoning |
+| 401 Dedup | `packages/gateway/src/mcp-oauth-store.ts` | N concurrent 401s → only 1 recovery fires |
 
 ## 16. TTS (Text-to-Speech)
 
