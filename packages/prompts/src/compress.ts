@@ -156,19 +156,25 @@ export function computeThresholdTokens(
     pct = Math.max(pct, SMALL_CTX_THRESHOLD_PERCENT);
   }
 
-  // Layer 2: context length floor
-  const effectiveContext = Math.max(contextLength, MINIMUM_CONTEXT_LENGTH);
+  // Layer 2: reserve output space (Hermes effective_window pattern)
+  let effectiveWindow = contextLength;
+  if (maxTokens !== undefined && maxTokens > 0) {
+    effectiveWindow = Math.max(1, contextLength - maxTokens);
+  }
 
-  // Layer 3: compute
-  let threshold = effectiveContext * pct;
+  // Layer 3: context length floor (use max of window and MINIMUM)
+  effectiveWindow = Math.max(effectiveWindow, MINIMUM_CONTEXT_LENGTH);
 
-  // Layer 4a: 85% guard (absolute ceiling)
-  const ceiling = effectiveContext * MIN_CTX_TRIGGER_RATIO;
+  // Layer 4: compute threshold
+  let threshold = effectiveWindow * pct;
+
+  // Layer 5: 85% guard (absolute ceiling — degenerate case)
+  const ceiling = effectiveWindow * MIN_CTX_TRIGGER_RATIO;
   threshold = Math.min(threshold, ceiling);
 
-  // Layer 4b: maxTokens reservation
-  if (maxTokens !== undefined) {
-    threshold = Math.min(threshold, maxTokens);
+  // Layer 6: degenerate guard — if floor ate the window, trigger at 85%
+  if (threshold >= effectiveWindow) {
+    threshold = Math.max(1, Math.min(ceiling, effectiveWindow - 1));
   }
 
   return Math.floor(threshold);

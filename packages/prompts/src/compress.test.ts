@@ -254,13 +254,13 @@ describe("computeThresholdTokens", () => {
   });
 
   it("respects maxTokens reservation", () => {
-    // 1M × 0.50 = 500_000; maxTokens = 300_000 → result = 300_000
-    expect(computeThresholdTokens(1_000_000, 0.5, 300_000)).toBe(300_000);
+    // 1M - 300K = 700K effective; 700K × 0.50 = 350_000
+    expect(computeThresholdTokens(1_000_000, 0.5, 300_000)).toBe(350_000);
   });
 
-  it("maxTokens does not raise the threshold above the computed value", () => {
-    // 1M × 0.50 = 500_000; maxTokens = 600_000 → still 500_000
-    expect(computeThresholdTokens(1_000_000, 0.5, 600_000)).toBe(500_000);
+  it("maxTokens >= ctx falls back to MINIMUM_CONTEXT_LENGTH", () => {
+    // 1M - 600K = 400K effective; 400K × 0.50 = 200_000
+    expect(computeThresholdTokens(1_000_000, 0.5, 600_000)).toBe(200_000);
   });
 
   it("returns integer (floored)", () => {
