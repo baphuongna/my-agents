@@ -233,6 +233,10 @@ export class McpManager {
 
       proc.on("exit", () => {
         if (this.procs.get(id) !== proc) return; // stale proc (restart replaced it)
+        this.procs.delete(id);
+        // Reset session proven state — the session is dead.
+        const rs = this.reconnectState.get(id);
+        if (rs) rs.sessionProven = false;
         this.toFailed(id, "process exited");
       });
 
@@ -260,6 +264,15 @@ export class McpManager {
       this.onConnectSuccess(id);
       return this.servers.get(id)!;
     } catch (e) {
+      // Kill leaked proc on failed start (prevents zombie process + pipe leak).
+      const failedProc = this.procs.get(id);
+      if (failedProc) {
+        try { failedProc.kill(); } catch {}
+        this.procs.delete(id);
+      }
+      // Reset session proven state — the session is dead.
+      const rs = this.reconnectState.get(id);
+      if (rs) rs.sessionProven = false;
       // Reliability: unwrap group errors, classify, arm cooldown.
       const unwrapped = unwrapExceptionGroup(e);
       const cls = classifyMcpFailure(unwrapped);
@@ -449,7 +462,10 @@ export class McpManager {
       return data.result;
     } catch (e) {
       if ((e as Error).name === "AbortError") throw new Error(`MCP request "${method}" timed out (${timeout / 1000}s)`);
-      throw new Error(`MCP HTTP error: ${(e as Error).message}`);
+      // Preserve underlying cause so classifyMcpFailure can pattern-match on error codes.
+      const cause = (e as Error).cause;
+      const causeMsg = cause instanceof Error ? ` (cause: ${cause.message})` : "";
+      throw new Error(`MCP HTTP error: ${(e as Error).message}${causeMsg}`);
     } finally {
       clearTimeout(timer);
     }
@@ -624,7 +640,21 @@ export class McpManager {
     try {
       await this.keepaliveProbe(serverId); // success → markSessionProven → unpark
     } catch {
-      // still unproven/dead — stay parked and keep probing
+      // If the proc is dead, clean it up and try to re-establish.
+      const proc = this.procs.get(serverId);
+      if (proc && proc.exitCode !== null) {
+        // Process died while parked — kill + delete, attempt re-establish.
+        try { proc.kill(); } catch {}
+        this.procs.delete(serverId);
+        const rs = this.reconnectState.get(serverId);
+        if (rs) rs.sessionProven = false;
+        // Attempt to re-establish via start() (stays Parked if it fails).
+        try {
+          await this.start(serverId);
+        } catch {
+          // Still failing — stay parked.
+        }
+      }
       this.scheduleParkedProbe(serverId);
     }
   }
@@ -642,7 +672,7 @@ export class McpManager {
       await this.rpc(serverId, "ping", {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("Method not found") || msg.includes("not found")) {
+      if (msg.includes("Method not found") || /error\s*-?32601/.test(msg)) {
         this.pingUnsupported.add(serverId);
         await this.rpc(serverId, "tools/list", {}); // fallback
         this.markSessionProven(serverId);
@@ -687,9 +717,13 @@ export class McpManager {
     const timer = setTimeout(() => {
       this.reconnectTimers.delete(serverId);
       void this.start(serverId).catch(() => {
-        /* still failing — cooldown re-armed by start()'s catch; a future
-         * trigger (manual connect / supervisor) will retry. Bounded: only one
-         * reconnect is scheduled per keepalive failure. */
+        // Still failing — reschedule with backoff so we don't give up permanently
+        // after a single failed reconnect. The cooldown from recordConnectFailure
+        // provides exponential backoff.
+        const s = this.servers.get(serverId);
+        if (s && s.phase !== "Stopped" && s.phase !== "Quarantine") {
+          this.scheduleReconnect(serverId);
+        }
       });
     }, delay);
     unrefTimer(timer);
