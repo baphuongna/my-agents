@@ -215,8 +215,10 @@ describe("AchievementTracker", () => {
     const { AchievementTracker } = await import("./index.js");
     const tracker = new AchievementTracker();
     tracker.recordStat("promptsSent");
-    const second = tracker.recordStat("promptsSent");
-    expect(second).toBeNull();
+    // Night-owl may trigger if running after midnight — absorb it
+    tracker.recordStat("promptsSent");
+    const third = tracker.recordStat("promptsSent");
+    expect(third).toBeNull();
   });
 
   it("unlocks first-subagent when subagentsSpawned reaches 1", async () => {
@@ -255,6 +257,9 @@ describe("AchievementTracker", () => {
   it("returns null when no achievement triggers", async () => {
     const { AchievementTracker } = await import("./index.js");
     const tracker = new AchievementTracker();
+    // Night-owl may trigger if running after midnight — absorb first-prompt + night-owl first
+    tracker.recordStat("promptsSent");
+    tracker.recordStat("promptsSent"); // absorb night-owl if after midnight
     const result = tracker.recordStat("someRandomStat");
     expect(result).toBeNull();
   });
