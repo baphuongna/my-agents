@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeCost } from "@my-agent/core";
+import { computeCost, computeCostStub } from "@my-agent/core";
 
 describe("computeCost — real per-model pricing (§4/§6)", () => {
   it("gpt-4o: $2.5/1M in, $10/1M out", () => {
@@ -39,5 +39,26 @@ describe("computeCost — real per-model pricing (§4/§6)", () => {
   it("never returns NaN/Infinity", () => {
     const c = computeCost({ input: 0, output: 0 });
     expect(Number.isFinite(c.usd)).toBe(true);
+  });
+});
+
+describe("computeCostStub — back-compat alias for computeCost", () => {
+  it("is a function", () => {
+    expect(typeof computeCostStub).toBe("function");
+  });
+
+  it("produces identical output to computeCost for the same input", () => {
+    const usage = { input: 2_000_000, output: 750_000, cacheRead: 500_000 };
+    expect(computeCostStub(usage, "claude-sonnet-4").usd).toBe(
+      computeCost(usage, "claude-sonnet-4").usd,
+    );
+  });
+
+  it("honours the unknown-model default just like computeCost", () => {
+    const usage = { input: 1_000_000, output: 1_000_000 };
+    expect(computeCostStub(usage, "mystery-model").usd).toBe(
+      computeCost(usage, "mystery-model").usd,
+    );
+    expect(computeCostStub(usage, "mystery-model").usd).toBeGreaterThan(0);
   });
 });

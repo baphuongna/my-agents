@@ -15,6 +15,8 @@ import {
   isImportantLine,
   compressCommandOutput,
   estimateTokens,
+  parseCommand,
+  runGenericPipeline,
   DEFAULT_COMPRESSION_OPTIONS,
 } from "./output-compress.js";
 
@@ -201,5 +203,176 @@ describe("output-compress: never_worse guard (S3)", () => {
         `${cmd} → ${res.reducerId}: ${res.compressedTokens} should be <= ${res.originalTokens}`,
       ).toBeLessThanOrEqual(res.originalTokens);
     }
+  });
+});
+
+describe("output-compress: parseCommand (executable normalization)", () => {
+  it("splits a flat command into executable + args", () => {
+    expect(parseCommand("git status")).toEqual({ executable: "git", args: ["status"] });
+    expect(parseCommand("npm install --save")).toEqual({
+      executable: "npm",
+      args: ["install", "--save"],
+    });
+  });
+
+  it("strips a path prefix from the executable", () => {
+    expect(parseCommand("/usr/local/bin/node app.js")).toEqual({
+      executable: "node",
+      args: ["app.js"],
+    });
+  });
+
+  it("strips a Windows shim suffix (.cmd/.exe/.bat)", () => {
+    expect(parseCommand("tsc.CMD build").executable).toBe("tsc");
+    expect(parseCommand("npm.exe install").executable).toBe("npm");
+    expect(parseCommand("run.bat x").executable).toBe("run");
+  });
+
+  it("returns empty executable + args for a blank command", () => {
+    expect(parseCommand("")).toEqual({ executable: "", args: [] });
+    expect(parseCommand("   ")).toEqual({ executable: "", args: [] });
+  });
+
+  it("keeps a dotfile-like name with no shim suffix intact", () => {
+    // `.cmd` only stripped when it's the final suffix after the last dot
+    expect(parseCommand("my.tool run").executable).toBe("my.tool");
+  });
+});
+
+describe("output-compress: runGenericPipeline (5-stage, adopt-if-shrinks)", () => {
+  it("applies each shrinking stage and records stagesApplied", () => {
+    // ANSI + triple blanks + a progress bar — multiple stages shrink it.
+    const input = "\x1B[32mstart\x1B[0m\n\n\n\nend";
+    const res = runGenericPipeline(input);
+    expect(res.stagesApplied).toContain("strip-ansi");
+    expect(res.stagesApplied).toContain("collapse-blank-lines");
+    expect(res.text.length).toBeLessThanOrEqual(input.length);
+  });
+
+  it("does not apply a stage that would grow the text (deduplicate on a run of 3)", () => {
+    // Three identical lines: deduplicate would emit a `[... repeated]` marker
+    // (strictly LONGER), so it is NOT adopted. ANSI/collapse/progress are
+    // equal-length (adopted because the gate is `<=`).
+    const input = "x\nx\nx";
+    const res = runGenericPipeline(input);
+    expect(res.stagesApplied).not.toContain("deduplicate");
+  });
+
+  it("truncates long output and sets wasTruncated", () => {
+    const lines = Array.from({ length: 600 }, (_, i) => `line ${i}`);
+    const input = lines.join("\n");
+    const opts = {
+      ...DEFAULT_COMPRESSION_OPTIONS,
+      maxHeadLines: 5,
+      maxTailLines: 5,
+      maxTotalLines: 500,
+    };
+    const res = runGenericPipeline(input, opts);
+    expect(res.wasTruncated).toBe(true);
+    expect(res.stagesApplied).toContain("truncate");
+  });
+
+  it("leaves short output untruncated", () => {
+    const res = runGenericPipeline("a\nb");
+    expect(res.wasTruncated).toBe(false);
+  });
+});
+
+describe("output-compress: cargo reducer", () => {
+  it("strips Compiling/Finished noise lines", () => {
+    const out = ["Compiling libc v0.2", "Compiling myapp v0.1.0", "Finished dev [unoptimized]"].join("\n");
+    const res = compressCommandOutput("cargo build", out, 0);
+    expect(res.reducerId).toBe("cargo");
+    expect(res.text).not.toContain("Compiling");
+    expect(res.text).not.toContain("Finished");
+  });
+
+  it("rewrites test results and caps at 60 lines", () => {
+    // Lots of Compiling noise so the reduced output is strictly smaller than
+    // the original (otherwise the never_worse guard passes through verbatim).
+    const noise = Array.from({ length: 40 }, (_, i) => `Compiling dep${i} v0.1`);
+    const out = [...noise, "test result: ok. 3 passed"].join("\n");
+    const res = compressCommandOutput("cargo test", out, 0);
+    expect(res.reducerId).toBe("cargo");
+    expect(res.text).toContain("cargo test: ok (all passed)");
+  });
+
+  it("emits a fallback 'cargo: ok' when all output was noise", () => {
+    // `Finished` requires a trailing space in the noise regex.
+    const res = compressCommandOutput("cargo build", "Compiling x v0.1\nFinished dev\n", 0);
+    expect(res.text).toBe("cargo: ok");
+  });
+});
+
+describe("output-compress: git status reducer", () => {
+  it("keeps branch + section headers, drops unrelated noise", () => {
+    const out = [
+      "On branch main",
+      "Your branch is up to date with 'origin/main'.",
+      "",
+      "Changes to be committed:",
+      "  (use ...)",
+      "\tnew file:   src/a.ts",
+      "some random stdout",
+    ].join("\n");
+    const res = compressCommandOutput("git status", out, 0);
+    expect(res.reducerId).toBe("git-status");
+    expect(res.text).toContain("On branch main");
+    expect(res.text).toContain("Changes to be committed:");
+    expect(res.text).toContain("new file:   src/a.ts");
+    expect(res.text).not.toContain("random stdout");
+  });
+});
+
+describe("output-compress: git diff reducer", () => {
+  it("keeps diff headers/hunks/added/removed lines", () => {
+    const out = [
+      "diff --git a/f.ts b/f.ts",
+      "index 111..222 100644",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -1,2 +1,2 @@",
+      " context line",
+      "-old line",
+      "+new line",
+    ].join("\n");
+    const res = compressCommandOutput("git diff", out, 0);
+    expect(res.reducerId).toBe("git-diff");
+    expect(res.text).toContain("diff --git");
+    expect(res.text).toContain("+new line");
+    expect(res.text).toContain("-old line");
+  });
+
+  it("passes through --stat output untouched", () => {
+    const out = " a.ts | 2 +\n 1 file changed";
+    const res = compressCommandOutput("git diff --stat", out, 0);
+    expect(res.reducerId).toBe("git-diff-stat");
+    expect(res.text).toContain("file changed");
+  });
+});
+
+describe("output-compress: tsc reducer", () => {
+  it("groups diagnostics by file with a header", () => {
+    // Add noise lines so the reduced output is strictly smaller than the
+    // original (diagnostic grouping ADDS `=== file ===` headers, which would
+    // otherwise trip the never_worse guard on tiny input).
+    const noise = Array.from({ length: 12 }, (_, i) => `noise preamble line ${i}`);
+    const diags = [
+      "src/a.ts(1,5): error TS2304: Cannot find name 'x'.",
+      "src/a.ts(2,1): error TS7006: Parameter implicitly any.",
+    ];
+    const out = [...noise.slice(0, 6), ...diags, ...noise.slice(6), "Found 2 errors."].join("\n");
+    const res = compressCommandOutput("tsc", out, 1);
+    expect(res.reducerId).toBe("tsc");
+    expect(res.text).toContain("=== src/a.ts ===");
+    expect(res.text).toContain("TS2304");
+    expect(res.text).toContain("Found 2 errors.");
+  });
+
+  it("routes `npx tsc` to the tsc reducer", () => {
+    const noise = Array.from({ length: 12 }, (_, i) => `noise ${i}`);
+    const out = [...noise, "f.ts(1,1): error TS1: x", "Found 1 error."].join("\n");
+    const res = compressCommandOutput("npx tsc", out, 1);
+    expect(res.reducerId).toBe("tsc");
   });
 });
