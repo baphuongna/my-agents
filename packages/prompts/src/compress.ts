@@ -623,11 +623,14 @@ export class CompressionState {
 
   /**
    * Provider-verified update. If the real token count is still ≥ threshold
-   * after a compaction, increment the ineffective counter.
+   * after a compaction, increment the ineffective counter. When below threshold
+   * (compression worked or conversation shrank), reset the counter.
    */
   updateFromResponse(realTokens: number, thresholdTokens: number): void {
     if (realTokens >= thresholdTokens) {
       this.ineffectiveCount++;
+    } else {
+      this.ineffectiveCount = 0;
     }
   }
 

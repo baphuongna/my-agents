@@ -594,6 +594,14 @@ describe("CompressionState", () => {
       expect(state.ineffectiveCount).toBe(0);
     });
 
+    it("resets ineffectiveCount to 0 when under threshold (prevents permanent deadlock)", () => {
+      state.updateFromResponse(300, 200); // over → count=1
+      state.updateFromResponse(300, 200); // over → count=2
+      expect(state.ineffectiveCount).toBe(2);
+      state.updateFromResponse(150, 200); // under → reset to 0
+      expect(state.ineffectiveCount).toBe(0);
+    });
+
     it("increments at exact threshold boundary", () => {
       state.updateFromResponse(200, 200);
       expect(state.ineffectiveCount).toBe(1);
