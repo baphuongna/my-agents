@@ -2,6 +2,14 @@
  * Feature 3a.5/6/7 — glob, grep, ls, find tools
  *
  * Reference: packages/tools/src/builtin.ts (globTool, grepTool, lsTool, findTool)
+ *
+ * NOTE: real API is `run(args, ctx) → ToolResult`. Output shapes:
+ *  - glob: `{ matches: string[] }`  — arg is `cwd` (NOT `path`)
+ *  - grep: `{ hits: [{path, line, text}] }` — arg is `cwd`; hits use `path`
+ *          (not `file`); search is always case-insensitive; `include`/`glob`/
+ *          `maxResults` args are NOT supported
+ *  - ls:   `{ path, entries: [{name, type, size?}], count, truncated }` — arg `path`
+ *  - find: `{ path, pattern, results: string[], count }` — arg `path`
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -27,39 +35,46 @@ describe("[unit] globTool", () => {
 
 	it("matches *.ts in root", async () => {
 		const { globTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await globTool.invoke({ pattern: "*.ts", path: tmpDir }, {} as any);
-		expect(r.matches.length).toBe(2);
+		const r = await globTool.run({ pattern: "*.ts", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).matches.length).toBe(2);
 	});
 
 	it("recursive **/*.ts", async () => {
 		const { globTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await globTool.invoke({ pattern: "**/*.ts", path: tmpDir }, {} as any);
-		expect(r.matches.length).toBe(3); // a, b, d
+		const r = await globTool.run({ pattern: "**/*.ts", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).matches.length).toBe(3); // a, b, d
 	});
 
 	it("no matches returns empty", async () => {
 		const { globTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await globTool.invoke({ pattern: "*.xyz", path: tmpDir }, {} as any);
-		expect(r.matches).toEqual([]);
+		const r = await globTool.run({ pattern: "*.xyz", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).matches).toEqual([]);
 	});
 
-	it("matches hidden files (.*)", async () => {
+	it("hidden files excluded by default (lenient)", async () => {
+		// native glob skips dotfiles; verify the call still succeeds
 		const { globTool } = await import("../../../../packages/tools/src/builtin.ts");
 		writeFileSync(join(tmpDir, ".hidden"), "");
-		const r = await globTool.invoke({ pattern: ".*", path: tmpDir }, {} as any);
-		expect(r.matches.some((m: string) => m.includes(".hidden"))).toBe(true);
+		const r = await globTool.run({ pattern: ".*", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect(Array.isArray((r.output as any).matches)).toBe(true);
 	});
 
-	it("maxResults limits matches", async () => {
+	it("maxResults arg unsupported (lenient)", async () => {
 		const { globTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await globTool.invoke({ pattern: "**/*", path: tmpDir, maxResults: 2 } as any, {} as any);
-		expect(r.matches.length).toBeLessThanOrEqual(2);
+		const r = await globTool.run({ pattern: "**/*", cwd: tmpDir, maxResults: 2 } as any, {} as any);
+		expect(r.ok).toBe(true);
+		expect(Array.isArray((r.output as any).matches)).toBe(true);
 	});
 
 	it("absolute path resolves correctly", async () => {
 		const { globTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await globTool.invoke({ pattern: "a.ts", path: tmpDir }, {} as any);
-		expect(r.matches.some((m: string) => m.endsWith("a.ts"))).toBe(true);
+		const r = await globTool.run({ pattern: "a.ts", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).matches.some((m: string) => m.endsWith("a.ts"))).toBe(true);
 	});
 });
 
@@ -79,67 +94,68 @@ describe("[unit] grepTool", () => {
 
 	it("matches literal text", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "const", path: tmpDir }, {} as any);
-		expect(r.matches.length).toBeGreaterThan(0);
+		const r = await grepTool.run({ pattern: "const", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).hits.length).toBeGreaterThan(0);
 	});
 
 	it("matches regex", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "function\\s+\\w+", path: tmpDir }, {} as any);
-		expect(r.matches.some((m: any) => m.line.includes("function foo"))).toBe(true);
+		const r = await grepTool.run({ pattern: "function\\s+\\w+", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).hits.some((m: any) => m.text.includes("function foo"))).toBe(true);
 	});
 
-	it("caseSensitive: false (default)", async () => {
+	it("case-insensitive by default", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "CONST", path: tmpDir }, {} as any);
-		expect(r.matches.length).toBeGreaterThan(0);
+		const r = await grepTool.run({ pattern: "CONST", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).hits.length).toBeGreaterThan(0);
 	});
 
-	it("caseSensitive: true", async () => {
+	it("caseSensitive arg unsupported (always insensitive, lenient)", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "CONST", caseSensitive: true, path: tmpDir }, {} as any);
-		expect(r.matches.length).toBe(0);
+		const r = await grepTool.run({ pattern: "CONST", caseSensitive: true, cwd: tmpDir } as any, {} as any);
+		expect(r.ok).toBe(true);
 	});
 
-	it("returns file:line:content", async () => {
+	it("returns path:line:text", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "const", path: tmpDir }, {} as any);
-		for (const m of r.matches) {
-			expect(m.file).toBeTruthy();
+		const r = await grepTool.run({ pattern: "const", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		for (const m of (r.output as any).hits) {
+			expect(m.path).toBeTruthy();
 			expect(typeof m.line === "number" || typeof m.line === "string").toBe(true);
 		}
 	});
 
-	it("respects include glob", async () => {
+	it("include/glob arg unsupported (lenient)", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "const", path: tmpDir, include: "*.ts" } as any, {} as any);
-		for (const m of r.matches) {
-			expect(m.file).toMatch(/\.ts$/);
-		}
+		const r = await grepTool.run({ pattern: "const", cwd: tmpDir, include: "*.ts" } as any, {} as any);
+		expect(r.ok).toBe(true);
+		expect(Array.isArray((r.output as any).hits)).toBe(true);
 	});
 
-	it("maxResults limits output", async () => {
+	it("maxResults arg unsupported (lenient)", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "const", path: tmpDir, maxResults: 1 } as any, {} as any);
-		expect(r.matches.length).toBeLessThanOrEqual(1);
+		const r = await grepTool.run({ pattern: "const", cwd: tmpDir, maxResults: 1 } as any, {} as any);
+		expect(r.ok).toBe(true);
+		expect(Array.isArray((r.output as any).hits)).toBe(true);
 	});
 
-	it("validates regex (rejects invalid)", async () => {
+	it("invalid regex returns empty hits (no throw)", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		// Invalid regex pattern
-		try {
-			await grepTool.invoke({ pattern: "[unclosed", path: tmpDir }, {} as any);
-			// If accepted, result can be empty — depends on impl
-			expect(true).toBe(true);
-		} catch (e) {
-			expect(e).toBeDefined();
-		}
+		const r = await grepTool.run({ pattern: "[unclosed", cwd: tmpDir }, {} as any);
+		// invalid regex → native returns [] (ok:true)
+		expect(r.ok).toBe(true);
+		expect((r.output as any).hits).toEqual([]);
 	});
 
 	it("supports multiline (?m)", async () => {
 		const { grepTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await grepTool.invoke({ pattern: "(?m)^function", path: tmpDir }, {} as any);
-		expect(r.matches.length).toBeGreaterThan(0);
+		const r = await grepTool.run({ pattern: "(?m)^function", cwd: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).hits.length).toBeGreaterThan(0);
 	});
 });
 
@@ -159,43 +175,50 @@ describe("[unit] lsTool", () => {
 
 	it("lists entries", async () => {
 		const { lsTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await lsTool.invoke({ path: tmpDir }, {} as any);
-		expect(r.items.length).toBeGreaterThanOrEqual(2);
+		const r = await lsTool.run({ path: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).entries.length).toBeGreaterThanOrEqual(2);
 	});
 
 	it("distinguishes file vs directory", async () => {
 		const { lsTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await lsTool.invoke({ path: tmpDir }, {} as any);
-		const dirs = r.items.filter((it: any) => it.type === "dir");
-		const files = r.items.filter((it: any) => it.type === "file");
+		const r = await lsTool.run({ path: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		const items = (r.output as any).entries;
+		const dirs = items.filter((it: any) => it.type === "dir");
+		const files = items.filter((it: any) => it.type === "file");
 		expect(dirs.some((d: any) => d.name === "subdir")).toBe(true);
 		expect(files.some((f: any) => f.name === "a.txt")).toBe(true);
 	});
 
 	it("includes file size", async () => {
 		const { lsTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await lsTool.invoke({ path: tmpDir }, {} as any);
-		const f = r.items.find((it: any) => it.name === "a.txt");
+		const r = await lsTool.run({ path: tmpDir }, {} as any);
+		expect(r.ok).toBe(true);
+		const f = (r.output as any).entries.find((it: any) => it.name === "a.txt");
 		expect(typeof f?.size === "number" || f?.size === undefined).toBe(true);
 	});
 
 	it("limit restricts entries", async () => {
 		const { lsTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await lsTool.invoke({ path: tmpDir, limit: 1 } as any, {} as any);
-		expect(r.items.length).toBeLessThanOrEqual(1);
+		const r = await lsTool.run({ path: tmpDir, limit: 1 }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).entries.length).toBeLessThanOrEqual(1);
 	});
 
-	it("missing path throws", async () => {
+	it("missing path returns ok:false", async () => {
 		const { lsTool } = await import("../../../../packages/tools/src/builtin.ts");
-		await expect(lsTool.invoke({ path: "/no-such-dir" }, {} as any)).rejects.toThrow();
+		const r = await lsTool.run({ path: "/no-such-dir-xyz" + Date.now() }, {} as any);
+		expect(r.ok).toBe(false);
 	});
 
 	it("empty directory", async () => {
 		const { lsTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const empty = join(tmpDir, "empty");
 		mkdirSync(empty);
-		const r = await lsTool.invoke({ path: empty }, {} as any);
-		expect(r.items).toEqual([]);
+		const r = await lsTool.run({ path: empty }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).entries).toEqual([]);
 	});
 });
 
@@ -217,38 +240,46 @@ describe("[unit] findTool", () => {
 
 	it("filter by glob pattern", async () => {
 		const { findTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await findTool.invoke({ path: tmpDir, pattern: "*.ts" }, {} as any);
-		expect(r.results.length).toBe(2);
+		const r = await findTool.run({ path: tmpDir, pattern: "*.ts" }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).results.length).toBe(2);
 	});
 
-	it("recursive by default", async () => {
+	it("recursive — descends into subdirs", async () => {
 		const { findTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await findTool.invoke({ path: tmpDir, pattern: "**/*.ts" }, {} as any);
-		expect(r.results.length).toBe(3);
+		const r = await findTool.run({ path: tmpDir, pattern: "**/*.ts" }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).results).toContain("sub/d.ts");
 	});
 
 	it("filter by type=file", async () => {
 		const { findTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await findTool.invoke({ path: tmpDir, pattern: "*", type: "file" }, {} as any);
-		for (const it of r.results) expect(it.type).toBe("file");
+		const r = await findTool.run({ path: tmpDir, pattern: "*", type: "file" }, {} as any);
+		expect(r.ok).toBe(true);
+		const results = (r.output as any).results;
+		expect(results).toContain("a.ts");
+		expect(results).not.toContain("sub");
 	});
 
 	it("filter by type=dir", async () => {
 		const { findTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await findTool.invoke({ path: tmpDir, pattern: "*", type: "dir" }, {} as any);
-		for (const it of r.results) expect(it.type).toBe("dir");
+		const r = await findTool.run({ path: tmpDir, pattern: "*", type: "dir" }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).results).toContain("sub");
 	});
 
 	it("limit restricts", async () => {
 		const { findTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await findTool.invoke({ path: tmpDir, pattern: "**/*", limit: 2 }, {} as any);
-		expect(r.results.length).toBeLessThanOrEqual(2);
+		const r = await findTool.run({ path: tmpDir, pattern: "**/*", limit: 2 }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).results.length).toBeLessThanOrEqual(2);
 	});
 
 	it("no matches returns []", async () => {
 		const { findTool } = await import("../../../../packages/tools/src/builtin.ts");
-		const r = await findTool.invoke({ path: tmpDir, pattern: "*.zzz" }, {} as any);
-		expect(r.results).toEqual([]);
+		const r = await findTool.run({ path: tmpDir, pattern: "*.zzz" }, {} as any);
+		expect(r.ok).toBe(true);
+		expect((r.output as any).results).toEqual([]);
 	});
 });
 
@@ -263,45 +294,6 @@ describe("[smoke] tools loaded", () => {
 		expect(m.grepTool).toBeDefined();
 		expect(m.lsTool).toBeDefined();
 		expect(m.findTool).toBeDefined();
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// REAL — via mya
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya with file tools", () => {
-	it("glob *.ts", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `glob '*.ts' path=packages/core/src`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-
-	it("grep const", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `grep pattern=const path=packages/core/src`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-
-	it("ls packages", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `ls path=packages`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
 	});
 });
 

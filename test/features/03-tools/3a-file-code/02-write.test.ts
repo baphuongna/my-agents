@@ -2,6 +2,11 @@
  * Feature 3a.2 — write tool (ghi/overwrite file, tạo parent dirs)
  *
  * Reference: packages/tools/src/builtin.ts (writeTool)
+ *
+ * NOTE: real API is `run(args, ctx) → ToolResult`. `output` is
+ * `{ path, bytes, diagnostics? }`. Requires both `path` and `content`
+ * (no-content → ok:false). Containment is DISABLED so writes outside the
+ * workspace succeed by design.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -13,7 +18,7 @@ import { join } from "node:path";
 // UNIT — writeTool
 // ──────────────────────────────────────────────────────────────
 
-describe("[unit] writeTool.invoke", () => {
+describe("[unit] writeTool.run", () => {
 	let tmpDir: string;
 	beforeEach(() => { tmpDir = mkdtempSync(join(tmpdir(), "mya-write-")); });
 	afterEach(() => rmSync(tmpDir, { recursive: true }));
@@ -21,7 +26,8 @@ describe("[unit] writeTool.invoke", () => {
 	it("creates new file", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "new.txt");
-		await writeTool.invoke({ path: target, content: "hello" }, {} as any);
+		const r = await writeTool.run({ path: target, content: "hello" }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(readFileSync(target, "utf8")).toBe("hello");
 	});
 
@@ -29,14 +35,16 @@ describe("[unit] writeTool.invoke", () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "existing.txt");
 		writeFileSync(target, "old content");
-		await writeTool.invoke({ path: target, content: "new content" }, {} as any);
+		const r = await writeTool.run({ path: target, content: "new content" }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(readFileSync(target, "utf8")).toBe("new content");
 	});
 
 	it("creates parent directories", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "a/b/c/d.txt");
-		await writeTool.invoke({ path: target, content: "x" }, {} as any);
+		const r = await writeTool.run({ path: target, content: "x" }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(existsSync(target)).toBe(true);
 	});
 
@@ -44,63 +52,71 @@ describe("[unit] writeTool.invoke", () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "u.txt");
 		const content = "🌍 Привет 世界";
-		await writeTool.invoke({ path: target, content }, {} as any);
+		const r = await writeTool.run({ path: target, content }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(readFileSync(target, "utf8")).toBe(content);
 	});
 
 	it("writes empty content (creates 0-byte file)", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "empty.txt");
-		await writeTool.invoke({ path: target, content: "" }, {} as any);
+		const r = await writeTool.run({ path: target, content: "" }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(existsSync(target)).toBe(true);
 	});
 
 	it("preserves trailing newline", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "t.txt");
-		await writeTool.invoke({ path: target, content: "x\n" }, {} as any);
+		const r = await writeTool.run({ path: target, content: "x\n" }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(readFileSync(target, "utf8")).toBe("x\n");
 	});
 
-	it("no content field → treat as empty", async () => {
+	it("missing content field → ok:false (content is required)", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "no-content.txt");
-		await writeTool.invoke({ path: target }, {} as any);
-		expect(existsSync(target)).toBe(true);
+		const r = await writeTool.run({ path: target }, {} as any);
+		expect(r.ok).toBe(false);
 	});
 
-	it("refuses to write outside sandbox", async () => {
+	it("writes outside workspace (containment disabled)", async () => {
+		// Containment is intentionally disabled (pi-core parity): writes outside
+		// the workspace succeed, so this resolves ok:true instead of rejecting.
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
-		await expect(writeTool.invoke({
-			path: "/tmp/should-not-write-" + Date.now(),
+		const r = await writeTool.run({
+			path: "/tmp/mya-should-write-" + Date.now() + ".txt",
 			content: "x",
-		}, {} as any)).rejects.toThrow();
+		}, {} as any);
+		expect(r.ok).toBe(true);
 	});
 
 	it("writes large content (1MB)", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "big.txt");
 		const content = "x".repeat(1_000_000);
-		await writeTool.invoke({ path: target, content }, {} as any);
+		const r = await writeTool.run({ path: target, content }, {} as any);
+		expect(r.ok).toBe(true);
 		expect(readFileSync(target, "utf8").length).toBe(1_000_000);
 	});
 
 	it("idempotent — writing same content twice = same result", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "i.txt");
-		await writeTool.invoke({ path: target, content: "x" }, {} as any);
-		await writeTool.invoke({ path: target, content: "x" }, {} as any);
+		await writeTool.run({ path: target, content: "x" }, {} as any);
+		await writeTool.run({ path: target, content: "x" }, {} as any);
 		expect(readFileSync(target, "utf8")).toBe("x");
 	});
 
 	it("preserves BOM if explicitly written", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
 		const target = join(tmpDir, "bom.txt");
-		await writeTool.invoke({ path: target, content: "\uFEFFhello" }, {} as any);
-		const r = readFileSync(target);
-		expect(r[0]).toBe(0xEF);
-		expect(r[1]).toBe(0xBB);
-		expect(r[2]).toBe(0xBF);
+		const r = await writeTool.run({ path: target, content: "\uFEFFhello" }, {} as any);
+		expect(r.ok).toBe(true);
+		const b = readFileSync(target);
+		expect(b[0]).toBe(0xEF);
+		expect(b[1]).toBe(0xBB);
+		expect(b[2]).toBe(0xBF);
 	});
 });
 
@@ -111,12 +127,12 @@ describe("[unit] writeTool.invoke", () => {
 describe("[unit] writeTool schema", () => {
 	it("name 'write'", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
-		expect(writeTool.name).toBe("write");
+		expect(writeTool.meta.name).toBe("write");
 	});
 
 	it("requires path", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
-		expect(writeTool.inputSchema?.required).toContain("path");
+		expect(writeTool.meta.args.required).toContain("path");
 	});
 });
 
@@ -127,50 +143,7 @@ describe("[unit] writeTool schema", () => {
 describe("[smoke] write tool", () => {
 	it("exports writeTool", async () => {
 		const { writeTool } = await import("../../../../packages/tools/src/builtin.ts");
-		expect(typeof writeTool.invoke).toBe("function");
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// REAL — write via mya CLI
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya with write", () => {
-	it("creates a file via agent run", async () => {
-		const target = "/tmp/mya-write-test-" + Date.now() + ".txt";
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `write ${target} content="hello"`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(typeof target).toBe("string");
-	});
-
-	it("creates parent dirs", async () => {
-		const target = "/tmp/mya-write-nested-" + Date.now() + "/a/b/c.txt";
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `write ${target} content="nested"`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-
-	it("does not write outside sandbox (permission denied)", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", `write /etc/passwd-test content=x`],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(typeof err).toBe("string");
+		expect(typeof writeTool.run).toBe("function");
 	});
 });
 

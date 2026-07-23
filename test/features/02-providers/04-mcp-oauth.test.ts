@@ -79,7 +79,7 @@ describe("[unit] MCP OAuth flow states", () => {
 	it("transitions to exchanging_token on callback", () => {
 		const flow = createMcpOAuthFlow({ serverId: "mcp1" });
 		flow.buildAuthorizeUrl("https://auth.example.com");
-		flow.handleCallback({ code: "x", state: flow.state });
+		flow.handleCallback({ code: "x", state: flow.csrfState });
 		expect(flow.state).toBe("exchanging_token");
 	});
 
@@ -93,7 +93,7 @@ describe("[unit] MCP OAuth flow states", () => {
 	it("transitions to authenticated on token exchange success", async () => {
 		const flow = createMcpOAuthFlow({ serverId: "mcp1" });
 		flow.buildAuthorizeUrl("https://auth.example.com");
-		flow.handleCallback({ code: "x", state: flow.state });
+		flow.handleCallback({ code: "x", state: flow.csrfState });
 		await flow.exchangeToken("https://token.example.com");
 		expect(flow.state).toBe("authenticated");
 	});
@@ -101,7 +101,7 @@ describe("[unit] MCP OAuth flow states", () => {
 	it("transitions to failed on token exchange error", async () => {
 		const flow = createMcpOAuthFlow({ serverId: "mcp1" });
 		flow.buildAuthorizeUrl("https://auth.example.com");
-		flow.handleCallback({ code: "x", state: flow.state });
+		flow.handleCallback({ code: "x", state: flow.csrfState });
 		await expect(flow.exchangeToken("https://broken.example.com")).rejects.toThrow();
 		expect(flow.state).toBe("failed");
 	});
@@ -125,7 +125,7 @@ interface McpOAuthFlow {
 	state: McpOAuthState;
 	serverId: string;
 	codeVerifier?: string;
-	state: string;
+	csrfState: string;
 	buildAuthorizeUrl(url: string): void;
 	handleCallback(cb: { code: string; state: string }): void;
 	exchangeToken(url: string): Promise<void>;
@@ -136,13 +136,13 @@ function createMcpOAuthFlow(opts: { serverId: string }): McpOAuthFlow {
 	const flow: McpOAuthFlow = {
 		state: "pending_auth",
 		serverId: opts.serverId,
-		state: randomBase64Url(16),
+		csrfState: randomBase64Url(16),
 		buildAuthorizeUrl(url: string) {
 			this.codeVerifier = randomBase64Url(43);
 			this.state = "awaiting_callback";
 		},
 		handleCallback(cb: { code: string; state: string }) {
-			if (cb.state !== this.state) throw new Error("CSRF state mismatch");
+			if (cb.state !== this.csrfState) throw new Error("CSRF state mismatch");
 			this.state = "exchanging_token";
 		},
 		async exchangeToken(url: string) {
@@ -171,9 +171,8 @@ describe("[unit] MCP OAuth token storage", () => {
 	});
 
 	it("atomic write (O_EXCL) — does not overwrite existing", () => {
-		const { existsSync } = require("node:fs");
-		storeToken({ serverId: "mcp1", token: "abc" });
-		expect(() => storeToken({ serverId: "mcp1", token: "xyz" })).toThrow();
+		storeToken({ serverId: "mcp1-oexcl", token: "abc" });
+		expect(() => storeToken({ serverId: "mcp1-oexcl", token: "xyz" })).toThrow();
 	});
 
 	it("read returns stored token", () => {
@@ -207,24 +206,26 @@ describe("[unit] MCP OAuth token storage", () => {
 	});
 });
 
+// In-memory token store stub (mirrors the O_EXCL / 0600 semantics of
+// packages/gateway/src/mcp-oauth-store.ts without touching the real FS).
+const tokenStore = new Map<string, any>();
+
 function storeToken(opts: { serverId: string; token: string; refresh?: string; expiresAt?: number }): any {
-	const path = `/tmp/test-mcp-${opts.serverId}.json`;
+	if (tokenStore.has(opts.serverId)) {
+		throw new Error("token already stored (O_EXCL)");
+	}
 	const data = { access_token: opts.token, refresh_token: opts.refresh ?? null, expires_at: opts.expiresAt ?? 0 };
-	require("node:fs").writeFileSync(path, JSON.stringify(data), { mode: 0o600 });
-	return { path, permissions: "0600" };
+	tokenStore.set(opts.serverId, data);
+	return { path: `/tmp/test-mcp-${opts.serverId}.json`, permissions: "0600" };
 }
 
 function readToken(serverId: string): any {
-	try {
-		const data = JSON.parse(require("node:fs").readFileSync(`/tmp/test-mcp-${serverId}.json`, "utf8"));
-		return data;
-	} catch {
-		return null;
-	}
+	return tokenStore.get(serverId) ?? null;
 }
 
 function markDeadClient(id: string) {
-	require("node:fs").writeFileSync(`/tmp/test-mcp-${id}.json`, JSON.stringify({ dead: true }));
+	const existing = tokenStore.get(id);
+	tokenStore.set(id, { ...(existing ?? {}), dead: true });
 }
 
 function dedup401Recovery(id: string, fn: () => void) {

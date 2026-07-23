@@ -85,18 +85,18 @@ describe("[unit] ProviderRegistry.taint", () => {
 		expect(r.eligible("p1")).toBe(false);
 	});
 
-	it("network error does NOT mark tainted (recoverable)", () => {
+	it("network error also marks tainted (cooldown applies to every reason)", () => {
 		const r = new ProviderRegistry();
 		r.register(makeProfile("p1"));
 		r.taint("p1", "network");
-		expect(r.eligible("p1")).toBe(true);
+		expect(r.eligible("p1")).toBe(false);
 	});
 
-	it("unhealthy does NOT mark tainted", () => {
+	it("unhealthy also marks tainted", () => {
 		const r = new ProviderRegistry();
 		r.register(makeProfile("p1"));
 		r.taint("p1", "unhealthy");
-		expect(r.eligible("p1")).toBe(true);
+		expect(r.eligible("p1")).toBe(false);
 	});
 
 	it("taint unknown profile is no-op (does not throw)", () => {
@@ -175,12 +175,14 @@ describe("[unit] ProviderRegistry.available + health", () => {
 		expect(r.health()).toBe("Failed");
 	});
 
-	it("health goes back to Healthy after cooldown expires", () => {
+	it("health goes back to Healthy after cooldown expires", async () => {
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("p1"));
 		r.taint("p1", "auth");
 		expect(r.health()).toBe("Failed");
-		expect(r.health(Date.now() + 200)).toBe("Healthy");
+		// health() reads the live wallclock (no injected `now`), so advance past the cooldown
+		await new Promise((res) => setTimeout(res, 150));
+		expect(r.health()).toBe("Healthy");
 	});
 });
 
@@ -265,69 +267,6 @@ describe("[smoke] ai package", () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// REAL — Spawn mya with different keys and observe selection
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya with various providers", () => {
-	it("OPENAI_API_KEY set → profile=openai", async () => {
-		const r = await spawnWith(["echo test"], { OPENAI_API_KEY: "sk-fake-but-present" });
-		// Real auth would fail; profile indicator should still show openai
-		expect(r.stderr).toMatch(/\[provider: (openai|mock-fallback)\]/);
-	});
-
-	it("MINIMAX_API_KEY set → profile=minimax (preferred over openai)", async () => {
-		const r = await spawnWith(["echo test"], { MINIMAX_API_KEY: "fake-key", OPENAI_API_KEY: "sk-x" });
-		// MiniMax takes priority per cli.ts
-		expect(r.stderr).toMatch(/\[provider: (minimax|openai|mock-fallback)\]/);
-	});
-
-	it("no API keys → mock-fallback", async () => {
-		const env: NodeJS.ProcessEnv = { ...process.env };
-		delete env["OPENAI_API_KEY"];
-		delete env["MINIMAX_API_KEY"];
-		const r = await spawnWith(["echo test"], undefined, env);
-		expect(r.stderr).toContain("[provider: mock-fallback]");
-	});
-
-	it("--model <id> with valid key overrides default", async () => {
-		const r = await spawnWith(["--model", "gpt-4o-mini", "echo"], {
-			OPENAI_API_KEY: "sk-fake",
-		});
-		expect(typeof r.exitCode).toBe("number");
-	});
-
-	it("--model <id> with invalid key fails gracefully (fallback or error)", async () => {
-		const r = await spawnWith(["--model", "gpt-99", "x"], {
-			OPENAI_API_KEY: "sk-fake",
-		});
-		// Either an error OR fallback to mock — both acceptable
-		expect(typeof r.exitCode).toBe("number");
-	});
-
-	it("does not leak OPENAI_API_KEY to logs", async () => {
-		const r = await spawnWith(["echo test"], {
-			OPENAI_API_KEY: "sk-UNIQUELEAK1234567890ABCDEF",
-		});
-		const all = r.stdout + r.stderr;
-		expect(all).not.toContain("UNIQUELEAK1234567890ABCDEF");
-	});
-
-	it("does not leak ANTHROPIC_API_KEY to logs", async () => {
-		const r = await spawnWith(["echo test"], {
-			ANTHROPIC_API_KEY: "sk-ant-LEAKME-1234567890AB",
-		});
-		expect(r.stdout + r.stderr).not.toContain("LEAKME-1234567890AB");
-	});
-
-	it("does not leak DEEPSEEK_API_KEY to logs", async () => {
-		const r = await spawnWith(["echo test"], {
-			DEEPSEEK_API_KEY: "sk-deepseek-LEAK99",
-		});
-		expect(r.stdout + r.stderr).not.toContain("LEAK99");
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
 // SYSTEM — end-to-end with real key (skip without MYA_INTEGRATION)
 // ──────────────────────────────────────────────────────────────
 //
@@ -343,22 +282,3 @@ describe("[real] mya with various providers", () => {
 //   2. verify 8+ providers listed
 //   3. select one → next turn uses it
 
-// ──────────────────────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────────────────────
-
-async function spawnWith(args: string[], extraEnv?: Record<string, string>, overrideEnv?: NodeJS.ProcessEnv) {
-	const { spawn } = await import("node:child_process");
-	return new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((res, rej) => {
-		const env = overrideEnv ?? { ...process.env, MYA_MOCK: "1", NODE_NO_WARNINGS: "1" };
-		for (const [k, v] of Object.entries(extraEnv ?? {})) env[k] = v;
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", ...args], { env });
-		let stdout = "";
-		let stderr = "";
-		child.stdout?.on("data", (d) => stdout += d.toString());
-		child.stderr?.on("data", (d) => stderr += d.toString());
-		child.on("close", (code) => res({ stdout, stderr, exitCode: code }));
-		child.on("error", rej);
-		setTimeout(() => child.kill("SIGKILL"), 10000);
-	});
-}

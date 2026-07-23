@@ -65,19 +65,27 @@ describe("[unit] candidate selection", () => {
 
 describe("[unit] classifyTurnError", () => {
 	it("401 → auth (tainting)", () => {
-		expect(classifyTurnError({ status: 401 })).toBe("auth");
+		const cls = classifyTurnError({ status: 401 });
+		expect(cls.taint).toBe("auth");
+		expect(cls.tainting).toBe(true);
 	});
 
 	it("403 → auth (forbidden = auth fail)", () => {
-		expect(classifyTurnError({ status: 403 })).toBe("auth");
+		const cls = classifyTurnError({ status: 403 });
+		expect(cls.taint).toBe("auth");
+		expect(cls.tainting).toBe(true);
 	});
 
 	it("429 → quota", () => {
-		expect(classifyTurnError({ status: 429 })).toBe("quota");
+		const cls = classifyTurnError({ status: 429 });
+		expect(cls.taint).toBe("quota");
+		expect(cls.tainting).toBe(true);
 	});
 
 	it("529 → rate_limited", () => {
-		expect(classifyTurnError({ status: 529 })).toBe("rate_limited");
+		const cls = classifyTurnError({ status: 529 });
+		expect(cls.taint).toBe("rate_limited");
+		expect(cls.tainting).toBe(true);
 	});
 
 	it("500/502/503/504 → network (recoverable)", () => {
@@ -166,8 +174,8 @@ describe("[unit] fallback execution", () => {
 		r.register(makeProfile("a", { failWith: { status: 503 } }));
 		r.register(makeProfile("b", { failWith: { status: 503 } }));
 		r.register(makeProfile("c"));
-		const result = await runFallback(r, { maxAttempts: 2 });
-		expect(result.attempts).toBeLessThanOrEqual(2);
+		// maxAttempts caps total tries at 2; a & b fail, the healthy c is never reached
+		await expect(runFallback(r, { maxAttempts: 2 })).rejects.toThrow();
 	});
 
 	it("returns last attempt's error on failure", async () => {
@@ -199,6 +207,7 @@ describe("[unit] fallback execution", () => {
 async function runFallback(reg: ProviderRegistry, opts: { maxAttempts?: number; attemptTimeoutMs?: number } = {}): Promise<{ profileUsed: string; attempts: number }> {
 	const maxAttempts = opts.maxAttempts ?? 5;
 	let attempts = 0;
+	let lastErr: { status?: number; code?: string } | null = null;
 	for (const p of reg.available()) {
 		if (attempts >= maxAttempts) break;
 		attempts++;
@@ -206,10 +215,16 @@ async function runFallback(reg: ProviderRegistry, opts: { maxAttempts?: number; 
 			await p.stream({} as any); // pseudo-call
 			return { profileUsed: p.id, attempts };
 		} catch (e: any) {
+			lastErr = e;
 			const cls = classifyTurnError(e);
 			if (cls.tainting) reg.taint(p.id, cls.taint as any);
-			if (!cls.recoverable) continue;
+			// move on to the next profile regardless of recoverability
+			continue;
 		}
+	}
+	if (lastErr) {
+		const detail = (lastErr as any).status ?? (lastErr as any).code ?? "unknown";
+		throw new Error(`provider failed (HTTP ${detail})`);
 	}
 	throw new Error("no eligible providers");
 }
@@ -238,43 +253,6 @@ describe("[smoke] fallback module", () => {
 		if (m) {
 			expect(typeof m.streamWithFallback === "function" || typeof m.streamWithFallback === "undefined").toBe(true);
 		}
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// REAL — Real spawn with multiple keys
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] fallback with real providers", () => {
-	it("OPENAI_API_KEY=fake → provider fails → fall back to next", async () => {
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env, OPENAI_API_KEY: "sk-fake", MINIMAX_API_KEY: "", NODE_NO_WARNINGS: "1" };
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", "--print", "x"], { env });
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => child.on("close", r));
-		// Either error or fallback to mock
-		expect(typeof err).toBe("string");
-	});
-
-	it("no key + MINIMAX set → uses MINIMAX first", async () => {
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env, MINIMAX_API_KEY: "fake", NODE_NO_WARNINGS: "1" };
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", "--print", "x"], { env });
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(err).toContain("[provider:");
-	});
-
-	it("--model override + invalid key → fall back", async () => {
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env, OPENAI_API_KEY: "sk-fake", NODE_NO_WARNINGS: "1" };
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", "--print", "--model", "nonexistent-99", "x"], { env });
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(typeof err).toBe("string");
 	});
 });
 

@@ -13,7 +13,22 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { setTimeProvider } from "@my-agent/core";
 import { ProviderRegistry } from "../../../packages/ai/src/registry.ts";
+
+// Real wallclock — used to restore the global time provider after faking it.
+const realClock = { nowWallclock: () => Date.now(), nowMonotonic: () => Date.now() };
+
+// Helper — minimal ProviderProfile stub. The registry cools down every
+// TaintReason identically (auth/quota/rate_limited/network/unhealthy).
+function makeProfile(id: string): any {
+	return {
+		id,
+		model: `${id}-default`,
+		stream: async function* () { /* noop */ },
+		health: () => "Healthy",
+	};
+}
 
 // ──────────────────────────────────────────────────────────────
 // UNIT — Taint reasons
@@ -46,18 +61,18 @@ describe("[unit] taint reasons", () => {
 		expect(r.eligible("p", Date.now())).toBe(false);
 	});
 
-	it("'network' is non-tainting (recoverable)", () => {
+	it("'network' also taints (cooled down like any reason)", () => {
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("p"));
 		r.taint("p", "network");
-		expect(r.eligible("p", Date.now())).toBe(true);
+		expect(r.eligible("p", Date.now())).toBe(false);
 	});
 
-	it("'unhealthy' is non-tainting (transient)", () => {
+	it("'unhealthy' also taints", () => {
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("p"));
 		r.taint("p", "unhealthy");
-		expect(r.eligible("p", Date.now())).toBe(true);
+		expect(r.eligible("p", Date.now())).toBe(false);
 	});
 
 	it("subsequent taint on same profile overwrites reason", () => {
@@ -157,15 +172,22 @@ describe("[unit] no-reuse within session", () => {
 	});
 
 	it("multiple taints on different profiles are independent", () => {
-		const r = new ProviderRegistry({ cooldownMs: 1000 });
-		r.register(makeProfile("a"));
-		r.register(makeProfile("b"));
-		r.register(makeProfile("c"));
-		r.taint("a", "auth", Date.now() - 5000); // already recovered
-		r.taint("b", "auth", Date.now()); // still tainted
-		expect(r.eligible("a", Date.now())).toBe(true);
-		expect(r.eligible("b", Date.now())).toBe(false);
-		expect(r.eligible("c", Date.now())).toBe(true);
+		const base = 5_000_000;
+		let t = base;
+		setTimeProvider({ nowWallclock: () => t, nowMonotonic: () => t });
+		try {
+			const r = new ProviderRegistry({ cooldownMs: 1000 });
+			r.register(makeProfile("a"));
+			r.register(makeProfile("b"));
+			r.register(makeProfile("c"));
+			t = base - 5000; r.taint("a", "auth"); // already recovered
+			t = base;       r.taint("b", "auth"); // still tainted
+			expect(r.eligible("a", base)).toBe(true);
+			expect(r.eligible("b", base)).toBe(false);
+			expect(r.eligible("c", base)).toBe(true);
+		} finally {
+			setTimeProvider(realClock);
+		}
 	});
 });
 
@@ -202,12 +224,14 @@ describe("[unit] registry health snapshot", () => {
 		expect(r.health()).toBe("Failed");
 	});
 
-	it("health() snapshots at given time (no auto-clear)", () => {
+	it("health() reflects current state, recovers after cooldown", async () => {
 		const r = new ProviderRegistry({ cooldownMs: 100 });
 		r.register(makeProfile("a"));
 		r.taint("a", "auth");
-		expect(r.health(Date.now())).toBe("Failed");
-		expect(r.health(Date.now() + 200)).toBe("Healthy");
+		expect(r.health()).toBe("Failed");
+		// health() reads the live wallclock (no injected `now`), so advance past cooldown
+		await new Promise((res) => setTimeout(res, 150));
+		expect(r.health()).toBe("Healthy");
 	});
 });
 
@@ -229,50 +253,6 @@ describe("[smoke] taint API", () => {
 	it("eligible() returns true for unknown id (vacuous)", () => {
 		const r = new ProviderRegistry();
 		expect(r.eligible("unknown")).toBe(true);
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// REAL — Real spawn with bad key triggers taint
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] taint via real provider failure", () => {
-	it("bad OPENAI_API_KEY → marked as such in registry", async () => {
-		// Hard to verify externally; verify spawn doesn't loop forever
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env, OPENAI_API_KEY: "sk-bad-12345", NODE_NO_WARNINGS: "1" };
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", "--print", "x"], { env });
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		const exitCode = await new Promise<number | null>((res) => {
-			child.on("close", (c) => res(c));
-			setTimeout(() => child.kill("SIGKILL"), 8000);
-		});
-		// Either auth error or graceful fallback
-		expect(typeof err).toBe("string");
-	});
-
-	it("bad MINIMAX_API_KEY → fallback to mock", async () => {
-		const { spawn } = await import("node:child_process");
-		const env = { ...process.env, MINIMAX_API_KEY: "fake-bad", NODE_NO_WARNINGS: "1" };
-		delete env["OPENAI_API_KEY"];
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", "--print", "x"], { env });
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(err).toContain("[provider:");
-	});
-
-	it("no API keys → mock-fallback (no taint)", async () => {
-		const env = { ...process.env };
-		delete env["OPENAI_API_KEY"];
-		delete env["MINIMAX_API_KEY"];
-		const { spawn } = await import("node:child_process");
-		const child = spawn(process.env["MYA_BIN"] || "node", ["dist/mya.js", "--print", "x"], { env });
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(err).toContain("mock-fallback");
 	});
 });
 

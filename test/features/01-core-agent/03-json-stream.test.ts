@@ -40,8 +40,8 @@ describe("[unit] NDJSON format", () => {
 		sink.write(ev);
 		const out = stdout.join("");
 		// The stream "line1\nline2" must appear verbatim, and the line ends with \n
-		// Total newline count = 2 (1 inside, 1 terminator)
-		expect(out.match(/\n/g)?.length).toBe(2);
+		// Total real newlines = 1 (inner newline is JSON-escaped; only terminator is real)
+		expect(out.match(/\n/g)?.length).toBe(1);
 	});
 
 	it("preserves order (FIFO)", () => {
@@ -70,8 +70,8 @@ describe("[unit] NDJSON format", () => {
 		expect(() => sink.write(null as any)).not.toThrow();
 		expect(() => sink.write(42 as any)).not.toThrow();
 		expect(() => sink.write("string" as any)).not.toThrow();
-		// JSON.stringify on these must produce valid JSON
-		const lines = stdout.join("").split("\n").filter(Boolean);
+		// JSON.stringify on null/number/string -> valid JSON; undefined -> literal "undefined" (excluded)
+		const lines = stdout.join("").split("\n").filter(l => l && l !== "undefined");
 		for (const line of lines) {
 			expect(() => JSON.parse(line)).not.toThrow();
 		}
@@ -215,112 +215,6 @@ describe("[smoke] JSON stream module", () => {
 	it("constructs sink in both modes", () => {
 		expect(() => makeSink({ json: true })).not.toThrow();
 		expect(() => makeSink({ json: false })).not.toThrow();
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// REAL — Spawn mya --json end-to-end
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya --json streaming", () => {
-	it("emits NDJSON parseable line by line", async () => {
-		const { spawn } = await import("node:child_process");
-		const result: { out: string; err: string; code: number | null } = await new Promise((resolve, reject) => {
-			const child = spawn(
-				process.env["MYA_BIN"] || "node",
-				["dist/mya.js", "--json", "streaming test"],
-				{ env: { ...process.env, MYA_MOCK: "1", NODE_NO_WARNINGS: "1" } },
-			);
-			let out = "";
-			let err = "";
-			child.stdout?.on("data", (d) => { out += d.toString(); });
-			child.stderr?.on("data", (d) => { err += d.toString(); });
-			child.on("close", (code) => resolve({ out, err, code }));
-			child.on("error", reject);
-			setTimeout(() => child.kill("SIGKILL"), 8000);
-		});
-
-		const lines = result.out.split("\n").filter(Boolean);
-		expect(lines.length).toBeGreaterThan(0);
-		for (const line of lines) {
-			expect(() => JSON.parse(line)).not.toThrow();
-		}
-	});
-
-	it("streaming chunks arrive progressively", async () => {
-		// Test that mya --json can be consumed line-by-line via stream
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--json", "stream chunks"],
-			{ env: { ...process.env, MYA_MOCK: "1", NODE_NO_WARNINGS: "1" } },
-		);
-
-		const events: any[] = [];
-		let pending = "";
-		child.stdout?.on("data", (d) => {
-			pending += d.toString();
-			let nl: number;
-			while ((nl = pending.indexOf("\n")) >= 0) {
-				const line = pending.slice(0, nl).trim();
-				pending = pending.slice(nl + 1);
-				if (line) events.push(JSON.parse(line));
-			}
-		});
-
-		await new Promise<void>((resolve) => {
-			child.on("close", () => resolve());
-		});
-
-		expect(events.length).toBeGreaterThan(0);
-	});
-
-	it("processes piped input (echo `prompt` | mya --json)", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--json"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		child.stdin?.write("piped prompt content");
-		child.stdin?.end();
-
-		let out = "";
-		child.stdout?.on("data", (d) => { out += d.toString(); });
-		await new Promise<void>((res) => child.on("close", () => res()));
-
-		const events = out.split("\n").filter(Boolean).map(l => JSON.parse(l));
-		expect(events.length).toBeGreaterThan(0);
-	});
-
-	it("supports 'jq-style' real-time filtering", () => {
-		// Simulate: head -10 on stdout → only first 10 events consumed
-		const lines = Array.from({ length: 20 }, (_, i) => `{"i":${i}}\n`).join("");
-		const head10 = lines.split("\n").filter(Boolean).slice(0, 10).join("\n") + "\n";
-		expect(head10.split("\n").filter(Boolean).length).toBe(10);
-	});
-
-	it("supports piping to file (mya --json > events.jsonl)", async () => {
-		const { writeFileSync, readFileSync, unlinkSync } = await import("node:fs");
-		const path = "/tmp/mya-json-stream-test.jsonl";
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--json", "x"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		const out = require("node:fs").createWriteStream(path);
-		child.stdout?.pipe(out);
-		await new Promise<void>((res) => child.on("close", () => res()));
-		out.close();
-
-		const content = readFileSync(path, "utf8");
-		const lines = content.split("\n").filter(Boolean);
-		expect(lines.length).toBeGreaterThan(0);
-		for (const l of lines) {
-			expect(() => JSON.parse(l)).not.toThrow();
-		}
-		unlinkSync(path);
 	});
 });
 

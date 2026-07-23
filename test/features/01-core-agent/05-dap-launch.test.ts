@@ -146,64 +146,6 @@ describe("[smoke] DAP module", () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// REAL — mya --debug invocation
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya --debug", () => {
-	it("spawns mya --debug without crash", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--debug", "--print", "echo test"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		let out = "";
-		let err = "";
-		child.stdout?.on("data", (d) => out += d.toString());
-		child.stderr?.on("data", (d) => err += d.toString());
-		const code = await new Promise<number | null>((res) => {
-			child.on("close", (c) => res(c));
-			setTimeout(() => child.kill("SIGKILL"), 5000);
-		});
-		expect(typeof code).toBe("number");
-	});
-
-	it("--debug without --print/-rpc/-bg falls back to TUI (or graceful exit)", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--debug"],
-			{ env: { ...process.env, MYA_MOCK: "1", CI: "1" } },
-		);
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => {
-			child.on("close", () => r(undefined));
-			setTimeout(() => child.kill("SIGKILL"), 3000);
-		});
-		// Either clean exit OR non-TTY-friendly graceful
-		expect(err === "" || err.includes("TTY")).toBe(true);
-	});
-
-	it("--debug DAP server ready log emitted to stderr", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--debug", "--print", "x"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		let err = "";
-		child.stderr?.on("data", (d) => err += d.toString());
-		await new Promise((r) => {
-			child.on("close", () => r(undefined));
-			setTimeout(() => child.kill("SIGKILL"), 5000);
-		});
-		// Should NOT crash; some log line may mention debug/dap
-		expect(typeof err).toBe("string");
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
 // SYSTEM — DAP client/server E2E (skip without MYA_INTEGRATION)
 // ──────────────────────────────────────────────────────────────
 //

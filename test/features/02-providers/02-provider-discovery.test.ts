@@ -241,7 +241,7 @@ describe("[smoke] provider-discovery module", () => {
 		expect(typeof m.scanProviders).toBe("function");
 		expect(typeof m.isProviderConfigured).toBe("function");
 		expect(typeof m.manifestToProfile).toBe("function");
-		expect(typeof m.getConfiguredProviders).toBe("object" || typeof m.getConfiguredProviders === "function").toBe(true);
+		expect(typeof m.getConfiguredProviders).toBe("function");
 	});
 });
 

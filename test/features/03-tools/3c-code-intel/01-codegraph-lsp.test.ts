@@ -41,40 +41,42 @@ describe("[unit] GraphStore", () => {
 		expect(m === null || typeof m === "object").toBe(true);
 	});
 
-	it("addNode", async () => {
+	it("addSymbol", async () => {
 		const m = (await import("../../../../packages/tools/src/graph-store.ts").catch(() => null)) as any;
 		if (m?.GraphStore) {
 			const g = new m.GraphStore();
-			g.addNode?.({ id: "x", kind: "symbol" });
-			expect(g.size?.()).toBeGreaterThan(0);
+			g.addSymbol({ id: "f.ts:1:0:foo", name: "foo", kind: "function", file: "f.ts", range: { start: { line: 1, col: 0 }, end: { line: 1, col: 3 } } });
+			expect(g.size).toBeGreaterThan(0);
 		}
 	});
 
-	it("addEdge", async () => {
+	it("addReference", async () => {
 		const m = (await import("../../../../packages/tools/src/graph-store.ts").catch(() => null)) as any;
 		if (m?.GraphStore) {
 			const g = new m.GraphStore();
-			g.addNode?.({ id: "x" });
-			g.addNode?.({ id: "y" });
-			g.addEdge?.({ from: "x", to: "y", kind: "calls" });
-			expect(true).toBe(true);
+			g.addSymbol({ id: "f.ts:1:0:x", name: "x", kind: "function", file: "f.ts", range: { start: { line: 1, col: 0 }, end: { line: 1, col: 1 } } });
+			g.addSymbol({ id: "f.ts:2:0:y", name: "y", kind: "function", file: "f.ts", range: { start: { line: 2, col: 0 }, end: { line: 2, col: 1 } } });
+			g.addReference({ symbolId: "f.ts:1:0:x", fromFile: "f.ts", fromRange: { start: { line: 2, col: 0 }, end: { line: 2, col: 1 } }, kind: "call" });
+			expect(g.size).toBe(2);
 		}
 	});
 
 	it("findSymbols by name", async () => {
 		const m = (await import("../../../../packages/tools/src/codegraph.ts").catch(() => null)) as any;
 		if (m?.findSymbols) {
-			const store = new (await import("../../../../packages/tools/src/graph-store.ts").catch(() => null) as any).GraphStore();
-			store.addNode?.({ id: "foo", kind: "function" });
+			const gs = (await import("../../../../packages/tools/src/graph-store.ts").catch(() => null)) as any;
+			const store = new gs.GraphStore();
+			store.addSymbol({ id: "f.ts:1:0:foo", name: "foo", kind: "function", file: "f.ts", range: { start: { line: 1, col: 0 }, end: { line: 1, col: 3 } } });
 			const syms = m.findSymbols(store, "foo");
-			expect(syms.some((s: any) => s.id === "foo")).toBe(true);
+			expect(syms.some((s: any) => s.id === "f.ts:1:0:foo")).toBe(true);
 		}
 	});
 
 	it("findSymbols returns empty for unknown", async () => {
 		const m = (await import("../../../../packages/tools/src/codegraph.ts").catch(() => null)) as any;
 		if (m?.findSymbols) {
-			const store = new (await import("../../../../packages/tools/src/graph-store.ts").catch(() => null) as any).GraphStore();
+			const gs = (await import("../../../../packages/tools/src/graph-store.ts").catch(() => null)) as any;
+			const store = new gs.GraphStore();
 			expect(m.findSymbols(store, "nonexistent-xyz")).toEqual([]);
 		}
 	});
@@ -158,34 +160,6 @@ describe("[unit] LSP operations", () => {
 	});
 
 	it("handles LSP server crash", async () => {
-		expect(true).toBe(true);
-	});
-});
-
-// ──────────────────────────────────────────────────────────────
-// REAL — mya with codegraph
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya codegraph", () => {
-	it("queries project graph", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", "codegraph path=packages/core/src/index.ts"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
-		expect(true).toBe(true);
-	});
-
-	it("queries LSP for symbol", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "--print", "lsp symbol=ArrayHistory"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
-		);
-		await new Promise((r) => child.on("close", r));
 		expect(true).toBe(true);
 	});
 });

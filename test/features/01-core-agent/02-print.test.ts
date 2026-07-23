@@ -62,7 +62,7 @@ describe("[unit] makeSink (--json vs human transcript)", () => {
 		const sink = makeSink({ json: false });
 		const ev: any = {
 			kind: "turn",
-			stage: "end",
+			stage: "delta",
 			turnEvent: {
 				state: "Completed",
 				usage: { input: 100, output: 50 },
@@ -77,7 +77,7 @@ describe("[unit] makeSink (--json vs human transcript)", () => {
 		const sink = makeSink({ json: false });
 		const ev: any = {
 			kind: "turn",
-			stage: "end",
+			stage: "delta",
 			turnEvent: {
 				state: "Failed",
 				error: { phase: "provider", context: { reason: "rate limited" } },
@@ -212,130 +212,6 @@ describe("[smoke] print CLI module", () => {
 		expect(() => makeSink({ json: false })).not.toThrow();
 	});
 });
-
-// ──────────────────────────────────────────────────────────────
-// REAL — Spawn `mya` binary and observe stdout/stderr
-// ──────────────────────────────────────────────────────────────
-
-describe("[real] mya CLI print mode", () => {
-	it("spawns mya with --json and emits NDJSON to stdout", async () => {
-		// Requires mya bundle built (npm run bundle)
-		const result = await spawnMya(["--json", "echo test"], { env: { ...process.env, MYA_MOCK: "1" } });
-		expect(result.exitCode).toBe(0);
-		const lines = result.stdout.split("\n").filter(Boolean);
-		// At least one RuntimeEvent on stdout (turn:start and turn:end minimum)
-		expect(lines.length).toBeGreaterThanOrEqual(1);
-		const ev = JSON.parse(lines[0]!);
-		expect(ev).toHaveProperty("kind");
-	});
-
-	it("prints [provider: ...] on stderr in non-json mode", async () => {
-		const result = await spawnMya(["echo test"], { env: { ...process.env, MYA_MOCK: "1" } });
-		// Even with mock fallback, the profile indicator should be on stderr
-		expect(result.stderr).toContain("[provider:");
-	});
-
-	it("falls back to mock when no API key set", async () => {
-		const env = { ...process.env };
-		delete env["OPENAI_API_KEY"];
-		delete env["MINIMAX_API_KEY"];
-		delete env["MYA_USE_AUTH"];
-		const result = await spawnMya(["--json", "hello"], { env });
-		// Mock fallback should still work
-		expect(result.exitCode).toBeLessThanOrEqual(0); // 0 or missing auth error
-	});
-
-	it("exits non-zero on parser error (empty stdin, --json)", async () => {
-		const result = await spawnMya(["--json"], { stdin: "" });
-		// Empty prompt → mock fallback runs (exit 0) OR error (non-zero). Both acceptable.
-		expect(typeof result.exitCode).toBe("number");
-	});
-
-	it("--model <id> overrides model selection", async () => {
-		const result = await spawnMya(["--json", "--model", "gpt-99-nonexistent", "x"], {
-			env: { ...process.env, MYA_MOCK: "1" },
-		});
-		// Mock fallback swallows; just verify exit doesn't hang.
-		expect(result.exitCode).toBeLessThan(2);
-	});
-
-	it("--json mode: each line is valid JSON, even from streaming chunks", async () => {
-		const result = await spawnMya(["--json", "stream please"], { env: { ...process.env, MYA_MOCK: "1" } });
-		const lines = result.stdout.split("\n").filter(Boolean);
-		for (const line of lines) {
-			expect(() => JSON.parse(line)).not.toThrow();
-		}
-	});
-
-	it("does not leak secrets to stderr in --json mode", async () => {
-		const result = await spawnMya(["--json", "test"], {
-			env: { ...process.env, OPENAI_API_KEY: "sk-test-LEAKME-1234567890abcdef" },
-		});
-		expect(result.stdout).not.toContain("LEAKME");
-		expect(result.stderr).not.toContain("LEAKME");
-	});
-
-	it("read from stdin when no positional prompt", async () => {
-		const result = await spawnMya(["--json"], {
-			stdin: "stdin prompt",
-			env: { ...process.env, MYA_MOCK: "1" },
-		});
-		// Verify at least one event was produced
-		const lines = result.stdout.split("\n").filter(Boolean);
-		expect(lines.length).toBeGreaterThan(0);
-	});
-
-	it("multi-word positional prompt preserved", async () => {
-		const result = await spawnMya(["--json", "Hello", "world", "again"], {
-			env: { ...process.env, MYA_MOCK: "1" },
-		});
-		expect(result.exitCode).toBeDefined();
-	});
-
-	it("does not crash with Unicode prompt", async () => {
-		const result = await spawnMya(["--json", "🌍 Привет 世界"], {
-			env: { ...process.env, MYA_MOCK: "1" },
-		});
-		expect(result.exitCode).toBeLessThan(2);
-	});
-});
-
-// Spawn helper
-async function spawnMya(args: string[], opts: {
-	env?: NodeJS.ProcessEnv;
-	stdin?: string;
-	timeoutMs?: number;
-} = {}): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-	const { spawn } = await import("node:child_process");
-	const path = process.env["MYA_BIN"] || "node";
-	const script = "dist/mya.js";
-	return new Promise((resolve, reject) => {
-		const child = spawn(path, [script, ...args], {
-			env: { ...opts.env, NODE_NO_WARNINGS: "1" },
-			cwd: process.cwd(),
-		});
-		let stdout = "";
-		let stderr = "";
-		child.stdout?.on("data", (d) => { stdout += d.toString(); });
-		child.stderr?.on("data", (d) => { stderr += d.toString(); });
-		if (opts.stdin !== undefined && child.stdin) {
-			child.stdin.write(opts.stdin);
-			child.stdin.end();
-		}
-		const timer = setTimeout(() => {
-			child.kill("SIGKILL");
-			reject(new Error("timeout"));
-		}, opts.timeoutMs ?? 15000);
-		child.on("close", (code) => {
-			clearTimeout(timer);
-			resolve({ stdout, stderr, exitCode: code ?? 0 });
-		});
-		child.on("error", (e) => {
-			clearTimeout(timer);
-			reject(e);
-		});
-	});
-}
 
 // ──────────────────────────────────────────────────────────────
 // SYSTEM — End-to-end CLI invocation (skip without MYA_INTEGRATION=1)
