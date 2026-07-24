@@ -296,6 +296,12 @@ export class Gateway {
   /** Phase 1A: re-entrancy guard — a sweep overlapping the previous one (a slow
    * job > cronIntervalMs) skips instead of double-scanning / racing claims. */
   private cronSweeping = false;
+  /** P7 (shard 07): drain gate — one-way shutdown flag (set on SIGTERM/process
+   * exit; never cleared). When true, canDispatch() returns false. */
+  private shuttingDown = false;
+  /** P7 (shard 07): drain gate — reversible external drain flag (set by an
+   * external signal like resource pressure; can be cleared). */
+  private externalDrain = false;
   /** §12 sync server (optional — Phase 6 wiring). Endpoints active when provided. */
   private readonly sync?: SyncServer;
   /** §12 collaboration relay (optional — Phase 6 wiring). Endpoint active when provided. */
@@ -585,6 +591,8 @@ export class Gateway {
   async cronSweep(workerId: string): Promise<void> {
     if (!this.cron) return;
     if (this.cronSweeping) return; // overlapping sweep (a prior job > interval) — skip
+    // P7 (shard 07): drain gate — skip the entire sweep when draining.
+    if (!this.canDispatch()) return;
     // F4: cross-process lock — prevents double-sweep in multi-gateway deployments.
     let releaseLock: (() => void) | null = null;
     try {
@@ -1973,7 +1981,29 @@ export class Gateway {
     return this.collab;
   }
 
+  /** P7 (shard 07): drain gate — returns false when draining (shutting down or
+   * externally drained). The cron scheduler reads this before each tick to
+   * skip dispatch during shutdown / resource pressure. */
+  canDispatch(): boolean {
+    return !this.shuttingDown && !this.externalDrain;
+  }
+
+  /** P7 (shard 07): one-way shutdown drain (SIGTERM / process exit). Once set,
+   * canDispatch() returns false forever — no cron ticks fire during shutdown. */
+  beginShutdown(): void {
+    this.shuttingDown = true;
+  }
+
+  /** P7 (shard 07): reversible external drain (resource pressure, maintenance).
+   * Set `draining` to true to pause cron; false to resume. */
+  setExternalDrain(draining: boolean): void {
+    this.externalDrain = draining;
+  }
+
   stop(): Promise<void> {
+    // P7 (shard 07): set the one-way shutdown drain flag so the cron sweep
+    // skips any in-flight ticks during shutdown.
+    this.shuttingDown = true;
     // I1: notify systemd that the gateway is stopping (sd_notify STOPPING=1).
     try { notifyStopping(); } catch { /* best-effort */ }
     try { stopWatchdog(); } catch { /* best-effort */ }
