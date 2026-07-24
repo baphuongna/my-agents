@@ -18,6 +18,7 @@ import {
   bufferToVec,
   type Vec,
 } from "@my-agent/memory";
+import { embeddingModel, embeddingsDisabled } from "./embeddings.js";
 
 const DIM = 384;
 /** Build a 384-dim unit vector with a 1 at `idx` (orthogonal basis → cosine 0 or 1). */
@@ -192,5 +193,47 @@ describe("embedContent — public embed entrypoint", () => {
     expect(Array.from(v!)).toEqual([0.5, 0.5]);
     // non-matching text → impl returns null
     expect(await embedContent("nothing here")).toBeNull();
+  });
+});
+
+describe("[unit] embeddingModel + embeddingsDisabled", () => {
+  const origNoEmbed = process.env.MYA_NO_EMBEDDINGS;
+  const origModel = process.env.MYA_EMBEDDING_MODEL;
+
+  afterEach(() => {
+    if (origNoEmbed === undefined) delete process.env.MYA_NO_EMBEDDINGS;
+    else process.env.MYA_NO_EMBEDDINGS = origNoEmbed;
+    if (origModel === undefined) delete process.env.MYA_EMBEDDING_MODEL;
+    else process.env.MYA_EMBEDDING_MODEL = origModel;
+  });
+
+  it("embeddingModel() returns default when no env", () => {
+    delete process.env.MYA_EMBEDDING_MODEL;
+    expect(embeddingModel()).toBe("BAAI/bge-small-en-v1.5");
+  });
+
+  it("embeddingModel() respects MYA_EMBEDDING_MODEL", () => {
+    process.env.MYA_EMBEDDING_MODEL = "custom/model";
+    expect(embeddingModel()).toBe("custom/model");
+  });
+
+  it("embeddingsDisabled() returns false by default", () => {
+    delete process.env.MYA_NO_EMBEDDINGS;
+    expect(embeddingsDisabled()).toBe(false);
+  });
+
+  it("embeddingsDisabled() returns true when MYA_NO_EMBEDDINGS=1", () => {
+    process.env.MYA_NO_EMBEDDINGS = "1";
+    expect(embeddingsDisabled()).toBe(true);
+  });
+
+  it("embeddingsDisabled() returns true when MYA_NO_EMBEDDINGS=true", () => {
+    process.env.MYA_NO_EMBEDDINGS = "true";
+    expect(embeddingsDisabled()).toBe(true);
+  });
+
+  it("embeddingsDisabled() returns false for arbitrary value", () => {
+    process.env.MYA_NO_EMBEDDINGS = "no";
+    expect(embeddingsDisabled()).toBe(false);
   });
 });

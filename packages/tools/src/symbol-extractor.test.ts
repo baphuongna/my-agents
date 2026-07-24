@@ -132,3 +132,30 @@ describe("symbol-extractor: id stability across calls", () => {
     expect(extractSymbols("a.rs", { src })).toEqual(extractSymbols("a.rs", { src }));
   });
 });
+
+describe("[unit] extractSymbolsForRoot", () => {
+  it("returns a GraphStore for a directory", async () => {
+    const { extractSymbolsForRoot } = await import("./symbol-extractor.js");
+    const store = await extractSymbolsForRoot("packages/tools/src");
+    expect(store).toBeDefined();
+    expect(store.size).toBeGreaterThan(0);
+  });
+
+  it("returns empty store for non-existent dir", async () => {
+    const { extractSymbolsForRoot } = await import("./symbol-extractor.js");
+    const store = await extractSymbolsForRoot("/nonexistent/path/xyz");
+    expect(store.size).toBe(0);
+  });
+
+  it("accepts explicit file list", async () => {
+    const { extractSymbolsForRoot } = await import("./symbol-extractor.js");
+    const store = await extractSymbolsForRoot("packages/tools/src", ["builtin.ts"]);
+    expect(store.size).toBeGreaterThan(0);
+  });
+
+  it("skips unsupported extensions", async () => {
+    const { extractSymbolsForRoot } = await import("./symbol-extractor.js");
+    const store = await extractSymbolsForRoot("packages/tools/src", ["README.md"]);
+    expect(store.size).toBe(0);
+  });
+});
