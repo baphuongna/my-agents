@@ -71,9 +71,6 @@ export interface CreateAgentSessionOptions {
 	excludeTools?: string[];
 	/** Custom tools to register (in addition to built-in tools). */
 	customTools?: ToolDefinition[];
-	/** Inline extension factories (same format as main()'s extensionFactories).
-	 * Used by the gateway pool to load mya-bridge into web sessions. */
-	extensionFactories?: InlineExtension[];
 
 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
 	resourceLoader?: ResourceLoader;
@@ -184,10 +181,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
 
 	if (!resourceLoader) {
-		resourceLoader = new DefaultResourceLoader({
-			cwd, agentDir, settingsManager,
-			extensionFactories: options.extensionFactories,
-		});
+		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
 		await resourceLoader.reload();
 		time("resourceLoader.reload");
 	}

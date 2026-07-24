@@ -255,12 +255,12 @@ export class AuthStorage implements CredentialStore {
 		return Object.entries(this.data).map(([providerId, credential]) => ({ providerId, type: credential.type }));
 	}
 
-	// ═════════════════════════════════════════════════════════════════
+	// ══════════════════════════════════════════════════════════════════════════════
 	// mya fork: backward-compat shims for pre-0.80.10 test/internal callers
 	// (upstream 0.80.10 replaced these with read/modify/delete/list + RuntimeCredentials).
 	// These delegate to the new CredentialStore API. Marked for removal once
 	// callers and tests migrate.
-	// ═════════════════════════════════════════════════════════════════
+	// ══════════════════════════════════════════════════════════════════════════════
 
 	/** Shim for old `getApiKey(provider)`: returns the api_key string or undefined.
 	 * Synchronous for the cached in-memory case; older tests called without await. */

@@ -6,7 +6,10 @@
  * test file with unit/smoke/real tiers for each.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // ══════════════════════════════════════════════════════════════
 // §10 Desktop App (Tauri)
@@ -580,18 +583,25 @@ describe("[real] mya launcher", () => {
 	});
 });
 
-describe("[real] mya serve full", () => {
+	describe("[real] mya serve full", () => {
 	const port = 4299;
+	// Use a temp HOME so no MCP servers are loaded (instant boot instead of ~25s)
+	const tmpHome = mkdtempSync(join(tmpdir(), "mya-test-home-"));
 	const base = `http://127.0.0.1:${port}`;
 
+	let proc: any;
+
 	async function startServe(): Promise<any> {
-		const { spawn } = await import("node:child_process");
+		const { spawn, execSync } = await import("node:child_process");
+		// Kill any leftover process on port
+		try { execSync(`fuser -k ${port}/tcp 2>/dev/null || true`); } catch {}
+		await new Promise((r) => setTimeout(r, 500));
 		const child = spawn(
 			process.env["MYA_BIN"] || "node",
 			["dist/mya.js", "serve", "--port", String(port)],
-			{ env: { ...process.env, MYA_MOCK: "1" }, stdio: ["ignore", "pipe", "pipe"] },
+			{ env: { ...process.env, HOME: tmpHome }, stdio: ["ignore", "pipe", "pipe"] },
 		);
-		for (let i = 0; i < 50; i++) {
+		for (let i = 0; i < 300; i++) {
 			try {
 				const r = await fetch(`${base}/health/live`);
 				if (r.status === 200) return child;
@@ -602,66 +612,45 @@ describe("[real] mya serve full", () => {
 		throw new Error("server timeout");
 	}
 
-	it("/ returns HTML dashboard", async () => {
-		const proc = await startServe();
-		try {
-			const r = await fetch(`${base}/`);
-			expect(r.headers.get("content-type")).toMatch(/html/);
-		} finally {
-			proc.kill("SIGTERM");
-		}
+	beforeAll(async () => {
+		proc = await startServe();
+	}, 60000);
+
+	afterAll(() => {
+		if (proc) proc.kill("SIGTERM");
+		rmSync(tmpHome, { recursive: true, force: true });
 	});
+
+	it("/ returns HTML dashboard", async () => {
+		const r = await fetch(`${base}/`);
+		expect(r.headers.get("content-type")).toMatch(/html/);
+	}, 30000);
 
 	it("/push/vapid-key returns VAPID public key", async () => {
-		const proc = await startServe();
-		try {
-			const r = await fetch(`${base}/push/vapid-key`);
-			expect(r.status).toBeLessThan(500);
-		} finally {
-			proc.kill("SIGTERM");
-		}
-	});
+		const r = await fetch(`${base}/push/vapid-key`);
+		expect(r.status).toBeLessThan(500);
+	}, 30000);
 
 	it("/mcp/servers returns server list", async () => {
-		const proc = await startServe();
-		try {
-			const r = await fetch(`${base}/mcp/servers`);
-			expect(r.status).toBeLessThan(500);
-		} finally {
-			proc.kill("SIGTERM");
-		}
-	});
+		const r = await fetch(`${base}/mcp/servers`);
+		expect(r.status).toBeLessThan(500);
+	}, 30000);
 
 	it("/sync/state returns state", async () => {
-		const proc = await startServe();
-		try {
-			const r = await fetch(`${base}/sync/state`);
-			expect(r.status).toBeLessThan(500);
-		} finally {
-			proc.kill("SIGTERM");
-		}
-	});
+		const r = await fetch(`${base}/sync/state`);
+		expect(r.status).toBeLessThan(500);
+	}, 30000);
 
 	it("/agents/sessions returns session list", async () => {
-		const proc = await startServe();
-		try {
-			const r = await fetch(`${base}/agents/sessions`);
-			expect(r.status).toBeLessThan(500);
-		} finally {
-			proc.kill("SIGTERM");
-		}
-	});
+		const r = await fetch(`${base}/agents/sessions`);
+		expect(r.status).toBeLessThan(500);
+	}, 30000);
 
 	it("SPA fallback serves index.html on unknown GET", async () => {
-		const proc = await startServe();
-		try {
-			const r = await fetch(`${base}/some-unknown-route`);
-			// SPA fallback → 200 with HTML, or 404 — both acceptable
-			expect(r.status).toBeLessThan(500);
-		} finally {
-			proc.kill("SIGTERM");
-		}
-	});
+		const r = await fetch(`${base}/some-unknown-route`);
+		// SPA fallback → 200 with HTML, or 404 — both acceptable
+		expect(r.status).toBeLessThan(500);
+	}, 30000);
 });
 
 // ══════════════════════════════════════════════════════════════
