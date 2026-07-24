@@ -329,3 +329,10 @@ export class ChannelRouter {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ─── Concrete adapter re-exports ─────────────────────────────────────────────
+
+export { WhatsAppAdapter } from "./whatsapp.js";
+export type { WhatsAppConfig, WhatsAppTransportFactory } from "./whatsapp.js";
+export { MatrixAdapter } from "./matrix.js";
+export type { MatrixConfig, MatrixTransportFactory } from "./matrix.js";

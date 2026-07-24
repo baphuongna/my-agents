@@ -41,6 +41,7 @@ import { CouncilProvider, type CouncilMember } from "@my-agent/council";
 import { PiAiProviderBridge } from "@my-agent/ai";
 import { createRequire } from "node:module";
 import { autoConfigureChannels } from "@my-agent/gateway";
+import type { ChannelsPackageConfig } from "@my-agent/gateway";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { readFileSync, existsSync } from "node:fs";
@@ -54,6 +55,7 @@ export interface MyaConfig {
   activeProfile?: string; // H1 profile system
   maxSpawnDepth?: number; // A2 subagent depth
   maxToolRounds?: number; // A1 iteration budget
+  channels?: ChannelsPackageConfig; // Item 17: @my-agent/channels config
 }
 function loadConfig(): MyaConfig {
   const configPath = join(homedir(), ".mya", "agent", "config.json");
@@ -67,6 +69,7 @@ function loadConfig(): MyaConfig {
     activeProfile: fileConfig.activeProfile ?? process.env["MYA_PROFILE"] ?? "default",
     maxSpawnDepth: fileConfig.maxSpawnDepth ?? (process.env["MYA_MAX_SPAWN_DEPTH"] ? Number(process.env["MYA_MAX_SPAWN_DEPTH"]) : undefined),
     maxToolRounds: fileConfig.maxToolRounds ?? (process.env["MYA_MAX_TOOL_ROUNDS"] ? Number(process.env["MYA_MAX_TOOL_ROUNDS"]) : undefined),
+    channels: fileConfig.channels,
   };
 }
 export const config = loadConfig();

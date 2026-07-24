@@ -635,6 +635,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     sync,
     collab,
     channels,
+    channelsConfig: config.channels,
     channelRouter,
     poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile })),
     poolKill: (id: string) => pool.release(id),

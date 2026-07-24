@@ -21,7 +21,7 @@ export type { ControlSession, ControlCronJob, CachedHandle } from "./control.js"
 import { ControlPlane } from "./control.js";
 import type { ControlCronJob } from "./control.js";
 import { WebSocketServer, type WebSocket } from "ws";
-import { nowWallclock, type RuntimeEvent } from "@my-agent/core";
+import { nowWallclock, supervisedTask, type RuntimeEvent, type SupervisedTaskHandle } from "@my-agent/core";
 import { ApprovalRelay, type ApprovalDecisionPayload } from "./approval-relay.js";
 import { notifyReady, startWatchdog, stopWatchdog, notifyStopping } from "./systemd.js";
 import type { LifecycleGuard } from "@my-agent/cron";
@@ -31,6 +31,11 @@ import { SyncServer } from "@my-agent/sync";
 import { CollabRelay } from "@my-agent/collab";
 import { ChannelSessionRouter } from "./channel-session.js";
 import type { ChannelRegistry, ChannelMessage } from "./channels.js";
+import {
+  registerChannelsPackageAdapters,
+  type ChannelsPackageConfig,
+  type ChannelTransportFactories,
+} from "./channel-bridge.js";
 import { getVapidPublicKey, addSubscription, removeSubscription } from "./push.js";
 import { encodePairingQR, type DevicePairing, type PairingQR, type WebAuthnService } from "@my-agent/secrets";
 import type { VoiceCallChannel } from "./voice-call.js";
@@ -195,6 +200,14 @@ export interface GatewayOptions {
   channelRouter?: ChannelSessionRouter;
   /** Channel registry (messaging adapters). */
   channels?: ChannelRegistry;
+  /** Item 17: @my-agent/channels config — when provided, WhatsApp/Matrix adapters
+   * from the channels package are instantiated (via transport injection) and
+   * registered into the local ChannelRegistry as bridges. */
+  channelsConfig?: ChannelsPackageConfig;
+  /** Item 17: injectable transport factories for @my-agent/channels adapters.
+   * When absent, placeholder transports are used (adapter appears in /status
+   * but cannot connect). */
+  channelTransports?: ChannelTransportFactories;
   /** Optional: returns AgentPool status for GET /pool/sessions. */
   poolStatus?: () => unknown;
   /** Optional: kill a pool session for POST /pool/kill/:id. */
@@ -273,9 +286,9 @@ export class Gateway {
   /** Cron sweep interval in ms. */
   private readonly cronIntervalMs: number;
   /** Cron sweep timer handle; tracked so stop() can clear it. */
-  private cronTimer?: NodeJS.Timeout;
-  private idleTimer?: NodeJS.Timeout; // R6-3: sweepIdle timer for channels + handles
-  private pollTimer?: NodeJS.Timeout; // R6-4: channel inbound polling loop
+  private cronTimer?: SupervisedTaskHandle;
+  private idleTimer?: SupervisedTaskHandle; // R6-3: sweepIdle timer for channels + handles
+  private pollTimer?: SupervisedTaskHandle; // R6-4: channel inbound polling loop
   /** Phase 0B: reconcile scheduler from cron.json each sweep. */
   private readonly cronReload?: () => void;
   /** Phase 1A: run a cron-fired prompt, returning the response text. */
@@ -414,6 +427,12 @@ export class Gateway {
     this.collab = opts.collab;
     this.channelRouter = opts.channelRouter;
     this.channels = opts.channels;
+    // Item 17: wire @my-agent/channels adapters (WhatsApp/Matrix) into the
+    // local registry when config enables them. Bridges them into the local
+    // Channel interface so they appear in /status + the launcher.
+    if (this.channels && opts.channelsConfig) {
+      registerChannelsPackageAdapters(this.channels, opts.channelsConfig, opts.channelTransports);
+    }
     // Forward channel events to WS subscribers (real-time TUI visibility)
     if (this.channelRouter) {
       this.channelRouter.onEvent((event) => {
@@ -543,22 +562,22 @@ export class Gateway {
         try { this.cronReload?.(); } catch (e) {
           console.warn("[gateway] cron initial reload failed (non-fatal):", (e as Error).message);
         }
-        this.cronTimer = setInterval(() => { void this.cronSweep(workerId); }, this.cronIntervalMs);
+        this.cronTimer = supervisedTask(() => { void this.cronSweep(workerId); }, "gateway-cron-tick", { intervalMs: this.cronIntervalMs });
         // Don't keep the process alive solely for the cron sweep.
-        this.cronTimer.unref?.();
+        this.cronTimer.unref();
       }
       // R6-3 fix: wire sweepIdle timers (were dead code — never called).
       // Review P7 fix: move OUTSIDE if(this.cron) so SDK consumers without cron
       // still get sweeps. Gate on channelRouter/control presence instead.
-      this.idleTimer = setInterval(() => {
+      this.idleTimer = supervisedTask(() => {
         try { this.channelRouter?.sweepIdle(); } catch {}
         try { this.control?.handles.sweepIdle(nowWallclock()); } catch {}
-      }, this.cronIntervalMs);
-      this.idleTimer.unref?.();
+      }, "gateway-cron-idle", { intervalMs: this.cronIntervalMs });
+      this.idleTimer.unref();
       // R6-4: channel inbound polling loop. receive() is implemented on all
       // adapters but was never called in production (dead code). Poll every 5s.
       if (this.channels && this.channelRouter) {
-        this.pollTimer = setInterval(() => {
+        this.pollTimer = supervisedTask(() => {
           for (const ch of this.channels!.list()) {
             if (!ch.receive) continue;
             ch.receive().then((msgs) => {
@@ -567,8 +586,8 @@ export class Gateway {
               }
             }).catch(() => {});
           }
-        }, 5_000);
-        this.pollTimer.unref?.();
+        }, "gateway-poll", { intervalMs: 5_000 });
+        this.pollTimer.unref();
       }
       this.http.listen(this.port, this.host, () => {
         const addr = this.http!.address();
@@ -1869,14 +1888,14 @@ export class Gateway {
     }
 
     // Keep-alive ping every 5s
-    const ping = setInterval(() => {
+    const ping = supervisedTask(() => {
       try { res.write(": ping\n\n"); } catch { /* connection closed */ }
-    }, 5_000);
-    ping.unref?.();
+    }, "gateway-ping", { intervalMs: 5_000 });
+    ping.unref();
 
     // Cleanup on close
     res.on("close", () => {
-      clearInterval(ping);
+      ping.stop();
       this.sseSubscribers.delete(res);
     });
   }
@@ -2011,17 +2030,17 @@ export class Gateway {
       // Phase 3 wiring: clear the cron sweep interval BEFORE terminating WS,
       // otherwise the timer keeps the event loop alive and http.close() hangs.
       if (this.cronTimer) {
-        clearInterval(this.cronTimer);
+        this.cronTimer.stop();
         this.cronTimer = undefined;
       }
       // R6-3: clear idle sweep timer too.
       if (this.idleTimer) {
-        clearInterval(this.idleTimer);
+        this.idleTimer.stop();
         this.idleTimer = undefined;
       }
       // R6-4: clear channel polling timer.
       if (this.pollTimer) {
-        clearInterval(this.pollTimer);
+        this.pollTimer.stop();
         this.pollTimer = undefined;
       }
       // G2: terminate open WS clients first so http.close() doesn't hang.
@@ -2078,6 +2097,14 @@ export * from "./channels.js";
 export * from "./channel-adapters.js";
 export * from "./channel-setup.js";
 export * from "./channel-session.js";
+export {
+  ChannelAdapterBridge,
+  registerChannelsPackageAdapters,
+} from "./channel-bridge.js";
+export type {
+  ChannelsPackageConfig,
+  ChannelTransportFactories,
+} from "./channel-bridge.js";
 
 /** Parse a channel webhook payload into a ChannelMessage. */
 function parseChannelWebhook(channelId: string, body: string): ChannelMessage | null {
