@@ -2047,6 +2047,31 @@ export * from "./hooks.js";
 export { ApprovalRelay } from "./approval-relay.js";
 export type { ApprovalRequestPayload, ApprovalDecisionPayload } from "./approval-relay.js";
 export { startMcpOAuth, completeMcpOAuth, getMcpToken } from "./mcp-oauth.js";
+export {
+  McpOAuthStorage,
+  OAuthReloadTracker,
+  OAuth401Dedup,
+} from "./mcp-oauth-store.js";
+export type {
+  McpTokens,
+  ClientRegistration,
+  OAuthMetadata,
+} from "./mcp-oauth-store.js";
+export {
+  runMcpOAuthFlow,
+  refreshMcpToken,
+  buildAuthHeader,
+  getValidMcpTokens,
+  tokenResponseToMcpTokens,
+} from "./mcp-oauth-flow.js";
+export type {
+  McpOAuthFlowOptions,
+  McpOAuthFlowResult,
+  McpRefreshOptions,
+  LoopbackServerLike,
+  ExchangeCodeFn,
+  RefreshTokenFn,
+} from "./mcp-oauth-flow.js";
 export * from "./mcp-lifecycle.js";
 export * from "./mcp-client.js";
 export * from "./channels.js";
