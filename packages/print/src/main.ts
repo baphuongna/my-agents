@@ -83,8 +83,15 @@ import { DevicePairing, WebAuthnService } from "@my-agent/secrets";
 import { ApprovalRelay } from "@my-agent/gateway";
 // F2 fix: lifecycle guard for cron flapping detection.
 import { LifecycleGuard } from "@my-agent/cron";
+// P7 (shard 07): process-level exception handlers.
+import { installExceptionHandlers } from "./exception-handler.js";
 
 async function main(): Promise<void> {
+  // P7 (shard 07): install process-level exception handlers (transient → logged;
+  // fatal → logged + exit). Installed at the very top of main so every code path
+  // is covered.
+  installExceptionHandlers();
+
   loadAuthConfig();
 
   const args = process.argv.slice(2);
