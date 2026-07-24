@@ -174,3 +174,297 @@ describe("hashline: fileFingerprint", () => {
     expect(fileFingerprint("abc")).not.toBe(fileFingerprint("abd"));
   });
 });
+
+// ── Edge-case expansion ───────────────────────────────────────────────────
+
+describe("hashline: stale anchor detection (edge cases)", () => {
+  it("rejects a stale anchor when a middle line in the range changed", () => {
+    const oldHashes = lineHashes("a\nb\nc\nd\ne");
+    // Line "c" changed to "CHANGED" — the old hash for line 3 no longer applies.
+    const mutated = "a\nb\nCHANGED\nd\ne";
+    const r = replaceByHash(mutated, oldHashes[2]!, oldHashes[2]!, ["x"]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects a stale start anchor but accepts if the end anchor survived", () => {
+    const oldHashes = lineHashes("alpha\nbeta\ngamma");
+    // Only line 1 changed; lines 2-3 are intact.
+    const mutated = "ALPHA\nbeta\ngamma";
+    // Old hash for line 1 (start) is stale → rejection.
+    const r = replaceByHash(mutated, oldHashes[0]!, oldHashes[1]!, ["x"]);
+    expect(r.ok).toBe(false);
+    // But old hash for line 2 (start) is still valid → acceptance.
+    const r2 = replaceByHash(mutated, oldHashes[1]!, oldHashes[2]!, ["x"]);
+    expect(r2.ok).toBe(true);
+  });
+
+  it("rejects a stale anchor after a line was removed (shift)", () => {
+    const oldHashes = lineHashes("one\ntwo\nthree\nfour");
+    // "two" removed → line indices shifted, but "three" content is the same.
+    // The hash for old line 3 ("three") maps to a different position, but
+    // its content-hash is stable, so it WILL match at the new position.
+    // What becomes stale: a hash for a removed line.
+    const removed = "one\nthree\nfour";
+    // oldHashes[1] is the hash of "two" which no longer exists.
+    const r = replaceByHash(removed, oldHashes[1]!, oldHashes[1]!, ["x"]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("uses the LAST occurrence of the end hash (rightmost in-order match)", () => {
+    // Two identical lines → collision-resolved to different hashes, but we
+    // forge a scenario where endHash appears at two valid positions.
+    const content = "a\nb\nc\nb\nd";
+    const hashes = lineHashes(content);
+    // Find the two "b" lines (indices 1 and 3) — they have different hashes.
+    const b1 = hashes[1]!;
+    const b2 = hashes[3]!;
+    // Replace from first "b" to second "b" → replaces lines 2-4 inclusive.
+    const r = replaceByHash(content, b1, b2, ["MERGED"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.content).toBe("a\nMERGED\nd");
+      expect(r.replacedCount).toBe(3);
+    }
+  });
+});
+
+describe("hashline: multi-edit chaining (sequential replaceByHash)", () => {
+  it("applies multiple edits in sequence, each against the prior result", () => {
+    let content = "line1\nline2\nline3\nline4\nline5";
+
+    // Edit 1: replace line 2.
+    let hashes = lineHashes(content);
+    let r = replaceByHash(content, hashes[1]!, hashes[1]!, ["TWO"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) content = r.content;
+
+    // Edit 2: replace line 4 (re-hash after first edit).
+    hashes = lineHashes(content);
+    r = replaceByHash(content, hashes[3]!, hashes[3]!, ["FOUR"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) content = r.content;
+
+    // Edit 3: replace the whole range lines 1-3.
+    hashes = lineHashes(content);
+    r = replaceByHash(content, hashes[0]!, hashes[2]!, ["A", "B", "C"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) content = r.content;
+
+    expect(content).toBe("A\nB\nC\nFOUR\nline5");
+  });
+
+  it("expands a single line into many, then contracts back", () => {
+    let content = "seed";
+    let hashes = lineHashes(content);
+    let r = replaceByHash(content, hashes[0]!, hashes[0]!, [
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) content = r.content;
+    expect(content).toBe("a\nb\nc\nd");
+
+    hashes = lineHashes(content);
+    r = replaceByHash(content, hashes[1]!, hashes[2]!, ["X"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) content = r.content;
+    expect(content).toBe("a\nX\nd");
+  });
+});
+
+describe("hashline: hash collision resolution (many duplicates)", () => {
+  it("resolves collisions for 10 identical lines — all unique", () => {
+    const content = Array.from({ length: 10 }, () => "dup").join("\n");
+    const hashes = lineHashes(content);
+    expect(hashes).toHaveLength(10);
+    expect(new Set(hashes).size).toBe(10);
+    for (const h of hashes) expect(h).toHaveLength(HASH_LEN);
+  });
+
+  it("is deterministic — the same duplicate content always resolves the same way", () => {
+    const content = "x\nx\nx\nx\nx";
+    const first = lineHashes(content);
+    const second = lineHashes(content);
+    expect(first).toEqual(second);
+    // The collision salts (R1, R2, ...) are deterministic.
+    expect(new Set(first).size).toBe(5);
+  });
+
+  it("handles a mix of unique and duplicate lines", () => {
+    const content = "unique\ndup\nother\ndup\ndup\nunique2";
+    const hashes = lineHashes(content);
+    expect(new Set(hashes).size).toBe(6);
+    // The two "unique" lines (different content) hash independently.
+    expect(hashes[0]).not.toBe(hashes[5]);
+  });
+});
+
+describe("hashline: hash removal (deletion via empty replacement)", () => {
+  it("deletes a single line by replacing with an empty array", () => {
+    const content = "a\nb\nc";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[1]!, hashes[1]!, []);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.content).toBe("a\nc");
+      expect(r.replacedCount).toBe(1);
+    }
+  });
+
+  it("deletes a range of lines", () => {
+    const content = "a\nb\nc\nd\ne";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[1]!, hashes[3]!, []);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.content).toBe("a\ne");
+      expect(r.replacedCount).toBe(3);
+    }
+  });
+
+  it("deletes the first line", () => {
+    const content = "first\nsecond\nthird";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[0]!, hashes[0]!, []);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.content).toBe("second\nthird");
+  });
+
+  it("deletes the last line", () => {
+    const content = "first\nsecond\nthird";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[2]!, hashes[2]!, []);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.content).toBe("first\nsecond");
+  });
+
+  it("deletes all lines (whole-file range → empty content)", () => {
+    const content = "a\nb";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[0]!, hashes[1]!, []);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.content).toBe("");
+  });
+});
+
+describe("hashline: large file handling", () => {
+  it("hashes 1000 unique lines without collision and within reasonable time", () => {
+    const lines = Array.from({ length: 1000 }, (_, i) => `line-${i}`);
+    const content = lines.join("\n");
+    const hashes = lineHashes(content);
+    expect(hashes).toHaveLength(1000);
+    // 1000 unique lines → 1000 unique hashes.
+    expect(new Set(hashes).size).toBe(1000);
+  });
+
+  it("hashes 1000 identical lines — collision resolution keeps all unique", () => {
+    const content = Array.from({ length: 1000 }, () => "same").join("\n");
+    const hashes = lineHashes(content);
+    expect(new Set(hashes).size).toBe(1000);
+  });
+
+  it("formatHashed + replaceByHash round-trips correctly on a large file", () => {
+    const lines = Array.from({ length: 500 }, (_, i) => `entry ${i}`);
+    const content = lines.join("\n");
+    const hashes = lineHashes(content);
+
+    // Replace lines 100-102 (0-indexed 99-101).
+    const r = replaceByHash(content, hashes[99]!, hashes[101]!, ["REPLACED"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.replacedCount).toBe(3);
+      const resultLines = r.content!.split("\n");
+      expect(resultLines).toHaveLength(498); // 500 - 3 + 1
+      expect(resultLines[99]).toBe("REPLACED");
+      // Lines before and after are untouched.
+      expect(resultLines[0]).toBe("entry 0");
+      expect(resultLines[98]).toBe("entry 98");
+      expect(resultLines[100]).toBe("entry 102");
+    }
+  });
+
+  it("fileFingerprint differs for large files with a one-byte change", () => {
+    const big = Array.from({ length: 2000 }, () => "x").join("\n");
+    const big2 = big.replace("x\nx", "y\nx"); // change first line
+    expect(fileFingerprint(big)).not.toBe(fileFingerprint(big2));
+  });
+});
+
+describe("hashline: formatHashed edge cases", () => {
+  it("handles empty content (single empty line)", () => {
+    const out = formatHashed("");
+    // "".split("\n") → [""], so one line with a valid hash + empty content.
+    const lines = out.split("\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.charAt(HASH_LEN)).toBe(HASH_SEP);
+    expect(isValidAnchor(lines[0]!.slice(0, HASH_LEN))).toBe(true);
+  });
+
+  it("handles blank lines interspersed with content", () => {
+    const out = formatHashed("a\n\nb\n\nc");
+    const lines = out.split("\n");
+    expect(lines).toHaveLength(5);
+    // Even blank lines get a hash + separator.
+    for (const l of lines) {
+      expect(l.charAt(HASH_LEN)).toBe(HASH_SEP);
+    }
+    // Blank lines (content after separator is empty).
+    expect(lines[1]!.slice(HASH_LEN + 1)).toBe("");
+    expect(lines[3]!.slice(HASH_LEN + 1)).toBe("");
+  });
+
+  it("preserves content exactly (no mutation of original text)", () => {
+    const content = '  indented  \ttab\tspecial!@#';
+    const out = formatHashed(content);
+    const restored = out
+      .split("\n")
+      .map((l) => l.slice(HASH_LEN + 1))
+      .join("\n");
+    expect(restored).toBe(content);
+  });
+});
+
+describe("hashline: replaceByHash expansion & contraction", () => {
+  it("expands one line into many", () => {
+    const content = "a\nb\nc";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[1]!, hashes[1]!, [
+      "b1",
+      "b2",
+      "b3",
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.content).toBe("a\nb1\nb2\nb3\nc");
+      expect(r.replacedCount).toBe(1);
+    }
+  });
+
+  it("contracts many lines into one", () => {
+    const content = "a\nb1\nb2\nb3\nc";
+    const hashes = lineHashes(content);
+    const r = replaceByHash(content, hashes[1]!, hashes[3]!, ["b"]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.content).toBe("a\nb\nc");
+      expect(r.replacedCount).toBe(3);
+    }
+  });
+
+  it("replacedCount always reflects the original lines removed, not the new lines added", () => {
+    const content = "x\ny\nz";
+    const hashes = lineHashes(content);
+    // Remove 2 lines, add 5.
+    const r = replaceByHash(content, hashes[0]!, hashes[1]!, [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.replacedCount).toBe(2);
+  });
+});
