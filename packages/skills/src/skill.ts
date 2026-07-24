@@ -13,6 +13,49 @@ import { nowWallclock } from "@my-agent/core";
  * Source: §9 Skills, hermes #8, pi/oh-my-pi skill model.
  */
 
+/** P3 (Hermes distillation 2026-07-24, shard 03): the max length of a skill
+ * description in the system-prompt index. Descriptions at or under this limit
+ * are shown verbatim; longer ones are truncated to 57 visible chars + "…" (60
+ * total). This keeps the stable prompt tier compact (the skills index grows
+ * linearly with the skill count). */
+export const SKILL_PROMPT_DESC_LIMIT = 60;
+
+/** The number of visible characters kept when truncating (limit minus the
+ * ellipsis length). */
+const SKILL_DESC_VISIBLE = SKILL_PROMPT_DESC_LIMIT - 3; // 57
+
+/** The result of extracting a prompt-safe skill description. */
+export interface SkillPromptDescription {
+  /** The description to embed in the system-prompt index (possibly truncated). */
+  description: string;
+  /** True when the original description was truncated (frontmatter exceeds the
+   * budget). Callers can surface `system_prompt_preview` to let the model know
+   * the full description exists in the skill body. */
+  truncated: boolean;
+}
+
+/**
+ * Extract a prompt-safe skill description, truncating to the 60-char budget
+ * (57 visible + "…") when the frontmatter description exceeds it.
+ *
+ * P3 (shard 03): descriptions ≤ 60 chars → shown verbatim (no truncation);
+ * descriptions > 60 chars → `slice(0, 57) + "…"`. The `truncated` flag lets
+ * callers add a `system_prompt_preview` field so the model knows the full
+ * description is available in the skill body.
+ *
+ * @param description  The raw frontmatter description.
+ * @returns  The truncated description + whether truncation occurred.
+ */
+export function extract_skill_description(description: string): SkillPromptDescription {
+  if (description.length <= SKILL_PROMPT_DESC_LIMIT) {
+    return { description, truncated: false };
+  }
+  return {
+    description: description.slice(0, SKILL_DESC_VISIBLE) + "...",
+    truncated: true,
+  };
+}
+
 /** §9 R26-C: SkillProvenance enum gating edits. Controls which skills the
  * curator may touch (Bundled+AgentCreated only by default; HubInstalled is
  * off-limits unless prune_builtins-style override; UserCreated is pinned-safe). */

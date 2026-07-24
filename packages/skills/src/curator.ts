@@ -16,6 +16,7 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, basename, dirname } from "node:path";
 import {
   parseSkillMarkdown,
+  extract_skill_description,
   type Skill,
   type SkillProvenance,
   type SkillProvenanceKind,
@@ -28,6 +29,9 @@ export interface SkillIndexEntry {
   description: string;
   triggers: string[];
   provenance: SkillProvenance;
+  /** P3 (shard 03): when true, the `description` was truncated to the 60-char
+   * budget — the full frontmatter description is available in the skill body. */
+  system_prompt_preview?: boolean;
 }
 
 export class SkillStore {
@@ -72,22 +76,34 @@ export class SkillStore {
     this.skills.set(skill.name, skill);
   }
 
-  /** The index projection (name + description only — for the prompt stable tier). */
+  /** The index projection (name + description only — for the prompt stable tier).
+   * P3 (shard 03): descriptions are truncated to the 60-char budget; the
+   * `system_prompt_preview` flag is set when truncation occurred. */
   index(): SkillIndexEntry[] {
-    return [...this.skills.values()].map((s) => ({
-      name: s.name,
-      description: s.description,
-      triggers: s.triggers,
-      provenance: s.provenance,
-    }));
+    return [...this.skills.values()].map((s) => {
+      const { description, truncated } = extract_skill_description(s.description);
+      return {
+        name: s.name,
+        description,
+        triggers: s.triggers,
+        provenance: s.provenance,
+        system_prompt_preview: truncated ? true : undefined,
+      };
+    });
   }
 
-  /** Render the skills-index block for the prompt (progressive disclosure). */
+  /** Render the skills-index block for the prompt (progressive disclosure).
+   * P3 (shard 03): descriptions are truncated to the 60-char budget
+   * (57 visible + "..."). Skills whose frontmatter description exceeds the
+   * budget get a ` (more in body)` suffix so the model knows the full
+   * description is available via loadBody. */
   renderIndexBlock(): string {
     if (this.skills.size === 0) return "";
     const lines = ["## Skills (invoke by name for full instructions)"];
     for (const s of this.skills.values()) {
-      lines.push(`- **${s.name}** — ${s.description}`);
+      const { description, truncated } = extract_skill_description(s.description);
+      const suffix = truncated ? " (more in body)" : "";
+      lines.push(`- **${s.name}** \u2014 ${description}${suffix}`);
     }
     return lines.join("\n");
   }
