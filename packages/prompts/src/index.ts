@@ -42,3 +42,11 @@ export type {
   ToolCallEntry,
   SummaryFn,
 } from "./compress.js";
+export { apply_request_context } from "./request-context.js";
+export type {
+  RequestContext,
+  RequestContextRebuilder,
+  RequestContextResult,
+} from "./request-context.js";
+export { checkIdleTrigger, maybeIdleCompact } from "./idle-trigger.js";
+export type { IdleTriggerInput, IdleTriggerDecision } from "./idle-trigger.js";
