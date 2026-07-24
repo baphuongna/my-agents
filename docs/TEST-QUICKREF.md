@@ -1,6 +1,7 @@
 # Test Quick Reference — mya
 
 > **File tổng:** [`docs/TEST-COVERAGE.md`](TEST-COVERAGE.md) (chi tiết đầy đủ)
+> **pi version:** 0.82.0 · **Tests:** 5,370 / 282 files / 0 failures / ~65s
 >
 > **Khi thêm tính năng mới → thêm test → cập nhật `docs/TEST-COVERAGE.md`**
 
