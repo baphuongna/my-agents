@@ -67,6 +67,15 @@ export interface RunTurnOptions {
   /** §5 compression pass invoked on `finish:"length"` (CC1/CC12). Injected by
    * the prompts package. May throw ResourceExhausted → Recoverable{phase:"resource"}. */
   compressHistory?: (history: import("./types.js").History) => void;
+  /** Item 16: idle-compaction trigger predicate. Runs ONCE at the start of each
+   * turn (before the first stream). Returns true when idle compaction should
+   * fire — the loop then runs `compressHistory` to perform the actual pass
+   * (mirrors the `finish:"length"` path, including ResourceExhausted handling).
+   * Optional: default (absent) is an exact no-op (identical to prior behavior). */
+  checkIdleOnTurnStart?: (
+    history: import("./types.js").History,
+    ctx: TurnContext,
+  ) => boolean;
   /** §6 model id for per-model cost pricing (computeCost). */
   model?: string;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
@@ -158,6 +167,43 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
       emit({ kind: "turn", stage: "end" });
       finish({ state: "Failed", error: err });
       return;
+    }
+
+    // Item 16: idle-compaction trigger check at turn start. Only runs when the
+    // caller injects a predicate; the default agent (no predicate) is an exact
+    // no-op (identical behavior). When the predicate returns true the loop runs
+    // `compressHistory` (same ResourceExhausted → Recoverable{resource} handling
+    // as the `finish:"length"` path above).
+    if (opts.checkIdleOnTurnStart) {
+      const idleCtx: TurnContext = {
+        session: opts.session,
+        history: opts.session.history,
+        budget: opts.budget,
+        approval: opts.approval ?? makeStubApproval(),
+        workspace: opts.workspace ?? process.cwd(),
+        audit: opts.audit,
+        hooks: opts.hooks,
+        permission: opts.permission,
+        lsp: opts.lsp,
+        mode: opts.mode,
+        emit: emitTurn,
+      };
+      if (opts.checkIdleOnTurnStart(opts.session.history, idleCtx)) {
+        try {
+          opts.compressHistory?.(opts.session.history);
+        } catch (e) {
+          const err: LifecycleError = {
+            phase: "resource",
+            recoverable: true,
+            retries: 0,
+            context: { cause: e instanceof Error ? e.message : String(e) },
+          };
+          emitTurn({ state: "Recoverable", error: err });
+          emit({ kind: "turn", stage: "end" });
+          finish({ state: "Failed", error: err });
+          return;
+        }
+      }
     }
 
     const maxRounds = opts.maxToolRounds ?? 25; // §4 safety: bounded, not unbounded recursion

@@ -16,6 +16,12 @@
  */
 import { createAgent, AgentPool, type AgentSession } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
+import {
+  checkIdleTrigger,
+  CompressionState,
+  DEFAULT_COMPRESSION_CONFIG,
+  type CompressionConfig,
+} from "@my-agent/prompts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -72,6 +78,47 @@ function loadAuthConfig(): void {
       }
     }
   } catch { /* auth.json optional */ }
+}
+
+// ── Item 16: idle-compaction trigger wiring ──
+// `maybeIdleCompact` / `checkIdleTrigger` were exported from @my-agent/prompts
+// but had no caller. This wires the trigger predicate into the agent loop via
+// the `checkIdleOnTurnStart` callback. The predicate is SYNC (Option B): when it
+// returns true the loop runs the existing `compressHistory` pass. Configurable
+// via MYA_IDLE_COMPACT_SECONDS (default 300s; 0 disables).
+const idleCompressionState = new CompressionState();
+const idleCompressionConfig: CompressionConfig = {
+  ...DEFAULT_COMPRESSION_CONFIG,
+  idleCompactAfterSeconds: Number(process.env.MYA_IDLE_COMPACT_SECONDS ?? "300") || 0,
+};
+const IDLE_COMPACT_FLOOR_TOKENS = 2000;
+let lastTurnEndedAt = 0;
+
+/** Estimate current token usage from history (~4 chars/token, matching compress.ts). */
+function estimateHistoryTokens(history: { entries(): readonly unknown[] }): number {
+  let chars = 0;
+  for (const e of history.entries()) {
+    const entry = e as { content?: unknown };
+    if (typeof entry.content === "string") chars += entry.content.length;
+  }
+  return Math.floor(chars / 4);
+}
+
+/** Item 16: build the sync idle-compaction predicate for createAgent. */
+function makeIdleCheck(): (history: { entries(): readonly unknown[] }) => boolean {
+  return (history) => {
+    if (idleCompressionConfig.idleCompactAfterSeconds <= 0) return false;
+    const now = nowWallclock();
+    const idleGapSeconds = lastTurnEndedAt > 0 ? Math.floor((now - lastTurnEndedAt) / 1000) : 0;
+    const decision = checkIdleTrigger({
+      config: idleCompressionConfig,
+      state: idleCompressionState,
+      idleGapSeconds,
+      currentTokens: estimateHistoryTokens(history),
+      floorTokens: IDLE_COMPACT_FLOOR_TOKENS,
+    });
+    return decision.shouldCompact;
+  };
 }
 
 /** Phase 0A: cron-fired-turn tool policy lives in ./cron-role.ts (testable,
@@ -236,10 +283,13 @@ async function main(): Promise<void> {
       ...(config.maxSpawnDepth ? { maxSpawnDepth: config.maxSpawnDepth } : {}),
       ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
+      // Item 16: idle-compaction trigger predicate (fires at turn start).
+      checkIdleOnTurnStart: makeIdleCheck(),
     });
     const text = prompt || (await readStdin()) || "Hello.";
     const sink = makeSink({ json });
     await agent.run(text, sink.write);
+    lastTurnEndedAt = nowWallclock();
     if (!json) {
       const profile = process.env["MINIMAX_API_KEY"] ? "minimax" : process.env["OPENAI_API_KEY"] ? "openai" : "mock-fallback";
       process.stderr.write(`[provider: ${profile}]\n`);
@@ -281,11 +331,16 @@ async function runRpcServer(_model?: string): Promise<void> {
     hooks: toolHooks,
     extensionHost: packageHost,
     ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
+    // Item 16: idle-compaction trigger predicate (fires at turn start).
+    checkIdleOnTurnStart: makeIdleCheck(),
   });
   const server = new RpcServer({
     prompt: (text, onEvent) => {
       controller = new AbortController();
-      return agent.run(text, onEvent, { signal: controller.signal });
+      return agent.run(text, onEvent, { signal: controller.signal }).then((r) => {
+        lastTurnEndedAt = nowWallclock();
+        return r;
+      });
     },
     cancel: () => controller.abort(),
     status: () => ({ ok: true }),

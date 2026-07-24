@@ -110,6 +110,14 @@ export interface AgentConfig {
   /** A2: max subagent spawn depth (default 2). Prevents infinite recursion.
    * Depth 1 = subagents can't spawn their own subagents. */
   maxSpawnDepth?: number;
+  /** Item 16: idle-compaction trigger predicate. Runs once at the start of each
+   * turn (before the first stream); when it returns true the loop runs the
+   * `compressHistory` pass. Optional — default (absent) means no idle check
+   * (identical to prior behavior). */
+  checkIdleOnTurnStart?: (
+    history: import("@my-agent/core").History,
+    ctx: import("@my-agent/core").TurnContext,
+  ) => boolean;
   /** R4-2: cross-device approval relay. When present, DangerFullAccess tools
    * (bash) route approval requests through the relay instead of being denied
    * by the stub. The relay broadcasts to connected WS clients (web dashboard)
@@ -421,6 +429,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
           arr.push(...keep);
         }
       },
+      // Item 16: forward idle-compaction trigger predicate (optional).
+      checkIdleOnTurnStart: config.checkIdleOnTurnStart,
       signal,
       // A1: forward maxToolRounds from config (default 25 in loop.ts).
       maxToolRounds: config.maxToolRounds,
@@ -578,6 +588,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
           arr.push(...keep);
         }
       },
+      // Item 16: forward idle-compaction trigger predicate to subagent path too.
+      checkIdleOnTurnStart: config.checkIdleOnTurnStart,
       signal,
     });
     const collected: RuntimeEvent[] = [];
