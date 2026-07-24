@@ -38,6 +38,28 @@ export interface MlxSynthesizeOptions {
   strict?: boolean;
 }
 
+/** A cloned voice created from an audio sample. */
+export interface VoiceClone {
+  /** Unique voice id assigned by the caller or auto-generated. */
+  id: string;
+  /** Display name (human-readable). */
+  name: string;
+  /** Path to the source audio sample used for cloning. */
+  sourceSample: string;
+ /** Epoch ms when the voice was cloned. */
+  createdAt: number;
+ /** Model id the clone is bound to (voice clones are model-specific). */
+  modelId: string;
+}
+
+/** Criteria for automatic model selection. */
+export interface ModelSelectionCriteria {
+  /** Preferred language code (e.g. "en", "multilingual"). */
+  language?: string;
+  /** "lightweight" (small/fast) or "quality" (larger/better). */
+  preference?: "lightweight" | "quality";
+}
+
 /** Streaming handle: AsyncIterable<Buffer> with metadata. */
 export interface AudioStream {
   backend: "mlx";
@@ -55,6 +77,8 @@ export class MlxTtsBackend {
   /** DI: when provided, skip platform check + CLI (for tests). */
   private readonly synthesizer?: (text: string, modelPath: string, opts: MlxSynthesizeOptions) => Promise<Buffer>;
   private defaultModelId: string;
+  /** Voice clones registered on this backend (id → clone). */
+  private readonly voiceClones = new Map<string, VoiceClone>();
 
   constructor(opts?: { manager?: ModelManager; defaultModelId?: string; synthesizer?: (text: string, modelPath: string, opts: MlxSynthesizeOptions) => Promise<Buffer> }) {
     this.manager = opts?.manager ?? new ModelManager();
@@ -78,6 +102,96 @@ export class MlxTtsBackend {
   setDefaultModel(id: string): void {
     if (!findRegistryEntry(id)) throw new Error(`unknown MLX model: ${id}`);
     this.defaultModelId = id;
+  }
+
+  // ─── Model selection ─────────────────────────────────────────────────────
+
+  /**
+   * Select a model by criteria. Returns the best-matching model id or `null`
+   * if no registered model satisfies the criteria.
+   *
+   * Selection heuristics:
+   *   - `preference: "lightweight"` → smallest model (kokoro-mlx)
+   *   - `preference: "quality"` → largest model (parler-tts-mlx)
+   *   - `language: "multilingual"` → barkan-mlx
+   *   - Falls back to the current default if no criteria match.
+   */
+  selectModel(criteria?: ModelSelectionCriteria): string {
+    const models = this.manager.listModels();
+    if (criteria?.preference === "lightweight") {
+      const light = models.reduce((a, b) => (a.sizeBytes < b.sizeBytes ? a : b));
+      return light.id;
+    }
+    if (criteria?.preference === "quality") {
+      const best = models.reduce((a, b) => (a.sizeBytes > b.sizeBytes ? a : b));
+      return best.id;
+    }
+    if (criteria?.language === "multilingual") {
+      const multi = models.find((m) => m.name.toLowerCase().includes("multilingual"));
+      if (multi) return multi.id;
+    }
+    return this.defaultModelId;
+  }
+
+  /** Set the default model based on selection criteria. Returns the chosen id. */
+  applyModelSelection(criteria?: ModelSelectionCriteria): string {
+    const id = this.selectModel(criteria);
+    this.setDefaultModel(id);
+    return id;
+  }
+
+  // ─── Voice cloning ───────────────────────────────────────────────────────
+
+  /**
+   * Clone a voice from an audio sample. The cloned voice is bound to the
+   * current default model and can be used in synthesis by passing its id as
+   * `opts.voice`.
+   *
+   * @param name - human-readable name for the clone
+   * @param sourceSample - path to the reference audio file
+   * @returns the registered VoiceClone
+   */
+  cloneVoice(name: string, sourceSample: string): VoiceClone {
+    if (!name || !name.trim()) throw new Error("mlx: voice clone name required");
+    if (!sourceSample || !sourceSample.trim()) throw new Error("mlx: source sample path required");
+    const id = `clone:${name.toLowerCase().replace(/\s+/g, "-")}:${nowWallclock().toString(36)}`;
+    const clone: VoiceClone = {
+      id,
+      name,
+      sourceSample,
+      createdAt: nowWallclock(),
+      modelId: this.defaultModelId,
+    };
+    this.voiceClones.set(id, clone);
+    return clone;
+  }
+
+  /** List all cloned voices. */
+  listVoiceClones(): VoiceClone[] {
+    return [...this.voiceClones.values()];
+  }
+
+  /** Get a cloned voice by id, or `undefined`. */
+  getVoiceClone(id: string): VoiceClone | undefined {
+    return this.voiceClones.get(id);
+  }
+
+  /** Remove a cloned voice. Returns true if it existed. */
+  removeVoiceClone(id: string): boolean {
+    return this.voiceClones.delete(id);
+  }
+
+  /** Resolve a voice id to either a registry default voice or a cloned voice. */
+  resolveVoice(voiceId: string | undefined): string | undefined {
+    if (!voiceId) return undefined;
+    // Check cloned voices first.
+    const clone = this.voiceClones.get(voiceId);
+    if (clone) return clone.sourceSample;
+    // Check registry default voices.
+    const model = findRegistryEntry(this.defaultModelId);
+    if (model?.defaultVoice === voiceId) return voiceId;
+    // Unknown voice — return as-is (the CLI will reject it).
+    return voiceId;
   }
 
   /** Health: true when on macOS AND at least one model is on disk. */
@@ -113,10 +227,21 @@ export class MlxTtsBackend {
     }
     // Lazy model download (idempotent + SHA-256 verified inside ModelManager).
     await this.manager.ensureModel(modelId);
+    // Resolve voice: cloned voice → source sample path; otherwise pass as-is.
+    const resolvedOpts: MlxSynthesizeOptions = { ...opts };
+    if (opts.voice) {
+      const resolved = this.resolveVoice(opts.voice);
+      if (resolved) resolvedOpts.voice = resolved;
+    }
+    // Non-DI mode: check CLI availability before invoking.
+    if (!this.synthesizer && opts.strict) {
+      const hasCli = await canSpawnMlx();
+      if (!hasCli) throw new Error("mlx: mlx_tts not installed (run `pip install mlx-tts`)");
+    }
     // DI mode: use injected synthesizer; otherwise invoke the CLI.
     const audio = this.synthesizer
-      ? await this.synthesizer(text, "", opts)
-      : await invokeMlxTts(text, modelId, opts);
+      ? await this.synthesizer(text, "", resolvedOpts)
+      : await invokeMlxTts(text, modelId, resolvedOpts);
     if (opts.stream) {
       return {
         backend: "mlx",

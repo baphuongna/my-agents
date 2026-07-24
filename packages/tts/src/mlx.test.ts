@@ -206,3 +206,162 @@ describe("verifyModel — standalone SHA-256 verification", () => {
     expect(await verifyModel(file, "0".repeat(64))).toBe(false);
   });
 });
+
+// ─── Model selection (P3-2) ────────────────────────────────────────────────
+
+describe("MlxTtsBackend — model selection", () => {
+  it("selectModel() returns the smallest model for preference:lightweight", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(backend.selectModel({ preference: "lightweight" })).toBe("kokoro-mlx");
+  });
+
+  it("selectModel() returns the largest model for preference:quality", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(backend.selectModel({ preference: "quality" })).toBe("parler-tts-mlx");
+  });
+
+  it("selectModel() returns multilingual model for language:multilingual", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(backend.selectModel({ language: "multilingual" })).toBe("barkan-mlx");
+  });
+
+  it("selectModel() falls back to the default model when no criteria match", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(backend.selectModel()).toBe("kokoro-mlx"); // default
+    expect(backend.selectModel({ language: "en" })).toBe("kokoro-mlx");
+  });
+
+  it("applyModelSelection() sets the default model to the selected one", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(backend.getDefaultModel()).toBe("kokoro-mlx");
+    const chosen = backend.applyModelSelection({ preference: "quality" });
+    expect(chosen).toBe("parler-tts-mlx");
+    expect(backend.getDefaultModel()).toBe("parler-tts-mlx");
+  });
+});
+
+// ─── Voice cloning (P3-2) ──────────────────────────────────────────────────
+
+describe("MlxTtsBackend — voice cloning", () => {
+  it("cloneVoice() registers a cloned voice with a unique id", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    const clone = backend.cloneVoice("My Speaker", "/tmp/sample.wav");
+    expect(clone.id).toMatch(/^clone:my-speaker:/);
+    expect(clone.name).toBe("My Speaker");
+    expect(clone.sourceSample).toBe("/tmp/sample.wav");
+    expect(clone.modelId).toBe("kokoro-mlx");
+    expect(clone.createdAt).toBeGreaterThan(0);
+  });
+
+  it("listVoiceClones() returns all registered clones", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    backend.cloneVoice("Alice", "/tmp/alice.wav");
+    backend.cloneVoice("Bob", "/tmp/bob.wav");
+    expect(backend.listVoiceClones()).toHaveLength(2);
+    const names = backend.listVoiceClones().map((c) => c.name).sort();
+    expect(names).toEqual(["Alice", "Bob"]);
+  });
+
+  it("getVoiceClone() returns the clone by id, undefined if missing", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    const clone = backend.cloneVoice("Alice", "/tmp/alice.wav");
+    expect(backend.getVoiceClone(clone.id)).toBeDefined();
+    expect(backend.getVoiceClone("nope")).toBeUndefined();
+  });
+
+  it("removeVoiceClone() deletes a clone and returns true/false", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    const clone = backend.cloneVoice("Alice", "/tmp/alice.wav");
+    expect(backend.removeVoiceClone(clone.id)).toBe(true);
+    expect(backend.removeVoiceClone(clone.id)).toBe(false);
+    expect(backend.listVoiceClones()).toHaveLength(0);
+  });
+
+  it("cloneVoice() throws on empty name or sample path", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(() => backend.cloneVoice("", "/tmp/x.wav")).toThrow(/name required/);
+    expect(() => backend.cloneVoice("Alice", "")).toThrow(/source sample path required/);
+    expect(() => backend.cloneVoice("  ", "  ")).toThrow();
+  });
+
+  it("synthesize() resolves a cloned voice to its source sample path", async () => {
+    await withScratchHome();
+    let receivedVoice: string | undefined;
+    const manager = new ModelManager({ fetcher: async () => new Uint8Array(8) });
+    const backend = new MlxTtsBackend({
+      manager,
+      synthesizer: async (_text, _modelPath, opts) => {
+        receivedVoice = opts.voice;
+        return Buffer.from("audio");
+      },
+    });
+    const clone = backend.cloneVoice("Alice", "/tmp/alice-sample.wav");
+    await backend.synthesize("hello", { voice: clone.id });
+    // The synthesizer should receive the resolved source sample path.
+    expect(receivedVoice).toBe("/tmp/alice-sample.wav");
+  });
+
+  it("resolveVoice() returns undefined for no voice, passthrough for unknown", () => {
+    const backend = new MlxTtsBackend({ manager: new ModelManager({ fetcher: async () => new Uint8Array() }) });
+    expect(backend.resolveVoice(undefined)).toBeUndefined();
+    expect(backend.resolveVoice("unknown-voice")).toBe("unknown-voice");
+  });
+});
+
+// ─── Error modes (P3-2) ────────────────────────────────────────────────────
+
+describe("MlxTtsBackend — error modes", () => {
+  it("synthesize() throws in strict mode when not on macOS", async () => {
+    const manager = new ModelManager({ fetcher: async () => new Uint8Array() });
+    const backend = new MlxTtsBackend({ manager });
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    try {
+      await expect(backend.synthesize("hi", { strict: true })).rejects.toThrow(/not on macOS/);
+    } finally {
+      Object.defineProperty(process, "platform", { value: original, configurable: true });
+    }
+  });
+
+  it("synthesize() throws in strict mode when model is unknown", async () => {
+    const manager = new ModelManager({ fetcher: async () => new Uint8Array() });
+    const backend = new MlxTtsBackend({ manager, defaultModelId: "kokoro-mlx" });
+    // Force unknown model by overriding internal state
+    (backend as unknown as { defaultModelId: string }).defaultModelId = "nonexistent-mlx";
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    try {
+      await expect(backend.synthesize("hi", { strict: true })).rejects.toThrow(/unknown model/);
+    } finally {
+      Object.defineProperty(process, "platform", { value: original, configurable: true });
+    }
+  });
+
+  it("synthesize() returns empty buffer in non-strict mode on non-macOS (fail-open)", async () => {
+    const manager = new ModelManager({ fetcher: async () => new Uint8Array() });
+    const backend = new MlxTtsBackend({ manager });
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    try {
+      const out = await backend.synthesize("hi", {});
+      expect(Buffer.isBuffer(out)).toBe(true);
+      expect((out as Buffer).byteLength).toBe(0);
+    } finally {
+      Object.defineProperty(process, "platform", { value: original, configurable: true });
+    }
+  });
+
+  it("synthesizeStream() yields no chunks on non-macOS (fail-open)", async () => {
+    const manager = new ModelManager({ fetcher: async () => new Uint8Array() });
+    const backend = new MlxTtsBackend({ manager });
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of backend.synthesizeStream("hi")) chunks.push(chunk);
+      expect(chunks).toHaveLength(0);
+    } finally {
+      Object.defineProperty(process, "platform", { value: original, configurable: true });
+    }
+  });
+});
