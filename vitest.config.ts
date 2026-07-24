@@ -1,6 +1,15 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
+  resolve: {
+    // `@/` → web package src. Scoped to `@/` (trailing slash) so npm scopes
+    // like `@my-agent/core` are never rewritten. Required for web component
+    // tests that use the `@/` alias (matching web's vite.config.ts).
+    alias: [
+      { find: "@/", replacement: fileURLToPath(new URL("packages/web/src/", import.meta.url)) },
+    ],
+  },
   test: {
     include: [
       "packages/*/src/**/*.test.{ts,tsx}",
@@ -18,5 +27,8 @@ export default defineConfig({
   },
   esbuild: {
     target: "es2022",
+    // Match tsconfig `jsx: react-jsx` so .tsx component tests render without
+    // needing React in scope. Affects only .tsx files; pure .ts tests untouched.
+    jsx: "automatic",
   },
 });

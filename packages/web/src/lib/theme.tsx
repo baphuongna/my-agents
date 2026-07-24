@@ -108,12 +108,35 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function applyTheme(theme: Theme) {
+/**
+ * Previously-applied CSS var keys. Before applying a new theme we remove all
+ * of these from `:root` so stale values from the previous theme can't bleed
+ * across switches (a theme that no longer defines a key must clear it).
+ */
+const appliedVarKeys = new Set<string>();
+
+export function applyTheme(theme: Theme) {
   const root = document.documentElement;
+  // Clear every var we previously set, so keys absent from the new theme are
+  // removed rather than lingering with stale values.
+  for (const key of appliedVarKeys) {
+    root.style.removeProperty(key);
+  }
+  appliedVarKeys.clear();
   for (const [key, value] of Object.entries(theme.vars)) {
     root.style.setProperty(key, value);
+    appliedVarKeys.add(key);
   }
   root.setAttribute("data-theme", theme.name);
+}
+
+/** Remove all theme CSS vars from `:root` and reset tracking (test helper). */
+export function clearThemeVars(): void {
+  const root = document.documentElement;
+  for (const key of appliedVarKeys) {
+    root.style.removeProperty(key);
+  }
+  appliedVarKeys.clear();
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
