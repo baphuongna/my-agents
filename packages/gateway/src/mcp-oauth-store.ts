@@ -13,6 +13,7 @@
  *     where a `write + chmod` sequence briefly leaves the file 0o644.
  */
 import { existsSync, mkdirSync, openSync, closeSync, writeSync, renameSync, readFileSync, unlinkSync, statSync } from "node:fs";
+import { O_CREAT, O_WRONLY, O_TRUNC } from "node:constants";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { nowWallclock } from "@my-agent/core";
@@ -55,15 +56,20 @@ export class McpOAuthStorage {
     return join(this.tokensDir, `${serverId}.json`);
   }
 
-  /** Atomic write with 0600 permissions. Writes to a temp file (same dir, pid
-   * suffix) then renames into place — the rename is atomic on POSIX. */
+  /** Atomic write with 0600 permissions. P1 (shard 01): pre-creates the file
+   * with `O_CREAT|O_WRONLY|O_TRUNC` + `0o600` BEFORE writing any content — this
+   * avoids the TOCTOU window where a `write + chmod` sequence briefly leaves
+   * the file world-readable (0o644). The temp file is then atomically renamed
+   * into place (POSIX atomic rename). */
   private writeJson(path: string, data: unknown): void {
     // Ensure parent dir exists with 0700.
     const dir = dirname(path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // Temp file is truncated (mode "w") + 0600, then atomically renamed.
+    // P1 (shard 01): pre-create with 0600 BEFORE writing content. The explicit
+    // O_CREAT|O_WRONLY|O_TRUNC flags make the intent clear (the shard recommends
+    // this over the shorthand "w" to document the security invariant).
     const tmp = `${path}.tmp.${process.pid}`;
-    const fd = openSync(tmp, "w", 0o600);
+    const fd = openSync(tmp, O_CREAT | O_WRONLY | O_TRUNC, 0o600);
     try {
       writeSync(fd, JSON.stringify(data, null, 2));
     } finally {
