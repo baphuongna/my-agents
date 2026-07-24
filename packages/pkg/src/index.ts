@@ -170,3 +170,20 @@ export interface PackageHostOpts {
   supportedApiVersions?: string[];
   requireProvenance?: boolean;
 }
+
+// ── Runtime package resolution (§17 — pi-crew runtime resolution) ───────────
+export {
+  readExtension,
+  resolvePackage,
+  resolvePackageFrom,
+  findPackageDir,
+  readPackageJson,
+  readAgentManifest,
+  resolveEntry,
+  satisfiesVersion,
+} from "./package-resolver.js";
+export type {
+  ResolvePackageOptions,
+  ResolvedPackage,
+  LoadedExtension,
+} from "./package-resolver.js";
