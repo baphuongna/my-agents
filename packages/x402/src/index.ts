@@ -142,6 +142,81 @@ export interface KeyStatus {
   ageMs: number;
 }
 
+// ─── Replay protection ───────────────────────────────────────────────────────
+
+/** Default replay-window TTL (5 min). Nonces older than this are evicted. */
+const DEFAULT_REPLAY_TTL_MS = 5 * 60_000;
+
+/**
+ * Replay guard for x402 receipts. Tracks nonces that have been accepted to
+ * reject duplicate submissions of the same payment proof.
+ *
+ * Nonces are tracked with a first-seen timestamp and evicted after `ttlMs`
+ * (default 5 min) so the guard can't grow unboundedly.
+ */
+export class ReplayGuard {
+  private readonly seen = new Map<string, number>();
+  private readonly ttlMs: number;
+
+  constructor(opts?: { ttlMs?: number }) {
+    this.ttlMs = opts?.ttlMs ?? DEFAULT_REPLAY_TTL_MS;
+  }
+
+  /**
+   * Check + record a nonce. Returns `true` if the nonce is fresh (first use),
+   * `false` if it was already seen within the TTL window (replay attempt).
+   */
+  check(nonce: string): boolean {
+    this.evict();
+    if (this.seen.has(nonce)) return false;
+    this.seen.set(nonce, nowWallclock());
+    return true;
+  }
+
+  /** Has this nonce been seen (within TTL)? Does not record. */
+  has(nonce: string): boolean {
+    this.evict();
+    return this.seen.has(nonce);
+  }
+
+  /** Number of nonces currently tracked (after eviction). */
+  get size(): number {
+    this.evict();
+    return this.seen.size;
+  }
+
+  /** Remove entries older than `ttlMs`. */
+  private evict(): void {
+    const now = nowWallclock();
+    for (const [nonce, ts] of this.seen) {
+      if (now - ts > this.ttlMs) this.seen.delete(nonce);
+    }
+  }
+}
+
+/** Discriminated result of receipt verification. */
+export type ReceiptVerification =
+  | { ok: true; payer: string }
+  | { ok: false; reason: "bad-signature" | "replay" | "malformed" };
+
+/**
+ * Verify a receipt end-to-end: ECDSA signature + replay protection.
+ *
+ * Order matters: signature is checked *first* so a bad-signature submission
+ * does NOT consume the nonce (prevents nonce-poisoning attacks where an
+ * attacker burns a legitimate nonce with a forged receipt).
+ */
+export function verifyReceipt(receipt: X402Receipt, guard: ReplayGuard): ReceiptVerification {
+  if (!receipt.publicKey) return { ok: false, reason: "malformed" };
+  if (!verifyEcdsaSignature(receipt.publicKey, receipt.challenge, receipt.signature)) {
+    return { ok: false, reason: "bad-signature" };
+  }
+  if (!guard.check(receipt.challenge.nonce)) {
+    return { ok: false, reason: "replay" };
+  }
+  return { ok: true, payer: receipt.payer };
+}
+
 /** HKDF domain-separator for the ECDSA private-key scalar (versioned). */
 const HKDF_INFO_ECDSA = Buffer.from("x402v1:ecdsa-secp256k1", "utf8");
 const MASTER_SECRET_BYTES = 32;

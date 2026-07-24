@@ -1,5 +1,23 @@
-import { describe, it, expect } from "vitest";
-import { Wallet, verifyEcdsaSignature, ECDSA_CURVE, SIG_PREFIX } from "@my-agent/x402";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { setTimeProvider } from "@my-agent/core";
+import {
+  Wallet,
+  verifyEcdsaSignature,
+  verifyReceipt,
+  ReplayGuard,
+  ECDSA_CURVE,
+  SIG_PREFIX,
+} from "@my-agent/x402";
+
+let fakeNow = 1_700_000_000_000;
+const realWall = () => Date.now();
+const realMono = () => (typeof performance !== "undefined" ? performance.now() * 1000 : Date.now());
+
+beforeEach(() => {
+  fakeNow = 1_700_000_000_000;
+  setTimeProvider({ nowWallclock: () => fakeNow, nowMonotonic: () => fakeNow });
+});
+afterEach(() => setTimeProvider({ nowWallclock: realWall, nowMonotonic: realMono }));
 
 /**
  * Dedicated public-key cryptography tests for the x402 wallet.
@@ -89,5 +107,104 @@ describe("x402 ECDSA crypto — secp256k1", () => {
 
     // The derived key is on the configured curve.
     expect(ECDSA_CURVE).toBe("secp256k1");
+  });
+});
+
+// ─── Replay protection (anti-replay for x402 receipts) ──────────────────────
+
+describe("x402 ReplayGuard — nonce anti-replay", () => {
+  it("accepts a fresh nonce on first check, rejects on second (replay)", () => {
+    const guard = new ReplayGuard();
+    expect(guard.check("nonce-1")).toBe(true);
+    expect(guard.check("nonce-1")).toBe(false); // replay
+    expect(guard.check("nonce-2")).toBe(true); // different nonce OK
+  });
+
+  it("has() checks without recording, check() records", () => {
+    const guard = new ReplayGuard();
+    expect(guard.has("n")).toBe(false);
+    guard.check("n");
+    expect(guard.has("n")).toBe(true);
+    // has() does not affect state — check() still returns false (already recorded)
+    expect(guard.check("n")).toBe(false);
+  });
+
+  it("tracks size and evicts expired nonces after ttlMs", () => {
+    const guard = new ReplayGuard({ ttlMs: 1000 });
+    guard.check("a");
+    guard.check("b");
+    expect(guard.size).toBe(2);
+    // Advance time past TTL.
+    fakeNow += 1001;
+    guard.check("c"); // triggers eviction
+    expect(guard.size).toBe(1); // only "c" remains
+    // Evicted nonce can be used again.
+    expect(guard.check("a")).toBe(true);
+  });
+});
+
+describe("x402 verifyReceipt — signature + replay end-to-end", () => {
+  it("accepts a valid first-use receipt and returns the payer", () => {
+    const w = new Wallet({ address: "payer-A", initial: { USDC: 10 } });
+    const guard = new ReplayGuard();
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "nonce-xyz" };
+    const receipt = w.pay(challenge);
+    const result = verifyReceipt(receipt, guard);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.payer).toBe("payer-A");
+  });
+
+  it("rejects a replayed receipt (same nonce submitted twice)", () => {
+    const w = new Wallet({ address: "payer-A", initial: { USDC: 10 } });
+    const guard = new ReplayGuard();
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "replay-nonce" };
+    const receipt = w.pay(challenge);
+    // First submission accepted.
+    expect(verifyReceipt(receipt, guard).ok).toBe(true);
+    // Second submission rejected as replay.
+    const result = verifyReceipt(receipt, guard);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("replay");
+  });
+
+  it("rejects a receipt with a tampered signature (bad-signature, does NOT consume nonce)", () => {
+    const w = new Wallet({ address: "payer-A", initial: { USDC: 10 } });
+    const guard = new ReplayGuard();
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "sig-tamper" };
+    const receipt = w.pay(challenge);
+    // Tamper: flip a hex byte in the signature.
+    const tamperedSig =
+      receipt.signature.slice(0, -2) +
+      (receipt.signature.slice(-2) === "00" ? "01" : "00");
+    const tampered = { ...receipt, signature: tamperedSig };
+    const result = verifyReceipt(tampered, guard);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("bad-signature");
+    // Nonce was NOT consumed — a valid receipt with the same nonce still works.
+    expect(verifyReceipt(receipt, guard).ok).toBe(true);
+  });
+
+  it("rejects a receipt without a publicKey as malformed", () => {
+    const w = new Wallet({ address: "payer-A", initial: { USDC: 10 } });
+    const guard = new ReplayGuard();
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "no-pubkey" };
+    const receipt = w.pay(challenge);
+    const { publicKey: _pk, ...stripped } = receipt;
+    const result = verifyReceipt(stripped as typeof receipt, guard);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("malformed");
+  });
+
+  it("rejects a receipt signed by a different wallet (wrong key → bad-signature)", () => {
+    const signer = new Wallet({ address: "signer", initial: { USDC: 10 } });
+    const guard = new ReplayGuard();
+    const challenge = { amount: 1, currency: "USDC", payee: "p", nonce: "wrong-key" };
+    const receipt = signer.pay(challenge);
+    // Swap in an unrelated public key.
+    const otherPub = new Wallet({ address: "other" }).getPublicKey();
+    const forged = { ...receipt, publicKey: otherPub };
+    const result = verifyReceipt(forged, guard);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("bad-signature");
   });
 });
