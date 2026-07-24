@@ -12,7 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
 import { ThemeSwitcher } from "./ThemeSwitcher";
-import { LangToggle } from "./LangToggle";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useHealth } from "@/hooks/useHealth";
 
 interface NavItem { path: string; label: string; icon: typeof Activity; group?: string }
@@ -111,7 +111,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
             <>
               <span className="text-[9px] font-mono text-fg-subtle/60 tabular-nums">v0.1.0</span>
               <div className="flex items-center gap-0.5">
-                <LangToggle />
+                <LanguageSwitcher dropUp />
                 <ThemeSwitcher />
               </div>
             </>
