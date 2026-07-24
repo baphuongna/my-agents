@@ -18,7 +18,7 @@ import {
   type ChannelMessage,
   type TransportHandle,
   type ChannelAdapterOptions,
-} from "./index.js";
+} from "./base-adapter.js";
 
 /** Matrix-specific configuration. */
 export interface MatrixConfig {

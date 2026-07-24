@@ -18,7 +18,7 @@ import {
   type ChannelMessage,
   type TransportHandle,
   type ChannelAdapterOptions,
-} from "./index.js";
+} from "./base-adapter.js";
 
 /** WhatsApp-specific configuration. */
 export interface WhatsAppConfig {
