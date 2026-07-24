@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
-import { readdir, stat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join, relative, resolve, dirname } from "node:path";
 import type { Mode, ToolResult } from "@my-agent/core";
 import { nativeGlob, nativeGrep } from "@my-agent/natives";
@@ -23,6 +23,9 @@ import { ok, err, isRecord, type ToolImpl } from "./registry.js";
 import { formatHashed, fileFingerprint, isValidAnchor, replaceByHash } from "./hashline.js";
 import { nowWallclock } from "@my-agent/core";
 import { screenCaptureTool, screenFindTool } from "./screen.js";
+import { lsTool } from "./ls.js";
+import { findTool } from "./find.js";
+export { lsTool, findTool };
 import { browserNavigateTool, browserSnapshotTool, browserClickTool, browserTypeTool, browserScrollTool, browserBackTool, browserPressTool, browserScreenshotTool } from "./web/browser/index.js";
 
 /** Containment is DISABLED (pi-core parity). mya trusts the agent + relies on
@@ -367,120 +370,6 @@ export const replaceTool: ToolImpl = {
 };
 
 /** All built-in tools, ready to register. */
-// ─── ls ───────────────────────────────────────────────────────────────────
-
-export const lsTool: ToolImpl = {
-  meta: {
-    name: "ls",
-    args: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Directory to list (default: current directory)" },
-        limit: { type: "number", description: "Maximum entries to return (default: 500)" },
-      },
-    },
-    requiredMode: READONLY,
-  },
-  async run(args, ctx): Promise<ToolResult> {
-    if (!isRecord(args)) return err("ls", "invalid args");
-    const targetPath = typeof args.path === "string" ? args.path : ".";
-    const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 500;
-    const c = contain(ctx, targetPath, "read");
-    if (!c.ok) return c.err;
-    try {
-      const entries = await readdir(c.abs, { withFileTypes: true });
-      const items: Array<{ name: string; type: string; size?: number }> = [];
-      for (const entry of entries) {
-        if (items.length >= limit) break;
-        let type = "file";
-        let size: number | undefined;
-        try {
-          if (entry.isDirectory()) {
-            type = "dir";
-          } else if (entry.isSymbolicLink()) {
-            type = "symlink";
-          }
-          if (type === "file") {
-            const s = await stat(join(c.abs, entry.name));
-            size = s.size;
-          }
-        } catch { /* ignore stat errors */ }
-        items.push({ name: entry.name, type, ...(size !== undefined ? { size } : {}) });
-      }
-      items.sort((a, b) => a.name.localeCompare(b.name));
-      return ok("ls", { path: targetPath, entries: items, count: items.length, truncated: entries.length > items.length });
-    } catch (e) {
-      return err("ls", e instanceof Error ? e.message : String(e));
-    }
-  },
-};
-
-// ─── find ───────────────────────────────────────────────────────────────────
-
-export const findTool: ToolImpl = {
-  meta: {
-    name: "find",
-    args: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Root directory to search from (default: current directory)" },
-        pattern: { type: "string", description: "Glob pattern to match filenames (e.g. *.ts)" },
-        type: { type: "string", enum: ["file", "dir", "any"], description: "Filter by type (default: any)" },
-        limit: { type: "number", description: "Maximum results (default: 200)" },
-      },
-    },
-    requiredMode: READONLY,
-  },
-  async run(args, ctx): Promise<ToolResult> {
-    if (!isRecord(args)) return err("find", "invalid args");
-    const targetPath = typeof args.path === "string" ? args.path : ".";
-    const pattern = typeof args.pattern === "string" ? args.pattern : "*";
-    const typeFilter = typeof args.type === "string" ? args.type : "any";
-    const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 200;
-    const c = contain(ctx, targetPath, "read");
-    if (!c.ok) return c.err;
-    const rootAbs = c.abs;
-    try {
-      const regex = globToRegex(pattern);
-      const results: string[] = [];
-      const seen = new Set<string>();
-      let visited = 0;
-      const MAX_VISITED = 10_000;
-
-      async function walk(dir: string, depth: number): Promise<void> {
-        if (results.length >= limit || depth > 10 || visited >= MAX_VISITED) return;
-        let entries;
-        try { entries = await readdir(dir, { withFileTypes: true }); }
-        catch { return; }
-        for (const entry of entries) {
-          if (++visited >= MAX_VISITED || results.length >= limit) return;
-          const fullPath = join(dir, entry.name);
-          const relPath = relative(rootAbs, fullPath);
-          if (seen.has(relPath)) continue;
-          seen.add(relPath);
-          const isDir = entry.isDirectory();
-          const isSymlink = entry.isSymbolicLink();
-          const matchesType =
-            typeFilter === "any" ||
-            (typeFilter === "dir" && isDir) ||
-            (typeFilter === "file" && !isDir && !isSymlink);
-          if (regex.test(relPath) && matchesType) {
-            results.push(relPath);
-          }
-          if (isDir && entry.name !== ".git" && entry.name !== "node_modules") {
-            await walk(fullPath, depth + 1);
-          }
-        }
-      }
-      await walk(c.abs, 0);
-      results.sort();
-      return ok("find", { path: targetPath, pattern, results: results.slice(0, limit), count: results.length });
-    } catch (e) {
-      return err("find", e instanceof Error ? e.message : String(e));
-    }
-  },
-};
-
 import { osvCheckTool } from "./osv-check.js";
 import { urlSafetyTool } from "./url-safety.js";
 import { imageGenTool } from "./image-gen.js";
