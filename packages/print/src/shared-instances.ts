@@ -228,7 +228,8 @@ export const council: CouncilProvider | undefined = (() => {
   } catch { return undefined; }
 })();
 
-// ── Auto-discover skills + channels ──
+// ── Auto-discover skills from ~/.mya/agent/skills/ ONLY (single source of truth —
+//    matches pi's --skill dir in pi-main.ts; never ~/.agents/ or external) ──
 void skillStore.discover(join(homedir(), ".mya", "agent", "skills")).catch(() => { /* optional */ });
 
 // ── Auto-configure channels from env/config ──

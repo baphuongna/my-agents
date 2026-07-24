@@ -615,6 +615,9 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private updateSkillsFromPaths(skillPaths: string[], metadataByPath?: Map<string, PathMetadata>): void {
 		// mya fork: when MYA_SKILL_SOURCE is set (by mya's pi-main.ts), restrict skill
 		// loading to ONLY that directory — ignore pi's auto-discovered skills
+		// (~/.agents/skills, project .agents/skills, pi-packages). This lets mya read
+		// only ~/.mya/agent/skills/ WITHOUT the --no-skills flag, so the loaded-resources
+		// panel + extension/theme loading behave normally; only the skills source is scoped.
 		const myaSkillSource = process.env.MYA_SKILL_SOURCE;
 		if (myaSkillSource) {
 			skillPaths = [myaSkillSource];

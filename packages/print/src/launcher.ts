@@ -780,7 +780,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         statusLines.push(`  ${A.dim2("Config:")}       ~/.mya/`);
         statusLines.push(`  ${A.dim2("Memory:")}       ~/.mya/agent/memory/`);
         statusLines.push(`  ${A.dim2("Sessions:")}     ~/.mya/agent/sessions/`);
-        statusLines.push(`  ${A.dim2("Skills:")}       ~/.mya/skills/`);
+        statusLines.push(`  ${A.dim2("Skills:")}       ~/.mya/agent/skills/`);
         statusLines.push(`  ${A.dim2("Cron:")}         ~/.mya/agent/cron.json`);
         statusLines.push(`  ${A.dim2("Web:")}          http://127.0.0.1:${state.info.port}/`);
         // Viewport scroll for status

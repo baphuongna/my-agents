@@ -167,6 +167,12 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
   return (pi: MyaPiApi) => {
     let parentSessionId = "";
 
+    // Skill-search state: strip <available_skills> + inject compact summary +
+    // register on-demand search tool (replaces inject-all-skills pattern).
+    let skillIndex: SkillIndex | undefined;
+    let lastSkillsFingerprint = "";
+    let skillSearchToolRegistered = false;
+
     // ═══════════════════════════════════════════════════════════════════
     // ROLES: track current role + apply overlay on each turn
     // ═══════════════════════════════════════════════════════════════════
@@ -524,9 +530,6 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     //    skill source (not pi discovery) — pi-skill-search scans it itself. ──
     const corpusDir = join(homedir(), ".mya", "agent", "data");
     const corpusSkills = scanSkillDirectory(corpusDir);
-    let skillIndex: SkillIndex | undefined;
-    let lastSkillsFingerprint = "";
-    let skillSearchToolRegistered = false;
     // Dedupe by name; corpus skills win ties (mergeSkills from pi-skill-search).
     const mergeSkills = (a: PiSkill[], b: PiSkill[]): PiSkill[] => {
       const m = new Map<string, PiSkill>();
@@ -670,19 +673,6 @@ ${hitLines}`);
         } catch { /* memory recall is best-effort */ }
       }
 
-      // Inject skills index
-      if (opts.skillStore) {
-        try {
-          const skills = opts.skillStore.index();
-          if (skills.length > 0) {
-            const skillLines = skills
-              .map((s) => `- ${s.name}: ${s.description}`)
-              .join("\n");
-            parts.push(`\n[mya skills] Available skills (ask to use):\n${skillLines}`);
-          }
-        } catch { /* skills index is best-effort */ }
-      }
-
       // Role prompt append (if a named role is active)
       if (currentRole?.promptAppend) {
         parts.push(`\n[role: ${currentRole.name}] ${currentRole.promptAppend}`);
@@ -695,7 +685,10 @@ ${hitLines}`);
         "Commands: /mya-help for full list.",
       );
 
-      if (parts.length > 0 && typeof e.systemPrompt === "string") {
+      // Always return the stripped + summarized prompt when a system prompt
+      // exists — the <available_skills> block is removed even if no parts
+      // are appended.
+      if (typeof e.systemPrompt === "string") {
         return { systemPrompt: basePrompt + parts.join("\n") };
       }
     });
