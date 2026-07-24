@@ -392,19 +392,28 @@
 
 ## Test Coverage
 
-| Package | Test files | Ghi chú |
-|---|---|---|
-| `tools` | 41 | Web (849 tests), permission, repair |
-| `memory` | 21 | SQLite, embeddings, domains, RRF |
-| `print` | 13 | Cron integration, observability, role |
-| `gateway` | 12 | Auth, cron-sweep, MCP, voice, webauthn |
-| `cron` | 5 | Catch-up, security, store, scan |
-| `core` | 6 | Budget, cost, loop, session, spill, telemetry |
-| `web` | 4 | Build, dashboard |
-| `eval` | 2 | Egress, tier |
-| `ai` | 3 | Fallback, index, registry |
-| `skills` | 1 | Curator |
-| **Total** | **~108** test files |
+> **Chi tiết đầy đủ:** [`docs/TEST-COVERAGE.md`](docs/TEST-COVERAGE.md) · **Quick ref:** [`docs/TEST-QUICKREF.md`](docs/TEST-QUICKREF.md)
+>
+> **NO TEST = NO MERGE.** Khi thêm feature mới, PHẢI tạo test + cập nhật `docs/TEST-COVERAGE.md`.
+
+**Hiện tại: 5,370+ tests / 282+ files / 0 failures**
+
+| Package | Test files | Test cases | Ghi chú |
+|---|---|---|---|
+| `memory` | 38 | 630 | SQLite, embeddings, domains, RRF, lifecycle, retrieve, weibull, brain |
+| `tools` | 28 | 457 | Web, permission, repair, hashline, registry, dispatch, frecency, tool-search |
+| `gateway` | 26 | 404 | Auth, cron-sweep, MCP, voice, webauthn, channel-session/adapters, rate-limiter |
+| `tui` | 14 | 437 | keys, utils, terminal-image, stdin-buffer, terminal, autocomplete, fuzzy |
+| `core` | 15 | 249 | Budget, cost, loop, session, spill, telemetry, LaneBoard, roles, redact |
+| `print` | 12 | 217 | Cron CLI/persist/observability, mya-bridge, command-registry, channels-cli |
+| `ai` | 7 | 170 | Fallback, index, registry, openai, pi-ai-bridge, oauth, discovery |
+| `prompts` | 3 | 121 | assembler, compress |
+| `cron` | 6 | 86 | Catch-up, security, store, scan, lifecycle-guard, agent-tools |
+| `audit` | 2 | 53 | Achievements, trust, merkle-root |
+| `natives` | 1 | 45 | Hash, mac, glob, grep, compressLog, reflink, verifyNativeDeclaration |
+| `agent` | 4 | 52 | Subagent, pool, sdk |
+| `Feature tests` | 54 | 1,191 | §1-§23 feature catalog coverage |
+| **Total** | **~500+** | **~5,370+** | **282 files, 0 failures** |
 
 ## Tech Stack
 

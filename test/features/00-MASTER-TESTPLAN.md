@@ -1,7 +1,11 @@
 # Master Test Plan — mya Feature Coverage
 
+> **Tài liệu chính:** [`docs/TEST-COVERAGE.md`](../../docs/TEST-COVERAGE.md) · **Quick ref:** [`docs/TEST-QUICKREF.md`](../../docs/TEST-QUICKREF.md)
+>
 > Phủ 100% tính năng của mya với 4 layers: unit → smoke → real → system + TUI UI.
 > Đảm bảo KHÔNG BỎ SÓT case nào — liệt kê case có thể xảy ra với mỗi feature.
+>
+> **Khi thêm feature mới:** tạo test file trong thư mục section tương ứng + cập nhật `docs/TEST-COVERAGE.md`.
 
 ## Test Tiers
 
