@@ -26,9 +26,17 @@ import type {
   SystemPrompt,
   TokenUsage,
 } from "@my-agent/core";
+import { createHash } from "node:crypto";
 import { HindsightReviewer } from "./hindsight.js";
 
 export type CouncilStrategy = "attributed" | "majority" | "judge";
+
+/** Advisor fanout cadence (shard 06, Pattern 2).
+ * - `user_turn` (default): advisors run ONCE per user turn; tool iterations reuse
+ *   the cached guidance via the request signature.
+ * - `per_call`: advisors run on every stream() call (no caching).
+ * - `never`: disables caching entirely (same as per_call but explicit). */
+export type CouncilCadence = "user_turn" | "per_call" | "never";
 
 export interface CouncilMember {
   /** The underlying provider. */
@@ -55,6 +63,9 @@ export interface CouncilProviderOptions {
   strategy?: CouncilStrategy;
   /** For "judge" strategy: a separate profile that synthesizes the answers. */
   judge?: ProviderProfile;
+  /** Advisor fanout cadence (shard 06, Pattern 2). Default: "user_turn" — advisors
+   * run once per user turn and reuse cached outputs for tool-loop iterations. */
+  cadence?: CouncilCadence;
 }
 
 export class CouncilProvider implements ProviderProfile {
@@ -63,6 +74,16 @@ export class CouncilProvider implements ProviderProfile {
   private members: CouncilMember[];
   private strategy: CouncilStrategy;
   private judge?: ProviderProfile;
+  /** P6 (shard 06, Pattern 6): signature cache for advisor fanout. Keyed by the
+   * request signature (prefix up to last user message). A HIT reuses cached
+   * member outputs without re-fanning. */
+  private readonly sigCache = new Map<string, StreamEvent[]>();
+  /** The fanout cadence (default: user_turn). */
+  private readonly cadence: CouncilCadence;
+  /** Number of cache hits (observability). */
+  cacheHits = 0;
+  /** Number of cache misses (observability). */
+  cacheMisses = 0;
 
   constructor(opts: CouncilProviderOptions) {
     if (opts.members.length === 0) throw new Error("council requires ≥1 member");
@@ -71,6 +92,7 @@ export class CouncilProvider implements ProviderProfile {
     this.members = opts.members;
     this.strategy = opts.strategy ?? "attributed";
     this.judge = opts.judge;
+    this.cadence = opts.cadence ?? "user_turn";
     if (this.strategy === "judge" && !this.judge) {
       // Degrade gracefully: no judge wired → fall back to attributed.
       this.strategy = "attributed";
@@ -90,7 +112,43 @@ export class CouncilProvider implements ProviderProfile {
     return new HindsightReviewer(critic);
   }
 
+  /** Clear the signature cache (e.g. when member config changes). */
+  clearCache(): void {
+    this.sigCache.clear();
+  }
+
+  /** Number of cached signatures. */
+  get cacheSize(): number {
+    return this.sigCache.size;
+  }
+
   async stream(
+    prompt: SystemPrompt,
+    history: History,
+    opts?: { tools?: readonly import("@my-agent/core").OpenAITool[] },
+  ): Promise<{ events: StreamEvent[] }> {
+    // P6 (shard 06, Pattern 6): signature cache — on a HIT, reuse cached member
+    // outputs without re-fanning. The signature hashes the prefix up to the LAST
+    // user message so tool-loop iterations (which grow the assistant/tool tail)
+    // don't invalidate it.
+    if (this.cadence === "user_turn") {
+      const sig = councilRequestSignature(prompt, history);
+      const cached = this.sigCache.get(sig);
+      if (cached) {
+        this.cacheHits++;
+        return { events: cached.map((e) => ({ ...e })) };
+      }
+      this.cacheMisses++;
+      const result = await this.runFanout(prompt, history, opts);
+      this.sigCache.set(sig, result.events);
+      return result;
+    }
+    // per_call / never: no caching.
+    return this.runFanout(prompt, history, opts);
+  }
+
+  /** Run the actual member fan-out + aggregation (the pre-cache stream() body). */
+  private async runFanout(
     prompt: SystemPrompt,
     history: History,
     opts?: { tools?: readonly import("@my-agent/core").OpenAITool[] },
@@ -210,6 +268,37 @@ function vote(answers: string[]): string {
     }
   }
   return best;
+}
+
+/** Compute a request signature for the council cache (shard 06, Pattern 2/6).
+ * The signature hashes the prompt tiers + the history prefix up to and including
+ * the LAST user message. This means tool-loop iterations (which only grow the
+ * assistant/tool tail) produce the same signature → cache hit → no re-fanout.
+ *
+ * Entries are serialized via JSON.stringify (best-effort structural hash). */
+export function councilRequestSignature(
+  prompt: SystemPrompt,
+  history: History,
+): string {
+  const entries = history.entries();
+  // Find the index of the LAST user-role entry.
+  let lastUserIdx = -1;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e && typeof e === "object" && "role" in e && (e as { role: string }).role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  // Prefix = everything up to and including the last user message (or all if none).
+  const prefix = lastUserIdx >= 0 ? entries.slice(0, lastUserIdx + 1) : entries;
+  const payload = JSON.stringify({
+    stable: prompt.stable,
+    context: prompt.context,
+    volatile: prompt.volatile,
+    prefix,
+  });
+  return createHash("sha256").update(payload, "utf8").digest("hex");
 }
 
 export type { LlmTrace };
