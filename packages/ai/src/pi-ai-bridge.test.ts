@@ -4,7 +4,7 @@
  * history + system-prompt assembly, and API-key resolution.
  */
 import { describe, it, expect } from "vitest";
-import { PiAiProviderBridge } from "./pi-ai-bridge.js";
+import { PiAiProviderBridge, wrapPiAiProvider, wrapAllPiAiProviders } from "./pi-ai-bridge.js";
 import type { SystemPrompt, History } from "@my-agent/core";
 
 // ── Minimal pi-ai event shape (structurally compatible with the bridge) ──
@@ -342,5 +342,187 @@ describe("PiAiProviderBridge — setReasoning", () => {
     b.setReasoning("high");
     await b.stream(emptyPrompt, emptyHistory);
     expect(capturedOpts?.reasoning).toBe("high");
+  });
+});
+
+describe("wrapPiAiProvider / wrapAllPiAiProviders — wrap ALL providers", () => {
+  function makeModelProvider(
+    id: string,
+    modelIds: string[],
+    opts: { apiKeyResolve?: () => string | undefined; events?: TestEvent[] } = {},
+  ) {
+    const events = opts.events ?? [{ type: "done", message: { content: [], usage: { input: 1, output: 2 } } }];
+    return {
+      id,
+      auth: opts.apiKeyResolve ? { apiKey: { resolve: opts.apiKeyResolve } } : undefined,
+      getModels() {
+        return modelIds.map((m) => ({ id: m, api: "openai-responses" }));
+      },
+      async *streamSimple(
+        model: { id: string; api?: string },
+        _context: unknown,
+        _options?: { apiKey?: string; signal?: AbortSignal; reasoning?: string },
+      ): AsyncGenerator<TestEvent> {
+        // emit model id as a text delta so we can distinguish providers
+        yield { type: "text_delta", delta: `${id}:${model.id}` };
+        for (const e of events) yield e;
+      },
+    };
+  }
+
+  it("wrapPiAiProvider uses the provider's first model by default", () => {
+    const prov = makeModelProvider("anthropic", ["claude-x", "claude-y"], { apiKeyResolve: () => "k" });
+    const profile = wrapPiAiProvider(prov);
+    expect(profile.id).toBe("anthropic:claude-x");
+    expect(profile.model).toBe("claude-x");
+    expect(profile.health()).toBe("Healthy");
+  });
+
+  it("wrapPiAiProvider honours an explicit model override", () => {
+    const prov = makeModelProvider("openai", ["gpt-1", "gpt-2"], { apiKeyResolve: () => "k" });
+    const profile = wrapPiAiProvider(prov, { model: { id: "gpt-2" } });
+    expect(profile.id).toBe("openai:gpt-2");
+    expect(profile.model).toBe("gpt-2");
+  });
+
+  it("wrapPiAiProvider throws when the provider has no models and none is given", () => {
+    const prov = makeModelProvider("empty", [], { apiKeyResolve: () => "k" });
+    expect(() => wrapPiAiProvider(prov)).toThrow(/no models/);
+  });
+
+  it("wrapPiAiProvider resolves apiKey via apiKeyFor callback", () => {
+    const prov = makeModelProvider("groq", ["m1"], { apiKeyResolve: () => undefined });
+    const profile = wrapPiAiProvider(prov, { apiKeyFor: (id) => (id === "groq" ? "key-groq" : undefined) });
+    expect(profile.health()).toBe("Healthy");
+  });
+
+  it("wrapAllPiAiProviders wraps every provider (one profile each, first model)", () => {
+    const providers = [
+      makeModelProvider("anthropic", ["claude"], { apiKeyResolve: () => "k" }),
+      makeModelProvider("openai", ["gpt"], { apiKeyResolve: () => "k" }),
+      makeModelProvider("groq", ["llama"], { apiKeyResolve: () => "k" }),
+    ];
+    const profiles = wrapAllPiAiProviders(providers);
+    expect(profiles).toHaveLength(3);
+    expect(profiles.map((p) => p.id)).toEqual(["anthropic:claude", "openai:gpt", "groq:llama"]);
+  });
+
+  it("wrapAllPiAiProviders skips providers with no models", () => {
+    const providers = [
+      makeModelProvider("anthropic", ["claude"], { apiKeyResolve: () => "k" }),
+      makeModelProvider("empty", [], { apiKeyResolve: () => "k" }),
+    ];
+    const profiles = wrapAllPiAiProviders(providers);
+    expect(profiles.map((p) => p.id)).toEqual(["anthropic:claude"]);
+  });
+
+  it("wrapAllPiAiProviders with skipUnconfigured drops unconfigured providers", () => {
+    const providers = [
+      makeModelProvider("anthropic", ["claude"], { apiKeyResolve: () => "k" }),
+      makeModelProvider("unconfig", ["m"], { apiKeyResolve: () => undefined }),
+    ];
+    const profiles = wrapAllPiAiProviders(providers, { skipUnconfigured: true });
+    expect(profiles.map((p) => p.id)).toEqual(["anthropic:claude"]);
+  });
+
+  it("wrapAllPiAiProviders respects the modelFilter", () => {
+    const providers = [
+      makeModelProvider("anthropic", ["claude"], { apiKeyResolve: () => "k" }),
+      makeModelProvider("openai", ["gpt"], { apiKeyResolve: () => "k" }),
+      makeModelProvider("groq", ["llama"], { apiKeyResolve: () => "k" }),
+    ];
+    const profiles = wrapAllPiAiProviders(providers, {
+      modelFilter: (provId) => provId === "anthropic" || provId === "groq",
+    });
+    expect(profiles.map((p) => p.id).sort()).toEqual(["anthropic:claude", "groq:llama"]);
+  });
+
+  it("wrapped profiles stream correctly through profile.stream()", async () => {
+    const prov = makeModelProvider("anthropic", ["claude"], { apiKeyResolve: () => "k" });
+    const profile = wrapPiAiProvider(prov);
+    const { events } = await profile.stream(emptyPrompt, emptyHistory);
+    const texts = events.filter((e) => e.kind === "text").map((e) => (e as { text: string }).text);
+    expect(texts).toEqual(["anthropic:claude"]);
+    const done = events.at(-1)!;
+    expect(done.kind).toBe("done");
+  });
+});
+
+describe("PiAiProviderBridge + ProviderRegistry — taint & discovery", () => {
+  it("wrapped profiles register into ProviderRegistry and are returned by available()", async () => {
+    const { ProviderRegistry } = await import("./registry.js");
+    const providers = [
+      {
+        id: "anthropic",
+        auth: { apiKey: { resolve: () => "k" } },
+        getModels: () => [{ id: "claude", api: "anthropic-messages" }],
+        async *streamSimple(): AsyncGenerator<TestEvent> { yield { type: "done", message: { content: [], usage: { input: 0, output: 0 } } }; },
+      },
+      {
+        id: "openai",
+        auth: { apiKey: { resolve: () => "k" } },
+        getModels: () => [{ id: "gpt", api: "openai-responses" }],
+        async *streamSimple(): AsyncGenerator<TestEvent> { yield { type: "done", message: { content: [], usage: { input: 0, output: 0 } } }; },
+      },
+    ];
+    const profiles = wrapAllPiAiProviders(providers);
+    const registry = new ProviderRegistry({ cooldownMs: 1000 });
+    for (const p of profiles) registry.register(p);
+    expect(registry.all()).toHaveLength(2);
+    expect(registry.available().map((p) => p.id).sort()).toEqual(["anthropic:claude", "openai:gpt"]);
+  });
+
+  it("tainted wrapped profiles are skipped by available() until cooldown expires", async () => {
+    const { ProviderRegistry } = await import("./registry.js");
+    const { setTimeProvider } = await import("@my-agent/core");
+    let clock = 1_700_000_000_000;
+    const realWall = () => Date.now();
+    const realMono = () => (typeof performance !== "undefined" ? performance.now() * 1000 : Date.now());
+    setTimeProvider({ nowWallclock: () => clock, nowMonotonic: () => clock });
+    try {
+      const prov = {
+        id: "anthropic",
+        auth: { apiKey: { resolve: () => "k" } },
+        getModels: () => [{ id: "claude", api: "anthropic-messages" }],
+        async *streamSimple(): AsyncGenerator<TestEvent> { yield { type: "done" }; },
+      };
+      const [profile] = wrapAllPiAiProviders([prov]);
+      const registry = new ProviderRegistry({ cooldownMs: 1000 });
+      registry.register(profile!);
+      expect(registry.available()).toHaveLength(1);
+      registry.taint("anthropic:claude", "auth");
+      expect(registry.available()).toHaveLength(0);
+      expect(registry.eligible("anthropic:claude")).toBe(false);
+      clock += 2000; // cooldown (1000ms) expires
+      expect(registry.eligible("anthropic:claude")).toBe(true);
+      expect(registry.available()).toHaveLength(1);
+    } finally {
+      setTimeProvider({ nowWallclock: realWall, nowMonotonic: realMono });
+    }
+  });
+
+  it("registry health reflects wrapped-profile availability", async () => {
+    const { ProviderRegistry } = await import("./registry.js");
+    const providers = [
+      {
+        id: "deepseek",
+        auth: { apiKey: { resolve: () => "k" } },
+        getModels: () => [{ id: "deepseek-chat", api: "openai-completions" }],
+        async *streamSimple(): AsyncGenerator<TestEvent> { yield { type: "done" }; },
+      },
+      {
+        id: "groq",
+        auth: { apiKey: { resolve: () => "k" } },
+        getModels: () => [{ id: "llama", api: "openai-completions" }],
+        async *streamSimple(): AsyncGenerator<TestEvent> { yield { type: "done" }; },
+      },
+    ];
+    const profiles = wrapAllPiAiProviders(providers);
+    const registry = new ProviderRegistry();
+    expect(registry.health()).toBe("Failed"); // empty
+    for (const p of profiles) registry.register(p);
+    expect(registry.health()).toBe("Healthy");
+    registry.taint("deepseek:deepseek-chat", "quota");
+    expect(registry.health()).toBe("Degraded"); // 1 of 2 available
   });
 });

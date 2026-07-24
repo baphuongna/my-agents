@@ -13,8 +13,8 @@ export { streamWithFallback } from "./fallback.js";
 export type { FallbackResult } from "./fallback.js";
 export { OpenAIAdapter } from "./openai.js";
 export type { OpenAIAdapterOptions } from "./openai.js";
-export { PiAiProviderBridge } from "./pi-ai-bridge.js";
-export type { PiAiProviderBridgeOptions } from "./pi-ai-bridge.js";
+export { PiAiProviderBridge, wrapPiAiProvider, wrapAllPiAiProviders } from "./pi-ai-bridge.js";
+export type { PiAiProviderBridgeOptions, WrapPiAiProviderOptions, WrapAllPiAiProvidersOptions, PiAiProviderWithModels } from "./pi-ai-bridge.js";
 export {
   KeyState,
   KeyRouter,

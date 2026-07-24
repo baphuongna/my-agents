@@ -266,3 +266,108 @@ function convertHistoryEntry(entry: unknown): PiAiContext["messages"][number] | 
   }
   return null;
 }
+
+// ── Multi-provider wrapping (§17: wrap ALL pi-ai providers into ProviderProfile) ──
+
+/** A pi-ai provider with a sync model listing (the real `Provider` interface). */
+export interface PiAiProviderWithModels extends PiAiProviderLike {
+  /** Returns the provider's known models; `model.id` + `model.api` are used. */
+  getModels(): ReadonlyArray<{ id: string; api?: string }>;
+}
+
+/** Options for wrapping a single pi-ai provider into a ProviderProfile. */
+export interface WrapPiAiProviderOptions {
+  /** Explicit API key (overrides provider.auth resolution). */
+  apiKey?: string;
+  /** Explicit model to use; otherwise the provider's first model is selected. */
+  model?: { id: string; api?: string };
+  /** Explicit profile id; otherwise `<providerId>:<modelId>`. */
+  id?: string;
+  /** Per-provider API-key resolver (overrides provider.auth). */
+  apiKeyFor?: (providerId: string) => string | undefined;
+  /** Thinking/reasoning level. */
+  reasoning?: string;
+}
+
+/** Options for wrapping a list of pi-ai providers into ProviderProfile[]. */
+export interface WrapAllPiAiProvidersOptions {
+  /** Shared API key applied to every provider. */
+  apiKey?: string;
+  /** Per-provider API-key resolver (keyed by provider id). */
+  apiKeyFor?: (providerId: string) => string | undefined;
+  /** Filter which (providerId, modelId) pairs to wrap. */
+  modelFilter?: (providerId: string, modelId: string) => boolean;
+  /** Skip providers that resolve to no usable API key (default: false). */
+  skipUnconfigured?: boolean;
+  /** Shared reasoning level. */
+  reasoning?: string;
+}
+
+function isProviderWithModels(p: PiAiProviderLike): p is PiAiProviderWithModels {
+  return typeof (p as { getModels?: unknown }).getModels === "function";
+}
+
+/** Pick the first model id from a provider (best-effort). */
+function firstModelId(provider: PiAiProviderLike): { id: string; api?: string } | undefined {
+  if (isProviderWithModels(provider)) {
+    const models = provider.getModels();
+    const first = models[0];
+    if (first) return { id: first.id, api: first.api };
+  }
+  return undefined;
+}
+
+/** Resolve an API key for a provider honouring explicit + per-provider overrides. */
+function resolveApiKey(
+  provider: PiAiProviderBridgeOptions["provider"],
+  opts: { apiKey?: string; apiKeyFor?: (id: string) => string | undefined },
+): string {
+  return (
+    opts.apiKey ??
+    opts.apiKeyFor?.(provider.id) ??
+    provider.auth?.apiKey?.resolve() ??
+    ""
+  );
+}
+
+/**
+ * Wrap a single pi-ai provider into a `PiAiProviderBridge` (ProviderProfile).
+ * Uses the provider's first model unless `opts.model` is given.
+ */
+export function wrapPiAiProvider(
+  provider: PiAiProviderBridgeOptions["provider"],
+  opts: WrapPiAiProviderOptions = {},
+): PiAiProviderBridge {
+  const model = opts.model ?? firstModelId(provider);
+  if (!model) {
+    throw new Error(`wrapPiAiProvider: provider '${provider.id}' has no models and no model was given`);
+  }
+  return new PiAiProviderBridge({
+    provider,
+    model,
+    apiKey: resolveApiKey(provider, opts),
+    id: opts.id,
+    reasoning: opts.reasoning,
+  });
+}
+
+/**
+ * Wrap every pi-ai provider in `providers` into `ProviderProfile`s. Each
+ * provider becomes one profile (using its first model). Providers with no
+ * models — or unconfigured ones when `skipUnconfigured` is set — are skipped.
+ */
+export function wrapAllPiAiProviders(
+  providers: ReadonlyArray<PiAiProviderBridgeOptions["provider"]>,
+  opts: WrapAllPiAiProvidersOptions = {},
+): PiAiProviderBridge[] {
+  const out: PiAiProviderBridge[] = [];
+  for (const provider of providers) {
+    const model = firstModelId(provider);
+    if (!model) continue; // provider has no models — skip
+    if (opts.modelFilter && !opts.modelFilter(provider.id, model.id)) continue;
+    const apiKey = resolveApiKey(provider, opts);
+    if (opts.skipUnconfigured && !apiKey) continue;
+    out.push(new PiAiProviderBridge({ provider, model, apiKey, reasoning: opts.reasoning }));
+  }
+  return out;
+}
