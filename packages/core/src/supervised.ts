@@ -33,31 +33,48 @@ export interface SupervisedTaskOptions {
   now?: () => number;
   /** Injectable sleep (for tests). Default: setTimeout-based. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * When set, operate in **interval mode**: the factory is called every
+   * `intervalMs` milliseconds (exactly like `setInterval`), with no leading
+   * execution (first tick is after `intervalMs`). Errors are caught and logged;
+   * the interval continues ticking. When omitted, the restart-loop mode
+   * (crash-resilient long-running task) is used instead.
+   */
+  intervalMs?: number;
 }
 
 export interface SupervisedTaskHandle {
-  /** Stop the supervised task (no more restarts). */
+  /** Stop the supervised task (no more restarts / interval ticks). */
   stop(): void;
-  /** Current consecutive restart count. */
+  /** Unref the underlying timer so it doesn't keep the process alive (interval mode only). */
+  unref(): void;
+  /** Current consecutive restart count (or error count in interval mode). */
   readonly restartCount: number;
-  /** Whether the task gave up (hit maxRestarts). */
+  /** Whether the task gave up (hit maxRestarts). Always false in interval mode. */
   readonly gaveUp: boolean;
   /** Whether the task is currently running. */
   readonly running: boolean;
 }
 
 /**
- * Run an async task with supervised restart-on-crash.
+ * Run an async task with supervised restart-on-crash, or — when `opts.intervalMs`
+ * is set — a crash-resilient interval timer (drop-in replacement for `setInterval`).
  *
- * @param factory  A zero-arg async function that creates/starts the task. Called
- *                 on initial start + each restart. The returned promise resolves
- *                 on normal completion and rejects on crash.
+ * **Restart-loop mode** (default): the factory is called, and when it rejects
+ * (crashes) it is restarted with exponential backoff, up to `maxRestarts`.
+ *
+ * **Interval mode** (`opts.intervalMs` set): the factory is called every
+ * `intervalMs` ms (no leading execution, fixed interval — exactly like
+ * `setInterval`). Errors are caught and logged; the interval continues.
+ *
+ * @param factory  A zero-arg function that creates/starts the task (or is the
+ *                 interval callback). May be sync or async.
  * @param name     Human-readable name for log messages.
  * @param opts     Tuning knobs (see SupervisedTaskOptions).
  * @returns        A handle to stop the task + observe state.
  */
 export function supervisedTask(
-  factory: () => Promise<void>,
+  factory: () => void | Promise<void>,
   name: string,
   opts: SupervisedTaskOptions = {},
 ): SupervisedTaskHandle {
@@ -72,7 +89,40 @@ export function supervisedTask(
     const t = setTimeout(r, ms);
     t.unref?.();
   }));
+  const intervalMs = opts.intervalMs;
 
+  // ─── Interval mode ──────────────────────────────────────────────────────
+  // Drop-in replacement for setInterval: fixed interval, no leading execution,
+  // errors caught + logged (never propagate as unhandled rejections).
+  if (intervalMs !== undefined) {
+    let stopped = false;
+    let errorCount = 0;
+    const timer = setInterval(() => {
+      Promise.resolve()
+        .then(() => factory())
+        .catch((e) => {
+          errorCount++;
+          logger(`[supervised:${name}] interval tick error: ${e instanceof Error ? e.message : String(e)}`, e);
+        });
+    }, intervalMs);
+
+    return {
+      stop() {
+        if (!stopped) {
+          stopped = true;
+          clearInterval(timer);
+        }
+      },
+      unref() {
+        timer.unref?.();
+      },
+      get restartCount() { return errorCount; },
+      get gaveUp() { return false; },
+      get running() { return false; },
+    };
+  }
+
+  // ─── Restart-loop mode (default) ────────────────────────────────────────
   let stopped = false;
   let restartCount = 0;
   let gaveUp = false;
@@ -121,6 +171,9 @@ export function supervisedTask(
   return {
     stop() {
       stopped = true;
+    },
+    unref() {
+      /* no-op in restart-loop mode; backoff timers are already unref'd */
     },
     get restartCount() {
       return restartCount;

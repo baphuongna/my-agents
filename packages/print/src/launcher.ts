@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { authHeaders, withAuth } from "./gw-auth.js";
 import { join, resolve as pathResolve } from "node:path";
-import { nowWallclock } from "@my-agent/core";
+import { nowWallclock, supervisedTask, type SupervisedTaskHandle } from "@my-agent/core";
 import { scanSkillDirectory } from "./skill-search/scanner.ts";
 
 const A = {
@@ -456,7 +456,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
       skillSubTab: "main",
     };
     let resolved = false;
-    let refreshTimer: NodeJS.Timeout | undefined;
+    let refreshTimer: SupervisedTaskHandle | undefined;
     const isTTY = !!process.stdin.isTTY;
     if (isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
@@ -822,7 +822,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
     const cleanup = (result?: { kind: "session"; id: string } | { kind: "new" } | { kind: "add-role" } | { kind: "delete-role"; name: string } | { kind: "view-skill"; path: string; subTab: "main" | "corpus" } | { kind: "edit-skill"; path: string; subTab: "main" | "corpus" } | { kind: "delete-skill"; path: string; name: string; subTab: "main" | "corpus" } | { kind: "add-skill"; subTab: "main" | "corpus" }) => {
       if (resolved) return;
       resolved = true;
-      if (refreshTimer) clearInterval(refreshTimer);
+      if (refreshTimer) refreshTimer.stop();
       process.stdin.pause();
       process.stdin.removeListener("data", onData);
       if (isTTY) process.stdin.setRawMode(false);
@@ -1162,7 +1162,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
     };
 
     void refresh();
-    refreshTimer = setInterval(() => void refresh(), REFRESH_MS);
+    refreshTimer = supervisedTask(() => void refresh(), "launcher-refresh", { intervalMs: REFRESH_MS });
     render();
     process.stdin.on("data", onData);
   });
