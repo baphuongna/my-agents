@@ -16,7 +16,8 @@ import { type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 import { useModalBehavior } from "@/lib/modal";
-import { cn } from "@/lib/utils";
+import { MODAL_BACKDROP, MODAL_PANEL } from "@/lib/modal-constants";
+import { cn, themedFont } from "@/lib/utils";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -53,7 +54,7 @@ export function ConfirmDialog({
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
       aria-describedby={description ? "confirm-dialog-desc" : undefined}
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className={MODAL_BACKDROP}
       onClick={(e) => {
         // Backdrop click (the overlay itself, not its children) dismisses.
         if (e.target === e.currentTarget) onCancel();
@@ -61,7 +62,7 @@ export function ConfirmDialog({
     >
       <div
         ref={containerRef}
-        className="w-full max-w-sm bg-bg-surface border border-border rounded-xl shadow-2xl p-5"
+        className={cn(MODAL_PANEL, "max-w-sm p-5")}
       >
         <div className="flex items-start gap-3">
           {destructive && (
@@ -70,7 +71,7 @@ export function ConfirmDialog({
             </div>
           )}
           <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <h2 id="confirm-dialog-title" className="text-sm font-semibold text-fg">
+            <h2 id="confirm-dialog-title" className={cn("text-sm font-semibold text-fg", themedFont)}>
               {title}
             </h2>
             {description && (

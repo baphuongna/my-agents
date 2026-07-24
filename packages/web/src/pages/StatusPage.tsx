@@ -54,9 +54,27 @@ export function StatusPage() {
   }
 
   useEffect(() => {
-    reload();
+    let cancelled = false;
+    setLoading(true);
+    api
+      .status()
+      .then((data) => {
+        if (!cancelled) {
+          setStatus(data);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     const timer = setInterval(reload, 5000);
-    return () => clearInterval(timer);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
 
   const providers = (status?.providers as ProviderInfo[]) ?? [];

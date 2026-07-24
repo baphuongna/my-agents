@@ -83,8 +83,26 @@ export function McpPage() {
   }, []);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    let cancelled = false;
+    setLoading(true);
+    api
+      .mcpServers()
+      .then((data) => {
+        if (!cancelled) {
+          setServers(data);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function resetForm() {
     setId("");

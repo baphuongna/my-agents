@@ -38,17 +38,23 @@ export function ReasoningPicker({
     const fetchKey = `${currentModel}:${refreshKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
+    let cancelled = false;
     api
       .config()
       .then((cfg) => {
+        if (cancelled) return;
         const agent = (cfg?.agent as Record<string, unknown> | undefined) ?? {};
         setEffort(normalizeEffort(agent.reasoning_effort));
         setLoaded(true);
       })
       .catch(() => {
+        if (cancelled) return;
         // Best-effort: keep the last known value.
         setLoaded(true);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [currentModel, refreshKey]);
 
   const onSelect = useCallback(

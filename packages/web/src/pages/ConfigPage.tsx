@@ -29,7 +29,25 @@ export function ConfigPage() {
   }
 
   useEffect(() => {
-    reload();
+    let cancelled = false;
+    setLoading(true);
+    api
+      .config()
+      .then((data) => {
+        if (!cancelled) {
+          setConfig(data);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const entries = config ? Object.entries(config) : [];

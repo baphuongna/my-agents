@@ -37,7 +37,25 @@ export function ToolsPage() {
   }
 
   useEffect(() => {
-    reload();
+    let cancelled = false;
+    setLoading(true);
+    api
+      .tools()
+      .then((data) => {
+        if (!cancelled) {
+          setTools(data);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = search

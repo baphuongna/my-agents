@@ -29,12 +29,22 @@ export function ModelPickerDialog({
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setLoading(true);
     api
       .models()
-      .then(setModels)
-      .catch(() => setModels([]))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (!cancelled) setModels(data);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // Group by provider

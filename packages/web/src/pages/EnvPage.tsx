@@ -56,7 +56,25 @@ export function EnvPage() {
   }
 
   useEffect(() => {
-    reload();
+    let cancelled = false;
+    setLoading(true);
+    api
+      .status()
+      .then((data) => {
+        if (!cancelled) {
+          setStatus(data);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const providers = ((status?.providers as ProviderInfo[]) ?? []).sort((a, b) => {

@@ -32,7 +32,25 @@ export function ModelsPage() {
   }
 
   useEffect(() => {
-    reload();
+    let cancelled = false;
+    setLoading(true);
+    api
+      .models()
+      .then((data) => {
+        if (!cancelled) {
+          setModels(data);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = search
