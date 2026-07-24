@@ -5,8 +5,19 @@
  * SkillCurator is a tiny inline mock. Timers are driven with vitest fake timers.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Brain, DreamCycle } from "@my-agent/memory";
-import type { DreamResult, Fact } from "@my-agent/memory";
+import { Brain } from "./brain.js";
+import type { Fact } from "./brain.js";
+import {
+  DreamCycle,
+  assembleDreamSummary,
+  buildConsolidationPrompt,
+} from "./dream-cycle.js";
+import type {
+  DreamResult,
+  ConsolidationFn,
+  ConsolidationDecision,
+  ConsolidationMemory,
+} from "./dream-cycle.js";
 import { nowWallclock } from "@my-agent/core";
 import type {
   ComponentHealth,
@@ -214,5 +225,229 @@ describe("DreamCycle — timer fires on interval and stop() clears it", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(dreamSpy.mock.calls.length).toBe(callsAfterFirstTick);
     expect(dc.running).toBe(false);
+  });
+});
+
+describe("assembleDreamSummary — pure prompt assembly", () => {
+  it("returns the trimmed summary when there are no patterns", () => {
+    expect(assembleDreamSummary("  hello  ", [])).toBe("hello");
+  });
+
+  it("appends patterns as a semicolon-separated list", () => {
+    const out = assembleDreamSummary("summary", ["p1", "p2"]);
+    expect(out).toBe("summary\n\nPatterns: p1; p2");
+  });
+
+  it("handles a single pattern", () => {
+    expect(assembleDreamSummary("s", ["only"])).toBe("s\n\nPatterns: only");
+  });
+});
+
+describe("buildConsolidationPrompt — LLM prompt contract", () => {
+  it("builds a stable system instruction + memory corpus", () => {
+    const memories: ConsolidationMemory[] = [
+      { entity: "Alice", content: "met Bob" },
+      { entity: "Alice", content: "discussed plan" },
+    ];
+    const prompt = buildConsolidationPrompt(memories);
+    expect(prompt.stable).toMatch(/memory consolidation engine/i);
+    expect(prompt.stable).toMatch(/decline/i);
+    expect(prompt.context).toContain("2 memory entries");
+    expect(prompt.context).toContain("[Alice] met Bob");
+    expect(prompt.context).toContain("[Alice] discussed plan");
+  });
+
+  it("uses a placeholder corpus when there are no memories", () => {
+    const prompt = buildConsolidationPrompt([]);
+    expect(prompt.context).toContain("0 memory entries");
+    expect(prompt.context).toContain("(no new memories");
+  });
+});
+
+describe("DreamCycle — LLM-driven consolidation (consolidationFn / summaryFn)", () => {
+  function seedBrain(): Brain {
+    const brain = new Brain();
+    brain.recordFact({
+      kind: "event", entity: "Alice", content: "met Bob",
+      visibility: "private", notability: 1, source: "s1",
+    });
+    brain.recordFact({
+      kind: "event", entity: "Alice", content: "discussed the plan",
+      visibility: "private", notability: 1, source: "s1",
+    });
+    return brain;
+  }
+
+  it("calls consolidationFn with the collected memories", async () => {
+    const brain = seedBrain();
+    let captured: ConsolidationMemory[] = [];
+    const fn: ConsolidationFn = async (input) => {
+      captured = input.memories;
+      return { consolidate: true, summary: "Alice is central.", patterns: ["recurring meetings"] };
+    };
+    const dc = new DreamCycle({
+      brain, consolidationFn: fn, intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    const res = await dc.dream();
+    expect(captured.length).toBe(2);
+    expect(captured[0]!.entity).toBe("Alice");
+    expect(res.memoriesConsolidated).toBe(2);
+  });
+
+  it("stores the consolidated summary + patterns when the decision is consolidate", async () => {
+    const brain = seedBrain();
+    const fn: ConsolidationFn = async () => ({
+      consolidate: true,
+      summary: "Alice drives most activity.",
+      patterns: ["planning", "collaboration"],
+    });
+    const dc = new DreamCycle({
+      brain, consolidationFn: fn, intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    const res = await dc.dream();
+    expect(res.declined).toBeUndefined();
+    expect(res.patterns).toEqual(["planning", "collaboration"]);
+    const dreamFacts = brain.factsByEntity("dream-summary");
+    expect(dreamFacts.length).toBe(1);
+    expect(dreamFacts[0]!.content).toContain("Alice drives most activity.");
+    expect(dreamFacts[0]!.content).toContain("Patterns: planning; collaboration");
+  });
+
+  it("consolidationFn takes precedence over the raw provider", async () => {
+    const brain = seedBrain();
+    const { profile, ref } = mockProvider("provider-summary");
+    let fnCalled = false;
+    const fn: ConsolidationFn = async () => {
+      fnCalled = true;
+      return { consolidate: true, summary: "fn-summary", patterns: [] };
+    };
+    const dc = new DreamCycle({
+      brain, provider: profile, consolidationFn: fn,
+      intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    await dc.dream();
+    expect(fnCalled).toBe(true);
+    expect(ref.count).toBe(0); // provider NOT called when consolidationFn is wired
+  });
+
+  it("decline strategy: does NOT store a dream fact and surfaces declineReason", async () => {
+    const brain = seedBrain();
+    const fn: ConsolidationFn = async () => ({
+      consolidate: false,
+      summary: "",
+      patterns: ["low-signal"],
+      declineReason: "memories too disparate",
+    });
+    const dc = new DreamCycle({
+      brain, consolidationFn: fn, intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    const res = await dc.dream();
+    expect(res.declined).toBe(true);
+    expect(res.declineReason).toBe("memories too disparate");
+    // No dream fact stored on decline.
+    expect(brain.factsByEntity("dream-summary").length).toBe(0);
+    // Patterns are still surfaced even on decline.
+    expect(res.patterns).toEqual(["low-signal"]);
+  });
+
+  it("decline strategy: uses a default reason when none is given", async () => {
+    const brain = seedBrain();
+    const fn: ConsolidationFn = async () => ({ consolidate: false, summary: "", patterns: [] });
+    const dc = new DreamCycle({
+      brain, consolidationFn: fn, intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    const res = await dc.dream();
+    expect(res.declined).toBe(true);
+    expect(res.declineReason).toBe("consolidation declined");
+  });
+
+  it("falls back to a decline when consolidationFn throws (no garbage stored)", async () => {
+    const brain = seedBrain();
+    const fn: ConsolidationFn = async () => {
+      throw new Error("LLM timeout");
+    };
+    const dc = new DreamCycle({
+      brain, consolidationFn: fn, intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    const res = await dc.dream();
+    expect(res.declined).toBe(true);
+    expect(res.declineReason).toMatch(/LLM timeout/);
+    expect(brain.factsByEntity("dream-summary").length).toBe(0);
+  });
+});
+
+describe("DreamCycle — distributed shutdown handling", () => {
+  it("dream() aborts before work when isShuttingDown() is true", async () => {
+    const brain = new Brain();
+    brain.recordFact({
+      kind: "event", entity: "x", content: "y",
+      visibility: "private", notability: 1, source: "s",
+    });
+    const dc = new DreamCycle({
+      brain, intervalMs: 60_000, allowPrivateInPrompt: true,
+      isShuttingDown: () => true,
+    });
+    const res = await dc.dream();
+    expect(res.shutdownAborted).toBe(true);
+    expect(res.summary).toMatch(/aborted/i);
+    // Nothing stored.
+    expect(brain.factsByEntity("dream-summary").length).toBe(0);
+  });
+
+  it("shutdown() arms the flag and stops the timer; subsequent dream() aborts", async () => {
+    const brain = new Brain();
+    const dc = new DreamCycle({ brain, intervalMs: 1000 });
+    dc.start();
+    expect(dc.running).toBe(true);
+    dc.shutdown();
+    expect(dc.running).toBe(false);
+    const res = await dc.dream();
+    expect(res.shutdownAborted).toBe(true);
+  });
+
+  it("dream() aborts mid-consolidation if shutdown arrives after the LLM call", async () => {
+    const brain = new Brain();
+    brain.recordFact({
+      kind: "event", entity: "x", content: "y",
+      visibility: "private", notability: 1, source: "s",
+    });
+    let shuttingDown = false;
+    const fn: ConsolidationFn = async () => {
+      // simulate shutdown arriving during the (async) LLM call
+      shuttingDown = true;
+      return { consolidate: true, summary: "should-not-store", patterns: ["p"] };
+    };
+    const dc = new DreamCycle({
+      brain, consolidationFn: fn, intervalMs: 60_000, allowPrivateInPrompt: true,
+      isShuttingDown: () => shuttingDown,
+    });
+    const res = await dc.dream();
+    expect(res.shutdownAborted).toBe(true);
+    expect(res.patterns).toEqual(["p"]);
+    // Mid-cycle abort: nothing stored even though the decision was consolidate.
+    expect(brain.factsByEntity("dream-summary").length).toBe(0);
+  });
+
+  it("periodic start() stops itself once isShuttingDown() flips true", async () => {
+    vi.useFakeTimers();
+    try {
+      const brain = new Brain();
+      let down = false;
+      const dc = new DreamCycle({ brain, intervalMs: 1000, isShuttingDown: () => down });
+      const spy = vi.spyOn(dc, "dream").mockResolvedValue({
+        memoriesConsolidated: 0, skillsReviewed: 0, summary: "", durationMs: 0,
+      });
+      dc.start();
+      await vi.advanceTimersByTimeAsync(1000);
+      const callsBeforeShutdown = spy.mock.calls.length;
+      expect(callsBeforeShutdown).toBeGreaterThanOrEqual(1);
+      down = true; // fleet shutdown
+      await vi.advanceTimersByTimeAsync(5000);
+      // timer should have self-stopped; no new dream() calls after shutdown
+      expect(spy.mock.calls.length).toBe(callsBeforeShutdown);
+      expect(dc.running).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

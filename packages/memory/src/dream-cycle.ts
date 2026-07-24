@@ -31,7 +31,49 @@ export interface DreamResult {
   skillsReviewed: number;
   summary: string;
   durationMs: number;
+  /** True when the consolidation function declined to consolidate (decline strategy). */
+  declined?: boolean;
+  /** Reason given when consolidation was declined. */
+  declineReason?: string;
+  /** Recurring patterns the consolidation function identified. */
+  patterns?: string[];
+  /** True when the cycle aborted early due to a distributed shutdown signal. */
+  shutdownAborted?: boolean;
 }
+
+/** A single memory entry handed to the consolidation function. */
+export interface ConsolidationMemory {
+  id?: string;
+  entity: string;
+  content: string;
+  memoryType?: string;
+}
+
+/** Input passed to the LLM-driven consolidation callback. */
+export interface ConsolidationInput {
+  memories: ConsolidationMemory[];
+}
+
+/** The consolidation decision returned by the LLM (or a deterministic stand-in).
+ *
+ *  - `consolidate: true`  → store `summary` (+ `patterns`) as a dream fact and
+ *    optionally supersede the source memories.
+ *  - `consolidate: false` → decline strategy: do NOT store; surface
+ *    `declineReason` (e.g. "memories are too disparate / low signal").
+ */
+export interface ConsolidationDecision {
+  consolidate: boolean;
+  summary: string;
+  patterns: string[];
+  declineReason?: string;
+  /** Optional ids of source memories to mark superseded by this consolidation. */
+  supersede?: string[];
+}
+
+/** Higher-level consolidation callback (the "summaryFn" pattern). Takes the
+ * collected memories and returns a structured consolidate/decline decision.
+ * This decouples the dream cycle from any specific provider wiring. */
+export type ConsolidationFn = (input: ConsolidationInput) => Promise<ConsolidationDecision>;
 
 /**
  * Skill-curation surface the dream cycle reviews for staleness. Implementations
@@ -64,6 +106,14 @@ export interface DreamCycleOptions {
   /** Allow private facts to be sent to the LLM provider (default: false).
    *  Tier-3 privacy: prevents private memories from leaking to external APIs. */
   allowPrivateInPrompt?: boolean;
+  /** Higher-level LLM consolidation callback (the "summaryFn" pattern). When
+   *  present, the dream cycle asks it for a consolidate/decline decision
+   *  instead of (or in addition to) the raw provider. Takes precedence over
+   *  `provider` for the consolidation step. */
+  consolidationFn?: ConsolidationFn;
+  /** Distributed-shutdown check: when this returns true the dream cycle aborts
+   *  gracefully (no new storage), so a fleet of agents can wind down together. */
+  isShuttingDown?: () => boolean;
 }
 
 /** Default cycle interval: 4 hours (deep consolidation — shallow lifecycle runs on every turn_end). */
@@ -90,6 +140,9 @@ export class DreamCycle {
   private timer: ReturnType<typeof setInterval> | null = null;
   private isIdle: () => boolean;
   private readonly allowPrivateInPrompt: boolean;
+  private readonly consolidationFn?: ConsolidationFn;
+  private isShuttingDown: () => boolean;
+  private shutdownRequested = false;
 
   constructor(opts: DreamCycleOptions) {
     this.brain = opts.brain;
@@ -99,6 +152,8 @@ export class DreamCycle {
     this.provider = opts.provider;
     this.isIdle = opts.isIdle ?? (() => true);
     this.allowPrivateInPrompt = opts.allowPrivateInPrompt ?? false;
+    this.consolidationFn = opts.consolidationFn;
+    this.isShuttingDown = opts.isShuttingDown ?? (() => false);
   }
 
   /** Whether the periodic timer is currently armed. */
@@ -112,6 +167,11 @@ export class DreamCycle {
     this.timer = setInterval(() => {
       // Skip if agent is active (idle check prevents competing for LLM tokens).
       if (!this.isIdle()) return;
+      // Distributed shutdown: stop arming once a shutdown is requested.
+      if (this.isShuttingDown() || this.shutdownRequested) {
+        this.stop();
+        return;
+      }
       // Fire-and-forget; periodic cycles must never reject the timer.
       void this.dream().catch(() => {
         /* swallow — next tick retries */
@@ -130,9 +190,28 @@ export class DreamCycle {
     }
   }
 
+  /** Signal a distributed shutdown: arms the shutdown flag so the next periodic
+   *  tick stops the timer, and any in-flight cycle aborts gracefully. Also
+   *  stops the timer immediately. Idempotent. */
+  shutdown(): void {
+    this.shutdownRequested = true;
+    this.stop();
+  }
+
   /** Run one dream cycle manually. */
   async dream(): Promise<DreamResult> {
     const start = nowWallclock();
+
+    // Distributed shutdown: abort before doing any work/storage.
+    if (this.isShuttingDown() || this.shutdownRequested) {
+      return {
+        memoriesConsolidated: 0,
+        skillsReviewed: 0,
+        summary: "Dream cycle aborted: shutdown in progress.",
+        durationMs: nowWallclock() - start,
+        shutdownAborted: true,
+      };
+    }
 
     // SQLite path (new system — preferred)
     if (this.sqliteMemory) {
@@ -147,20 +226,53 @@ export class DreamCycle {
     // 1. Collect recent memory facts from the last interval period.
     const recent = this.collectRecentFacts();
 
-    // 2. Summarize: LLM if a provider is wired, else a zero-LLM digest.
-    const summary = this.provider
-      ? await this.summarizeWithProvider(recent)
-      : this.basicSummarize(recent);
+    // 2. Consolidate: consolidationFn (LLM decision) if wired, else LLM
+    //    provider summary, else a zero-LLM deterministic digest.
+    let summary: string;
+    let patterns: string[] | undefined;
+    let declined = false;
+    let declineReason: string | undefined;
 
-    // 3. Store the summary back as a new "dream" fact (source: dream).
-    this.brain.recordFact({
-      kind: "belief",
-      entity: DREAM_ENTITY,
-      content: summary,
-      visibility: "private",
-      notability: 5,
-      source: DREAM_SOURCE,
-    });
+    if (this.consolidationFn) {
+      const decision = await this.runConsolidationFn(recent);
+      // Re-check shutdown after the (possibly slow) LLM call.
+      if (this.isShuttingDown() || this.shutdownRequested) {
+        return {
+          memoriesConsolidated: recent.length,
+          skillsReviewed: 0,
+          summary: "Dream cycle aborted mid-consolidation: shutdown in progress.",
+          durationMs: nowWallclock() - start,
+          shutdownAborted: true,
+          patterns: decision.patterns,
+        };
+      }
+      if (!decision.consolidate) {
+        // Decline strategy: do NOT store the summary; surface the reason.
+        declined = true;
+        declineReason = decision.declineReason ?? "consolidation declined";
+        summary = declineReason;
+        patterns = decision.patterns;
+      } else {
+        summary = assembleDreamSummary(decision.summary, decision.patterns);
+        patterns = decision.patterns;
+      }
+    } else {
+      summary = this.provider
+        ? await this.summarizeWithProvider(recent)
+        : this.basicSummarize(recent);
+    }
+
+    // 3. Store the summary back as a new "dream" fact — UNLESS declined.
+    if (!declined) {
+      this.brain.recordFact({
+        kind: "belief",
+        entity: DREAM_ENTITY,
+        content: summary,
+        visibility: "private",
+        notability: 5,
+        source: DREAM_SOURCE,
+      });
+    }
 
     // 4. Review skills for staleness (>30 days unused → noted for cleanup).
     const skillsReviewed = await this.reviewSkills();
@@ -170,7 +282,31 @@ export class DreamCycle {
       skillsReviewed,
       summary,
       durationMs: nowWallclock() - start,
+      ...(declined ? { declined: true, declineReason } : {}),
+      ...(patterns && patterns.length > 0 ? { patterns } : {}),
     };
+  }
+
+  /** Invoke the LLM-driven consolidation callback, mapping Fact[] → the callback
+   *  input shape. Falls back to a decline when the callback throws. */
+  private async runConsolidationFn(recent: Fact[]): Promise<ConsolidationDecision> {
+    const memories: ConsolidationMemory[] = recent.map((f) => ({
+      id: f.id,
+      entity: f.entity,
+      content: f.content,
+      ...(f.kind ? { memoryType: f.kind } : {}),
+    }));
+    try {
+      return await this.consolidationFn!({ memories });
+    } catch (e) {
+      // A failed LLM call → conservative decline (don't store garbage).
+      return {
+        consolidate: false,
+        summary: "",
+        patterns: [],
+        declineReason: `consolidation failed: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
   }
 
   /**
@@ -347,4 +483,31 @@ function collectText(events: StreamEvent[]): string {
     if (e.kind === "text") out += e.text;
   }
   return out;
+}
+
+/** Assemble the stored dream-summary text from a summary + identified patterns.
+ *  Pure + exported so the prompt assembly is unit-testable. */
+export function assembleDreamSummary(summary: string, patterns: string[]): string {
+  const trimmed = summary.trim();
+  if (patterns.length === 0) return trimmed;
+  return `${trimmed}\n\nPatterns: ${patterns.join("; ")}`;
+}
+
+/** Build the system+context prompt an LLM consolidation call should use, given
+ *  the collected memories. Pure + exported for testing the prompt contract. */
+export function buildConsolidationPrompt(memories: ConsolidationMemory[]): {
+  stable: string;
+  context: string;
+} {
+  const corpus =
+    memories.length === 0
+      ? "(no new memories in this period)"
+      : memories
+          .map((m, i) => `${i + 1}. [${m.entity}] ${m.content}`)
+          .join("\n");
+  return {
+    stable:
+      "You are a memory consolidation engine. Identify recurring patterns, decide whether these memories are worth consolidating, and produce a concise summary. If the memories are too disparate or low-signal, decline consolidation.",
+    context: `Consolidate these ${memories.length} memory entries (respond with a consolidate/decline decision + patterns + summary):\n${corpus}`,
+  };
 }

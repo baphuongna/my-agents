@@ -30,8 +30,22 @@ export { MemoryContextSource } from "./memory-source.js";
 export { TypedGraph } from "./graph.js";
 export type { KGEntity, KGRelation } from "./graph.js";
 
-export { DreamCycle, DEFAULT_DREAM_INTERVAL_MS, STALE_SKILL_AFTER_DAYS } from "./dream-cycle.js";
-export type { DreamResult, DreamCycleOptions, SkillCurator } from "./dream-cycle.js";
+export {
+  DreamCycle,
+  DEFAULT_DREAM_INTERVAL_MS,
+  STALE_SKILL_AFTER_DAYS,
+  assembleDreamSummary,
+  buildConsolidationPrompt,
+} from "./dream-cycle.js";
+export type {
+  DreamResult,
+  DreamCycleOptions,
+  SkillCurator,
+  ConsolidationMemory,
+  ConsolidationInput,
+  ConsolidationDecision,
+  ConsolidationFn,
+} from "./dream-cycle.js";
 
 // ── Phase A: MemoryTree (L0/L1/L2) + MemoryDomain system ──────────────────
 export { MemoryTree, L0_TTL_MS } from "./tree.js";
