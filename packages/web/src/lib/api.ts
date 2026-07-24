@@ -114,6 +114,45 @@ export interface MemoryStatus {
   [key: string]: unknown;
 }
 
+/** MCP server as returned by GET /mcp/servers. */
+export interface McpServer {
+  id: string;
+  command: string;
+  args: string[];
+  phase: string;
+  health: string;
+  tools: string[];
+  lastError?: string;
+}
+
+/** Result of POST /mcp/servers/:id/test. */
+export interface McpTestResult {
+  ok: boolean;
+  id: string;
+  action?: string;
+  tools?: string[];
+  error?: string;
+}
+
+/** Channel adapter as surfaced by GET /status (channels array). */
+export interface ChannelInfo {
+  id: string;
+  type: string;
+  alias?: string;
+  label?: string;
+  enabled: boolean;
+  configured: boolean;
+  health: string;
+}
+
+/** Result of POST /channels/:id/test. */
+export interface ChannelTestResult {
+  ok: boolean;
+  id: string;
+  message?: string;
+  error?: string;
+}
+
 // ── API endpoints ─────────────────────────────────────────────────────
 
 export const api = {
@@ -146,4 +185,26 @@ export const api = {
 
   // Sync
   syncState: () => fetchJSON<unknown>("/sync/state"),
+
+  // MCP servers
+  mcpServers: () => fetchJSON<McpServer[]>("/mcp/servers"),
+  mcpAdd: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) =>
+    postJSON<{ ok: boolean; id: string }>("/mcp/servers", cfg),
+  mcpTest: (id: string) =>
+    postJSON<McpTestResult>(`/mcp/servers/${id}/test`),
+  mcpRemove: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/mcp/servers/${id}`, { method: "DELETE" }),
+
+  // Channels (toggle + test; list comes from GET /status)
+  channelConfig: (id: string, patch: { enabled?: boolean }) =>
+    postJSON<{ ok: boolean; id: string; config: Record<string, unknown> }>(
+      `/channels/${id}/config`,
+      patch,
+    ),
+  channelTest: (id: string) =>
+    postJSON<ChannelTestResult>(`/channels/${id}/test`),
+
+  // Memory + dream
+  memoryStats: () => fetchJSON<Record<string, unknown>>("/memory/stats"),
+  memoryDream: () => postJSON<Record<string, unknown>>("/memory/dream"),
 };

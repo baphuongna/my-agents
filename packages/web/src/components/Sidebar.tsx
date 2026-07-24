@@ -7,7 +7,7 @@ import {
   Activity, BarChart3, Clock, Cpu, FileText, FolderOpen, Settings,
   Terminal, MessageSquare, Radio, Plug, Package, Database,
   PanelLeftClose, PanelLeftOpen, Zap, Bell, Users, KeyRound,
-  UserCircle, Webhook, Smartphone, Award, Cat,
+  UserCircle, Webhook, Smartphone, Award, Cat, BookOpen, Gauge, Puzzle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
@@ -34,6 +34,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/mcp", label: "MCP", icon: Plug, group: "config" },
   { path: "/skills", label: "Skills", icon: Package, group: "config" },
   { path: "/sync", label: "Sync", icon: Database, group: "config" },
+  { path: "/plugins", label: "Plugins", icon: Puzzle, group: "config" },
+  { path: "/docs", label: "Docs", icon: BookOpen, group: "config" },
   { path: "/keys", label: "API Keys", icon: KeyRound, group: "config" },
   { path: "/profiles", label: "Profiles", icon: UserCircle, group: "config" },
   { path: "/webhooks", label: "Webhooks", icon: Webhook, group: "config" },
@@ -41,7 +43,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/achievements", label: "Achievements", icon: Award, group: "config" },
   { path: "/pets", label: "Pets", icon: Cat, group: "config" },
   { path: "/config", label: "Config", icon: Settings, group: "config" },
-  { path: "/status", label: "System", icon: Activity, group: "config" },
+  { path: "/status", label: "Status", icon: Activity, group: "config" },
+  { path: "/system", label: "System", icon: Gauge, group: "config" },
 ];
 
 const COLLAPSE_KEY = "mya-sidebar-collapsed";

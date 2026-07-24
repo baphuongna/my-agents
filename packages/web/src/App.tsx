@@ -28,8 +28,11 @@ import { EnvPage } from "@/pages/EnvPage";
 import { PushPage } from "@/pages/PushPage";
 import { CollabPage } from "@/pages/CollabPage";
 import { SyncPage } from "@/pages/SyncPage";
-import { RichInfoPage } from "@/pages/RichInfoPage";
-import { Radio, Plug } from "lucide-react";
+import { ChannelsPage } from "@/pages/ChannelsPage";
+import { DocsPage } from "@/pages/DocsPage";
+import { McpPage } from "@/pages/McpPage";
+import { SystemPage } from "@/pages/SystemPage";
+import { PluginsPage } from "@/pages/PluginsPage";
 
 export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -83,50 +86,11 @@ export default function App() {
             <Route path="/sync" element={<SyncPage />} />
             <Route path="/config" element={<ConfigPage />} />
             <Route path="/status" element={<StatusPage />} />
-            <Route
-              path="/channels"
-              element={
-                <RichInfoPage
-                  title="Channels"
-                  icon={Radio}
-                  description="Multi-platform delivery: Telegram, Discord, Slack, Email, WhatsApp, Signal"
-                  endpoints={[
-                    { method: "GET", path: "/channels/:id/config", desc: "Get channel config" },
-                    { method: "POST", path: "/channels/:id/config", desc: "Update channel config" },
-                    { method: "POST", path: "/channels/:id/test", desc: "Test channel delivery" },
-                    { method: "GET", path: "/channel/sessions", desc: "List channel sessions" },
-                    { method: "POST", path: "/channel/:id/webhook", desc: "Inbound webhook" },
-                  ]}
-                  features={[
-                    "Channel adapter management UI",
-                    "Inbound message → agent turn flow",
-                    "Outbound delivery testing",
-                    "Multi-bot alias configuration",
-                  ]}
-                />
-              }
-            />
-            <Route
-              path="/mcp"
-              element={
-                <RichInfoPage
-                  title="MCP"
-                  icon={Plug}
-                  description="Model Context Protocol server lifecycle and tool discovery"
-                  endpoints={[
-                    { method: "GET", path: "/mcp/servers", desc: "List MCP servers" },
-                    { method: "POST", path: "/mcp/connect", desc: "Connect to server" },
-                    { method: "GET", path: "/mcp/tools", desc: "Discovered tools" },
-                  ]}
-                  features={[
-                    "11-phase lifecycle FSM visualization",
-                    "Server connect/disconnect controls",
-                    "Tool discovery and health monitoring",
-                    "OAuth flow for remote servers",
-                  ]}
-                />
-              }
-            />
+            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/mcp" element={<McpPage />} />
+            <Route path="/docs" element={<DocsPage />} />
+            <Route path="/system" element={<SystemPage />} />
+            <Route path="/plugins" element={<PluginsPage />} />
             <Route path="/profiles" element={<ProfilesPage />} />
             <Route path="/profiles/new" element={<ProfileBuilderPage />} />
             <Route path="/webhooks" element={<WebhooksPage />} />
