@@ -2,7 +2,7 @@
 
 > **Tài liệu tham chiếu chính thức về test coverage. Khi thêm tính năng mới, PHẢI thêm test và cập nhật file này.**
 >
-> **Last updated:** 2025-07-24 · **Total:** 5,370 tests · 282 files · 0 failures
+> **Last updated:** 2025-07-24 · **Total:** 5,370 tests · 282 files · 0 failures · **pi: 0.82.0** (sync commit `358e5c0`)
 
 ---
 
