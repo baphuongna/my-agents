@@ -27,16 +27,40 @@ import { loadRoles as loadRolesRegistry } from "@my-agent/core";
 
 
 // ── auth.json loader ──
+// P8-P1/P6 (Hermes distillation 2026-07-24): env denylist + value sanitization.
+// (See cli.ts for the rationale — same security gate applied to both entry points.)
+const DENYLISTED_ENV_VARS: ReadonlySet<string> = new Set([
+  "LD_PRELOAD", "LD_LIBRARY_PATH",
+  "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+  "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP",
+  "NODE_OPTIONS", "NODE_PATH",
+  "PATH", "SHELL", "BROWSER", "EDITOR", "VISUAL", "PAGER",
+  "GIT_SSH_COMMAND", "GIT_EXEC_PATH",
+  "MYA_HOME", "MYA_CONFIG", "MYA_ENV",
+]);
+function envLineSafe(value: string): string {
+  return value.replace(/\x00/g, "").replace(/[\r\n\u2028\u2029]+/g, "");
+}
+function isValidEnvName(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+function setEnvIfAllowed(name: string, value: string): boolean {
+  if (DENYLISTED_ENV_VARS.has(name)) return false;
+  if (!isValidEnvName(name)) return false;
+  if (process.env[name]) return false;
+  process.env[name] = envLineSafe(value);
+  return true;
+}
 function loadAuthConfig(): void {
   try {
     const authPath = join(homedir(), ".mya", "agent", "auth.json");
     const raw = readFileSync(authPath, "utf8");
     const cfg = JSON.parse(raw) as Record<string, { key?: string }>;
     if (cfg.minimax?.key && !process.env["MINIMAX_API_KEY"]) {
-      process.env["MINIMAX_API_KEY"] = cfg.minimax.key;
+      process.env["MINIMAX_API_KEY"] = envLineSafe(cfg.minimax.key);
     }
     if (cfg.openai?.key && !process.env["OPENAI_API_KEY"]) {
-      process.env["OPENAI_API_KEY"] = cfg.openai.key;
+      process.env["OPENAI_API_KEY"] = envLineSafe(cfg.openai.key);
     }
     // Generic env overrides: { env: { VAR: "value" } } → process.env (if not preset).
     // For CAMOFOX_URL, BROWSERBASE_API_KEY, search keys, etc. — so the TUI picks them
@@ -44,7 +68,7 @@ function loadAuthConfig(): void {
     const envCfg = (cfg as Record<string, unknown>)["env"] as Record<string, unknown> | undefined;
     if (envCfg && typeof envCfg === "object") {
       for (const [k, v] of Object.entries(envCfg)) {
-        if (typeof v === "string" && !process.env[k]) process.env[k] = v;
+        if (typeof v === "string") setEnvIfAllowed(k, v);
       }
     }
   } catch { /* auth.json optional */ }

@@ -280,7 +280,12 @@ export class CronScheduler {
       .map((id) => this.runs.get(id)!)
       .filter(Boolean);
     return runs.find(
-      (r) => (r.status === "claimed" || r.status === "running") && now - r.startedAt < job.leaseMs,
+      // P4-P6 (Hermes distillation 2026-07-24): bounded both sides — future-dated
+      // claims (clock/TZ skew stamp `startedAt` in the future → negative age)
+      // would otherwise be "fresh forever" and permanently unclaimable.
+      (r) => (r.status === "claimed" || r.status === "running")
+        && r.startedAt <= now  // lower bound: reject future-dated
+        && now - r.startedAt < job.leaseMs,
     );
   }
 
@@ -291,7 +296,11 @@ export class CronScheduler {
       for (const runId of this.jobRuns.get(jobId) ?? []) {
         const rec = this.runs.get(runId);
         if (!rec) continue;
-        if ((rec.status === "claimed" || rec.status === "running") && now - rec.startedAt >= job.leaseMs) {
+        // P4-P6 (Hermes distillation 2026-07-24): future-dated claims are
+        // treated as expired rather than "infinitely fresh" — see #60703.
+        const isFutureDated = rec.startedAt > now;
+        if ((rec.status === "claimed" || rec.status === "running")
+            && (isFutureDated || now - rec.startedAt >= job.leaseMs)) {
           rec.status = "lease-expired";
           rec.endedAt = now;
           expired.push(runId);
