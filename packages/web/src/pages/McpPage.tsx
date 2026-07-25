@@ -6,7 +6,8 @@
  * Endpoints: GET/POST /mcp/servers, POST /mcp/servers/:id/test, DELETE /mcp/servers/:id.
  */
 import { useCallback, useEffect, useState } from "react";
-import { api, type McpServer, type McpTestResult } from "@/lib/api";
+import { api, type McpServer, type McpTestResult, type ToolInfo } from "@/lib/api";
+import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -65,40 +66,52 @@ export function McpPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, McpTestResult>>({});
 
-  // Delete confirmation
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  // Catalog of agent tools — loaded in parallel with servers so a failing
+  // /tools endpoint never blocks the server list (Hermes allSettled pattern).
+  const [toolset, setToolset] = useState<ToolInfo[] | null>(null);
+
+  // Delete confirmation (centralized hook)
+  const del = useConfirmDelete<string>();
   const [deleting, setDeleting] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await api.mcpServers();
-      setServers(data);
+    const [serversR, toolsR] = await Promise.allSettled([
+      api.mcpServers(),
+      api.tools(),
+    ]);
+    if (serversR.status === "fulfilled") {
+      setServers(serversR.value);
       setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+    } else {
+      setError(
+        serversR.reason instanceof Error
+          ? serversR.reason.message
+          : String(serversR.reason),
+      );
     }
+    if (toolsR.status === "fulfilled") setToolset(toolsR.value);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api
-      .mcpServers()
-      .then((data) => {
-        if (!cancelled) {
-          setServers(data);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    Promise.allSettled([api.mcpServers(), api.tools()]).then(([serversR, toolsR]) => {
+      if (cancelled) return;
+      if (serversR.status === "fulfilled") {
+        setServers(serversR.value);
+        setError(null);
+      } else {
+        setError(
+          serversR.reason instanceof Error
+            ? serversR.reason.message
+            : String(serversR.reason),
+        );
+      }
+      if (toolsR.status === "fulfilled") setToolset(toolsR.value);
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -154,17 +167,17 @@ export function McpPage() {
   }
 
   async function handleDelete() {
-    if (!deleteId) return;
+    const target = del.confirmDelete();
+    if (!target) return;
     setDeleting(true);
     try {
-      await api.mcpRemove(deleteId);
+      await api.mcpRemove(target);
       setTestResults((prev) => {
         const next = { ...prev };
-        delete next[deleteId];
+        delete next[target];
         return next;
       });
-      toast(`Removed "${deleteId}"`, "success");
-      setDeleteId(null);
+      toast(`Removed "${target}"`, "success");
       reload();
     } catch (e) {
       toast(`Error: ${e instanceof Error ? e.message : e}`, "error");
@@ -258,7 +271,7 @@ export function McpPage() {
                     size="sm"
                     variant="ghost"
                     title="Remove server"
-                    onClick={() => setDeleteId(server.id)}
+                    onClick={() => del.requestDelete(server.id)}
                   >
                     <Trash2 size={13} />
                   </Button>
@@ -268,6 +281,12 @@ export function McpPage() {
           );
         })}
       </div>
+
+      {toolset && toolset.length > 0 && (
+        <p className="text-[10px] text-fg-subtle mt-2">
+          Agent tool catalog: {toolset.length} tool{toolset.length === 1 ? "" : "s"} available.
+        </p>
+      )}
 
       {/* Add server modal */}
       <Modal
@@ -333,13 +352,13 @@ export function McpPage() {
       </Modal>
 
       <ConfirmDialog
-        open={deleteId !== null}
-        onClose={() => !deleting && setDeleteId(null)}
+        open={del.isOpen}
+        onClose={() => !deleting && del.cancelDelete()}
         onConfirm={handleDelete}
         title="Remove MCP server"
         description={
-          deleteId
-            ? `"${deleteId}" — this will disconnect and remove the server.`
+          del.deleteTarget
+            ? `"${del.deleteTarget}" — this will disconnect and remove the server.`
             : "This will remove the server."
         }
         confirmLabel={deleting ? "Deleting…" : "Remove"}

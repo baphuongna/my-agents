@@ -113,6 +113,9 @@ export interface SessionInfo {
   model?: string;
   provider?: string;
   cwd?: string;
+  /** Origin channel of the session (cli / telegram / discord / whatsapp /
+   * cron / …). Unknown values fall back to a default icon. */
+  source?: string;
 }
 
 export interface CronJob {
@@ -154,6 +157,14 @@ export interface ToolInfo {
   name: string;
   description?: string;
   mode?: string;
+}
+
+/** Skill entry as returned by GET /skills (profile-scoped). */
+export interface SkillInfo {
+  name: string;
+  description?: string;
+  triggers?: string[];
+  path?: string;
 }
 
 export interface MemoryStatus {
@@ -245,6 +256,11 @@ export const api = {
   // Sessions
   sessions: () => fetchJSON<SessionInfo[]>("/sessions"),
   session: (id: string) => fetchJSON<SessionInfo>(`/sessions/${id}`),
+  /** DELETE /sessions/:id — kill a single session. */
+  deleteSession: (id: string) =>
+    fetchJSON<{ ok: boolean; killed: string }>(`/sessions/${id}`, {
+      method: "DELETE",
+    }),
 
   // Cron
   cronJobs: () => fetchJSON<CronJob[]>("/cron/jobs"),
@@ -260,6 +276,9 @@ export const api = {
   models: () => fetchJSON<ModelInfo[]>("/models"),
   tools: () => fetchJSON<ToolInfo[]>("/tools"),
   config: () => fetchJSON<Record<string, unknown>>("/config"),
+
+  // Skills (profile-scoped)
+  skills: () => fetchJSON<SkillInfo[]>("/skills"),
 
   // Pool
   poolSessions: () => fetchJSON<unknown[]>("/pool/sessions"),

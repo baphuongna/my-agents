@@ -2,7 +2,7 @@
  * CronPage — full CRUD with visual schedule builder + run history.
  */
 import { useEffect, useState } from "react";
-import { api, type CronJob } from "@/lib/api";
+import { api, type CronJob, type ProfileInfo } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,7 @@ import { ScheduleBuilder } from "@/components/ScheduleBuilder";
 import { AutomationBlueprints, type Blueprint } from "@/components/AutomationBlueprints";
 import { ConfirmDialog, Modal } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
+import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import {
   type ScheduleState,
   DEFAULT_SCHEDULE,
@@ -28,19 +29,30 @@ export function CronPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<CronJob | null>(null);
+  // Profiles loaded in parallel with jobs (allSettled) — surfaced as
+  // provider suggestions in the job modal. A failing /profiles endpoint
+  // never blocks the cron job list.
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const { toast } = useToast();
 
   async function reload() {
     setLoading(true);
-    try {
-      const data = await api.cronJobs();
-      setJobs(data);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+    setError(null);
+    const [jobsR, profilesR] = await Promise.allSettled([
+      api.cronJobs(),
+      api.getProfiles(),
+    ]);
+    if (jobsR.status === "fulfilled") {
+      setJobs(jobsR.value);
+    } else {
+      setError(
+        jobsR.reason instanceof Error
+          ? jobsR.reason.message
+          : String(jobsR.reason),
+      );
     }
+    if (profilesR.status === "fulfilled") setProfiles(profilesR.value.profiles);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -127,6 +139,7 @@ export function CronPage() {
       <CronJobModal
         open={showAdd || editing !== null}
         editing={editing}
+        profiles={profiles}
         onClose={() => {
           setShowAdd(false);
           setEditing(null);
@@ -155,7 +168,7 @@ function CronJobCard({
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
+  const del = useConfirmDelete<CronJob>();
   const [showRuns, setShowRuns] = useState(false);
 
   const schedule = parseSchedule(job.schedule);
@@ -217,7 +230,7 @@ function CronJobCard({
           <Button size="sm" variant="ghost" onClick={() => setShowRuns(!showRuns)} title="Run history">
             <History size={13} />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setConfirmDel(true)} title="Delete">
+          <Button size="sm" variant="ghost" onClick={() => del.requestDelete(job)} title="Delete">
             <Trash2 size={13} className="text-danger" />
           </Button>
         </div>
@@ -226,9 +239,11 @@ function CronJobCard({
       {showRuns && <RunHistory jobId={job.id} />}
 
       <ConfirmDialog
-        open={confirmDel}
-        onClose={() => setConfirmDel(false)}
-        onConfirm={onDelete}
+        open={del.isOpen}
+        onClose={() => del.cancelDelete()}
+        onConfirm={() => {
+          if (del.confirmDelete()) onDelete();
+        }}
         title={`Delete "${job.name}"?`}
         description="This will permanently remove the cron job."
         confirmLabel="Delete"
@@ -275,11 +290,13 @@ function RunHistory({ jobId }: { jobId: string }) {
 function CronJobModal({
   open,
   editing,
+  profiles,
   onClose,
   onSaved,
 }: {
   open: boolean;
   editing: CronJob | null;
+  profiles: ProfileInfo[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -400,9 +417,15 @@ function CronJobModal({
           <input
             className="input w-full"
             placeholder="minimax"
+            list="cron-profile-suggestions"
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
           />
+          <datalist id="cron-profile-suggestions">
+            {profiles.map((p) => (
+              <option key={p.name} value={p.name} />
+            ))}
+          </datalist>
         </div>
       </form>
     </Modal>

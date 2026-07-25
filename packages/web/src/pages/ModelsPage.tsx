@@ -13,41 +13,52 @@ import { cn } from "@/lib/utils";
 
 export function ModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
+  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [groupByProvider, setGroupByProvider] = useState(true);
 
+  // Parallel load via Promise.allSettled — models + config settle
+  // independently so a failing /config never blocks the model list
+  // (Hermes SystemPage pattern).
   async function reload() {
     setLoading(true);
-    try {
-      const data = await api.models();
-      setModels(data);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+    setError(null);
+    const [modelsR, configR] = await Promise.allSettled([
+      api.models(),
+      api.config(),
+    ]);
+    if (modelsR.status === "fulfilled") {
+      setModels(modelsR.value);
+    } else {
+      setError(
+        modelsR.reason instanceof Error
+          ? modelsR.reason.message
+          : String(modelsR.reason),
+      );
     }
+    if (configR.status === "fulfilled") setConfig(configR.value);
+    setLoading(false);
   }
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api
-      .models()
-      .then((data) => {
-        if (!cancelled) {
-          setModels(data);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    Promise.allSettled([api.models(), api.config()]).then(([modelsR, configR]) => {
+      if (cancelled) return;
+      if (modelsR.status === "fulfilled") {
+        setModels(modelsR.value);
+      } else {
+        setError(
+          modelsR.reason instanceof Error
+            ? modelsR.reason.message
+            : String(modelsR.reason),
+        );
+      }
+      if (configR.status === "fulfilled") setConfig(configR.value);
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -132,6 +143,15 @@ export function ModelsPage() {
             ))}
           </div>
         )}
+
+      {config && Object.keys(config).length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-fg-subtle">Raw config</summary>
+          <pre className="mt-2 p-3 bg-bg-elevated/50 border border-border-subtle rounded-md overflow-auto max-h-64 font-mono text-[11px] text-fg-muted">
+            {JSON.stringify(config, null, 2)}
+          </pre>
+        </details>
+      )}
     </div>
   );
 }
