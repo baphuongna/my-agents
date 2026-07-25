@@ -12,11 +12,11 @@ export function ThemeSwitcher() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function onClick(e: MouseEvent) {
+    function onClick(e: PointerEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("pointerdown", onClick);
+    return () => document.removeEventListener("pointerdown", onClick);
   }, []);
 
   return (
