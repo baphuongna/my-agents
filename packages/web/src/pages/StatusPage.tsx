@@ -2,11 +2,12 @@
  * StatusPage — comprehensive system metrics dashboard.
  * Port of Hermes SystemPage pattern: multiple stat cards, provider list, raw JSON.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, type StatusResponse } from "@/lib/api";
 import { Card, CardContent, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, RefreshButton } from "@/components/PageBits";
+import { usePolling } from "@/hooks/usePolling";
 import { RadialGauge, ProgressBar } from "@/components/Charts";
 import {
   Activity,
@@ -53,29 +54,7 @@ export function StatusPage() {
     }
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    api
-      .status()
-      .then((data) => {
-        if (!cancelled) {
-          setStatus(data);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    const timer = setInterval(reload, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
+  usePolling(reload, 5000);
 
   const providers = (status?.providers as ProviderInfo[]) ?? [];
   const roles = (status?.roles as RoleInfo[]) ?? [];

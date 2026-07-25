@@ -2,10 +2,11 @@
  * CollabPage — collaboration rooms visualization.
  * Uses gateway endpoint: GET /collab/rooms
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, EmptyState, RefreshButton } from "@/components/PageBits";
+import { usePolling } from "@/hooks/usePolling";
 import { Users, User, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,11 +39,7 @@ export function CollabPage() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    const timer = setInterval(reload, 5000);
-    return () => clearInterval(timer);
-  }, []);
+  usePolling(reload, 5000);
 
   const roomEntries = data ? Object.entries(data.rooms).sort((a, b) => b[1].clients - a[1].clients) : [];
 

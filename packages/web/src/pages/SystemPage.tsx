@@ -13,6 +13,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ActionLogViewer } from "@/components/ActionLogViewer";
+import { usePolling } from "@/hooks/usePolling";
 import {
   PageHeader,
   LoadingSpinner,
@@ -97,11 +98,7 @@ export function SystemPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    reload();
-    const timer = setInterval(reload, 10_000);
-    return () => clearInterval(timer);
-  }, [reload]);
+  usePolling(reload, 10_000);
 
   // ── Gateway lifecycle ──────────────────────────────────────────────
   // Start/Stop are quick one-shot calls (toast + reload). Restart goes

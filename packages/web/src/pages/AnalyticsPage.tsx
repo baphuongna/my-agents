@@ -1,11 +1,12 @@
 /**
  * AnalyticsPage — usage stats from /status + computed metrics.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, type StatusResponse } from "@/lib/api";
 import { Card, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, RefreshButton } from "@/components/PageBits";
+import { usePolling } from "@/hooks/usePolling";
 import { Sparkline } from "@/components/Charts";
 import { BarChart3, Cpu, Clock, Activity, TrendingUp } from "lucide-react";
 import { formatDuration } from "@/lib/format";
@@ -52,11 +53,7 @@ export function AnalyticsPage() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    const timer = setInterval(reload, 10000);
-    return () => clearInterval(timer);
-  }, []);
+  usePolling(reload, 10000);
 
   const providers = (status?.providers as ProviderInfo[]) ?? [];
   const configured = providers.filter((p) => p.configured);

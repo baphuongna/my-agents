@@ -13,6 +13,7 @@ import { ConfirmDialog, Modal } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import { usePageHeader } from "@/hooks/usePageHeader";
+import { usePolling } from "@/hooks/usePolling";
 import {
   type ScheduleState,
   DEFAULT_SCHEDULE,
@@ -70,11 +71,7 @@ export function CronPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
-    reload();
-    const timer = setInterval(reload, 15000);
-    return () => clearInterval(timer);
-  }, []);
+  usePolling(reload, 15000);
 
   async function toggle(job: CronJob) {
     try {

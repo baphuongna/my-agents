@@ -11,6 +11,7 @@ import { api, type ChannelInfo, type ChannelTestResult } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { usePolling } from "@/hooks/usePolling";
 import {
   PageHeader,
   LoadingSpinner,
@@ -47,11 +48,7 @@ export function ChannelsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    reload();
-    const timer = setInterval(reload, 10_000);
-    return () => clearInterval(timer);
-  }, [reload]);
+  usePolling(reload, 10_000);
 
   async function handleToggle(ch: ChannelInfo) {
     setToggling(ch.id);

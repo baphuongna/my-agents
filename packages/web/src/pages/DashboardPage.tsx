@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useNavigate } from "react-router-dom";
+import { usePolling } from "@/hooks/usePolling";
 import {
   Activity, Cpu, Clock, Zap, Terminal, TrendingUp,
   ArrowRight, MessageSquare, Calendar, CheckCircle, AlertCircle,
@@ -25,16 +26,16 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const pollStatus = () => { api.status().then(setStatus).catch(() => {}); };
+
   useEffect(() => {
     Promise.all([api.status(), api.models().catch(() => [])])
       .then(([s, m]) => { setStatus(s); setModels(m); })
       .catch(() => {})
       .finally(() => setLoading(false));
-    const timer = setInterval(() => {
-      api.status().then(setStatus).catch(() => {});
-    }, 10000);
-    return () => clearInterval(timer);
   }, []);
+
+  usePolling(pollStatus, 10000, { immediate: false });
 
   const providers = (status?.providers as ProviderInfo[]) ?? [];
   const roles = (status?.roles as RoleInfo[]) ?? [];
