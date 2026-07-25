@@ -10,6 +10,8 @@ import { PageHeader, LoadingSpinner, ErrorBox, EmptyState, RefreshButton } from 
 import { Cpu, Check, X, Brain, Search } from "lucide-react";
 import { formatTokenCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { usePageHeader } from "@/hooks/usePageHeader";
+import { useDebouncedValue } from "@/hooks/useDebounce";
 
 export function ModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -18,6 +20,18 @@ export function ModelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [groupByProvider, setGroupByProvider] = useState(true);
+
+  // Surface the loaded model count next to the page title in the shared
+  // toolbar. Re-injects as the count changes; cleared on unmount / route change.
+  const { setAfterTitle } = usePageHeader();
+  useEffect(() => {
+    setAfterTitle(
+      <span className="text-[11px] text-fg-muted">{models.length} models</span>,
+    );
+    return () => {
+      setAfterTitle(null);
+    };
+  }, [setAfterTitle, models.length]);
 
   // Parallel load via Promise.allSettled — models + config settle
   // independently so a failing /config never blocks the model list
@@ -64,11 +78,15 @@ export function ModelsPage() {
     };
   }, []);
 
-  const filtered = search
+  // Debounce the search term so model filtering only recomputes once
+  // typing settles — port of Hermes's 300ms debounced search pattern.
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const filtered = debouncedSearch
     ? models.filter(
         (m) =>
-          m.id.toLowerCase().includes(search.toLowerCase()) || (m.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-          (m.provider ?? "").toLowerCase().includes(search.toLowerCase()),
+          m.id.toLowerCase().includes(debouncedSearch.toLowerCase()) || (m.name ?? '').toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          (m.provider ?? "").toLowerCase().includes(debouncedSearch.toLowerCase()),
       )
     : models;
 

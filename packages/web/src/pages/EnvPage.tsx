@@ -1,8 +1,11 @@
 /**
  * EnvPage — API key management (provider configuration status).
  * Shows which providers are configured + allows adding keys.
+ *
+ * Hermes port: PROVIDER_GROUPS grouping, ENV_VAR_NAME_RE validation,
+ * and redacted-value display.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type StatusResponse } from "@/lib/api";
 import { Card, CardTitle, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -10,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader, LoadingSpinner, ErrorBox, RefreshButton } from "@/components/PageBits";
 import { Modal } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
-import { KeyRound, Check, X, Plus, ExternalLink } from "lucide-react";
+import { KeyRound, Check, X, Plus, ExternalLink, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ProviderInfo {
@@ -18,6 +21,8 @@ interface ProviderInfo {
   envKey: string;
   model: string;
   configured: boolean;
+  /** Redacted preview of the stored secret, when configured. */
+  redacted_value?: string;
 }
 
 const PROVIDER_URLS: Record<string, string> = {
@@ -35,11 +40,37 @@ const PROVIDER_URLS: Record<string, string> = {
   moonshotai: "https://platform.moonshot.cn/console/api-keys",
 };
 
+// ── Provider grouping (Hermes PROVIDER_GROUPS pattern) ───────────────
+// Env vars are bucketed by their prefix so the list reads at a glance.
+// Anything unmatched falls into the trailing "Custom" catch-all.
+const PROVIDER_GROUPS: Array<{ name: string; icon: string; prefixes: string[] }> = [
+  { name: "Anthropic", icon: "🅰", prefixes: ["ANTHROPIC_"] },
+  { name: "OpenAI", icon: "🅾", prefixes: ["OPENAI_"] },
+  { name: "Google", icon: "🔵", prefixes: ["GOOGLE_", "GEMINI_"] },
+  { name: "Mistral", icon: "🅼", prefixes: ["MISTRAL_"] },
+  { name: "xAI", icon: "🅧", prefixes: ["XAI_"] },
+  { name: "Groq", icon: "🅖", prefixes: ["GROQ_"] },
+  { name: "Custom", icon: "⚙", prefixes: [] }, // catch-all for unmatched
+];
+
+/** Valid env-var name: must start with a letter/underscore, only [A-Za-z0-9_]. */
+const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Resolve the provider group for an env var key. Falls back to "Custom". */
+function providerGroup(envKey: string): { name: string; icon: string } {
+  for (const g of PROVIDER_GROUPS) {
+    if (g.prefixes.some((p) => envKey.startsWith(p))) return g;
+  }
+  // Last entry is the "Custom" catch-all.
+  return PROVIDER_GROUPS[PROVIDER_GROUPS.length - 1]!;
+}
+
 export function EnvPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState<ProviderInfo | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   async function reload() {
@@ -82,6 +113,18 @@ export function EnvPage() {
     return a.id.localeCompare(b.id);
   });
   const configured = providers.filter((p) => p.configured);
+
+  // Bucket providers into their groups, preserving PROVIDER_GROUPS order and
+  // dropping empty groups so the UI only shows relevant sections.
+  const groups = useMemo(
+    () =>
+      PROVIDER_GROUPS.map((g) => ({
+        name: g.name,
+        icon: g.icon,
+        providers: providers.filter((p) => providerGroup(p.envKey).name === g.name),
+      })).filter((g) => g.providers.length > 0),
+    [providers],
+  );
 
   return (
     <div className="p-4 max-w-3xl w-full mx-auto space-y-3">
@@ -159,59 +202,40 @@ export function EnvPage() {
         </Card>
       )}
 
-      {/* Provider list */}
-      <Card className="animate-fade-in-up" style={{ animationDelay: "60ms" }}>
-        <CardTitle>Providers</CardTitle>
-        <CardContent>
-          <div className="space-y-1 mt-2">
-            {providers.map((p, idx) => (
-              <div
-                key={p.id}
-                className={cn(
-                  "flex items-center gap-2 py-2 px-2.5 rounded-lg transition-colors border-l-2 animate-fade-in-up",
-                  p.configured
-                    ? "border-l-success/40 opacity-70"
-                    : "border-l-transparent hover:border-l-fg-subtle hover:bg-bg-elevated/50",
-                )}
-                style={!p.configured ? { animationDelay: `${Math.min(idx * 30, 240)}ms` } : undefined}
-              >
-                {p.configured ? (
-                  <Check size={14} className="text-success shrink-0" />
-                ) : (
-                  <X size={14} className="text-fg-subtle shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <code className="text-[13px] text-fg font-mono truncate min-w-0">{p.id}</code>
-                    {p.configured && <Badge color="green">active</Badge>}
-                  </div>
-                  <div className="text-[10px] text-fg-subtle font-mono mt-0.5">
-                    {p.envKey} → {p.model}
-                  </div>
+      {/* Provider groups — collapsible sections bucketed by env-var prefix */}
+      {groups.map((g) => {
+        const isCollapsed = collapsed[g.name];
+        return (
+          <Card key={g.name} className="animate-fade-in-up">
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-left"
+              onClick={() => setCollapsed((c) => ({ ...c, [g.name]: !c[g.name] }))}
+              data-testid={`provider-group-${g.name}`}
+              aria-expanded={!isCollapsed}
+              aria-label={`Toggle ${g.name} group`}
+            >
+              <span className="text-base leading-none shrink-0">{g.icon}</span>
+              <span className="text-sm font-semibold text-fg flex-1">{g.name}</span>
+              <Badge color="gray">{g.providers.length}</Badge>
+              {isCollapsed ? (
+                <ChevronRight size={14} className="text-fg-subtle shrink-0" />
+              ) : (
+                <ChevronDown size={14} className="text-fg-subtle shrink-0" />
+              )}
+            </button>
+            {!isCollapsed && (
+              <CardContent>
+                <div className="space-y-1 mt-1 px-1 pb-1">
+                  {g.providers.map((p) => (
+                    <ProviderRow key={p.id} p={p} onAdd={setAdding} />
+                  ))}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {PROVIDER_URLS[p.id] && (
-                    <a
-                      href={PROVIDER_URLS[p.id]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-ghost p-1"
-                      title="Get API key"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
-                  )}
-                  {!p.configured && (
-                    <Button size="sm" variant="secondary" onClick={() => setAdding(p)}>
-                      <Plus size={11} /> Add Key
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              </CardContent>
+            )}
+          </Card>
+        );
+      })}
 
       {/* Help card */}
       <Card className="border-accent/30 bg-accent/5 animate-fade-in-up" style={{ animationDelay: "120ms" }}>
@@ -246,6 +270,61 @@ export function EnvPage() {
   );
 }
 
+function ProviderRow({ p, onAdd }: { p: ProviderInfo; onAdd: (p: ProviderInfo) => void }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 py-2 px-2.5 rounded-lg transition-colors border-l-2",
+        p.configured
+          ? "border-l-success/40 opacity-70"
+          : "border-l-transparent hover:border-l-fg-subtle hover:bg-bg-elevated/50",
+      )}
+    >
+      {p.configured ? (
+        <Check size={14} className="text-success shrink-0" />
+      ) : (
+        <X size={14} className="text-fg-subtle shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <code className="text-[13px] text-fg font-mono truncate min-w-0">{p.id}</code>
+          {p.configured && <Badge color="green">active</Badge>}
+        </div>
+        <div className="text-[10px] text-fg-subtle font-mono mt-0.5">
+          {p.envKey} → {p.model}
+        </div>
+        {p.configured && (
+          <div
+            className="text-[10px] text-fg-subtle font-mono"
+            data-testid={`redacted-${p.id}`}
+            title="Redacted secret value"
+          >
+            {p.redacted_value ?? "---"}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {PROVIDER_URLS[p.id] && (
+          <a
+            href={PROVIDER_URLS[p.id]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-ghost p-1"
+            title="Get API key"
+          >
+            <ExternalLink size={12} />
+          </a>
+        )}
+        {!p.configured && (
+          <Button size="sm" variant="secondary" onClick={() => onAdd(p)}>
+            <Plus size={11} /> Add Key
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AddKeyModal({
   provider,
   onClose,
@@ -256,15 +335,20 @@ function AddKeyModal({
   onSaved: () => void;
 }) {
   const [key, setKey] = useState("");
+  const [envName, setEnvName] = useState("");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     setKey("");
+    setEnvName(provider?.envKey ?? "");
   }, [provider]);
 
+  // Validate the env-var name against the canonical pattern.
+  const nameValid = ENV_VAR_NAME_RE.test(envName);
+
   async function save() {
-    if (!provider || !key.trim()) return;
+    if (!provider || !key.trim() || !nameValid) return;
     setSaving(true);
     try {
       // Use the gateway env endpoint
@@ -272,7 +356,7 @@ function AddKeyModal({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: provider.id, envKey: provider.envKey, value: key.trim() }),
+        body: JSON.stringify({ id: provider.id, envKey: envName, value: key.trim() }),
       });
       toast(`${provider.id} key saved`, "success");
       onSaved();
@@ -293,7 +377,7 @@ function AddKeyModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={save} disabled={!key.trim() || saving}>
+          <Button variant="primary" onClick={save} disabled={!key.trim() || saving || !nameValid}>
             {saving ? "Saving…" : "Save Key"}
           </Button>
         </>
@@ -301,16 +385,27 @@ function AddKeyModal({
     >
       <div className="space-y-3">
         <div>
-          <label className="text-xs text-fg-muted mb-1 block">
-            {provider?.envKey ?? "API Key"}
-          </label>
+          <label className="text-xs text-fg-muted mb-1 block">Env var name</label>
+          <input
+            className="input w-full font-mono"
+            placeholder="ANTHROPIC_API_KEY"
+            value={envName}
+            onChange={(e) => setEnvName(e.target.value)}
+          />
+          {envName && !nameValid && (
+            <p className="text-[11px] text-danger mt-1">
+              Invalid env var name. Allowed: [A-Za-z_][A-Za-z0-9_]*.
+            </p>
+          )}
+        </div>
+        <div>
+          <label className="text-xs text-fg-muted mb-1 block">Secret value</label>
           <input
             type="password"
             className="input w-full font-mono"
             placeholder="sk-..."
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            autoFocus
           />
         </div>
         <p className="text-[11px] text-fg-subtle">

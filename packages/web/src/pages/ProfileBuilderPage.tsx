@@ -8,6 +8,9 @@ interface Option { id: string; name: string }
 interface BuilderOptions { models: Option[]; skills: Option[]; mcpServers: Option[] }
 const steps = ["Identity", "Model", "Skills", "MCP servers", "Review"];
 
+/** Valid profile name: lowercase, starts with a letter/digit, [a-z0-9_-], max 64. */
+const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
 export function ProfileBuilderPage() {
   const [step, setStep] = useState(0);
   const [options, setOptions] = useState<BuilderOptions | null>(null);
@@ -15,6 +18,8 @@ export function ProfileBuilderPage() {
   const [skills, setSkills] = useState<string[]>([]); const [servers, setServers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null); const [saved, setSaved] = useState(false);
+  const nameValid = PROFILE_NAME_RE.test(name);
+  const nameError = name && !nameValid ? "Profile name must be lowercase, start with a letter or digit, and only contain a-z 0-9 _ - (max 64 chars)." : null;
 
   useEffect(() => { let cancelled = false; Promise.all(["/models", "/skills", "/mcp/servers"].map(async (url) => {
     const response = await fetch(url); if (!response.ok) throw new Error(`Unable to load ${url} (${response.status})`); return response.json() as Promise<unknown>;
@@ -28,12 +33,12 @@ export function ProfileBuilderPage() {
     <div className="flex gap-2 text-xs">{steps.map((label, index) => <span key={label} className={index === step ? "text-accent font-semibold" : "text-fg-subtle"}>{index + 1}. {label}</span>)}</div>
     {loading && <LoadingSpinner label="Loading builder options…" />}{error && <ErrorBox message={error} />}
     {!loading && options && <Card><form onSubmit={(event) => void submit(event)} className="space-y-4">
-      {step === 0 && <label className="block text-sm">Profile name<input required className="input block w-full mt-1" value={name} onChange={(e) => setName(e.target.value)} /></label>}
+      {step === 0 && <label className="block text-sm">Profile name<input required placeholder="my-profile" className="input block w-full mt-1" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!nameError} />{nameError && <span className="block text-xs text-danger mt-1" data-testid="profile-name-error">{nameError}</span>}</label>}
       {step === 1 && <label className="block text-sm">Model<select required className="input block w-full mt-1" value={model} onChange={(e) => setModel(e.target.value)}><option value="">Select a model</option>{options.models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
       {step === 2 && <Checks options={options.skills} selected={skills} toggle={(id) => toggle(id, skills, setSkills)} />}
       {step === 3 && <Checks options={options.mcpServers} selected={servers} toggle={(id) => toggle(id, servers, setServers)} />}
       {step === 4 && <pre className="text-xs whitespace-pre-wrap">{JSON.stringify({ name, model, skills, mcpServers: servers }, null, 2)}</pre>}
-      {saved && <p className="text-success text-sm">Profile created.</p>}<div className="flex justify-between"><Button type="button" disabled={step === 0} onClick={() => setStep((value) => value - 1)}>Back</Button>{step < 4 ? <Button type="button" variant="primary" onClick={() => setStep((value) => value + 1)}>Next</Button> : <Button type="submit" variant="primary" disabled={saving}>{saving ? "Creating…" : "Create profile"}</Button>}</div>
+      {saved && <p className="text-success text-sm">Profile created.</p>}<div className="flex justify-between"><Button type="button" disabled={step === 0} onClick={() => setStep((value) => value - 1)}>Back</Button>{step < 4 ? <Button type="button" variant="primary" onClick={() => setStep((value) => value + 1)} disabled={step === 0 && !nameValid} data-testid="profile-next">Next</Button> : <Button type="submit" variant="primary" disabled={saving || !nameValid} data-testid="profile-create">{saving ? "Creating…" : "Create profile"}</Button>}</div>
     </form></Card>}
   </div>;
 }

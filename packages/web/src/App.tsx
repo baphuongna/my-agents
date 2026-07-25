@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PageHeaderProvider } from "@/components/PageHeaderProvider";
 import { CommandPalette } from "@/components/CommandPalette";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ChatPage } from "@/pages/ChatPage";
@@ -65,7 +66,7 @@ export default function App() {
 
       <div className="relative z-10 flex flex-col flex-1 min-w-0 h-full overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto">
+        <PageHeaderProvider>
           <ErrorBoundary>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -100,7 +101,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
           </ErrorBoundary>
-        </main>
+        </PageHeaderProvider>
       </div>
     </div>
   );

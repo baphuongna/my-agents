@@ -12,6 +12,7 @@ import { AutomationBlueprints, type Blueprint } from "@/components/AutomationBlu
 import { ConfirmDialog, Modal } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
+import { usePageHeader } from "@/hooks/usePageHeader";
 import {
   type ScheduleState,
   DEFAULT_SCHEDULE,
@@ -34,6 +35,20 @@ export function CronPage() {
   // never blocks the cron job list.
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const { toast } = useToast();
+
+  // Inject a "New Job" action into the shared page-header toolbar. The slot
+  // is cleared on unmount (and again by the provider on route change).
+  const { setEnd } = usePageHeader();
+  useEffect(() => {
+    setEnd(
+      <Button size="sm" variant="primary" onClick={() => setShowAdd(true)}>
+        <Plus size={13} /> New Job
+      </Button>,
+    );
+    return () => {
+      setEnd(null);
+    };
+  }, [setEnd, setShowAdd]);
 
   async function reload() {
     setLoading(true);

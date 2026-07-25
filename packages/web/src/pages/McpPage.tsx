@@ -22,6 +22,7 @@ import { Modal, ConfirmDialog } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
 import { Plug, Plus, Server, Trash2, Zap, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TRANSPORT_BADGE, resolveBadge } from "@/lib/badges";
 
 /** Tone for the health badge. */
 const HEALTH_TONE: Record<string, "green" | "yellow" | "red" | "gray"> = {
@@ -229,6 +230,10 @@ export function McpPage() {
                       {server.health || "unknown"}
                     </Badge>
                     {server.phase && <Badge color="blue">{server.phase}</Badge>}
+                    {/* Transport: mya MCP servers run via command/args (stdio).
+                        Hermes also surfaces sse/http transports — resolveBadge
+                        keeps unknown values readable. */}
+                    <Badge config={resolveBadge(TRANSPORT_BADGE, server.command ? "stdio" : undefined)} />
                     {server.lastError && <Badge color="red">error</Badge>}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-fg-muted flex-wrap">

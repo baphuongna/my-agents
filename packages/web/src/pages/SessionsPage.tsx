@@ -34,6 +34,7 @@ import { ConfirmDialog } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
 import { usePolling } from "@/hooks/usePolling";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
+import { useDebouncedValue } from "@/hooks/useDebounce";
 import { shouldRefreshSessions } from "@/lib/session-refresh";
 import { PluginSlot } from "@/components/PluginSlot";
 
@@ -132,9 +133,13 @@ export function SessionsPage() {
     lastClickedIndexRef.current = null;
   }, []);
 
-  const filtered = search
+  // Debounce the search term so the (JSON.stringify-based) filter only
+  // recomputes once typing settles — port of Hermes's 300ms debounced
+  // search pattern (SessionsPage.tsx:851-872).
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const filtered = debouncedSearch
     ? sessions.filter((s) =>
-        JSON.stringify(s).toLowerCase().includes(search.toLowerCase()),
+        JSON.stringify(s).toLowerCase().includes(debouncedSearch.toLowerCase()),
       )
     : sessions;
 

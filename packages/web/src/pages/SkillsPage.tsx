@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, EmptyState } from "@/components/PageBits";
 import { Package, Search, Wrench } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { PluginSlot } from "@/components/PluginSlot";
+import { usePageHeader } from "@/hooks/usePageHeader";
+import { useDebouncedValue } from "@/hooks/useDebounce";
+import { TRUST_BADGE, resolveBadge } from "@/lib/badges";
 
 /** Static fallback shown when the gateway has no /skills endpoint wired. */
 const FALLBACK_SKILLS: SkillInfo[] = [
@@ -28,6 +32,18 @@ const FALLBACK_SKILLS: SkillInfo[] = [
   { name: "browser-automation", description: "Headless browser automation and web scraping" },
 ];
 
+/** Names of system-blessed skills (the built-in fallback set). Skills
+ *  in this set are "high" trust; anything else loaded from disk is
+ *  "medium" trust. */
+const SYSTEM_SKILL_NAMES: ReadonlySet<string> = new Set(
+  FALLBACK_SKILLS.map((s) => s.name),
+);
+
+/** Derive a skill's trust level from its provenance. */
+function deriveTrust(skill: SkillInfo): string {
+  return SYSTEM_SKILL_NAMES.has(skill.name) ? "high" : "medium";
+}
+
 export function SkillsPage() {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   // Agent toolset loaded in parallel with skills (allSettled) — a failing
@@ -36,6 +52,20 @@ export function SkillsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  // Inject a Search action into the shared page-header toolbar. Cleared on
+  // unmount (and again by the provider on route change).
+  const { setEnd } = usePageHeader();
+  useEffect(() => {
+    setEnd(
+      <Button size="sm" variant="secondary">
+        <Search size={13} /> Search
+      </Button>,
+    );
+    return () => {
+      setEnd(null);
+    };
+  }, [setEnd]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,10 +85,14 @@ export function SkillsPage() {
     };
   }, []);
 
-  const filtered = search
+  // Debounce the search term so filtering only recomputes once typing
+  // settles — port of Hermes's 300ms debounced search pattern.
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const filtered = debouncedSearch
     ? skills.filter((s) =>
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        (s.description ?? "").toLowerCase().includes(search.toLowerCase()),
+        s.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        (s.description ?? "").toLowerCase().includes(debouncedSearch.toLowerCase()),
       )
     : skills;
 
@@ -102,7 +136,10 @@ export function SkillsPage() {
                 <Package size={14} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <code className="text-[13px] text-accent font-mono">{skill.name}</code>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <code className="text-[13px] text-accent font-mono">{skill.name}</code>
+                  <Badge config={resolveBadge(TRUST_BADGE, deriveTrust(skill))} />
+                </div>
                 {skill.description && (
                   <p className="text-[11px] text-fg-muted mt-0.5">{skill.description}</p>
                 )}

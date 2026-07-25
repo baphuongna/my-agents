@@ -21,16 +21,7 @@ import {
 import { useToast } from "@/lib/toast";
 import { Radio, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const HEALTH_TONE: Record<string, "green" | "yellow" | "red" | "gray"> = {
-  healthy: "green",
-  ok: "green",
-  connected: "green",
-  degraded: "yellow",
-  error: "red",
-  unhealthy: "red",
-  disconnected: "red",
-};
+import { STATE_BADGE, resolveBadge } from "@/lib/badges";
 
 export function ChannelsPage() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
@@ -133,7 +124,7 @@ export function ChannelsPage() {
                     </div>
                     <p className="text-[11px] text-fg-subtle font-mono mt-0.5 truncate">{ch.id}</p>
                   </div>
-                  <Badge color={HEALTH_TONE[healthKey] ?? "gray"}>{ch.health || "unknown"}</Badge>
+                  <Badge config={resolveBadge(STATE_BADGE, healthKey || undefined)} />
                 </div>
 
                 <div className="flex items-center gap-3 mt-2 text-[11px]">
