@@ -73,8 +73,34 @@ export function SessionsPage() {
   const lastClickedIndexRef = useRef<number | null>(null);
 
   // Bulk delete confirmation (centralized hook — target is the selected-id set).
-  const bulkDel = useConfirmDelete<Set<string>>();
-  const [deletingBulk, setDeletingBulk] = useState(false);
+  const bulkDel = useConfirmDelete<Set<string>>({
+    onDelete: async (target) => {
+      const ids = Array.from(target);
+      const deleted = new Set<string>();
+      try {
+        for (const id of ids) {
+          await api.deleteSession(id);
+          deleted.add(id);
+        }
+        setSessions((prev) => prev.filter((s) => !deleted.has(s.id)));
+        if (selected && deleted.has(selected.id)) setSelected(null);
+        clearSelection();
+        toast(`Deleted ${ids.length} session${ids.length === 1 ? "" : "s"}`, "success");
+      } catch (e) {
+        if (deleted.size > 0) {
+          setSessions((prev) => prev.filter((s) => !deleted.has(s.id)));
+          if (selected && deleted.has(selected.id)) setSelected(null);
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            for (const d of deleted) next.delete(d);
+            return next;
+          });
+        }
+        toast(`Failed: ${e instanceof Error ? e.message : e}`, "error");
+        throw e; // keep dialog open for retry
+      }
+    },
+  });
 
   const { toast } = useToast();
 
@@ -216,41 +242,6 @@ export function SessionsPage() {
   /** Bulk delete every selected session. Deletion runs sequentially so a
    *  partial failure leaves a consistent list (deleted ids are removed
    *  only on success). */
-  async function handleDeleteSelected() {
-    const target = bulkDel.confirmDelete();
-    const ids = target ? Array.from(target) : [];
-    if (ids.length === 0) return;
-    setDeletingBulk(true);
-    const deleted = new Set<string>();
-    try {
-      for (const id of ids) {
-        await api.deleteSession(id);
-        deleted.add(id);
-      }
-      setSessions((prev) => prev.filter((s) => !deleted.has(s.id)));
-      if (selected && deleted.has(selected.id)) setSelected(null);
-      clearSelection();
-      toast(
-        `Deleted ${ids.length} session${ids.length === 1 ? "" : "s"}`,
-        "success",
-      );
-    } catch (e) {
-      // Remove any that did succeed before the failure.
-      if (deleted.size > 0) {
-        setSessions((prev) => prev.filter((s) => !deleted.has(s.id)));
-        if (selected && deleted.has(selected.id)) setSelected(null);
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          for (const d of deleted) next.delete(d);
-          return next;
-        });
-      }
-      toast(`Failed: ${e instanceof Error ? e.message : e}`, "error");
-    } finally {
-      setDeletingBulk(false);
-    }
-  }
-
   return (
     <div className="flex h-full">
       {/* Session list */}
@@ -272,11 +263,11 @@ export function SessionsPage() {
                 <Button
                   size="sm"
                   variant="danger"
-                  disabled={deletingBulk}
+                  disabled={bulkDel.isDeleting}
                   onClick={() => bulkDel.requestDelete(selectedIds)}
                 >
                   <Trash2 size={13} />{" "}
-                  {deletingBulk
+                  {bulkDel.isDeleting
                     ? "Deleting…"
                     : `Delete selected (${selectedIds.size})`}
                 </Button>
@@ -347,7 +338,7 @@ export function SessionsPage() {
       <ConfirmDialog
         open={bulkDel.isOpen}
         onClose={() => bulkDel.cancelDelete()}
-        onConfirm={handleDeleteSelected}
+        onConfirm={() => void bulkDel.confirmDelete()}
         title={`Delete ${bulkDel.deleteTarget?.size ?? 0} session${
           (bulkDel.deleteTarget?.size ?? 0) === 1 ? "" : "s"
         }?`}
@@ -454,7 +445,9 @@ function SessionDetail({
   onBack: () => void;
   onDelete: () => void;
 }) {
-  const del = useConfirmDelete<SessionInfo>();
+  const del = useConfirmDelete<SessionInfo>({
+    onDelete: async () => { onDelete(); },
+  });
   const [messages, setMessages] = useState<unknown[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
@@ -518,13 +511,12 @@ function SessionDetail({
       <ConfirmDialog
         open={del.isOpen}
         onClose={() => del.cancelDelete()}
-        onConfirm={() => {
-          if (del.confirmDelete()) onDelete();
-        }}
+        onConfirm={() => void del.confirmDelete()}
         title="Delete session?"
         description="This action cannot be undone."
         confirmLabel="Delete"
         destructive
+        loading={del.isDeleting}
       />
     </div>
   );

@@ -72,8 +72,23 @@ export function McpPage() {
   const [toolset, setToolset] = useState<ToolInfo[] | null>(null);
 
   // Delete confirmation (centralized hook)
-  const del = useConfirmDelete<string>();
-  const [deleting, setDeleting] = useState(false);
+  const del = useConfirmDelete<string>({
+    onDelete: async (target) => {
+      try {
+        await api.mcpRemove(target);
+        setTestResults((prev) => {
+          const next = { ...prev };
+          delete next[target];
+          return next;
+        });
+        toast(`Removed "${target}"`, "success");
+        reload();
+      } catch (e) {
+        toast(`Error: ${e instanceof Error ? e.message : e}`, "error");
+        throw e; // keep dialog open for retry
+      }
+    },
+  });
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -164,26 +179,6 @@ export function McpPage() {
       toast(`Error: ${e instanceof Error ? e.message : e}`, "error");
     } finally {
       setTesting(null);
-    }
-  }
-
-  async function handleDelete() {
-    const target = del.confirmDelete();
-    if (!target) return;
-    setDeleting(true);
-    try {
-      await api.mcpRemove(target);
-      setTestResults((prev) => {
-        const next = { ...prev };
-        delete next[target];
-        return next;
-      });
-      toast(`Removed "${target}"`, "success");
-      reload();
-    } catch (e) {
-      toast(`Error: ${e instanceof Error ? e.message : e}`, "error");
-    } finally {
-      setDeleting(false);
     }
   }
 
@@ -358,15 +353,15 @@ export function McpPage() {
 
       <ConfirmDialog
         open={del.isOpen}
-        onClose={() => !deleting && del.cancelDelete()}
-        onConfirm={handleDelete}
+        onClose={() => del.cancelDelete()}
+        onConfirm={() => void del.confirmDelete()}
         title="Remove MCP server"
         description={
           del.deleteTarget
             ? `"${del.deleteTarget}" — this will disconnect and remove the server.`
             : "This will remove the server."
         }
-        confirmLabel={deleting ? "Deleting…" : "Remove"}
+        confirmLabel={del.isDeleting ? "Removing…" : "Remove"}
         destructive
       />
     </div>

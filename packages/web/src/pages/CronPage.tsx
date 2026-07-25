@@ -180,7 +180,9 @@ function CronJobCard({
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const del = useConfirmDelete<CronJob>();
+  const del = useConfirmDelete<CronJob>({
+    onDelete: async () => { onDelete(); },
+  });
   const [showRuns, setShowRuns] = useState(false);
 
   const schedule = parseSchedule(job.schedule);
@@ -253,13 +255,12 @@ function CronJobCard({
       <ConfirmDialog
         open={del.isOpen}
         onClose={() => del.cancelDelete()}
-        onConfirm={() => {
-          if (del.confirmDelete()) onDelete();
-        }}
+        onConfirm={() => void del.confirmDelete()}
         title={`Delete "${job.name}"?`}
         description="This will permanently remove the cron job."
         confirmLabel="Delete"
         destructive
+        loading={del.isDeleting}
       />
     </Card>
   );
