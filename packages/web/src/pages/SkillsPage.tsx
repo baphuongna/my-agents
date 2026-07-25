@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, EmptyState } from "@/components/PageBits";
 import { Package, Search } from "lucide-react";
+import { PluginSlot } from "@/components/PluginSlot";
 
 interface SkillInfo {
   name: string;
@@ -52,6 +53,9 @@ export function SkillsPage() {
 
   return (
     <div className="p-4 max-w-4xl w-full mx-auto space-y-3">
+      {/* Plugin injection seam — top of skills. */}
+      <PluginSlot name="skills:top" />
+
       <PageHeader
         title="Skills"
         icon={Package}
@@ -96,6 +100,9 @@ export function SkillsPage() {
           </Card>
         ))}
       </div>
+
+      {/* Plugin injection seam — bottom of skills. */}
+      <PluginSlot name="skills:bottom" />
     </div>
   );
 }

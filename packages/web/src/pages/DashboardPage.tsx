@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PluginSlot } from "@/components/PluginSlot";
 
 interface ProviderInfo { id: string; envKey: string; model: string; configured: boolean }
 interface RoleInfo { name: string; description: string }
@@ -47,6 +48,9 @@ export function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
+      {/* Plugin injection seam — top of dashboard. */}
+      <PluginSlot name="dashboard:top" />
+
       {/* Hero section */}
       <div className="animate-fade-in-up">
         <h1 className="text-2xl font-bold text-fg mb-1">Welcome to mya</h1>
@@ -168,6 +172,9 @@ export function DashboardPage() {
           </div>
         </Card>
       )}
+
+      {/* Plugin injection seam — bottom of dashboard. */}
+      <PluginSlot name="dashboard:bottom" />
 
       {/* Footer */}
       <div className="flex items-center justify-center gap-2 pt-4 text-[10px] text-fg-subtle/50">

@@ -6,10 +6,15 @@ import { vi } from "vitest";
 import { type ReactNode } from "react";
 import { render, type RenderOptions } from "@testing-library/react";
 import { ToastProvider } from "@/lib/toast";
+import { SystemActionsProvider } from "@/contexts/SystemActionsProvider";
 
 /** Wrap children in the providers mya pages expect. */
 export function AllProviders({ children }: { children: ReactNode }) {
-  return <ToastProvider>{children}</ToastProvider>;
+  return (
+    <ToastProvider>
+      <SystemActionsProvider>{children}</SystemActionsProvider>
+    </ToastProvider>
+  );
 }
 
 /** Render a component with all app providers applied. */

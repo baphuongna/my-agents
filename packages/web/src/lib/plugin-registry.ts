@@ -1,0 +1,154 @@
+/**
+ * Plugin slot registration store.
+ *
+ * A small external store backing {@link PluginSlot}. Components register
+ * themselves against a slot name; `PluginSlot` reads them reactively via
+ * `useSyncExternalStore`, so plugins that register after a page mounts appear
+ * without a manual refresh.
+ *
+ * Design notes:
+ * - The store is a module-level singleton (one registry per app).
+ * - `registerSlot` returns an unsubscribe function for tear-down / HMR.
+ * - Priority controls render order: lower numbers render first; ties keep
+ *   registration (insertion) order (stable sort).
+ * - `getSlotComponents` returns a *memoized* array reference that only changes
+ *   when the registry mutates, so it is safe to pass as the snapshot to
+ *   `useSyncExternalStore` (which compares snapshots with `Object.is`).
+ */
+import type { ComponentType } from "react";
+import type { PluginSlotName } from "./plugin-slots";
+
+type Listener = () => void;
+
+interface SlotEntry {
+  component: ComponentType;
+  priority: number;
+}
+
+/** Default priority when none is given. Mid-range so plugins can render
+ *  before (lower) or after (higher) the default. */
+export const DEFAULT_SLOT_PRIORITY = 100;
+
+/** Monotonic registration id — keeps stable insertion order for tie-breaks. */
+let nextRegistrationId = 0;
+
+/** Map<slotName, entries> in registration order. */
+const registry = new Map<PluginSlotName, SlotEntry[]>();
+const listeners = new Set<Listener>();
+
+/** Per-slot memoized snapshot (ComponentType[]) for `useSyncExternalStore`.
+ *  Cleared on every mutation so the next read rebuilds a fresh reference. */
+const snapshotCache = new Map<PluginSlotName, ComponentType[]>();
+
+function emit(): void {
+  snapshotCache.clear();
+  for (const fn of listeners) {
+    try {
+      fn();
+    } catch {
+      /* swallow listener errors — one bad subscriber must not break others */
+    }
+  }
+}
+
+/** Sort entries: lower priority first, ties broken by insertion order. */
+function computeComponents(slot: PluginSlotName): ComponentType[] {
+  const entries = registry.get(slot);
+  if (!entries || entries.length === 0) return [];
+  return [...entries]
+    .map((entry, idx) => ({ entry, idx }))
+    .sort((a, b) => a.entry.priority - b.entry.priority || a.idx - b.idx)
+    .map((e) => e.entry.component);
+}
+
+/**
+ * Components registered for `slot`, ordered by priority.
+ *
+ * The returned array reference is stable between mutations, so it is safe to
+ * use as the snapshot for `useSyncExternalStore`.
+ */
+export function getSlotComponents(slot: PluginSlotName): ComponentType[] {
+  const cached = snapshotCache.get(slot);
+  if (cached) return cached;
+  const fresh = computeComponents(slot);
+  snapshotCache.set(slot, fresh);
+  return fresh;
+}
+
+/**
+ * Register a component for a slot. Returns an unsubscribe function that
+ * removes exactly this registration.
+ *
+ * @param slot    Target slot (must be a known {@link PluginSlotName}).
+ * @param component React component type to render.
+ * @param priority Render order — lower renders first. Defaults to
+ *                 {@link DEFAULT_SLOT_PRIORITY}. Ties keep registration order.
+ */
+export function registerSlot(
+  slot: PluginSlotName,
+  component: ComponentType,
+  priority: number = DEFAULT_SLOT_PRIORITY,
+): () => void {
+  const entry: SlotEntry = { component, priority };
+  const existing = registry.get(slot);
+  if (existing) {
+    existing.push(entry);
+  } else {
+    registry.set(slot, [entry]);
+  }
+  const myId = nextRegistrationId++;
+  void myId; // reserved for future stable-key support
+  emit();
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    unregisterEntry(slot, component);
+  };
+}
+
+/** Remove the first entry matching `component` for the slot. */
+function unregisterEntry(slot: PluginSlotName, component: ComponentType): void {
+  const entries = registry.get(slot);
+  if (!entries) return;
+  const idx = entries.findIndex((e) => e.component === component);
+  if (idx === -1) return;
+  entries.splice(idx, 1);
+  if (entries.length === 0) {
+    registry.delete(slot);
+  } else {
+    registry.set(slot, entries);
+  }
+  emit();
+}
+
+/** Subscribe to registry changes (for `useSyncExternalStore`). */
+export function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Number of distinct slots that currently have ≥1 registration. */
+export function registeredSlotCount(): number {
+  return registry.size;
+}
+
+/** All slot names that currently have ≥1 registration. */
+export function registeredSlotNames(): PluginSlotName[] {
+  return [...registry.keys()];
+}
+
+/** Total component registrations across all slots. */
+export function totalRegistrations(): number {
+  let n = 0;
+  for (const entries of registry.values()) n += entries.length;
+  return n;
+}
+
+/** Clear all registrations. Primarily for tests / plugin hot-reload. */
+export function clearRegistry(): void {
+  registry.clear();
+  emit();
+}

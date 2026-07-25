@@ -1,15 +1,18 @@
 /**
- * SystemPage — host stats, memory, and dream trigger.
+ * SystemPage — host stats, gateway lifecycle, ops actions, and dream trigger.
  *
- * Simplified port of Hermes SystemPage. Hermes couples deeply to its Python
- * ops/curator/update subsystems; mya only exposes GET /status, GET /memory/stats,
- * and POST /memory/dream — so this page surfaces exactly those.
+ * Enhanced with the Hermes M7 pattern (Action Polling with Trigger-Counter):
+ * gateway start/stop/restart + ops (doctor/audit/backup) drive spawn-based
+ * admin actions whose status is polled recursively. System info is loaded in
+ * parallel via Promise.allSettled — each request settles independently so a
+ * single failing endpoint never blocks the whole page.
  */
 import { useCallback, useEffect, useState } from "react";
-import { api, type StatusResponse } from "@/lib/api";
+import { api, type StatusResponse, type ActionStatusResponse } from "@/lib/api";
 import { Card, CardContent, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ActionLogViewer } from "@/components/ActionLogViewer";
 import {
   PageHeader,
   LoadingSpinner,
@@ -17,11 +20,15 @@ import {
   RefreshButton,
 } from "@/components/PageBits";
 import { useToast } from "@/lib/toast";
+import { useSystemActions } from "@/contexts/useSystemActions";
+import type { SystemAction } from "@/contexts/system-actions-context";
 import {
-  Activity, Cpu, Clock, Server, Brain, Moon, Database, Cog,
+  Activity, Cpu, Server, Brain, Moon, Database, Cog,
+  Power, Play, RotateCw, Stethoscope, ShieldCheck, X,
 } from "lucide-react";
 import { formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PluginSlot } from "@/components/PluginSlot";
 
 interface ProviderInfo {
   id: string;
@@ -35,6 +42,14 @@ interface RoleInfo {
   description: string;
 }
 
+/** Backend action name for a given SystemAction (mirrors the provider). */
+const ACTION_BACKEND_NAME: Record<SystemAction, string> = {
+  restart: "gateway-restart",
+  update: "doctor",
+  backup: "backup",
+  audit: "security-audit",
+};
+
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-border-subtle/40 last:border-0">
@@ -47,28 +62,39 @@ function StatRow({ label, value }: { label: string; value: string }) {
 export function SystemPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [memory, setMemory] = useState<Record<string, unknown> | null>(null);
+  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dreaming, setDreaming] = useState(false);
-  const { toast } = useToast();
+  const [gatewayBusy, setGatewayBusy] = useState(false);
 
+  const { toast } = useToast();
+  const {
+    activeAction,
+    actionStatus,
+    isBusy,
+    isRunning,
+    pendingAction,
+    runAction,
+    dismissLog,
+  } = useSystemActions();
+
+  // Parallel load via Promise.allSettled — each request settles independently
+  // (Hermes SystemPage pattern): a single failing endpoint never blocks the
+  // rest, and we only commit the values that actually fulfilled.
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
-    // Memory stats are best-effort — the endpoint is optional in the gateway.
-    const [statusP, memoryP] = [
-      api.status().catch((e: unknown) => { throw e; }),
-      api.memoryStats().catch(() => null),
-    ];
-    try {
-      const [s, m] = await Promise.all([statusP, memoryP]);
-      setStatus(s);
-      setMemory(m);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    const results = await Promise.allSettled([
+      api.status(),
+      api.memoryStats(),
+      api.config(),
+    ]);
+    if (results[0].status === "fulfilled") setStatus(results[0].value);
+    else setError(results[0].reason instanceof Error ? results[0].reason.message : String(results[0].reason));
+    if (results[1].status === "fulfilled") setMemory(results[1].value);
+    if (results[2].status === "fulfilled") setConfig(results[2].value);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -76,6 +102,26 @@ export function SystemPage() {
     const timer = setInterval(reload, 10_000);
     return () => clearInterval(timer);
   }, [reload]);
+
+  // ── Gateway lifecycle ──────────────────────────────────────────────
+  // Start/Stop are quick one-shot calls (toast + reload). Restart goes
+  // through useSystemActions so its spawn status is polled (M7 pattern).
+  const runGatewayVerb = useCallback(
+    async (verb: "start" | "stop") => {
+      setGatewayBusy(true);
+      try {
+        if (verb === "start") await api.startGateway();
+        else await api.stopGateway();
+        toast(`Gateway ${verb} succeeded`, "success");
+        setTimeout(() => void reload(), 2500);
+      } catch (e) {
+        toast(`Gateway ${verb} failed: ${e instanceof Error ? e.message : e}`, "error");
+      } finally {
+        setGatewayBusy(false);
+      }
+    },
+    [reload, toast],
+  );
 
   async function handleDream() {
     setDreaming(true);
@@ -97,8 +143,16 @@ export function SystemPage() {
   const configuredProviders = providers.filter((p) => p.configured).length;
   const memoryEntries = memory ? Object.entries(memory) : [];
 
+  const gatewayRunning = status?.status === "ok";
+  const activeBackendName = activeAction
+    ? ACTION_BACKEND_NAME[activeAction]
+    : null;
+
   return (
     <div className="p-4 max-w-5xl w-full mx-auto space-y-4 animate-fade-in-up">
+      {/* Plugin injection seam — top of system. */}
+      <PluginSlot name="system:top" />
+
       <PageHeader
         title="System"
         icon={Activity}
@@ -110,7 +164,7 @@ export function SystemPage() {
 
       {status && (
         <div className="grid md:grid-cols-2 gap-3">
-          {/* Gateway card */}
+          {/* Gateway card with lifecycle controls */}
           <Card>
             <CardTitle>
               <span className="flex items-center gap-1.5"><Server size={14} /> Gateway</span>
@@ -131,6 +185,86 @@ export function SystemPage() {
                 label="Subagents"
                 value={subagents ? `${subagents.active}/${subagents.total} active` : "0/0"}
               />
+
+              {/* Lifecycle controls */}
+              <div className="flex flex-wrap items-center gap-2 pt-3">
+                <Badge color={gatewayRunning ? "green" : "gray"}>
+                  {gatewayRunning ? "running" : "stopped"}
+                </Badge>
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void runGatewayVerb("start")}
+                  disabled={gatewayBusy || isBusy || gatewayRunning}
+                  title="Start gateway"
+                >
+                  <Play size={12} /> Start
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void runAction("restart")}
+                  disabled={gatewayBusy || isBusy}
+                  title="Restart gateway (polled)"
+                >
+                  <RotateCw size={12} className={cn(isRunning && "animate-spin")} /> Restart
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => void runGatewayVerb("stop")}
+                  disabled={gatewayBusy || isBusy || !gatewayRunning}
+                  title="Stop gateway"
+                >
+                  <Power size={12} /> Stop
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Action status + live log viewer */}
+          <ActionPanel
+            pendingAction={pendingAction}
+            activeAction={activeAction}
+            actionStatus={actionStatus}
+            isRunning={isRunning}
+            backendName={activeBackendName}
+            onDismiss={dismissLog}
+          />
+
+          {/* Ops card — doctor / audit / backup (all polled via M7) */}
+          <Card>
+            <CardTitle>
+              <span className="flex items-center gap-1.5"><Activity size={14} /> Operations</span>
+            </CardTitle>
+            <CardContent>
+              <div className="flex flex-wrap gap-2 py-1">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void runAction("update")}
+                  disabled={isBusy}
+                >
+                  <Stethoscope size={12} /> Doctor
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void runAction("audit")}
+                  disabled={isBusy}
+                >
+                  <ShieldCheck size={12} /> Security audit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void runAction("backup")}
+                  disabled={isBusy}
+                >
+                  <Database size={12} /> Backup
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -240,6 +374,97 @@ export function SystemPage() {
           </Card>
         </div>
       )}
+
+      {config && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-fg-subtle">Raw config</summary>
+          <pre className="mt-2 p-3 bg-bg-elevated/50 border border-border-subtle rounded-md overflow-auto max-h-64 font-mono text-[11px] text-fg-muted">
+            {JSON.stringify(config, null, 2)}
+          </pre>
+        </details>
+      )}
+
+      {/* Plugin injection seam — bottom of system. */}
+      <PluginSlot name="system:bottom" />
     </div>
+  );
+}
+
+/** Renders the current action's status badge + live log tail (M7 polling). */
+function ActionPanel({
+  pendingAction,
+  activeAction,
+  actionStatus,
+  isRunning,
+  backendName,
+  onDismiss,
+}: {
+  pendingAction: SystemAction | null;
+  activeAction: SystemAction | null;
+  actionStatus: ActionStatusResponse | null;
+  isRunning: boolean;
+  backendName: string | null;
+  onDismiss: () => void;
+}) {
+  if (!activeAction && !pendingAction) return null;
+
+  const done = activeAction !== null && actionStatus?.running === false;
+  const success = done && actionStatus?.exit_code === 0;
+
+  return (
+    <Card>
+      <CardTitle>
+        <span className="flex items-center gap-1.5">
+          <Activity size={14} /> Action
+        </span>
+      </CardTitle>
+      <CardContent>
+        <div className="flex items-center gap-2 py-1">
+          {pendingAction ? (
+            <>
+              <Badge color="yellow">dispatching</Badge>
+              <span className="text-xs text-fg-subtle font-mono">{pendingAction}</span>
+            </>
+          ) : (
+            <>
+              {isRunning ? (
+                <Badge color="yellow">running</Badge>
+              ) : done ? (
+                <Badge color={success ? "green" : "red"}>
+                  {success ? "success" : `failed (exit ${actionStatus?.exit_code ?? "?"})`}
+                </Badge>
+              ) : (
+                <Badge color="gray">idle</Badge>
+              )}
+              {activeAction && (
+                <span className="text-xs text-fg-subtle font-mono">{activeAction}</span>
+              )}
+              {actionStatus?.pid != null && (
+                <span className="text-[10px] text-fg-muted">pid {actionStatus.pid}</span>
+              )}
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="text-fg-muted hover:text-fg"
+                aria-label="Dismiss action log"
+              >
+                <X size={14} />
+              </button>
+            </>
+          )}
+        </div>
+
+        {backendName && (
+          <div className="mt-1">
+            <ActionLogViewer
+              key={backendName}
+              actionName={backendName}
+              onClose={onDismiss}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

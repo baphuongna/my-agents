@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { StatusStrip } from "./StatusStrip";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { ProfileSwitcher } from "./ProfileSwitcher";
 import { useHealth } from "@/hooks/useHealth";
 
 interface NavItem { path: string; label: string; icon: typeof Activity; group?: string }
@@ -96,6 +97,9 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
             {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           </button>
         </div>
+
+        {/* Profile scope switcher (hidden when < 2 profiles) */}
+        <ProfileSwitcher collapsed={collapsed} />
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2">

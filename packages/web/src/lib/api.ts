@@ -8,8 +8,57 @@
 
 const BASE = "";
 
+// ── Global management-profile scope ──────────────────────────────────
+// One header switcher (ProfileProvider in main.tsx) decides which profile
+// the management pages read/write. fetchJSON transparently appends
+// ?profile=<name> to the profile-scoped endpoint families below. "" = the
+// dashboard process's own profile (legacy behaviour). Calls that already
+// carry an explicit profile param are left untouched — explicit beats
+// global. Adapted from the Hermes M2 pattern; mya is cookie-only so this
+// is the ONLY scoping mechanism (no dual-auth token path).
+let _managementProfile = "";
+
+export function setManagementProfile(name: string): void {
+  _managementProfile = (name || "").trim();
+}
+
+export function getManagementProfile(): string {
+  return _managementProfile;
+}
+
+// Endpoint families that honour ?profile= on the backend. Anything else —
+// health, status, pool, sync, profiles themselves — is machine-global or
+// self-scoped and must NOT be rewritten.
+const PROFILE_SCOPED_PREFIXES = [
+  "/sessions",
+  "/skills",
+  "/cron",
+  "/config",
+  "/models",
+  "/mcp",
+  "/tools",
+];
+
+/**
+ * Append `?profile=<name>` to a profile-scoped URL.
+ *
+ * - An explicit `profile` argument always wins over the global scope.
+ * - An existing `profile=` query param on the URL is never overwritten.
+ * - Non-scoped paths (health, status, profiles, …) are returned untouched.
+ */
+export function withProfile(url: string, profile?: string): string {
+  const scope = profile !== undefined ? profile : _managementProfile;
+  if (!scope) return url;
+  if (url.includes("profile=")) return url; // explicit param wins
+  const path = (url.split("?")[0] ?? url);
+  if (!PROFILE_SCOPED_PREFIXES.some((p) => path.startsWith(p))) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}profile=${encodeURIComponent(scope)}`;
+}
+
 /** Generic JSON fetch with session cookie + 15s timeout. */
 export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
+  url = withProfile(url);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 15_000);
   try {
@@ -153,6 +202,38 @@ export interface ChannelTestResult {
   error?: string;
 }
 
+/** Profile entry as returned by GET /profiles. */
+export interface ProfileInfo {
+  name: string;
+  description?: string;
+  is_default?: boolean;
+}
+
+/** Active-profile info as returned by GET /profiles/active. */
+export interface ActiveProfileInfo {
+  name: string;
+}
+
+/** Result of a spawned admin action (gateway lifecycle / ops). */
+export interface ActionResponse {
+  ok: boolean;
+  /** Backend action name — used to poll GET /actions/:name/status. */
+  name: string;
+  pid?: number | null;
+  message?: string;
+  error?: string;
+  archive?: string;
+}
+
+/** Live status of a spawned admin action — polled until `running` is false. */
+export interface ActionStatusResponse {
+  name: string;
+  running: boolean;
+  exit_code: number | null;
+  pid: number | null;
+  lines: string[];
+}
+
 // ── API endpoints ─────────────────────────────────────────────────────
 
 export const api = {
@@ -207,4 +288,32 @@ export const api = {
   // Memory + dream
   memoryStats: () => fetchJSON<Record<string, unknown>>("/memory/stats"),
   memoryDream: () => postJSON<Record<string, unknown>>("/memory/dream"),
+
+  // Profiles — self-scoped (never rewritten by withProfile)
+  getProfiles: () => fetchJSON<{ profiles: ProfileInfo[] }>("/profiles"),
+  getActiveProfile: () => fetchJSON<ActiveProfileInfo>("/profiles/active"),
+  setActiveProfile: (name: string) =>
+    postJSON<{ ok: boolean; name: string }>("/profiles/active", { name }),
+
+  // ── Admin: gateway lifecycle ───────────────────────────────────────
+  restartGateway: () =>
+    postJSON<ActionResponse>("/gateway/restart"),
+  stopGateway: () =>
+    postJSON<ActionResponse>("/gateway/stop"),
+  startGateway: () =>
+    postJSON<ActionResponse>("/gateway/start"),
+
+  // ── Admin: ops actions ─────────────────────────────────────────────
+  runDoctor: () =>
+    postJSON<ActionResponse>("/ops/doctor"),
+  runSecurityAudit: () =>
+    postJSON<ActionResponse>("/ops/security-audit"),
+  runBackup: (output?: string) =>
+    postJSON<ActionResponse>("/ops/backup", output ? { output } : undefined),
+
+  // ── Admin: action status polling ───────────────────────────────────
+  getActionStatus: (name: string, lines = 200) =>
+    fetchJSON<ActionStatusResponse>(
+      `/actions/${encodeURIComponent(name)}/status?lines=${lines}`,
+    ),
 };

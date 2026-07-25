@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, RefreshButton } from "@/components/PageBits";
 import { Settings, Save } from "lucide-react";
 import { useToast } from "@/lib/toast";
+import { PluginSlot } from "@/components/PluginSlot";
 
 export function ConfigPage() {
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
@@ -54,6 +55,9 @@ export function ConfigPage() {
 
   return (
     <div className="p-4 max-w-3xl w-full mx-auto space-y-3">
+      {/* Plugin injection seam — top of config. */}
+      <PluginSlot name="config:top" />
+
       <PageHeader
         title="Config"
         icon={Settings}
@@ -115,6 +119,9 @@ export function ConfigPage() {
           )}
         </>
       )}
+
+      {/* Plugin injection seam — bottom of config. */}
+      <PluginSlot name="config:bottom" />
     </div>
   );
 }

@@ -5,6 +5,8 @@ import App from "./App";
 import { ToastProvider } from "@/lib/toast";
 import { ThemeProvider } from "@/lib/theme";
 import { I18nProvider } from "@/lib/i18n";
+import { ProfileProvider } from "@/contexts/ProfileProvider";
+import { SystemActionsProvider } from "@/contexts/SystemActionsProvider";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -16,7 +18,11 @@ createRoot(root).render(
       <ThemeProvider>
         <I18nProvider>
           <ToastProvider>
-            <App />
+            <ProfileProvider>
+              <SystemActionsProvider>
+                <App />
+              </SystemActionsProvider>
+            </ProfileProvider>
           </ToastProvider>
         </I18nProvider>
       </ThemeProvider>

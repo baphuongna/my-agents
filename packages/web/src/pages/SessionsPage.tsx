@@ -13,6 +13,7 @@ import { timeAgo, truncate, formatTokenCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
+import { PluginSlot } from "@/components/PluginSlot";
 
 export function SessionsPage() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -62,6 +63,9 @@ export function SessionsPage() {
     <div className="flex h-full">
       {/* Session list */}
       <div className={cn("flex-1 min-w-0 p-4 space-y-3 overflow-y-auto", selected && "hidden md:flex-none md:w-80 md:shrink-0")}>
+        {/* Plugin injection seam — top of sessions. */}
+        <PluginSlot name="sessions:top" />
+
         <PageHeader
           title="Sessions"
           icon={MessageSquare}
@@ -104,6 +108,9 @@ export function SessionsPage() {
             />
           ))}
         </div>
+
+        {/* Plugin injection seam — bottom of sessions. */}
+        <PluginSlot name="sessions:bottom" />
       </div>
 
       {/* Detail panel */}
