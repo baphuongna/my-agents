@@ -37,8 +37,8 @@ export function PluginSlot({ name, fallback }: PluginSlotProps) {
 
   return (
     <Fragment>
-      {components.map((Component, i) => (
-        <Component key={i} />
+      {components.map(({ id, component: Component }) => (
+        <Component key={id} />
       ))}
     </Fragment>
   );

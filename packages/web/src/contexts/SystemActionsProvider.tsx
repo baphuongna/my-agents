@@ -11,7 +11,7 @@
  * cycle (clears stale status) and, because `poll` closes over `trigger`, the
  * next tick reads the latest action — even when the same action is re-fired.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { usePolling } from "@/hooks/usePolling";
@@ -141,15 +141,18 @@ export function SystemActionsProvider({ children }: { children: ReactNode }) {
     activeAction !== null && actionStatus?.running !== false;
   const isBusy = pendingAction !== null || isRunning;
 
-  const value: SystemActionsState = {
-    pendingAction,
-    activeAction,
-    actionStatus,
-    isBusy,
-    isRunning,
-    runAction,
-    dismissLog,
-  };
+  const value = useMemo<SystemActionsState>(
+    () => ({
+      pendingAction,
+      activeAction,
+      actionStatus,
+      isBusy,
+      isRunning,
+      runAction,
+      dismissLog,
+    }),
+    [pendingAction, activeAction, actionStatus, isBusy, isRunning, runAction, dismissLog],
+  );
 
   return (
     <SystemActionsContext.Provider value={value}>

@@ -352,12 +352,15 @@ function AddKeyModal({
     setSaving(true);
     try {
       // Use the gateway env endpoint
-      await fetch("/providers/config", {
+      const resp = await fetch("/providers/config", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: provider.id, envKey: envName, value: key.trim() }),
       });
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
       toast(`${provider.id} key saved`, "success");
       onSaved();
     } catch (e) {

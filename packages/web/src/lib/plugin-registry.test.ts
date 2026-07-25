@@ -16,6 +16,7 @@ import {
   totalRegistrations,
   DEFAULT_SLOT_PRIORITY,
 } from "@/lib/plugin-registry";
+import type { ComponentType } from "react";
 import type { PluginSlotName } from "@/lib/plugin-slots";
 
 const SLOT: PluginSlotName = "dashboard:top";
@@ -24,26 +25,31 @@ const A = () => null;
 const B = () => null;
 const C = () => null;
 
+/** Extract just the ComponentType[] from a SlotComponent[] for easy comparison. */
+function components(slot: PluginSlotName): ComponentType[] {
+  return getSlotComponents(slot).map((s) => s.component);
+}
+
 beforeEach(() => {
   clearRegistry();
 });
 
 describe("[unit] registerSlot / getSlotComponents", () => {
   it("returns an empty array for a slot with no registrations", () => {
-    expect(getSlotComponents("sessions:top")).toEqual([]);
+    expect(components("sessions:top")).toEqual([]);
   });
 
   it("returns registered components in registration order by default", () => {
     registerSlot(SLOT, A);
     registerSlot(SLOT, B);
-    expect(getSlotComponents(SLOT)).toEqual([A, B]);
+    expect(components(SLOT)).toEqual([A, B]);
   });
 
   it("tracks per-slot registrations independently", () => {
     registerSlot(SLOT, A);
     registerSlot("sessions:top", B);
-    expect(getSlotComponents(SLOT)).toEqual([A]);
-    expect(getSlotComponents("sessions:top")).toEqual([B]);
+    expect(components(SLOT)).toEqual([A]);
+    expect(components("sessions:top")).toEqual([B]);
   });
 
   it("defaults priority to DEFAULT_SLOT_PRIORITY", () => {
@@ -51,8 +57,17 @@ describe("[unit] registerSlot / getSlotComponents", () => {
     // No priority given → DEFAULT_SLOT_PRIORITY. Verify by registering another
     // with a lower priority which must render first.
     registerSlot(SLOT, B, DEFAULT_SLOT_PRIORITY - 1);
-    expect(getSlotComponents(SLOT)).toEqual([B, A]);
+    expect(components(SLOT)).toEqual([B, A]);
     unsub();
+  });
+
+  it("each SlotComponent has a unique stable id (for React keys)", () => {
+    registerSlot(SLOT, A);
+    registerSlot(SLOT, B);
+    const slots = getSlotComponents(SLOT);
+    expect(slots[0]!.id).not.toBe(slots[1]!.id);
+    // IDs are monotonically increasing.
+    expect(slots[1]!.id).toBe(slots[0]!.id + 1);
   });
 });
 
@@ -66,17 +81,17 @@ describe("[unit] registerSlot unsubscribe", () => {
   it("removes only the matching registration", () => {
     const unsubA = registerSlot(SLOT, A);
     registerSlot(SLOT, B);
-    expect(getSlotComponents(SLOT)).toEqual([A, B]);
+    expect(components(SLOT)).toEqual([A, B]);
 
     unsubA();
-    expect(getSlotComponents(SLOT)).toEqual([B]);
+    expect(components(SLOT)).toEqual([B]);
   });
 
   it("is idempotent — calling twice removes only once", () => {
     const unsubA = registerSlot(SLOT, A);
     unsubA();
     unsubA();
-    expect(getSlotComponents(SLOT)).toEqual([]);
+    expect(components(SLOT)).toEqual([]);
   });
 
   it("notifies subscribers on register and on unsubscribe", () => {
@@ -98,29 +113,29 @@ describe("[unit] priority ordering", () => {
   it("renders lower priority first", () => {
     registerSlot(SLOT, A, 50);
     registerSlot(SLOT, B, 10);
-    expect(getSlotComponents(SLOT)).toEqual([B, A]);
+    expect(components(SLOT)).toEqual([B, A]);
   });
 
   it("keeps registration order for equal priorities (stable)", () => {
     registerSlot(SLOT, A, 10);
     registerSlot(SLOT, B, 10);
     registerSlot(SLOT, C, 10);
-    expect(getSlotComponents(SLOT)).toEqual([A, B, C]);
+    expect(components(SLOT)).toEqual([A, B, C]);
   });
 
   it("mixes explicit and default priorities deterministically", () => {
     registerSlot(SLOT, C, 200); // highest → last
     registerSlot(SLOT, A); // default 100 → middle
     registerSlot(SLOT, B, 1); // lowest → first
-    expect(getSlotComponents(SLOT)).toEqual([B, A, C]);
+    expect(components(SLOT)).toEqual([B, A, C]);
   });
 
   it("does not affect other slots' ordering", () => {
     registerSlot(SLOT, A, 5);
     registerSlot("skills:top", B, 5);
     registerSlot("skills:top", C, 1);
-    expect(getSlotComponents(SLOT)).toEqual([A]);
-    expect(getSlotComponents("skills:top")).toEqual([C, B]);
+    expect(components(SLOT)).toEqual([A]);
+    expect(components("skills:top")).toEqual([C, B]);
   });
 });
 
@@ -144,7 +159,7 @@ describe("[unit] useSyncExternalStore contract", () => {
     registerSlot(SLOT, B);
     const after = getSlotComponents(SLOT);
     expect(after).not.toBe(before);
-    expect(after).toEqual([A, B]);
+    expect(after.map((s) => s.component)).toEqual([A, B]);
   });
 
   it("getSlotComponents returns a fresh empty array reference after full clear", () => {

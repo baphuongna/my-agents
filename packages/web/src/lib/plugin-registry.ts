@@ -20,9 +20,17 @@ import type { PluginSlotName } from "./plugin-slots";
 
 type Listener = () => void;
 
+/** A registered component paired with its unique stable key. */
+export interface SlotComponent {
+  id: number;
+  component: ComponentType;
+}
+
 interface SlotEntry {
   component: ComponentType;
   priority: number;
+  /** Unique monotonic id for stable React keys. */
+  id: number;
 }
 
 /** Default priority when none is given. Mid-range so plugins can render
@@ -38,7 +46,7 @@ const listeners = new Set<Listener>();
 
 /** Per-slot memoized snapshot (ComponentType[]) for `useSyncExternalStore`.
  *  Cleared on every mutation so the next read rebuilds a fresh reference. */
-const snapshotCache = new Map<PluginSlotName, ComponentType[]>();
+const snapshotCache = new Map<PluginSlotName, SlotComponent[]>();
 
 function emit(): void {
   snapshotCache.clear();
@@ -52,13 +60,13 @@ function emit(): void {
 }
 
 /** Sort entries: lower priority first, ties broken by insertion order. */
-function computeComponents(slot: PluginSlotName): ComponentType[] {
+function computeComponents(slot: PluginSlotName): SlotComponent[] {
   const entries = registry.get(slot);
   if (!entries || entries.length === 0) return [];
   return [...entries]
     .map((entry, idx) => ({ entry, idx }))
     .sort((a, b) => a.entry.priority - b.entry.priority || a.idx - b.idx)
-    .map((e) => e.entry.component);
+    .map((e) => ({ id: e.entry.id, component: e.entry.component }));
 }
 
 /**
@@ -67,7 +75,7 @@ function computeComponents(slot: PluginSlotName): ComponentType[] {
  * The returned array reference is stable between mutations, so it is safe to
  * use as the snapshot for `useSyncExternalStore`.
  */
-export function getSlotComponents(slot: PluginSlotName): ComponentType[] {
+export function getSlotComponents(slot: PluginSlotName): SlotComponent[] {
   const cached = snapshotCache.get(slot);
   if (cached) return cached;
   const fresh = computeComponents(slot);
@@ -89,15 +97,13 @@ export function registerSlot(
   component: ComponentType,
   priority: number = DEFAULT_SLOT_PRIORITY,
 ): () => void {
-  const entry: SlotEntry = { component, priority };
+  const entry: SlotEntry = { component, priority, id: nextRegistrationId++ };
   const existing = registry.get(slot);
   if (existing) {
     existing.push(entry);
   } else {
     registry.set(slot, [entry]);
   }
-  const myId = nextRegistrationId++;
-  void myId; // reserved for future stable-key support
   emit();
   let active = true;
   return () => {

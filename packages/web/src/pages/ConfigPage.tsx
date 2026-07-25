@@ -114,12 +114,15 @@ export function ConfigPage() {
     if (filtered.length === 0) return;
     setResetting(true);
     try {
-      await fetch("/config/reset", {
+      const resp = await fetch("/config/reset", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ keys: filtered.map(([k]) => k) }),
       });
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
       toast(`Reset ${filtered.length} key(s)`, "success");
       setResetOpen(false);
       reload();
