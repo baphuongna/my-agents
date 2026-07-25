@@ -28,6 +28,7 @@ export function PushPage() {
     try {
       // Get VAPID key
       const res = await fetch("/push/vapid-key", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load VAPID key (${res.status})`);
       const data = await res.json();
       setVapidKey(data.publicKey ?? data.vapidKey ?? null);
 
@@ -60,12 +61,13 @@ export function PushPage() {
 
       // Send to gateway
       const subJson = sub.toJSON();
-      await fetch("/push/subscribe", {
+      const subRes = await fetch("/push/subscribe", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(subJson),
       });
+      if (!subRes.ok) throw new Error(`Gateway rejected subscription (${subRes.status})`);
 
       setSubscribed(true);
       toast("Push notifications enabled", "success");
@@ -79,12 +81,13 @@ export function PushPage() {
       const reg = await navigator.serviceWorker?.getRegistration();
       const sub = await reg?.pushManager?.getSubscription();
       if (sub) {
-        await fetch("/push/unsubscribe", {
+        const unsubRes = await fetch("/push/unsubscribe", {
           method: "POST",
           credentials: "include",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
+        if (!unsubRes.ok) throw new Error(`Gateway rejected unsubscribe (${unsubRes.status})`);
         await sub.unsubscribe();
       }
       setSubscribed(false);

@@ -133,11 +133,17 @@ function renderInline(text: string): ReactNode[] {
     } else if (pattern === 2) {
       nodes.push(<em key={key++}>{match[1]}</em>);
     } else if (pattern === 3) {
-      nodes.push(
-        <a key={key++} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-          {match[1]}
-        </a>,
-      );
+      const href = match[2]!;
+      // URL scheme allowlist — block javascript:, data:, vbscript: etc.
+      if (!/^(https?:|mailto:|[/#])/i.test(href)) {
+        nodes.push(<span key={key++}>{match[1]}</span>);
+      } else {
+        nodes.push(
+          <a key={key++} href={href} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+            {match[1]}
+          </a>,
+        );
+      }
     }
 
     remaining = remaining.slice(idx + match[0].length);
