@@ -12,6 +12,7 @@ import { CronScheduler } from "@my-agent/cron";
 import { loadRoles as loadRolesRegistry, type RoleRegistry } from "@my-agent/core";
 import {
   Brain,
+  SqliteBrainStore,
   MemoryManagerImpl,
   MemoryContextSource,
   RetrievalEngine,
@@ -89,7 +90,28 @@ export const toolHooks: ToolHookSink = {
 };
 export const skillStore = new SkillStore();
 export const cron = new CronScheduler();
-export const brain = new Brain();
+// ── Dig 3 Phase D: config-gated Brain storage ──────────────────────────
+// memoryBackend === "sqlite" → durable SqliteBrainStore (write-through WAL).
+// Anything else (undefined, "brain", "mem0", …) → InMemory (DEFAULT, zero
+// behavior change). config.memoryBackend is loaded from ~/.mya/agent/config.json
+// or env MYA_MEMORY_BACKEND — this wiring makes the previously-dead field live.
+const memoryDbPath = join(homedir(), ".mya", "memory", "memory.db");
+
+/** Factory: construct a Brain from the memory-backend config.
+ * Exported for testability (config-gate unit tests import this directly). */
+export function createBrainFromConfig(
+  memoryBackend: string | undefined,
+  dbPath: string,
+): { brain: Brain; close?: () => void } {
+  if (memoryBackend === "sqlite") {
+    const store = new SqliteBrainStore(dbPath);
+    return { brain: new Brain(3, 0.85, store), close: () => store.close() };
+  }
+  return { brain: new Brain() };
+}
+
+const { brain, close: closeBrainStore } = createBrainFromConfig(config.memoryBackend, memoryDbPath);
+export { brain };
 
 // ── Memory Manager with all 13 domains (wired, not dead code) ──
 const allDomains = [
@@ -124,27 +146,38 @@ export const memoryTree = new MemoryTree(brain);
 export const retrievalEngine = new RetrievalEngine();
 export const lifecycleManager = new LifecycleManager(brain, memoryTree);
 // Wire BrainStore into lifecycleManager so Takes/Pages persist after tick().
+// Dig 3 Phase D: skip when Brain is durable — F2 gating (manager.ts:304,
+// lifecycle.ts:132) already handles the SqliteBrainStore path, so the JSONL
+// BrainStore would be a wasted/leaked handle.
 import { BrainStore } from "@my-agent/memory";
-const brainStore = new BrainStore(memoryDir);
-lifecycleManager.wireBrainStore(brainStore);
+if (!brain.isDurable) {
+  const brainStore = new BrainStore(memoryDir);
+  lifecycleManager.wireBrainStore(brainStore);
+}
 
 // ── Phase 6: SQLite memory manager (mnemopi pattern) ──
 // SQLite IS the store. This replaces Brain Maps + brain.jsonl + RetrievalEngine.
 import { SqliteMemoryManager, migrateOldMemory } from "@my-agent/memory";
 export const sqliteMemory = new SqliteMemoryManager({
-  dbPath: join(homedir(), ".mya", "memory", "memory.db"),
+  dbPath: memoryDbPath,
 });
-// Migrate old brain.jsonl + archivist.md → SQLite (idempotent)
-try {
-  const result = migrateOldMemory(sqliteMemory.getDatabase(), join(homedir(), ".mya", "memory"));
-  if (result.migrated > 0) {
-    process.stderr.write(`\n[mya] Migrated ${result.migrated} memories to SQLite\n`);
-  }
-} catch { /* migration is best-effort */ }
-// Ensure sqliteMemory is properly closed on process exit (WAL checkpoint)
-process.on("exit", () => { try { sqliteMemory.close(); } catch {} });
-process.on("SIGINT", () => { try { sqliteMemory.close(); } catch {} process.exit(0); });
-process.on("SIGTERM", () => { try { sqliteMemory.close(); } catch {} process.exit(0); });
+// Migrate old brain.jsonl + archivist.md → SQLite (idempotent).
+// Dig 3 Phase D: skip when durable — we no longer write brain.jsonl, so there's
+// nothing to migrate. (migrateOldMemory is a harmless no-op when brain.jsonl is
+// absent, but skipping avoids a pointless filesystem scan.)
+if (!brain.isDurable) {
+  try {
+    const result = migrateOldMemory(sqliteMemory.getDatabase(), join(homedir(), ".mya", "memory"));
+    if (result.migrated > 0) {
+      process.stderr.write(`\n[mya] Migrated ${result.migrated} memories to SQLite\n`);
+    }
+  } catch { /* migration is best-effort */ }
+}
+// Ensure sqliteMemory + brain store are closed on process exit (WAL checkpoint).
+// closeBrainStore is undefined when InMemory → closeBrainStore?.() is a no-op.
+process.on("exit", () => { try { closeBrainStore?.(); } catch {} try { sqliteMemory.close(); } catch {} });
+process.on("SIGINT", () => { try { closeBrainStore?.(); } catch {} try { sqliteMemory.close(); } catch {} process.exit(0); });
+process.on("SIGTERM", () => { try { closeBrainStore?.(); } catch {} try { sqliteMemory.close(); } catch {} process.exit(0); });
 
 export const wallet = new Wallet({ initial: { usdc: 1_000_000 } });
 export const acp = new AcpBridge();
