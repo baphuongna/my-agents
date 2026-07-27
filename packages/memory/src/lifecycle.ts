@@ -284,8 +284,9 @@ export class LifecycleManager {
   recordAccess(factId: string, now: number = nowWallclock()): void {
     const f = this.brain.allFacts.get(factId);
     if (!f) return;
-    (f as Fact & { lastAccessedAt?: number; accessCount?: number }).lastAccessedAt = now;
-    (f as Fact & { lastAccessedAt?: number; accessCount?: number }).accessCount =
-      ((f as Fact & { accessCount?: number }).accessCount ?? 0) + 1;
+    this.brain.touchFact(factId, {
+      lastAccessedAt: now,
+      accessCount: (f.accessCount ?? 0) + 1,
+    });
   }
 }

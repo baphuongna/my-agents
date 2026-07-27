@@ -35,6 +35,10 @@ export interface Fact {
   accessCount?: number;
   lastAccessedAt?: number;
   strength?: number;
+  /** Tier-2 sync: HLC timestamp (attached by SyncDomain.onRecord).
+   *  Inline structural type to avoid circular dep with domains/sync.ts.
+   *  Persisted as hlc_json in SqliteBrainStore. */
+  hlc?: { wall: number; counter: number; node: string };
 }
 
 export interface Take {
@@ -344,6 +348,25 @@ export class Brain {
   }
   get factCount(): number {
     return this.storage.factCount;
+  }
+
+  /**
+   * Dig 3 Phase B: External consumers mutate Fact fields obtained from the live
+   * allFacts map (lifecycle.recordAccess, SyncDomain.onRecord). This method
+   * applies a patch in-place (preserving live-reference semantics) then notifies
+   * the storage seam via putFact — a no-op for InMemoryBrainStorage but essential
+   * for SqliteBrainStore (write-through persistence).
+   *
+   * If no patch is given, re-flushes the fact as-is (for mutations already
+   * applied in-place by the caller — e.g. sync.onRecord's hlc assignment).
+   * Returns true if the fact existed and was flushed.
+   */
+  touchFact(id: string, patch?: Partial<Fact>): boolean {
+    const f = this.storage.getFact(id);
+    if (!f) return false;
+    if (patch) Object.assign(f, patch);
+    this.storage.putFact(f);
+    return true;
   }
 
   /** Phase A: additive accessor for MemoryTree.compile() + domains. Returns a

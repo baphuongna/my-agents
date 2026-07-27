@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { InMemoryBrainStorage } from "./brain-storage.js";
 import { Brain } from "./brain.js";
+import { LifecycleManager } from "./lifecycle.js";
+import { SyncDomain } from "./domains/sync.js";
 import type { Fact, Take, BrainPage } from "./brain.js";
 
 /** Helper: create a minimal Fact for testing. */
@@ -384,6 +386,113 @@ describe("Brain ↔ BrainStorage seam — GAP-1 verification (A-GATE-2/3)", () =
     brain.embed(); // mark embedded
     spy.reset();
     expect(brain.embed()).toBe(0);
+    expect(spy.putFactCount).toBe(0);
+  });
+});
+
+// ── GAP-1 sites 3-4: touchFact seam notification (B-Phase Part 1) ───────────
+// lifecycle.recordAccess (site 3) + SyncDomain.onRecord (site 4) mutate Fact
+// fields in-place. Under InMemoryBrainStorage this is invisible (same ref),
+// but a write-through store MUST be notified. These spy tests verify the seam.
+
+describe("Brain.touchFact — GAP-1 sites 3-4 seam notification", () => {
+  it("touchFact applies the patch and calls storage.putFact", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const f = brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    spy.reset();
+    expect(brain.touchFact(f.id, { accessCount: 5, lastAccessedAt: 999 })).toBe(true);
+    expect(spy.putFactCount).toBe(1);
+    const got = brain.allFacts.get(f.id)!;
+    expect(got.accessCount).toBe(5);
+    expect(got.lastAccessedAt).toBe(999);
+  });
+
+  it("touchFact with no patch re-flushes the existing fact", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const f = brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    spy.reset();
+    // Simulate an in-place mutation by the caller.
+    f.embedded = true;
+    expect(brain.touchFact(f.id)).toBe(true);
+    expect(spy.putFactCount).toBe(1);
+  });
+
+  it("touchFact returns false for unknown id", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    spy.reset();
+    expect(brain.touchFact("nonexistent", { accessCount: 1 })).toBe(false);
+    expect(spy.putFactCount).toBe(0);
+  });
+});
+
+describe("GAP-1 site 3: LifecycleManager.recordAccess notifies the seam", () => {
+  it("recordAccess calls storage.putFact with incremented accessCount + lastAccessedAt", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const lm = new LifecycleManager(brain, undefined);
+    const f = brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    spy.reset();
+    lm.recordAccess(f.id, 12345);
+    expect(spy.putFactCount).toBe(1);
+    const got = brain.allFacts.get(f.id)!;
+    expect(got.accessCount).toBe(1);
+    expect(got.lastAccessedAt).toBe(12345);
+  });
+
+  it("recordAccess increments on second call (round-trip)", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const lm = new LifecycleManager(brain, undefined);
+    const f = brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    lm.recordAccess(f.id, 100);
+    spy.reset();
+    lm.recordAccess(f.id, 200);
+    expect(spy.putFactCount).toBe(1);
+    const got = brain.allFacts.get(f.id)!;
+    expect(got.accessCount).toBe(2);
+    expect(got.lastAccessedAt).toBe(200);
+  });
+
+  it("recordAccess on unknown id does nothing (no putFact)", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const lm = new LifecycleManager(brain, undefined);
+    spy.reset();
+    lm.recordAccess("nonexistent", 100);
+    expect(spy.putFactCount).toBe(0);
+  });
+});
+
+describe("GAP-1 site 4: SyncDomain.onRecord notifies the seam", () => {
+  it("onRecord attaches hlc and calls storage.putFact", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const d = new SyncDomain("node-a");
+    d.init(brain);
+    const f = brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    spy.reset();
+    d.onRecord(f);
+    expect(spy.putFactCount).toBe(1);
+    const got = brain.allFacts.get(f.id)!;
+    expect(got.hlc).toBeDefined();
+    expect(got.hlc!.wall).toBe(f.createdAt);
+    expect(got.hlc!.node).toBe("node-a");
+  });
+
+  it("onRecord without brain wired still mutates in-place (no seam notification)", () => {
+    const spy = new SpyBrainStorage();
+    const brain = new Brain(3, 0.85, spy);
+    const d = new SyncDomain("node-a");
+    // NOTE: init() not called — brain is undefined (standalone unit usage).
+    const f = brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s" });
+    spy.reset();
+    d.onRecord(f);
+    // The in-place mutation still happens (hlc is set on the object).
+    expect((f as Fact & { hlc?: { wall: number } }).hlc).toBeDefined();
+    // No seam notification (brain not wired).
     expect(spy.putFactCount).toBe(0);
   });
 });

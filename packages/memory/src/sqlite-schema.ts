@@ -185,6 +185,64 @@ export function initSchema(db: SqliteDatabase): void {
     "CREATE INDEX IF NOT EXISTS idx_triples_object ON triples(object)",
   ]);
 
+  // ── Dig 3 Phase B: Brain storage tables (brain_* — full-fidelity CRUD) ────
+  // Dedicated tables for Brain's Fact/Take/Page/Tombstone state (§4 DDL).
+  // No FTS5/triggers — Brain has its own backlinks() regex extraction.
+  // All columns map 1:1 to brain.ts Fact/Take/BrainPage fields.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS brain_facts (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'fact',
+      entity TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL,
+      visibility TEXT NOT NULL DEFAULT 'private',
+      notability REAL NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      valid_from INTEGER,
+      valid_until INTEGER,
+      consolidated_at INTEGER,
+      consolidated_into TEXT,
+      embedded INTEGER NOT NULL DEFAULT 0,
+      access_count INTEGER DEFAULT 0,
+      last_accessed_at INTEGER,
+      strength REAL,
+      hlc_json TEXT
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS brain_takes (
+      id TEXT PRIMARY KEY,
+      entity TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL,
+      synthesized_at INTEGER NOT NULL,
+      sources_json TEXT NOT NULL DEFAULT '[]'
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS brain_pages (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL DEFAULT '',
+      compiled_truth TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS brain_tombstones (
+      id TEXT PRIMARY KEY,
+      fact_json TEXT NOT NULL,
+      deleted_at INTEGER NOT NULL
+    )
+  `);
+  runAll(db, [
+    "CREATE INDEX IF NOT EXISTS idx_brain_facts_entity ON brain_facts(entity)",
+    "CREATE INDEX IF NOT EXISTS idx_brain_facts_source ON brain_facts(source)",
+    "CREATE INDEX IF NOT EXISTS idx_brain_facts_unconsolidated ON brain_facts(source, entity) WHERE consolidated_at IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_brain_tombstones_deleted ON brain_tombstones(deleted_at)",
+  ]);
+
   // ── FTS5: Full-text search (external-content, BM25 native) ────────────────
   // Working memory FTS — external-content: reads column values from
   // working_memory on demand (no inline text copy → ~75% size saving vs

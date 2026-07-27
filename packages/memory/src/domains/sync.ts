@@ -90,7 +90,9 @@ export class SyncDomain implements MemoryDomain {
     const ts = this.tick();
     this.pendingSync.set(fact.id, fact);
     // Attach HLC as metadata.
-    (fact as Fact & { hlc?: HlcTimestamp }).hlc = ts;
+    fact.hlc = ts;
+    // Phase B GAP-1 site 4: notify the storage seam so a write-through store persists the mutation.
+    this.brain?.touchFact(fact.id, { hlc: ts });
   }
 
   recall(_query: string, _opts?: MemoryDomainOpts): MemoryHit[] {

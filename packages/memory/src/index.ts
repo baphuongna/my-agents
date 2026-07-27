@@ -23,6 +23,7 @@ export { Brain } from "./brain.js";
 export type { Fact, Take, BrainPage, FactKind, FactVisibility } from "./brain.js";
 export type { BrainStorage } from "./brain-storage.js";
 export { InMemoryBrainStorage } from "./brain-storage.js";
+export { SqliteBrainStore } from "./brain-sqlite-store.js";
 export { reciprocalRankFuse, rrfRetrieve, bm25Arm, substringArm, vectorArm, graphArm } from "./rrf.js";
 export { RagfsRouter, StaticContextSource, KnowledgeSource, parseRagfsUri, RAGFS_BLOCKED } from "./ragfs.js";
 export { makeRagfsScanner, allowAllScanner, denyAllScanner } from "./ragfs-bridge.js";
