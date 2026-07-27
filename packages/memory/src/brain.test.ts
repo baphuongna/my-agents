@@ -115,10 +115,10 @@ describe("§8 dream cycle — Phase-8 review hardening", () => {
     const id = "12345678-1234-1234-1234-123456789012"; // won't match — use real id
     // Need a real fact id — record it and find:
     brain.recordFact({ kind: "fact", entity: "e", content: "x", visibility: "private", notability: 1, source: "s", validUntil: 1000 });
-    const [realId] = [...(brain as unknown as { facts: Map<string, unknown> }).facts.keys()] as [string | undefined];
+    const [realId] = [...brain.allFacts.keys()] as [string | undefined];
     // mark consolidated by exploiting the consolidate surface — but easier:
     // directly access the fact and set consolidatedAt
-    const facts = (brain as unknown as { facts: Map<string, { consolidatedAt?: number }> }).facts;
+    const facts = brain.allFacts;
     expect(realId).toBeDefined();
     const f = facts.get(realId!);
     expect(f).toBeDefined();

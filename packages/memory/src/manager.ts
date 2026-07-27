@@ -309,27 +309,14 @@ export class MemoryManagerImpl implements MemoryManager {
     if (!this.brain || !this.brainStore) return;
     try {
       const snapshot = await this.brainStore.load();
-      // Hydrate facts — use Brain's internal map directly since we're restoring
-      const brainInternal = this.brain as unknown as {
-        facts: Map<string, Fact>;
-        takesMap: Map<string, import("./brain.js").Take>;
-        pagesMap: Map<string, import("./brain.js").BrainPage>;
-        tombstones: Map<string, { fact: Fact; deletedAt: number }>;
-      };
-      for (const [id, fact] of snapshot.facts) {
-        brainInternal.facts.set(id, fact);
-      }
-      for (const [id, take] of snapshot.takes) {
-        brainInternal.takesMap.set(id, take);
-      }
-      for (const [id, page] of snapshot.pages) {
-        brainInternal.pagesMap.set(id, page);
-      }
-      for (const [id, ts] of snapshot.tombstones) {
-        brainInternal.tombstones.set(id, ts);
-      }
-      // Invalidate backlinks cache since we populated facts directly
-      (this.brain as unknown as { backlinksCache: unknown }).backlinksCache = null;
+      // Phase A: delegate to Brain's public loadFromSnapshot() (storage seam).
+      // The BrainSnapshot Maps are converted to iterables (Map.values()/entries()).
+      this.brain.loadFromSnapshot({
+        facts: snapshot.facts.values(),
+        takes: snapshot.takes.values(),
+        pages: snapshot.pages.values(),
+        tombstones: snapshot.tombstones.entries(),
+      });
     } catch {
       // Corrupt or missing file — start fresh
     }

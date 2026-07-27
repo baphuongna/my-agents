@@ -10,6 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { nowWallclock } from "@my-agent/core";
+import { InMemoryBrainStorage, type BrainStorage } from "./brain-storage.js";
 
 export type FactKind = "event" | "preference" | "commitment" | "belief" | "fact";
 export type FactVisibility = "private" | "world";
@@ -59,24 +60,32 @@ export interface BrainPage {
  * cosine-similar). Consumed facts are marked, never deleted.
  */
 export class Brain {
-  private readonly facts = new Map<string, Fact>();
+  /** Dig 3 Phase A: storage seam (swappable — InMemoryBrainStorage default,
+   * SqliteBrainStore for durable backing in Phase B). */
+  private readonly storage: BrainStorage;
   /** Tier-3: public read-only view for cross-class access (LifecycleManager, etc). */
-  public get allFacts(): ReadonlyMap<string, Fact> { return this.facts; }
-  /** Renamed internally to `takesMap` so the public `takes` getter doesn't
-   * collide with the storage map (Phase A additive accessor). */
-  private readonly takesMap = new Map<string, Take>();
-  private readonly pagesMap = new Map<string, BrainPage>();
-  /** Review CRITICAL-1: soft-delete tombstones (review CRITICAL-1 — spec mandates
-   * soft-delete + 72h TTL recovery; hard-delete breaks "consolidated facts never
-   * deleted" + loses user data). */
-  private readonly tombstones = new Map<string, { fact: Fact; deletedAt: number }>();
+  public get allFacts(): ReadonlyMap<string, Fact> { return this.storage.getFactMap(); }
   /** min facts per (source,entity) bucket before consolidation considers it. */
   /** F7 fix: caps to bound the O(n²) consolidate cost + memory. */
   private readonly maxFactContentChars = 4096;
   private readonly maxFactsTotal = 10_000;
   private readonly maxBucketConsidered = 200;
 
-  constructor(private minFactsPerBucket = 3, private cosineThreshold = 0.85) {}
+  constructor(private minFactsPerBucket = 3, private cosineThreshold = 0.85, storage?: BrainStorage) {
+    this.storage = storage ?? new InMemoryBrainStorage();
+  }
+
+  /** Dig 3 Phase A: bulk-hydrate from a snapshot (used by manager.loadFromBrainStore).
+   * Clears all storage state, reloads from the snapshot, and invalidates caches. */
+  loadFromSnapshot(snapshot: {
+    facts: Iterable<Fact>;
+    takes: Iterable<Take>;
+    pages: Iterable<BrainPage>;
+    tombstones: Iterable<[string, { fact: Fact; deletedAt: number }]>;
+  }): void {
+    this.storage.loadFromSnapshot(snapshot);
+    this.backlinksCache = null;
+  }
 
   /** Phase 14c: backlinks() cache (performance). Invalidated on recordFact/purge. */
   private backlinksCache: Array<{ from: string; fromFactId: string; to: string; kind: "link" | "wikilink" | "bare" }> | null = null;
@@ -87,12 +96,12 @@ export class Brain {
     const content = f.content.length > this.maxFactContentChars
       ? f.content.slice(0, this.maxFactContentChars) + "…[truncated]"
       : f.content;
-    if (this.facts.size >= this.maxFactsTotal) {
+    if (this.storage.factCount >= this.maxFactsTotal) {
       throw new Error(`brain: fact cap reached (${this.maxFactsTotal})`);
     }
     const id = f.id ?? randomUUID();
     const full: Fact = { ...f, content, id, createdAt: nowWallclock() };
-    this.facts.set(id, full);
+    this.storage.putFact(full);
     this.backlinksCache = null; // invalidate
     return full;
   }
@@ -106,7 +115,7 @@ export class Brain {
     // bucket unconsolidated facts by (source, entity)
     const buckets = new Map<string, Fact[]>();
     const now = nowWallclock();
-    for (const f of this.facts.values()) {
+    for (const f of this.storage.allFacts()) {
       if (f.consolidatedAt) continue;
       // Skip expired facts — they should be purged, not promoted to immortal Takes.
       if (f.validUntil !== undefined && f.validUntil <= now) continue;
@@ -130,10 +139,11 @@ export class Brain {
         text: cluster.map((f) => f.content).join(" / "),
         synthesizedAt: nowWallclock(),
       };
-      this.takesMap.set(takeId, take);
+      this.storage.putTake(take);
       for (const f of cluster) {
         f.consolidatedAt = nowWallclock();
         f.consolidatedInto = takeId;
+        this.storage.putFact(f); // GAP-1 fix: persist in-place mutation for future SqliteBrainStore
         factsConsumed++;
       }
       takesPromoted++;
@@ -160,15 +170,15 @@ export class Brain {
   putPage(p: Omit<BrainPage, "id" | "createdAt" | "version"> & { id?: string }): BrainPage {
     const id = p.id ?? randomUUID();
     const full: BrainPage = { ...p, id, createdAt: nowWallclock(), version: 1 };
-    this.pagesMap.set(id, full);
+    this.storage.putPage(full);
     return full;
   }
 
   factsByEntity(entity: string): Fact[] {
-    return [...this.facts.values()].filter((f) => f.entity === entity);
+    return [...this.storage.allFacts()].filter((f) => f.entity === entity);
   }
   unconsolidatedFacts(): Fact[] {
-    return [...this.facts.values()].filter((f) => !f.consolidatedAt);
+    return [...this.storage.allFacts()].filter((f) => !f.consolidatedAt);
   }
 
   /**
@@ -195,7 +205,7 @@ export class Brain {
       s
         .replace(/```[\s\S]*?```/g, (m) => " ".repeat(m.length))
         .replace(/`[^`\n]*`/g, (m) => " ".repeat(m.length));
-    for (const f of this.facts.values()) {
+    for (const f of this.storage.allFacts()) {
       const text = stripCode(f.content);
       // PascalCase-word split (HIGH-3): "MrsSmith" → {Mrs, Smith}; "ProjectLLM" → {Project, L, M}.
       const entityWords = new Set<string>();
@@ -241,7 +251,7 @@ export class Brain {
    */
   purge(now = nowWallclock()): number {
     let n = 0;
-    for (const f of [...this.facts.values()]) {
+    for (const f of [...this.storage.allFacts()]) {
       // M4: consolidated facts are immortal (spec line 71).
       if (f.consolidatedAt !== undefined) continue;
       const notYetValid = f.validFrom !== undefined && f.validFrom > now;
@@ -254,18 +264,18 @@ export class Brain {
 
   /** CRITICAL-1: soft-delete: move to tombstones (spec "soft-delete" — reversible via restore). */
   private softDelete(f: Fact, now: number): void {
-    this.tombstones.set(f.id, { fact: f, deletedAt: now });
-    this.facts.delete(f.id);
+    this.storage.putTombstone(f.id, { fact: f, deletedAt: now });
+    this.storage.deleteFact(f.id);
     this.backlinksCache = null; // invalidate
   }
 
   /** CRITICAL-1: restore a soft-deleted fact from its tombstone. */
   restore(factId: string): boolean {
-    const t = this.tombstones.get(factId);
+    const t = this.storage.getTombstone(factId);
     if (!t) return false;
-    if (this.facts.size >= this.maxFactsTotal) return false;
-    this.facts.set(factId, t.fact);
-    this.tombstones.delete(factId);
+    if (this.storage.factCount >= this.maxFactsTotal) return false;
+    this.storage.putFact(t.fact);
+    this.storage.deleteTombstone(factId);
     this.backlinksCache = null; // invalidate
     return true;
   }
@@ -275,13 +285,13 @@ export class Brain {
   purgeTombstones(olderThanHours = 72, now = nowWallclock()): number {
     const cutoff = now - olderThanHours * 3_600_000;
     let n = 0;
-    for (const [id, t] of this.tombstones) if (t.deletedAt < cutoff) { this.tombstones.delete(id); n++; }
+    for (const [id, t] of this.storage.allTombstones()) if (t.deletedAt < cutoff) { this.storage.deleteTombstone(id); n++; }
     return n;
   }
 
-  get tombstoneCount(): number { return this.tombstones.size; }
+  get tombstoneCount(): number { return this.storage.tombstoneCount; }
   tombstonesList(): { id: string; fact: Fact; deletedAt: number }[] {
-    return [...this.tombstones.entries()].map(([id, t]) => ({ id, fact: t.fact, deletedAt: t.deletedAt }));
+    return [...this.storage.allTombstones()].map(([id, t]) => ({ id, fact: t.fact, deletedAt: t.deletedAt }));
   }
 
   /**
@@ -299,7 +309,7 @@ export class Brain {
       { kind: "commit", re: /\b([0-9a-f]{7,40})\b/g },
       { kind: "version", re: /\bv?(\d+\.\d+\.\d+)\b/g },
     ];
-    for (const f of this.facts.values()) {
+    for (const f of this.storage.allFacts()) {
       for (const { kind, re } of patterns) {
         re.lastIndex = 0;
         let m: RegExpExecArray | null;
@@ -317,8 +327,8 @@ export class Brain {
    */
   embed(): number {
     let n = 0;
-    for (const f of this.facts.values()) {
-      if (!f.embedded) { (f as Fact & { embedded?: boolean }).embedded = true; n++; }
+    for (const f of this.storage.allFacts()) {
+      if (!f.embedded) { (f as Fact & { embedded?: boolean }).embedded = true; this.storage.putFact(f); n++; }
     }
     return n;
   }
@@ -326,27 +336,27 @@ export class Brain {
   /** Phase 10: count of embedded facts (for the embed dream-cycle phase). */
   get embeddedCount(): number {
     let n = 0;
-    for (const f of this.facts.values()) if ((f as Fact & { embedded?: boolean }).embedded) n++;
+    for (const f of this.storage.allFacts()) if ((f as Fact & { embedded?: boolean }).embedded) n++;
     return n;
   }
   get takeCount(): number {
-    return this.takesMap.size;
+    return this.storage.takeCount;
   }
   get factCount(): number {
-    return this.facts.size;
+    return this.storage.factCount;
   }
 
   /** Phase A: additive accessor for MemoryTree.compile() + domains. Returns a
    * shallow snapshot of takes (not the live Map — values are readonly references,
    * but DO NOT mutate them in place). */
   get takes(): Take[] {
-    return [...this.takesMap.values()];
+    return [...this.storage.allTakes()];
   }
 
   /** Phase A: additive accessor for MemoryTree.compile() + domains. Returns a
    * shallow snapshot of pages. */
   get allPages(): BrainPage[] {
-    return [...this.pagesMap.values()];
+    return [...this.storage.allPages()];
   }
 
   // ── Phase 11: 5 more zero-LLM dream-cycle phases ────────────────────────
@@ -359,7 +369,7 @@ export class Brain {
     const empty: string[] = [];
     const noEntity: string[] = [];
     const byContent = new Map<string, string[]>();
-    for (const f of this.facts.values()) {
+    for (const f of this.storage.allFacts()) {
       if (!f.content.trim()) { empty.push(f.id); continue; } // M3: skip empty from dup map
       if (!f.entity) noEntity.push(f.id);
       // M2: fold entity into the duplicate key (same content, different entity ≠ dup).
@@ -368,7 +378,7 @@ export class Brain {
       if (arr) arr.push(f.id); else byContent.set(key, [f.id]);
     }
     const duplicates = [...byContent.values()].filter((ids) => ids.length > 1)
-      .map((ids) => ({ ids, content: this.facts.get(ids[0]!)!.content }));
+      .map((ids) => ({ ids, content: this.storage.getFact(ids[0]!)!.content }));
     return { empty, duplicates, noEntity };
   }
 
@@ -387,7 +397,7 @@ export class Brain {
       connected.add(e.from);
       if (e.kind === "bare" || e.kind === "wikilink") connected.add(e.to);
     }
-    return [...this.facts.values()]
+    return [...this.storage.allFacts()]
       .filter((f) => !connected.has(f.entity))
       .map((f) => f.id);
   }
@@ -399,7 +409,7 @@ export class Brain {
    */
   schemaSuggest(): Array<{ entities: string[]; reason: string }> {
     const proposals: Array<{ entities: string[]; reason: string }> = [];
-    const entities = [...this.facts.values()].map((f) => f.entity);
+    const entities = [...this.storage.allFacts()].map((f) => f.entity);
     const unique = [...new Set(entities)];
     // case-insensitive collision
     const byLower = new Map<string, string[]>();
@@ -425,7 +435,7 @@ export class Brain {
     // C2: filter empty/falsy entities (an empty entity → /\b\b/ matches every
     // word boundary → spurious edges from every fact to "").
     const knownEntities = new Set(
-      [...this.facts.values()].map((f) => f.entity).filter((e) => e && e.trim()),
+      [...this.storage.allFacts()].map((f) => f.entity).filter((e) => e && e.trim()),
     );
     if (knownEntities.size === 0) return [];
     // H1: compile a single alternation regex ONCE (not N×M fresh compiles).
@@ -434,7 +444,7 @@ export class Brain {
     // H2: dedup by (from|to).
     const seen = new Set<string>();
     const edges: Array<{ from: string; to: string; kind: "bare" }> = [];
-    for (const f of this.facts.values()) {
+    for (const f of this.storage.allFacts()) {
       if (!f.entity || !f.entity.trim()) continue;
       const found = new Set<string>();
       for (const m of f.content.matchAll(re)) {
@@ -460,7 +470,7 @@ export class Brain {
     // (was O(N×M×K): hasBackfill() scanned all facts per name per message).
     const knownEntities = new Set<string>();
     const backfilledEntities = new Set<string>();
-    for (const f of this.facts.values()) {
+    for (const f of this.storage.allFacts()) {
       if (f.entity && f.entity.trim()) knownEntities.add(f.entity);
       if (f.source === "backfill") backfilledEntities.add(f.entity);
     }
@@ -472,7 +482,7 @@ export class Brain {
       for (const name of [...new Set(names)]) {
         if (!knownEntities.has(name) || recorded.has(name) || backfilledEntities.has(name)) continue;
         // C1: respect the fact cap — stop gracefully (not throw mid-loop).
-        if (this.facts.size >= this.maxFactsTotal) return n;
+        if (this.storage.factCount >= this.maxFactsTotal) return n;
         this.recordFact({
           kind: "event",
           entity: name,
