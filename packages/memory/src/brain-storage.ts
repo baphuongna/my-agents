@@ -16,6 +16,11 @@
 import type { Fact, Take, BrainPage } from "./brain.js";
 
 export interface BrainStorage {
+  /** Dig 3 Phase C: whether this storage is durable (survives process restart).
+   * InMemoryBrainStorage → false; SqliteBrainStore → true.
+   * Used by Brain.isDurable to gate dual-path dispatch + manual persistence. */
+  readonly durable: boolean;
+
   // ── Facts ──
   getFact(id: string): Fact | undefined;
   putFact(fact: Fact): void;
@@ -60,6 +65,7 @@ export interface BrainStorage {
  * 4 Maps. All existing tests pass with ZERO behavior change.
  */
 export class InMemoryBrainStorage implements BrainStorage {
+  get durable(): boolean { return false; }
   private readonly facts = new Map<string, Fact>();
   private readonly takes = new Map<string, Take>();
   private readonly pages = new Map<string, BrainPage>();

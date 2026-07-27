@@ -69,6 +69,10 @@ export class Brain {
   private readonly storage: BrainStorage;
   /** Tier-3: public read-only view for cross-class access (LifecycleManager, etc). */
   public get allFacts(): ReadonlyMap<string, Fact> { return this.storage.getFactMap(); }
+  /** Dig 3 Phase C: whether Brain's storage is durable (survives restart).
+   * Delegates to the storage seam — avoids importing brain-sqlite-store.ts
+   * (circular dep prevention). Used by dream-cycle + lifecycle dispatch. */
+  get isDurable(): boolean { return this.storage.durable; }
   /** min facts per (source,entity) bucket before consolidation considers it. */
   /** F7 fix: caps to bound the O(n²) consolidate cost + memory. */
   private readonly maxFactContentChars = 4096;

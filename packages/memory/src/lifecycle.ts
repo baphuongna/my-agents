@@ -125,7 +125,11 @@ export class LifecycleManager {
     // 6. Persist ALL state changes to BrainStore (full-fidelity).
     //    This ensures newly-created Takes + consolidated Facts + compiled Pages
     //    survive restart. Without this, consolidation is undone on restart.
-    if (this.brainStore) {
+    // C-GATE-2: Skip manual JSONL persistence when Brain storage is durable.
+    //    SqliteBrainStore writes through on every putFact/putTake/putPage —
+    //    the persistTakes/persistFact/persistPage calls below are redundant and
+    //    would duplicate data. Still runs for InMemory (backward compat).
+    if (this.brainStore && !this.brain.isDurable) {
       const takes = this.brain.takes;
       if (takes.length > 0) {
         void this.brainStore.persistTakes(takes, "L1");

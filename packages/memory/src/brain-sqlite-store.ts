@@ -53,6 +53,7 @@ interface BrainFactRow {
  * SQLite so durability survives process restart.
  */
 export class SqliteBrainStore implements BrainStorage {
+  get durable(): boolean { return true; }
   private readonly db: SqliteDatabase;
   private readonly cache: InMemoryBrainStorage;
 

@@ -213,8 +213,12 @@ export class DreamCycle {
       };
     }
 
-    // SQLite path (new system — preferred)
-    if (this.sqliteMemory) {
+    // C-GATE-1: When Brain is durable, its analysis path MUST run.
+    // The old `if (sqliteMemory) return dreamSQLite` early-return is collapsed
+    // when Brain is durable — Brain's facts + dream summaries must be processed.
+    // dreamSQLite STILL runs for SMM's working_memory data (complementary —
+    // different data source; see dig3 plan §6 note) AFTER the Brain path.
+    if (this.sqliteMemory && !this.brain?.isDurable) {
       return this.dreamSQLite(start);
     }
 
@@ -277,6 +281,14 @@ export class DreamCycle {
     // 4. Review skills for staleness (>30 days unused → noted for cleanup).
     const skillsReviewed = await this.reviewSkills();
 
+    // 4b. C-GATE-1 supplement: When Brain is durable AND sqliteMemory is present,
+    //     also consolidate SMM's working_memory data (complementary data source —
+    //     brain_facts vs working_memory are disjoint). Skill review already ran
+    //     above, so pass skipSkills=true to avoid duplication.
+    if (this.brain?.isDurable && this.sqliteMemory) {
+      await this.dreamSQLite(start, true);
+    }
+
     return {
       memoriesConsolidated: recent.length,
       skillsReviewed,
@@ -313,8 +325,10 @@ export class DreamCycle {
    * SQLite dream cycle: uses the new SQLite memory system.
    * Collects recent working_memory entries, summarizes them,
    * stores the summary as episodic memory, and runs lifecycle.
+   *
+   * @param skipSkills When true, skip skill review (already done in Brain path).
    */
-  private async dreamSQLite(start: number): Promise<DreamResult> {
+  private async dreamSQLite(start: number, skipSkills = false): Promise<DreamResult> {
     const db = this.sqliteMemory!.getDatabase();
     const cutoff = new Date(nowWallclock() - this.intervalMs).toISOString();
 
@@ -350,8 +364,8 @@ export class DreamCycle {
     // 4. Run lifecycle (consolidate working→episodic, degrade, purge)
     this.sqliteMemory!.lifecycle();
 
-    // 5. Review skills
-    const skillsReviewed = await this.reviewSkills();
+    // 5. Review skills (skip if already done in the Brain path)
+    const skillsReviewed = skipSkills ? 0 : await this.reviewSkills();
 
     return {
       memoriesConsolidated: rows.length,
