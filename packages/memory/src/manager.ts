@@ -211,7 +211,9 @@ export class MemoryManagerImpl implements MemoryManager {
     for (const d of this.domains) consolidation.push(d.onConsolidate(now));
     // Phase 1b: Persist any newly-created Takes + updated Facts to BrainStore.
     // This ensures consolidated state survives restart.
-    if (this.brainStore) {
+    // Finding 2: skip when durable — SqliteBrainStore writes through on every
+    // putFact/putTake (lifecycle.ts C-GATE-2 uses the same !isDurable gate).
+    if (this.brainStore && !this.brain.isDurable) {
       const takes = this.brain.takes;
       if (takes.length > 0) {
         void this.brainStore.persistTakes(takes, "L1");
@@ -296,7 +298,10 @@ export class MemoryManagerImpl implements MemoryManager {
     for (const b of opts.roleBackends ?? []) m.register(b);
     m.ensureDefault(opts.defaultRoles ?? ["working", "archivist", "tree", "diff", "goals", "sync"]);
     // Tier-3: wire BrainStore for full-fidelity persistence of all tiers.
-    if (opts.persistenceDir) {
+    // C-GATE-4 (Finding 2): skip JSONL BrainStore when Brain is durable —
+    // SqliteBrainStore is its own durable store, and loadFromBrainStore would
+    // clobber SQLite (deleteAll + rewrite from stale/empty JSONL).
+    if (opts.persistenceDir && !opts.brain.isDurable) {
       m.brainStore = new BrainStore(opts.persistenceDir);
       void m.loadFromBrainStore();
     }

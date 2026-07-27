@@ -266,8 +266,11 @@ export class DreamCycle {
         : this.basicSummarize(recent);
     }
 
-    // 3. Store the summary back as a new "dream" fact — UNLESS declined.
-    if (!declined) {
+    // 3. Store the summary back as a new "dream" fact — UNLESS declined or there
+    //    are no new memories to summarize. The recent.length guard ensures
+    //    idempotency: a 2nd dream() call with no new facts does not create a
+    //    duplicate summary (consistent with dreamSQLite's rows.length > 0 guard).
+    if (!declined && recent.length > 0) {
       this.brain.recordFact({
         kind: "belief",
         entity: DREAM_ENTITY,
@@ -285,12 +288,20 @@ export class DreamCycle {
     //     also consolidate SMM's working_memory data (complementary data source —
     //     brain_facts vs working_memory are disjoint). Skill review already ran
     //     above, so pass skipSkills=true to avoid duplication.
+    //     F5: best-effort — failures are swallowed (SMM retries next cycle).
+    //     F6: capture + merge SMM's memoriesConsolidated into the returned count.
+    let smmConsolidated = 0;
     if (this.brain?.isDurable && this.sqliteMemory) {
-      await this.dreamSQLite(start, true);
+      try {
+        const smmResult = await this.dreamSQLite(start, true);
+        smmConsolidated = smmResult.memoriesConsolidated;
+      } catch {
+        /* best-effort — SMM consolidation retries next cycle */
+      }
     }
 
     return {
-      memoriesConsolidated: recent.length,
+      memoriesConsolidated: recent.length + smmConsolidated,
       skillsReviewed,
       summary,
       durationMs: nowWallclock() - start,

@@ -23,6 +23,8 @@ import { Brain } from "./brain.js";
 import { SqliteBrainStore } from "./brain-sqlite-store.js";
 import { DreamCycle } from "./dream-cycle.js";
 import { LifecycleManager } from "./lifecycle.js";
+import { SqliteMemoryManager } from "./sqlite-manager.js";
+import { MemoryManagerImpl } from "./manager.js";
 import type { BrainStore } from "./brain-store.js";
 
 // ── C-GATE-1: Durable Brain runs the Brain analysis path ──────────────────
@@ -214,7 +216,7 @@ describe("[C-GATE-3] dream()/consolidate() idempotency across restart", () => {
     store2.close();
   });
 
-  it("dream() dream-summary fact persists across restart", async () => {
+  it("dream() dream-summary fact persists across restart and is idempotent", async () => {
     // Phase 1: dream() records a dream-summary fact.
     const store1 = new SqliteBrainStore(dbPath);
     const brain1 = new Brain(3, 0.85, store1);
@@ -234,6 +236,160 @@ describe("[C-GATE-3] dream()/consolidate() idempotency across restart", () => {
     expect(dreamFactsAfter.length).toBe(1);
     // The original event fact also persisted.
     expect(brain2.factCount).toBeGreaterThanOrEqual(2);
+
+    // F3: 2nd dream() call after restart — using a tiny intervalMs (1ms) so the
+    // original event fact (created in phase 1) falls outside the window.
+    // collectRecentFacts returns empty → no duplicate dream-summary (true
+    // idempotency). Without the recent.length > 0 guard this would create a dupe.
+    const dc2 = new DreamCycle({ brain: brain2, intervalMs: 1, allowPrivateInPrompt: true });
+    await dc2.dream();
+
+    const dreamFactsAfter2 = [...brain2.allFacts.values()].filter((f) => f.source === "dream");
+    expect(dreamFactsAfter2.length).toBe(1); // still 1 — no duplicate
+
     store2.close();
+  });
+});
+
+// ── C-GATE-1b: F1 — durable Brain + sqliteMemory: BOTH paths run ──────────
+
+describe("[C-GATE-1b] durable Brain + sqliteMemory: complementary dual-path", () => {
+  let tmpDir: string;
+  let brainStore: SqliteBrainStore;
+  let smm: SqliteMemoryManager;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "mya-phase-c-complement-"));
+    brainStore = new SqliteBrainStore(join(tmpDir, "brain.db"));
+    smm = new SqliteMemoryManager({ dbPath: join(tmpDir, "smm.db") });
+  });
+  afterEach(() => {
+    brainStore.close();
+    smm.close();
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("dream() runs Brain path AND dreamSQLite (complementary data sources)", async () => {
+    const brain = new Brain(3, 0.85, brainStore);
+
+    // Seed Brain with a recent fact (Brain analysis path input).
+    brain.recordFact({
+      kind: "event", entity: "Alice", content: "met Bob",
+      visibility: "private", notability: 1, source: "session-1",
+    });
+
+    // Seed SMM working_memory (dreamSQLite path input). Default scope='global'.
+    smm.record({ content: "Alice discussed the plan", source: "session-1" });
+
+    const dc = new DreamCycle({
+      brain, sqliteMemory: smm, intervalMs: 60_000, allowPrivateInPrompt: true,
+    });
+    const result = await dc.dream();
+
+    // (a) Brain path ran: a dream-summary fact was recorded in Brain.
+    expect(brain.factsByEntity("dream-summary").length).toBe(1);
+
+    // (b) dreamSQLite ran: SMM episodic_memory has a dream entry.
+    const episodicDreams = smm.getDatabase()
+      .prepare("SELECT COUNT(*) as c FROM episodic_memory WHERE source = 'dream'")
+      .get() as { c: number };
+    expect(episodicDreams.c).toBeGreaterThanOrEqual(1);
+
+    // F6: memoriesConsolidated merges BOTH paths (Brain=1 + SMM=1 = 2).
+    expect(result.memoriesConsolidated).toBe(2);
+  });
+});
+
+// ── C-GATE-4: F2 — withBrain does not clobber durable Brain ───────────────
+
+describe("[C-GATE-4] withBrain does not clobber durable Brain on restart", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "mya-phase-c-noclobber-"));
+  });
+  afterEach(() => {
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("withBrain({ brain: durableBrain, persistenceDir }) preserves SQLite data (no JSONL clobber)", () => {
+    const dbPath = join(tmpDir, "brain.db");
+
+    // Phase 1: create durable Brain, record a fact, close.
+    const store1 = new SqliteBrainStore(dbPath);
+    const brain1 = new Brain(3, 0.85, store1);
+    brain1.recordFact({
+      kind: "event", entity: "Alice", content: "likes tea",
+      visibility: "private", notability: 1, source: "session-1",
+    });
+    expect(brain1.factCount).toBe(1);
+    store1.close();
+
+    // Phase 2: reopen + withBrain — must NOT clobber SQLite.
+    // Before the fix, loadFromBrainStore would call SqliteBrainStore.loadFromSnapshot
+    // which DELETEs all brain_facts and rewrites from empty JSONL → data loss.
+    const store2 = new SqliteBrainStore(dbPath);
+    const brain2 = new Brain(3, 0.85, store2);
+    const m = MemoryManagerImpl.withBrain({
+      brain: brain2,
+      persistenceDir: tmpDir,
+    });
+
+    // The durable Brain's SQLite data survives (loadFromBrainStore was skipped).
+    expect(brain2.factCount).toBe(1);
+    expect([...brain2.allFacts.values()].filter((f) => f.entity === "Alice").length).toBe(1);
+
+    // Recording a new fact through the manager still works (no brainStore JSONL path).
+    m.record({
+      kind: "event", entity: "Bob", content: "likes coffee",
+      visibility: "private", notability: 1, source: "session-2",
+    });
+    // brain2 still has Alice's fact (not clobbered).
+    expect([...brain2.allFacts.values()].filter((f) => f.entity === "Alice").length).toBe(1);
+    expect(brain2.factCount).toBe(2);
+
+    store2.close();
+  });
+});
+
+// ── C-GATE-5: F4 — InMemory Brain + sqliteMemory: early-return (backward compat) ─
+
+describe("[C-GATE-5] InMemory Brain + sqliteMemory: early-return (backward compat)", () => {
+  let tmpDir: string;
+  let smm: SqliteMemoryManager;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "mya-phase-c-bc-"));
+    smm = new SqliteMemoryManager({ dbPath: join(tmpDir, "smm.db") });
+  });
+  afterEach(() => {
+    smm.close();
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("InMemory Brain + sqliteMemory: dreamSQLite runs, Brain analysis SKIPPED", async () => {
+    const brain = new Brain(); // InMemory — isDurable === false
+    expect(brain.isDurable).toBe(false);
+
+    // Seed SMM working_memory.
+    smm.record({ content: "Alice likes TypeScript", source: "session-1" });
+
+    const dc = new DreamCycle({
+      brain, sqliteMemory: smm, intervalMs: 60_000,
+    });
+    const result = await dc.dream();
+
+    // Brain analysis phases SKIPPED: no dream-summary fact recorded.
+    expect(brain.factsByEntity("dream-summary").length).toBe(0);
+
+    // dreamSQLite ran: SMM episodic_memory has a dream entry.
+    const episodicDreams = smm.getDatabase()
+      .prepare("SELECT COUNT(*) as c FROM episodic_memory WHERE source = 'dream'")
+      .get() as { c: number };
+    expect(episodicDreams.c).toBeGreaterThanOrEqual(1);
+
+    // Result is from dreamSQLite path.
+    expect(result.summary).toMatch(/Consolidated|No new/);
+    expect(result.memoriesConsolidated).toBe(1);
   });
 });
