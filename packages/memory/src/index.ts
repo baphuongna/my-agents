@@ -16,9 +16,9 @@ export { ArchivistRole, GoalsRole, cleanTurnToMarkdown } from "./roles.js";
 export type { MemoryRole } from "./roles.js";
 
 export type { RetrievalArm } from "./rrf.js";
-/** @deprecated Legacy in-memory belief graph (pre-SQLite). Kept for the dream-cycle
- * bridge + backward compat; new code should use the SQLite memory system via MemoryStore.
- * Routing Brain through a GraphStore adapter is a future refactor (Dig 3 de-fragmentation). */
+/** Dig 3 COMPLETE — Brain's storage is now swappable via the BrainStorage seam,
+ * with a durable SqliteBrainStore when MYA_MEMORY_BACKEND=sqlite. The GraphStore-adapter
+ * de-fragmentation is fulfilled. Brain's 10 analysis phases remain active (dream-cycle). */
 export { Brain } from "./brain.js";
 export type { Fact, Take, BrainPage, FactKind, FactVisibility } from "./brain.js";
 export type { BrainStorage } from "./brain-storage.js";
@@ -68,6 +68,7 @@ export type { LifecycleResult } from "./lifecycle.js";
 export { UnifiedStore } from "./store.js";
 export { BrainStore } from "./brain-store.js";
 export type { BrainRecord, BrainSnapshot } from "./brain-store.js";
+export { migrateBrainJsonlToSqlite } from "./brain-migrate-jsonl.js";
 
 // ── Domains (backward compat — still exported for existing tests/wiring) ──
 export { ArchivistDomain, archivistDomain } from "./domains/archivist.js";

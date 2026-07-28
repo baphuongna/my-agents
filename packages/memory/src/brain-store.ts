@@ -49,6 +49,11 @@ export interface BrainSnapshot {
 
 // ── BrainStore ────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated Superseded by SqliteBrainStore (Dig 3) when MYA_MEMORY_BACKEND=sqlite.
+ * Still used for the default InMemory path (zero-behavior-change backward compat).
+ * Do not use for new durable storage.
+ */
 export class BrainStore {
   private filePath: string;
   private writeQueue: Promise<void> = Promise.resolve();

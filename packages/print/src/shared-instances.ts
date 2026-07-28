@@ -13,6 +13,7 @@ import { loadRoles as loadRolesRegistry, type RoleRegistry } from "@my-agent/cor
 import {
   Brain,
   SqliteBrainStore,
+  migrateBrainJsonlToSqlite,
   MemoryManagerImpl,
   MemoryContextSource,
   RetrievalEngine,
@@ -121,6 +122,19 @@ const allDomains = [
 ];
 
 const memoryDir = join(homedir(), ".mya", "memory");
+
+// ── Dig 3 Phase D: JSONL→SQLite migration (closes wiring-review Finding 2) ──
+// When Brain is durable (sqlite configured), migrate any existing brain.jsonl
+// facts to the SQLite brain_* tables. Idempotent — skips if brain already has data.
+// This runs ONLY when durable; the default InMemory path is untouched.
+if (brain.isDurable) {
+  try {
+    const result = await migrateBrainJsonlToSqlite(brain, memoryDir);
+    if (result.migrated > 0) {
+      process.stderr.write(`\n[mya] Migrated ${result.migrated} Brain facts from JSONL to SQLite\n`);
+    }
+  } catch { /* migration is best-effort */ }
+}
 
 export const memory = MemoryManagerImpl.withBrain({
   brain,
