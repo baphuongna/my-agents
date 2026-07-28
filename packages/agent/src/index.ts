@@ -45,7 +45,7 @@ import {
   makeCodeExecTool,
   type ToolImpl,
 } from "@my-agent/tools";
-import { FileBackend, MemoryManagerImpl, Brain, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter, DreamCycle,
+import { FileBackend, MemoryManagerImpl, Brain, createBrainFromConfig, ArchivistRole, GoalsRole, TypedGraph, KnowledgeSource, createRagfs, makeRagfsScanner, MemoryContextSource, type RagfsRouter, DreamCycle,
   archivistDomain, treeDomain, diffDomain, goalsDomain, syncDomain, graphDomain, conversationsDomain, searchDomain, sourcesDomain, entitiesDomain, storeDomain, toolsDomain, queueDomain,
 } from "@my-agent/memory";
 import { scan as scanContent } from "@my-agent/prompts";
@@ -64,6 +64,8 @@ import { speak } from "@my-agent/tts";
 import { type ToolHookSink, type TelemetryExporter } from "@my-agent/core";
 import { PiAiProviderBridge } from "@my-agent/ai";
 import { createRequire } from "node:module";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { createExporter } from "./exporters.js";
 
 export interface AgentConfig {
@@ -75,6 +77,9 @@ export interface AgentConfig {
   openaiBaseUrl?: string;
   /** Directory for durable (FileBackend) memory. If absent: in-memory only. */
   memoryDir?: string;
+  /** Memory backend: "sqlite" for durable SqliteBrainStore. Falls back to
+   * process.env["MYA_MEMORY_BACKEND"]. Default (absent/other) → InMemory. */
+  memoryBackend?: string;
   /** Explicit tool list. If absent: the 6 builtins. */
   tools?: ToolImpl[];
   /** Budget. If absent: freeBudget (unlimited). */
@@ -260,7 +265,15 @@ export function createAgent(config: AgentConfig = {}): Agent {
 
   // ── memory ──
   // §8 Brain (facts/takes/pages + dream-cycle phases).
-  const brain = new Brain();
+  // Dig 3: config-gated factory — "sqlite" → durable SqliteBrainStore;
+  // default (absent/other) → InMemory. Behavior identical when unconfigured.
+  const dbPath = config.memoryDir
+    ? join(config.memoryDir, "memory.db")
+    : join(homedir(), ".mya", "memory", "memory.db");
+  const memoryBackend = config.memoryBackend ?? process.env["MYA_MEMORY_BACKEND"];
+  const { brain, close: closeBrainStore } = createBrainFromConfig(memoryBackend, dbPath);
+  // Ensure the SQLite store is closed on process exit (WAL checkpoint).
+  process.on("exit", () => { try { closeBrainStore?.(); } catch {} });
   let activeTurns = 0;
   const dreamCycle = new DreamCycle({
     brain,

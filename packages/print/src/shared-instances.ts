@@ -13,6 +13,7 @@ import { loadRoles as loadRolesRegistry, type RoleRegistry } from "@my-agent/cor
 import {
   Brain,
   SqliteBrainStore,
+  createBrainFromConfig,
   migrateBrainJsonlToSqlite,
   MemoryManagerImpl,
   MemoryContextSource,
@@ -97,19 +98,6 @@ export const cron = new CronScheduler();
 // behavior change). config.memoryBackend is loaded from ~/.mya/agent/config.json
 // or env MYA_MEMORY_BACKEND — this wiring makes the previously-dead field live.
 const memoryDbPath = join(homedir(), ".mya", "memory", "memory.db");
-
-/** Factory: construct a Brain from the memory-backend config.
- * Exported for testability (config-gate unit tests import this directly). */
-export function createBrainFromConfig(
-  memoryBackend: string | undefined,
-  dbPath: string,
-): { brain: Brain; close?: () => void } {
-  if (memoryBackend === "sqlite") {
-    const store = new SqliteBrainStore(dbPath);
-    return { brain: new Brain(3, 0.85, store), close: () => store.close() };
-  }
-  return { brain: new Brain() };
-}
 
 const { brain, close: closeBrainStore } = createBrainFromConfig(config.memoryBackend, memoryDbPath);
 export { brain };
