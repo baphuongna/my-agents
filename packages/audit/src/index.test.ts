@@ -328,7 +328,7 @@ describe("trust functions", () => {
 
   it("saveTrust + loadTrust round-trips a trusted level", () => {
     const root = trustDir; // existing dir → canonical resolves
-    saveTrust({ root, level: "trusted", defaultProjectTrust: "ask", trustedAt: 12345 });
+    saveTrust({ root, level: "trusted", defaultProjectTrust: "ask", trustedAt: 12345, source: "persisted" });
     const loaded = loadTrust(root);
     expect(loaded.level).toBe("trusted");
     expect(loaded.defaultProjectTrust).toBe("ask");
@@ -338,7 +338,7 @@ describe("trust functions", () => {
 
   it("saveTrust + loadTrust round-trips a privileged level", () => {
     const root = trustDir;
-    saveTrust({ root, level: "privileged", defaultProjectTrust: "always" });
+    saveTrust({ root, level: "privileged", defaultProjectTrust: "always", source: "persisted" });
     const loaded = loadTrust(root);
     expect(loaded.level).toBe("privileged");
   });
@@ -352,7 +352,7 @@ describe("trust functions", () => {
   it("loadTrust rejects an invalid level in the file (fails safe to untrusted)", () => {
     const root = trustDir;
     // Manually write a bogus level
-    saveTrust({ root, level: "trusted", defaultProjectTrust: "ask" });
+    saveTrust({ root, level: "trusted", defaultProjectTrust: "ask", source: "persisted" });
     const { writeFileSync, readdirSync, readFileSync } = require("node:fs");
     const files = readdirSync(trustDir);
     const file = files[0];
@@ -363,7 +363,7 @@ describe("trust functions", () => {
   });
 
   it("saveTrust writes a 0600 file", () => {
-    saveTrust({ root: trustDir, level: "trusted", defaultProjectTrust: "ask" });
+    saveTrust({ root: trustDir, level: "trusted", defaultProjectTrust: "ask", source: "persisted" });
     const { readdirSync, statSync } = require("node:fs");
     const file = readdirSync(trustDir)[0]!;
     const mode = statSync(join(trustDir, file)).mode & 0o777;
@@ -373,7 +373,7 @@ describe("trust functions", () => {
 
 describe("shouldPromptFirstRun", () => {
   const mk = (level: ProjectTrust["level"], dpt: ProjectTrust["defaultProjectTrust"]): ProjectTrust =>
-    ({ root: "/x", level, defaultProjectTrust: dpt });
+    ({ root: "/x", level, defaultProjectTrust: dpt, source: "default" });
 
   it("returns true when untrusted + ask", () => {
     expect(shouldPromptFirstRun(mk("untrusted", "ask"))).toBe(true);
@@ -398,7 +398,7 @@ describe("shouldPromptFirstRun", () => {
 
 describe("safeContextOnly + canAutoApprove", () => {
   const mk = (level: ProjectTrust["level"]): ProjectTrust =>
-    ({ root: "/x", level, defaultProjectTrust: "ask" });
+    ({ root: "/x", level, defaultProjectTrust: "ask", source: "default" });
 
   it("safeContextOnly is true only for untrusted", () => {
     expect(safeContextOnly(mk("untrusted"))).toBe(true);

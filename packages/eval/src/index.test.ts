@@ -51,7 +51,9 @@ describe("keyFactPreserved — built-in unit scenario", () => {
     expect(keyFactPreserved.expectedResponse).toBe("The deadline is July 31.");
     const lastResp = keyFactPreserved.trace.responses.at(-1);
     expect(lastResp).toBe("The deadline is July 31.");
-    const userTurn = keyFactPreserved.trace.messages.find((m) => m.role === "user");
+    const userTurn = keyFactPreserved.trace.messages.find(
+      (m): m is { role: string; content: string } => (m as { role: string }).role === "user",
+    );
     expect(userTurn?.content).toMatch(/July 31/);
   });
 
@@ -67,6 +69,6 @@ describe("keyFactPreserved — built-in unit scenario", () => {
     h.add({ ...keyFactPreserved, expectedResponse: "The deadline is August 15." });
     const [r] = await h.grade();
     expect(r?.passed).toBe(false);
-    expect(r?.drifters ?? r?.id).toBeTruthy();
+    expect(r?.reason ?? r?.id).toBeTruthy();
   });
 });

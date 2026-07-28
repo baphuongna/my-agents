@@ -3,22 +3,6 @@
  * PiSkill la subset cua Pi's Skill interface (skills.ts:75).
  * Extension khong import Skill tu package vi no khong duoc export.
  */
-import type {
-	BeforeAgentStartEvent,
-	BeforeAgentStartEventResult,
-	BuildSystemPromptOptions,
-	ExtensionAPI,
-	ToolCallEvent,
-} from "@my-agent/coding-agent";
-
-// Re-export Pi event types cho convenience
-export type {
-	BeforeAgentStartEvent,
-	BeforeAgentStartEventResult,
-	BuildSystemPromptOptions,
-	ExtensionAPI,
-	ToolCallEvent,
-};
 
 /**
  * Subset cua Pi's Skill interface (skills.ts:75) ma extension can.

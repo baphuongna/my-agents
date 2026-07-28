@@ -80,6 +80,7 @@ import {
 import { homedir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 
 import type { AuditLog } from "@my-agent/audit";
 import type { SecretStore } from "@my-agent/secrets";
@@ -1133,7 +1134,9 @@ ${hitLines}`);
           required: ["script"],
         },
         async execute(_id: string, params: { script: string; input?: unknown; timeout_ms?: number }) {
-          const { spawnSubagent, trackSubagent } = await import("../../coding-agent/src/core/subagent.js");
+          // createRequire avoids TS6059 (rootDir violation) that await import() triggers;
+          // same pattern as main.ts poolSubagents and shared-instances.ts.
+          const { spawnSubagent, trackSubagent } = createRequire(import.meta.url)("../../coding-agent/src/core/subagent.ts");
           // Unrestricted (pi-core parity): subagent cwd is NOT bounded to the
           // workspace — same as pi core's delegate/subagent path.
           const spawn = async (goal: string, o: { allowedTools?: string[]; cwd?: string } = {}): Promise<string> => {

@@ -79,7 +79,7 @@ describe("CHANNEL_SETUP", () => {
   });
 
   it("email channel requires three credentials", () => {
-    const ids = CHANNEL_SETUP.email.credentials.map((c) => c.envVar);
+    const ids = CHANNEL_SETUP.email!.credentials.map((c) => c.envVar);
     expect(ids).toContain("EMAIL_API_KEY");
     expect(ids).toContain("EMAIL_PROVIDER");
     expect(ids).toContain("EMAIL_FROM");

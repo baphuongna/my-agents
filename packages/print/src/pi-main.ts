@@ -27,7 +27,6 @@ export async function runPiInteractive(): Promise<void> {
 
   // LAZY LOAD pi — this is the expensive import (2s, 12MB)
   // Only happens when user enters interactive mode, NOT at launcher startup.
-  // @ts-expect-error — resolved by esbuild from project source
   const { main } = await import("@my-agent/coding-agent");
 
   const myaBridge = createMyaBridge({

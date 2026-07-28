@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { authHeaders, withAuth } from "./gw-auth.js";
 import { join, resolve as pathResolve } from "node:path";
 import { nowWallclock, supervisedTask, type SupervisedTaskHandle } from "@my-agent/core";
-import { scanSkillDirectory } from "./skill-search/scanner.ts";
+import { scanSkillDirectory } from "./skill-search/scanner.js";
 
 const A = {
   bold: (s: string) => `\x1b[1m${s}\x1b[22m`,

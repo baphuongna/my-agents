@@ -47,10 +47,10 @@ describe("codeexec: makeCodeExecTool factory + meta", () => {
       properties: Record<string, { type: string; enum?: string[] }>;
     };
     expect(args.required).toEqual(["language", "script"]);
-    expect(args.properties.language.type).toBe("string");
-    expect(args.properties.language.enum).toEqual(["javascript", "python"]);
-    expect(args.properties.script.type).toBe("string");
-    expect(args.properties.timeoutMs.type).toBe("number");
+    expect(args.properties.language!.type).toBe("string");
+    expect(args.properties.language!.enum).toEqual(["javascript", "python"]);
+    expect(args.properties.script!.type).toBe("string");
+    expect(args.properties.timeoutMs!.type).toBe("number");
   });
 
   it("re-exports randomUUID from crypto", async () => {

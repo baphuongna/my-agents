@@ -7,16 +7,16 @@
  */
 import { describe, it, expect } from "vitest";
 import { getMcpToken, startMcpOAuth } from "./mcp-oauth.js";
-import type { SecretStore } from "@my-agent/secrets";
+import type { SecretStore, SecretRef } from "@my-agent/secrets";
 
 /** Minimal in-memory fake SecretStore for testing token retrieval. */
 function fakeStore(files: Record<string, string> = {}): SecretStore {
   return {
-    resolve: (spec) => {
+    resolve: (spec: SecretRef) => {
       if (spec.from === "file") return files[spec.ref] ?? null;
       return null;
     },
-    writeSealedFile: (path, data) => {
+    writeSealedFile: (path: string, data: string) => {
       files[path] = data;
     },
   } as unknown as SecretStore;

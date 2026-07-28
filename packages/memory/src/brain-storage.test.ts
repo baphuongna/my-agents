@@ -478,7 +478,9 @@ describe("GAP-1 site 4: SyncDomain.onRecord notifies the seam", () => {
     expect(spy.putFactCount).toBe(1);
     const got = brain.allFacts.get(f.id)!;
     expect(got.hlc).toBeDefined();
-    expect(got.hlc!.wall).toBe(f.createdAt);
+    // HLC wall is the tick time (>= fact.createdAt); relax to >= so the test
+    // isn't fragile to a 1ms gap between recordFact and onRecord's tick under load.
+    expect(got.hlc!.wall).toBeGreaterThanOrEqual(f.createdAt);
     expect(got.hlc!.node).toBe("node-a");
   });
 

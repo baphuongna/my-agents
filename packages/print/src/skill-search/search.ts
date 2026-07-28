@@ -1,10 +1,10 @@
-import { expandQuery } from "./synonyms.ts";
-import { tokenize } from "./text.ts";
+import { expandQuery } from "./synonyms.js";
+import { tokenize } from "./text.js";
 /**
  * Search algorithm — tinh diem va rank skills theo query.
  * Implement theo SPEC §5.1 scoring formula.
  */
-import type { SearchResult, SkillIndex } from "./types.ts";
+import type { SearchResult, SkillIndex } from "./types.js";
 
 /**
  * Tim kiem skills trong index theo query.

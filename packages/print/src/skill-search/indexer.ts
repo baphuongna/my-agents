@@ -1,10 +1,10 @@
-import { CATEGORY_RULES, classify } from "./categories.ts";
-import { tokenize } from "./text.ts";
+import { CATEGORY_RULES, classify } from "./categories.js";
+import { tokenize } from "./text.js";
 /**
  * Index builder — buildIndex va fingerprintSkills.
  * Implement theo SPEC §6.4.
  */
-import type { CategorySummary, PiSkill, SkillEntry, SkillIndex } from "./types.ts";
+import type { CategorySummary, PiSkill, SkillEntry, SkillIndex } from "./types.js";
 
 /**
  * Build search index tu danh sach Pi skills.

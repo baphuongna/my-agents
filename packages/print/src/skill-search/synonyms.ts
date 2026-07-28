@@ -2,7 +2,7 @@
  * Tu dong ngu (synonym dictionary) — SPEC §5.2.
  * Moi entry key → danh sach tu dong ngu, cho phep expand query.
  */
-import { tokenize } from "./text.ts";
+import { tokenize } from "./text.js";
 
 /**
  * Bang tu dong ngu. Moi key danh cho cac tu co cung nghia.

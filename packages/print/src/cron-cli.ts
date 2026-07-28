@@ -262,7 +262,7 @@ export async function cronHistory(id?: string): Promise<void> {
 }
 
 /** Phase 5: full update — patch any field (name|schedule|prompt|enabled|trigger|timezone). */
-export async function cronUpdate(id: string | undefined, field: string | undefined, ...values: string[]): Promise<void> {
+export async function cronUpdate(id?: string, field?: string, ...values: string[]): Promise<void> {
   if (!id || !field) {
     console.log(`${A.red("Usage:")} mya cron update <id> <field> <value>`);
     console.log(`${A.muted("  fields: name | schedule | prompt | enabled | trigger | timezone")}`);

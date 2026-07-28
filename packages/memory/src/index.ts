@@ -89,7 +89,7 @@ export { QueueDomain, queueDomain } from "./domains/queue.js";
 
 // ── Phase 1: SQLite foundation ──
 export { openDB, transaction, closeDB, checkpoint, repairStaleIndexes, probeFts5Health } from "./sqlite-db.js";
-export type { DatabasePath } from "./sqlite-db.js";
+export type { DatabasePath, SqliteDatabase } from "./sqlite-db.js";
 export { initSchema, getSchemaVersion } from "./sqlite-schema.js";
 
 // ── Phase 2: Store layer ──

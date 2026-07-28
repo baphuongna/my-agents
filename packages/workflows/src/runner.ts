@@ -261,9 +261,11 @@ export async function runRhaiWorkflow(
 ): Promise<import("./rhai-runner.js").RhaiResult> {
   const { evalRhai } = await import("./rhai-runner.js");
   const source = await readFile(filePath, "utf8");
+  // evalRhai's RhaiOptions supports timeoutMs but not AbortSignal;
+  // the sandboxed runner enforces its own timeout internally.
   return evalRhai(source, {
     input: context.input,
-    tools: context.tools as Record<string, unknown>,
-    session: context.session as Record<string, unknown>,
-  }, { timeoutMs: opts.timeoutMs, signal: opts.signal });
+    tools: context.tools,
+    session: context.session,
+  }, { timeoutMs: opts.timeoutMs });
 }

@@ -89,6 +89,7 @@ function blockFromRuntimeEvent(e: RuntimeEvent, index: number): NormalizedBlock 
           const results = Array.isArray(te.result) ? te.result : te.result.results;
           if (results.length === 0) return null;
           const r = results[0];
+          if (!r) return null;
           const text = extractTextFromResult(r);
           return { kind: "tool_result", name: r.callId, text, sourceIndex: index };
         }
@@ -245,25 +246,28 @@ function boostAdjacency(ranked: RankedBlock[]): void {
   for (const idx of important) {
     // Boost user block before important event
     for (let i = idx - 1; i >= Math.max(0, idx - 8); i--) {
-      if (ranked[i].block.kind === "user") {
-        ranked[i].score += 10;
-        ranked[i].reasons.push("near-important-event");
+      const r = ranked[i];
+      if (r && r.block.kind === "user") {
+        r.score += 10;
+        r.reasons.push("near-important-event");
         break;
       }
     }
     // Boost assistant block before important event
     for (let i = idx - 1; i >= Math.max(0, idx - 4); i--) {
-      if (ranked[i].block.kind === "assistant") {
-        ranked[i].score += 7;
-        ranked[i].reasons.push("near-important-event");
+      const r = ranked[i];
+      if (r && r.block.kind === "assistant") {
+        r.score += 7;
+        r.reasons.push("near-important-event");
         break;
       }
     }
     // Boost block after important event
     for (let i = idx + 1; i <= Math.min(ranked.length - 1, idx + 4); i++) {
-      if (ranked[i].block.kind === "assistant" || ranked[i].block.kind === "bash") {
-        ranked[i].score += 5;
-        ranked[i].reasons.push("after-important-event");
+      const r = ranked[i];
+      if (r && (r.block.kind === "assistant" || r.block.kind === "bash")) {
+        r.score += 5;
+        r.reasons.push("after-important-event");
         break;
       }
     }
@@ -274,7 +278,8 @@ function boostAdjacency(ranked: RankedBlock[]): void {
 
 function nextNonToolResult(ranked: RankedBlock[], index: number): NormalizedBlock | undefined {
   for (let i = index + 1; i < ranked.length; i++) {
-    if (ranked[i].block.kind !== "tool_result") return ranked[i].block;
+    const r = ranked[i];
+    if (r && r.block.kind !== "tool_result") return r.block;
   }
   return undefined;
 }
@@ -282,6 +287,7 @@ function nextNonToolResult(ranked: RankedBlock[], index: number): NormalizedBloc
 function boostSegmentClosingAssistants(ranked: RankedBlock[]): void {
   for (let i = 0; i < ranked.length; i++) {
     const current = ranked[i];
+    if (!current) continue;
     if (current.block.kind !== "assistant") continue;
     if (current.block.text.trim().length < MIN_SEGMENT_CLOSING_ASSISTANT_CHARS) continue;
     const next = nextNonToolResult(ranked, i);
@@ -354,12 +360,14 @@ export function selectRankedBriefBlocks(
 
   // Keep recent blocks (newest first) to preserve local continuity
   for (let i = blocks.length - 1; i >= Math.max(0, blocks.length - preserveRecentBlocks); i--) {
-    if (blocks[i].kind === "tool_result") continue;
+    const block = blocks[i];
+    if (!block) continue;
+    if (block.kind === "tool_result") continue;
     if (selected.has(i)) continue;
-    if (costs && usedTokens + costs[i] > maxTokens!) continue;
+    if (costs && usedTokens + costs[i]! > maxTokens!) continue;
     selected.add(i);
-    if (costs) usedTokens += costs[i];
-    const key = dedupKey(blocks[i]);
+    if (costs) usedTokens += costs[i]!;
+    const key = dedupKey(block);
     if (key) seenKeys.add(key);
   }
 
@@ -373,14 +381,14 @@ export function selectRankedBriefBlocks(
     if (key && seenKeys.has(key)) continue;
     if (costs) {
       // Skip (not break) so smaller high-value blocks can still fit the budget
-      if (usedTokens + costs[item.index] > maxTokens!) continue;
-      usedTokens += costs[item.index];
+      if (usedTokens + costs[item.index]! > maxTokens!) continue;
+      usedTokens += costs[item.index]!;
     }
     selected.add(item.index);
     if (key) seenKeys.add(key);
   }
 
-  return [...selected].sort((a, b) => a - b).map((i) => blocks[i]);
+  return [...selected].sort((a, b) => a - b).map((i) => blocks[i]!);
 }
 
 // ─── Block → text helper ────────────────────────────────────────────────────
@@ -464,7 +472,7 @@ export function rankedCompact(
   // Convert RuntimeEvent[] → NormalizedBlock[]
   const blocks: NormalizedBlock[] = [];
   for (let i = 0; i < messages.length; i++) {
-    const block = blockFromRuntimeEvent(messages[i], i);
+    const block = blockFromRuntimeEvent(messages[i]!, i);
     if (block) blocks.push(block);
   }
 

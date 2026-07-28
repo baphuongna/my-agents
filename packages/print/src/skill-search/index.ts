@@ -8,9 +8,9 @@
  *
  * Source: ~/source/my_pi/pi-skill-search (ported, import-adapted @earendil-works → @my-agent).
  */
-export { stripAvailableSkillsBlock, detectSkillsBlock, AVAILABLE_SKILLS_BLOCK_REGEX } from "./strip.ts";
-export { buildIndex, fingerprintSkills } from "./indexer.ts";
-export { search } from "./search.ts";
-export { formatCategorySummary, renderToolDescription, formatResults, estimateTokens } from "./format.ts";
-export { scanSkillDirectory, parseFrontmatter } from "./scanner.ts";
-export type { PiSkill, SkillEntry, SearchResult, CategorySummary, SkillIndex } from "./types.ts";
+export { stripAvailableSkillsBlock, detectSkillsBlock, AVAILABLE_SKILLS_BLOCK_REGEX } from "./strip.js";
+export { buildIndex, fingerprintSkills } from "./indexer.js";
+export { search } from "./search.js";
+export { formatCategorySummary, renderToolDescription, formatResults, estimateTokens } from "./format.js";
+export { scanSkillDirectory, parseFrontmatter } from "./scanner.js";
+export type { PiSkill, SkillEntry, SearchResult, CategorySummary, SkillIndex } from "./types.js";

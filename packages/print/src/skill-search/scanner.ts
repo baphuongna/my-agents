@@ -13,7 +13,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { PiSkill } from "./types.ts";
+import type { PiSkill } from "./types.js";
 
 /**
  * Parse YAML frontmatter tu SKILL.md content.
@@ -23,13 +23,16 @@ export function parseFrontmatter(content: string): { name: string; description: 
 	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 	if (!match) return null;
 	const fm = match[1];
+	if (!fm) return null;
 	let name = "";
 	let description = "";
 	for (const line of fm.split(/\r?\n/)) {
 		const nameMatch = line.match(/^name:\s*(.+)$/);
-		if (nameMatch) name = nameMatch[1].trim();
+		const nameVal = nameMatch?.[1];
+		if (nameVal) name = nameVal.trim();
 		const descMatch = line.match(/^description:\s*(.+)$/);
-		if (descMatch) description = descMatch[1].trim();
+		const descVal = descMatch?.[1];
+		if (descVal) description = descVal.trim();
 	}
 	if (!name) return null;
 	return { name, description };

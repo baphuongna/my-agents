@@ -381,11 +381,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         channels, roleRegistry, achievements,
       });
 
+      const bridgeOpts = { extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory }] };
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
         ...cronOpts,
-        extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory }],
+        ...bridgeOpts,
       });
       // Emit session_start so bridge hooks capture the session ID.
       try { await (result.session as unknown as { bindExtensions: (opts?: unknown) => Promise<void> }).bindExtensions({ mode: "print" }); } catch { /* best-effort */ }
@@ -922,8 +923,7 @@ async function runSubagentTest(args: string[]): Promise<void> {
   // @ts-ignore - resolved by esbuild from project source
   const { createAgentSession } = await import("../../coding-agent/src/index.ts");
   // @ts-ignore - resolved by esbuild from project source
-  const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } =
-    await import("../../coding-agent/src/core/subagent.ts");
+  const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } = await import("../../coding-agent/src/core/subagent.ts");
   console.log(`Subagent test (max depth: ${MAX_SUBAGENT_DEPTH})\n`);
   const parent = await createAgentSession({
     cwd: process.cwd(),

@@ -105,7 +105,7 @@ describe("scanInject", () => {
 
 describe("DriftGrader + identityCompressor", () => {
   it("identityCompressor.compress returns input unchanged", () => {
-    const input = "some text content";
+    const input: unknown[] = ["some text content"];
     expect(identityCompressor.compress(input)).toBe(input);
   });
 

@@ -81,7 +81,7 @@ describe("rankedCompact", () => {
     const editRanked = rankBriefBlocks([editBlock]);
     const readRanked = rankBriefBlocks([readBlock]);
 
-    expect(editRanked[0].score).toBeGreaterThan(readRanked[0].score);
+    expect(editRanked[0]!.score).toBeGreaterThan(readRanked[0]!.score);
   });
 
   it("scores bash commands with test keywords higher", () => {
@@ -91,7 +91,7 @@ describe("rankedCompact", () => {
     const testRanked = rankBriefBlocks([testBash]);
     const regularRanked = rankBriefBlocks([regularBash]);
 
-    expect(testRanked[0].score).toBeGreaterThan(regularRanked[0].score);
+    expect(testRanked[0]!.score).toBeGreaterThan(regularRanked[0]!.score);
   });
 
   it("penalizes trivial bash commands", () => {
@@ -101,7 +101,7 @@ describe("rankedCompact", () => {
     const trivialRanked = rankBriefBlocks([trivialBash]);
     const realRanked = rankBriefBlocks([realBash]);
 
-    expect(trivialRanked[0].score).toBeLessThan(realRanked[0].score);
+    expect(trivialRanked[0]!.score).toBeLessThan(realRanked[0]!.score);
   });
 
   it("preserves recent blocks even when budget is tight", () => {
@@ -155,7 +155,7 @@ describe("rankedCompact", () => {
     const successRanked = rankBriefBlocks([successBash]);
     const failRanked = rankBriefBlocks([failBash]);
 
-    expect(failRanked[0].score).toBeGreaterThan(successRanked[0].score);
+    expect(failRanked[0]!.score).toBeGreaterThan(successRanked[0]!.score);
   });
 
   it("scores workflow commands higher than regular commands", () => {
@@ -165,7 +165,7 @@ describe("rankedCompact", () => {
     const regularRanked = rankBriefBlocks([regularBash]);
     const workflowRanked = rankBriefBlocks([workflowBash]);
 
-    expect(workflowRanked[0].score).toBeGreaterThan(regularRanked[0].score);
+    expect(workflowRanked[0]!.score).toBeGreaterThan(regularRanked[0]!.score);
   });
 
   it("handles empty input gracefully", () => {

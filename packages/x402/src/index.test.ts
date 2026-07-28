@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import type { TurnContext } from "@my-agent/core";
 import { Wallet, X402Client, verifyEcdsaSignature, makePaidFetchTool } from "@my-agent/x402";
+
+/** Minimal TurnContext stub — the paid_fetch tool doesn't use ctx at runtime. */
+const mockCtx = {} as unknown as TurnContext;
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -168,14 +172,14 @@ describe("makePaidFetchTool — exposes x402 to the agent", () => {
 
   it("run() fails (err) when no url is provided", async () => {
     const tool = makePaidFetchTool(new Wallet());
-    const r = await tool.run({});
+    const r = await tool.run({}, mockCtx);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/url/i);
   });
 
   it("run() fails when url is present but not a string", async () => {
     const tool = makePaidFetchTool(new Wallet());
-    const r = await tool.run({ url: 123 });
+    const r = await tool.run({ url: 123 }, mockCtx);
     expect(r.ok).toBe(false);
   });
 
@@ -185,7 +189,7 @@ describe("makePaidFetchTool — exposes x402 to the agent", () => {
       vi.fn(async () => new Response("free-content", { status: 200 })),
     );
     const tool = makePaidFetchTool(new Wallet());
-    const r = await tool.run({ url: "https://example.com/free" });
+    const r = await tool.run({ url: "https://example.com/free" }, mockCtx);
     expect(r.ok).toBe(true);
     if (r.ok) {
       const out = r.output as { ok: boolean; status: number; body?: string };
@@ -209,7 +213,7 @@ describe("makePaidFetchTool — exposes x402 to the agent", () => {
       }),
     );
     const tool = makePaidFetchTool(wallet);
-    const r = await tool.run({ url: "https://example.com/premium" });
+    const r = await tool.run({ url: "https://example.com/premium" }, mockCtx);
     expect(r.ok).toBe(true);
     expect(wallet.balance("USDC")).toBe(7); // 10 - 3
     expect(wallet.receipts).toHaveLength(1);

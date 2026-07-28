@@ -19,14 +19,14 @@ describe("[unit] createRagfs", () => {
 
 	it("accepts a scanner option", () => {
 		const r = createRagfs({
-			scanner: (text: string) => ({ safe: true, matches: [] }),
+			scanner: { scan: () => ({ allowed: true }) },
 		});
 		expect(r).toBeInstanceOf(RagfsRouter);
 	});
 
 	it("accepts sources option", () => {
 		const fakeSource = {
-			scheme: "test" as const,
+			scheme: "memory" as const,
 			list: async () => [],
 			read: async () => "",
 			grep: async () => [],
@@ -36,16 +36,16 @@ describe("[unit] createRagfs", () => {
 	});
 
 	it("registers multiple sources", () => {
-		const s1 = { scheme: "s1" as const, list: async () => [], read: async () => "", grep: async () => [] };
-		const s2 = { scheme: "s2" as const, list: async () => [], read: async () => "", grep: async () => [] };
+		const s1 = { scheme: "memory" as const, list: async () => [], read: async () => "", grep: async () => [] };
+		const s2 = { scheme: "skill" as const, list: async () => [], read: async () => "", grep: async () => [] };
 		const r = createRagfs({ sources: [s1, s2] });
 		expect(r).toBeInstanceOf(RagfsRouter);
 	});
 
 	it("with scanner + sources together", () => {
-		const s = { scheme: "test" as const, list: async () => [], read: async () => "", grep: async () => [] };
+		const s = { scheme: "memory" as const, list: async () => [], read: async () => "", grep: async () => [] };
 		const r = createRagfs({
-			scanner: () => ({ safe: true, matches: [] }),
+			scanner: { scan: () => ({ allowed: true }) },
 			sources: [s],
 		});
 		expect(r).toBeInstanceOf(RagfsRouter);

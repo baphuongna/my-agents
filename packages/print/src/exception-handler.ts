@@ -103,7 +103,10 @@ export interface ExceptionHandlerOptions {
   /** Injectable clock (default: nowWallclock). */
   now?: () => number;
   /** The process-like object to register handlers on (default: global process). */
-  proc?: { on(event: string, listener: (...args: unknown[]) => void): unknown };
+  proc?: {
+    on(event: string, listener: (...args: unknown[]) => void): unknown;
+    removeListener?(event: string, listener: (...args: unknown[]) => void): unknown;
+  };
 }
 
 /**

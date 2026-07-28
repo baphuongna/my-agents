@@ -261,8 +261,8 @@ describe("recall — multi-term search", () => {
 
 describe("recall — score composition", () => {
   it("higher importance yields higher score (all else equal)", () => {
-    storeWorking(db, { content: "important alpha keyword", importance: 1.0, trust: 1.0 });
-    storeWorking(db, { content: "trivial alpha keyword", importance: 0.0, trust: 1.0 });
+    storeWorking(db, { content: "important alpha keyword", importance: 1.0 });
+    storeWorking(db, { content: "trivial alpha keyword", importance: 0.0 });
     const hits = recall(db, "alpha keyword", {});
     const important = hits.find((h) => h.content.includes("important"));
     const trivial = hits.find((h) => h.content.includes("trivial"));

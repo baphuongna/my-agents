@@ -4,7 +4,7 @@ import { supervisedTask } from "./supervised.js";
 /** A factory that crashes N times then succeeds. Tracks call count. */
 function makeCrashFactory(crashTimes: number): {
   factory: () => Promise<void>;
-  calls: number;
+  calls: { count: number };
 } {
   const calls = { count: 0 };
   return {

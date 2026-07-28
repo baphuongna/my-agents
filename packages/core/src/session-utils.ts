@@ -127,7 +127,7 @@ export class TodoList {
   private readonly todos = new Map<string, Todo>();
   private order: string[] = [];
 
-  write(updates: Array<{ id?: string; text: string; status?: TodoStatus }>): Todo[] {
+  write(updates: Array<{ id?: string; text?: string; status?: TodoStatus }>): Todo[] {
     for (const u of updates) {
       if (u.id && this.todos.has(u.id)) {
         const existing = this.todos.get(u.id)!;
@@ -135,7 +135,7 @@ export class TodoList {
         if (u.status) existing.status = u.status;
       } else {
         const id = u.id ?? randomUUID();
-        const todo: Todo = { id, text: u.text, status: u.status ?? "pending" };
+        const todo: Todo = { id, text: u.text ?? "", status: u.status ?? "pending" };
         this.todos.set(id, todo);
         this.order.push(id);
       }

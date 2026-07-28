@@ -236,19 +236,19 @@ describe("hashline: multi-edit chaining (sequential replaceByHash)", () => {
     let hashes = lineHashes(content);
     let r = replaceByHash(content, hashes[1]!, hashes[1]!, ["TWO"]);
     expect(r.ok).toBe(true);
-    if (r.ok) content = r.content;
+    if (r.ok) content = r.content!;
 
     // Edit 2: replace line 4 (re-hash after first edit).
     hashes = lineHashes(content);
     r = replaceByHash(content, hashes[3]!, hashes[3]!, ["FOUR"]);
     expect(r.ok).toBe(true);
-    if (r.ok) content = r.content;
+    if (r.ok) content = r.content!;
 
     // Edit 3: replace the whole range lines 1-3.
     hashes = lineHashes(content);
     r = replaceByHash(content, hashes[0]!, hashes[2]!, ["A", "B", "C"]);
     expect(r.ok).toBe(true);
-    if (r.ok) content = r.content;
+    if (r.ok) content = r.content!;
 
     expect(content).toBe("A\nB\nC\nFOUR\nline5");
   });
@@ -263,13 +263,13 @@ describe("hashline: multi-edit chaining (sequential replaceByHash)", () => {
       "d",
     ]);
     expect(r.ok).toBe(true);
-    if (r.ok) content = r.content;
+    if (r.ok) content = r.content!;
     expect(content).toBe("a\nb\nc\nd");
 
     hashes = lineHashes(content);
     r = replaceByHash(content, hashes[1]!, hashes[2]!, ["X"]);
     expect(r.ok).toBe(true);
-    if (r.ok) content = r.content;
+    if (r.ok) content = r.content!;
     expect(content).toBe("a\nX\nd");
   });
 });

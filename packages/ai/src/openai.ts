@@ -32,7 +32,7 @@ interface OpenAIStreamDelta {
   choices?: Array<{
     delta?: {
       content?: string;
-      tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+      tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }>;
     };
     finish_reason?: string | null;
   }>;
@@ -175,7 +175,7 @@ async function parseSSE(body: ReadableStream<Uint8Array>): Promise<StreamEvent[]
             // OpenAI streams tool_calls in chunks: first chunk has id+name,
             // subsequent chunks only have index + arguments delta.
             // Use index as the map key (falls back to id for non-streamed).
-            const key = tc.index ?? tc.id ?? pendingTools.size;
+            const key = String(tc.index ?? tc.id ?? pendingTools.size);
             const existing = pendingTools.get(key);
             if (existing) {
               // Continuation: append arguments, fill name/id if now present

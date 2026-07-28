@@ -11,11 +11,11 @@ function makeJob(): CronJob {
     id: "test-1",
     name: "test",
     schedule: "*/5 * * * *",
-    kind: "cron",
+    trigger: "cron",
+    deliveryTarget: "lane:test",
     enabled: true,
     prompt: "test",
     leaseMs: 60_000,
-    maxAttempts: 3,
     graceMs: 0,
   };
 }
