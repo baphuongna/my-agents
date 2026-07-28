@@ -15,7 +15,7 @@
  * File location: ~/.mya/memory/memory.db (+ -wal, -shm)
  */
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { nowWallclock } from "@my-agent/core";
 
@@ -61,6 +61,10 @@ export function openDB(path: DatabasePath): SqliteDatabase {
   }
   const Ctor = getDatabaseCtor();
   const db = new Ctor(path);
+  // S4: restrict file perms to owner-only (0o600). Best-effort; skip for in-memory.
+  if (path !== ":memory:") {
+    try { chmodSync(path, 0o600); } catch { /* best-effort */ }
+  }
   // mnemopi pragmas — battle-tested across context-mode, ctx, pi-session-manager
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA synchronous = NORMAL");

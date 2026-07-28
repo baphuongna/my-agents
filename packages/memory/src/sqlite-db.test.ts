@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
 import {
   openDB,
   transaction,
@@ -91,6 +91,13 @@ describe("openDB", () => {
     // ":memory:" path bypasses mkdirSync; should never touch the filesystem
     db = openDB(":memory:");
     expect(db).toBeTypeOf("object");
+  });
+
+  it("openDB with a file path sets restrictive 0o600 permissions (S4)", () => {
+    const file = join(tmpDir, "perms.db");
+    db = openDB(file);
+    const mode = statSync(file).mode & 0o777;
+    expect(mode).toBe(0o600);
   });
 });
 

@@ -91,9 +91,12 @@ export class SqliteMemoryManager implements MemoryStore {
 
   /** Check if a memory with this content hash already exists (dedup). */
   findByHash(hash: string): boolean {
+    // S3: escape LIKE metacharacters (%, _, \) in the hash to prevent
+    // pattern injection. ESCAPE '\' declares the escape char to SQLite.
+    const esc = (s: string) => s.replace(/[%_\\]/g, (c) => "\\" + c);
     const row = this.db.prepare(
-      `SELECT 1 FROM working_memory WHERE metadata_json LIKE ? LIMIT 1`
-    ).get(`%"captureHash":"${hash}"%`);
+      `SELECT 1 FROM working_memory WHERE metadata_json LIKE ? ESCAPE '\\' LIMIT 1`
+    ).get(`%"captureHash":"${esc(hash)}"%`);
     return row !== undefined;
   }
 
@@ -103,17 +106,18 @@ export class SqliteMemoryManager implements MemoryStore {
   }
 
   /** Count rows in each table — used by gateway /memory/stats endpoint.
-   * Returns the REAL counts from SQLite (the production backend), not Brain. */
+   * Returns the REAL counts from SQLite (the production backend), not Brain.
+   * S2: hardcoded SQL literals (no table-name interpolation). */
   stats(): { workingMemory: number; episodic: number; facts: number; triples: number } {
-    const count = (table: string): number => {
-      try { return (this.db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as { c: number }).c; }
+    const countOf = (sql: string): number => {
+      try { return (this.db.prepare(sql).get() as { c: number }).c; }
       catch { return 0; }
     };
     return {
-      workingMemory: count("working_memory"),
-      episodic: count("episodic_memory"),
-      facts: count("facts"),
-      triples: count("triples"),
+      workingMemory: countOf("SELECT COUNT(*) as c FROM working_memory"),
+      episodic: countOf("SELECT COUNT(*) as c FROM episodic_memory"),
+      facts: countOf("SELECT COUNT(*) as c FROM facts"),
+      triples: countOf("SELECT COUNT(*) as c FROM triples"),
     };
   }
 

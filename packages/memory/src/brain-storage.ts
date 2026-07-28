@@ -48,6 +48,11 @@ export interface BrainStorage {
   putTombstone(id: string, entry: { fact: Fact; deletedAt: number }): void;
   getTombstone(id: string): { fact: Fact; deletedAt: number } | undefined;
   deleteTombstone(id: string): boolean;
+  /** F4: atomic soft-delete — putTombstone + deleteFact as one storage op.
+   * InMemory delegates to two Map ops (can't fail); SqliteBrainStore wraps both
+   * in a single transaction so a crash between can't leave a fact in both
+   * brain_facts AND brain_tombstones. */
+  softDelete(id: string, entry: { fact: Fact; deletedAt: number }): void;
   allTombstones(): IterableIterator<[string, { fact: Fact; deletedAt: number }]>;
   readonly tombstoneCount: number;
 
@@ -90,6 +95,7 @@ export class InMemoryBrainStorage implements BrainStorage {
   putTombstone(id: string, entry: { fact: Fact; deletedAt: number }): void { this.tombstones.set(id, entry); }
   getTombstone(id: string): { fact: Fact; deletedAt: number } | undefined { return this.tombstones.get(id); }
   deleteTombstone(id: string): boolean { return this.tombstones.delete(id); }
+  softDelete(id: string, entry: { fact: Fact; deletedAt: number }): void { this.putTombstone(id, entry); this.deleteFact(id); }
   allTombstones(): IterableIterator<[string, { fact: Fact; deletedAt: number }]> { return this.tombstones.entries(); }
   get tombstoneCount(): number { return this.tombstones.size; }
 

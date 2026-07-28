@@ -401,7 +401,66 @@ describe("SqliteBrainStore — loadFromSnapshot clears + rewrites SQLite", () =>
   });
 });
 
-// ── B-GATE-6/7: Performance smoke (10k facts) ─────────────────────────────
+// ── F1: cache untouched on SQLite write failure ──────────────────────────
+
+describe("SqliteBrainStore — F1: cache-SQLite divergence on loadFromSnapshot failure", () => {
+  it("[unit] loadFromSnapshot leaves cache intact when a SQLite statement throws (non-BUSY)", () => {
+    const store = new SqliteBrainStore(dbPath);
+    // Populate with fact A (cache + SQLite).
+    const factA = makeFact({ id: "fact-a", content: "original fact A" });
+    store.putFact(factA);
+    expect(store.getFact("fact-a")).toBeDefined();
+
+    // Stub stmtDeleteAllFacts to throw a non-BUSY error (simulates disk full).
+    (store as any).stmtDeleteAllFacts = { run: () => { throw new Error("disk full"); } };
+
+    const factB = makeFact({ id: "fact-b", content: "replacement fact B" });
+
+    // loadFromSnapshot should throw (non-BUSY error → rollback + rethrow).
+    expect(() =>
+      store.loadFromSnapshot({ facts: [factB], takes: [], pages: [], tombstones: [] }),
+    ).toThrow("disk full");
+
+    // F1 invariant: cache still contains fact A, NOT fact B.
+    // The cache was NOT mutated because cache.loadFromSnapshot now runs AFTER
+    // all SQLite writes inside the transaction.
+    expect(store.getFact("fact-a")).toBeDefined();
+    expect(store.getFact("fact-a")!.content).toBe("original fact A");
+    expect(store.getFact("fact-b")).toBeUndefined();
+
+    store.close();
+  });
+});
+
+// ── F4: atomic softDelete (tombstone + fact-delete in one transaction) ────
+
+describe("SqliteBrainStore — F4: atomic softDelete", () => {
+  it("[unit] softDelete writes tombstone + deletes fact in both cache and SQLite", () => {
+    const store = new SqliteBrainStore(dbPath);
+    const f = makeFact({ id: "softdel-1", content: "to be soft-deleted" });
+    store.putFact(f);
+    expect(store.factCount).toBe(1);
+
+    store.softDelete("softdel-1", { fact: f, deletedAt: 8888 });
+
+    // Fact deleted from cache
+    expect(store.getFact("softdel-1")).toBeUndefined();
+    expect(store.factCount).toBe(0);
+    // Tombstone present in cache
+    expect(store.getTombstone("softdel-1")).toBeDefined();
+    expect(store.tombstoneCount).toBe(1);
+
+    // SQLite: fact row gone, tombstone row present
+    const factRow = rawSelect(dbPath, "SELECT id FROM brain_facts WHERE id = ?", "softdel-1");
+    expect(factRow).toBeUndefined();
+    const tombRow = rawSelect(dbPath, "SELECT deleted_at, fact_json FROM brain_tombstones WHERE id = ?", "softdel-1");
+    expect(tombRow!["deleted_at"]).toBe(8888);
+
+    store.close();
+  });
+});
+
+// ── B-GATE-6/7: Performance smoke (10k facts) ───────────────────────────────
 
 describe("SqliteBrainStore — B-GATE-6/7: performance smoke (10k facts)", () => {
   it("B-GATE-6: 10k facts allFacts() iteration < 50ms", () => {

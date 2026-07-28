@@ -377,6 +377,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       const myaBridgeFactory = createMyaBridge({
         auditLog, secretStore, hooks, skillStore, cron,
         brain, memory, retrievalEngine, lifecycleManager, sqliteMemory,
+        dreamCycle,  // F3: prevent dual DreamCycle (pass the one from runWebServer scope)
         wallet, sync, collab, packageHost, council, mcp, mcpConfigs,
         channels, roleRegistry, achievements,
       });

@@ -252,6 +252,17 @@ export class SqliteBrainStore implements BrainStorage {
     this.stmtUpsertTombstone.run(id, JSON.stringify(entry.fact), entry.deletedAt);
   }
 
+  /** F4: atomic softDelete — tombstone insert + fact delete in one transaction.
+   * Cache updated AFTER the transaction (F1 lesson: cache-after-SQLite). */
+  softDelete(id: string, entry: { fact: Fact; deletedAt: number }): void {
+    transaction(this.db, () => {
+      this.stmtUpsertTombstone.run(id, JSON.stringify(entry.fact), entry.deletedAt);
+      this.stmtDeleteFact.run(id);
+    });
+    this.cache.putTombstone(id, entry);
+    this.cache.deleteFact(id);
+  }
+
   getTombstone(id: string): { fact: Fact; deletedAt: number } | undefined {
     return this.cache.getTombstone(id);
   }
@@ -283,14 +294,10 @@ export class SqliteBrainStore implements BrainStorage {
     const tombstones = [...snapshot.tombstones];
 
     // Update cache + SQLite atomically in a single transaction.
+    // F1: write SQLite FIRST, then update cache LAST. If any SQLite write
+    // fails (non-BUSY → rollback+rethrow), the cache stays untouched,
+    // keeping cache consistent with the rolled-back SQLite.
     transaction(this.db, () => {
-      this.cache.loadFromSnapshot({
-        facts,
-        takes,
-        pages,
-        tombstones,
-      });
-
       // Clear SQLite tables and rewrite from the snapshot.
       this.stmtDeleteAllFacts.run();
       this.stmtDeleteAllTakes.run();
@@ -307,6 +314,14 @@ export class SqliteBrainStore implements BrainStorage {
       for (const [id, ts] of tombstones) {
         this.stmtUpsertTombstone.run(id, JSON.stringify(ts.fact), ts.deletedAt);
       }
+
+      // F1: cache load is the LAST step — only after all SQLite writes succeed.
+      this.cache.loadFromSnapshot({
+        facts,
+        takes,
+        pages,
+        tombstones,
+      });
     });
   }
 

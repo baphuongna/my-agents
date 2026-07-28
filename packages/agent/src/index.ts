@@ -272,8 +272,16 @@ export function createAgent(config: AgentConfig = {}): Agent {
     : join(homedir(), ".mya", "memory", "memory.db");
   const memoryBackend = config.memoryBackend ?? process.env["MYA_MEMORY_BACKEND"];
   const { brain, close: closeBrainStore } = createBrainFromConfig(memoryBackend, dbPath);
-  // Ensure the SQLite store is closed on process exit (WAL checkpoint).
-  process.on("exit", () => { try { closeBrainStore?.(); } catch {} });
+  // Ensure the SQLite store is closed on process exit / signal (WAL checkpoint).
+  // F5: use .once so each createAgent() does not accumulate listeners.
+  // F6: mirror shared-instances.ts — checkpoint+close on SIGINT/SIGTERM too.
+  const closeHandler = (sig?: string) => {
+    try { closeBrainStore?.(); } catch {}
+    if (sig) process.exit(0);
+  };
+  process.once("exit", () => closeHandler());
+  process.once("SIGINT", () => closeHandler("SIGINT"));
+  process.once("SIGTERM", () => closeHandler("SIGTERM"));
   let activeTurns = 0;
   const dreamCycle = new DreamCycle({
     brain,

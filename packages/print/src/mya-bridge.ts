@@ -500,11 +500,17 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           // Phase 3: pass real session id so consolidation covers the actual pi
           // session (was no-arg → only consolidated the "default" session).
           opts.sqliteMemory.lifecycle(parentSessionId || undefined);
-        } else if (opts.lifecycleManager) {
+        }
+        // Dig 3: when Brain is durable, run its lifecycle (purge+consolidate) too.
+        // SMM lifecycle (working_memory) and brain lifecycle (brain_facts) are disjoint.
+        // Gated on isDurable: default (InMemory) path unchanged (pre-Dig-3 behavior).
+        if (opts.brain?.isDurable && opts.lifecycleManager) {
           opts.lifecycleManager.tick();
-        } else if (opts.memory) {
+        } else if (!opts.sqliteMemory && opts.lifecycleManager) {
+          opts.lifecycleManager.tick();
+        } else if (!opts.sqliteMemory && opts.memory) {
           void opts.memory.consolidate();
-        } else if (opts.brain) {
+        } else if (!opts.sqliteMemory && opts.brain) {
           opts.brain.consolidate();
         }
       } catch { /* never crash TUI */ }

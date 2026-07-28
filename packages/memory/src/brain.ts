@@ -272,8 +272,7 @@ export class Brain {
 
   /** CRITICAL-1: soft-delete: move to tombstones (spec "soft-delete" — reversible via restore). */
   private softDelete(f: Fact, now: number): void {
-    this.storage.putTombstone(f.id, { fact: f, deletedAt: now });
-    this.storage.deleteFact(f.id);
+    this.storage.softDelete(f.id, { fact: f, deletedAt: now });
     this.backlinksCache = null; // invalidate
   }
 
