@@ -208,6 +208,24 @@ export interface Agent {
   telemetryExporter: TelemetryExporter;
 }
 
+// F5/F6: module-level closer registry. Process exit/signal handlers are
+// registered ONCE (not per createAgent() call) so multi-agent / test suites
+// don't accumulate listeners (MaxListenersExceededWarning). Only durable
+// (sqlite) brains carry a close function; InMemory registers nothing.
+const brainExitClosers = new Set<() => void>();
+let brainExitHandlersRegistered = false;
+function ensureBrainExitHandlers(): void {
+  if (brainExitHandlersRegistered) return;
+  brainExitHandlersRegistered = true;
+  const run = (sig?: string): void => {
+    for (const close of brainExitClosers) { try { close(); } catch { /* best-effort */ } }
+    if (sig) process.exit(0);
+  };
+  process.once("exit", () => run());
+  process.once("SIGINT", () => run("SIGINT"));
+  process.once("SIGTERM", () => run("SIGTERM"));
+}
+
 /** Build a fully-wired Agent. */
 export function createAgent(config: AgentConfig = {}): Agent {
   // ── providers ──
@@ -272,16 +290,13 @@ export function createAgent(config: AgentConfig = {}): Agent {
     : join(homedir(), ".mya", "memory", "memory.db");
   const memoryBackend = config.memoryBackend ?? process.env["MYA_MEMORY_BACKEND"];
   const { brain, close: closeBrainStore } = createBrainFromConfig(memoryBackend, dbPath);
-  // Ensure the SQLite store is closed on process exit / signal (WAL checkpoint).
-  // F5: use .once so each createAgent() does not accumulate listeners.
-  // F6: mirror shared-instances.ts — checkpoint+close on SIGINT/SIGTERM too.
-  const closeHandler = (sig?: string) => {
-    try { closeBrainStore?.(); } catch {}
-    if (sig) process.exit(0);
-  };
-  process.once("exit", () => closeHandler());
-  process.once("SIGINT", () => closeHandler("SIGINT"));
-  process.once("SIGTERM", () => closeHandler("SIGTERM"));
+  // F5/F6: accumulate the durable store's closer into the module-level
+  // registry; handlers are registered ONCE (see brainExitClosers above). The
+  // default (InMemory) path has no close function → registers nothing.
+  if (closeBrainStore) {
+    brainExitClosers.add(closeBrainStore);
+    ensureBrainExitHandlers();
+  }
   let activeTurns = 0;
   const dreamCycle = new DreamCycle({
     brain,
