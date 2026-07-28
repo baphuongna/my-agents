@@ -55,6 +55,13 @@ describe("[smoke] shared-instances singletons", () => {
 		if (m) expect(m.lifecycleManager).toBeDefined();
 	});
 
+	it("singleton brain is InMemory by default (no MYA_MEMORY_BACKEND=sqlite)", async () => {
+		// Guards the production WIRING (not just the factory): the exported
+		// `brain` singleton must be InMemory unless sqlite is explicitly opted in.
+		const m = await import("./shared-instances.js").catch(() => null as any);
+		if (m) expect(m.brain.isDurable).toBe(false);
+	});
+
 	it("exports roleRegistry", async () => {
 		const m = await import("./shared-instances.js").catch(() => null as any);
 		if (m) expect(m.roleRegistry).toBeDefined();

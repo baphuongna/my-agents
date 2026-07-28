@@ -181,7 +181,10 @@ export class MemoryManagerImpl implements MemoryManager {
     const persisted = this.brain.recordFact(withTtl as Omit<Fact, "id" | "createdAt"> & { id?: string });
     for (const d of this.domains) d.onRecord(persisted);
     // Persist to BrainStore (full-fidelity: all Fact fields + tier label).
-    if (this.brainStore) {
+    // Skipped when Brain storage is durable (SqliteBrainStore write-through
+    // already persisted via recordFact → storage.putFact). Consistent with
+    // consolidate() (line ~216) and lifecycle.tick() (line ~132).
+    if (this.brainStore && !this.brain.isDurable) {
       void this.brainStore.persistFact(persisted, _tier ?? "L0");
     }
     return persisted;
