@@ -186,6 +186,37 @@ function extractGatewaySession(argv: string[]): string | undefined {
   return process.env["MYA_GATEWAY_SESSION"];
 }
 
+/** Phase 2: best-effort task-status reporting. Spawned role-subagents (--gateway-session
+ * <id>) POST working/done to the gateway so /agents surfaces live task progress.
+ * No-op when sessionId is undefined (top-level sessions). Never throws.
+ * Extracted to module-level for unit testing. */
+export async function reportSubagentStatus(
+  sessionId: string | undefined,
+  status: string,
+  summary?: string,
+  keyOutputs?: string[],
+): Promise<void> {
+  if (!sessionId) return;
+  const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+  try {
+    const { authHeaders } = await import("./gw-auth.js");
+    const body: Record<string, unknown> = { status };
+    if (summary !== undefined) body.summary = summary;
+    if (keyOutputs !== undefined) body.keyOutputs = keyOutputs;
+    await fetch(
+      `http://127.0.0.1:${port}/pool/session/${encodeURIComponent(sessionId)}/status`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders() },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(2000),
+      },
+    );
+  } catch {
+    /* best-effort: never crash the TUI if gateway is unreachable */
+  }
+}
+
 export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void {
   return (pi: MyaPiApi) => {
     let parentSessionId = "";
@@ -194,32 +225,8 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // (--gateway-session <id>), it reports working/done status back to the
     // gateway so /agents surfaces live task progress. Undefined for top-level.
     const gatewaySessionId = extractGatewaySession(process.argv.slice(2));
-
-    /**
-     * Phase 2: best-effort task-status reporting. Spawned role-subagents POST
-     * working/done to the gateway. No-op for top-level sessions. Never throws.
-     */
-    async function reportSubagentStatus(status: string, summary?: string, keyOutputs?: string[]): Promise<void> {
-      if (!gatewaySessionId) return;
-      const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
-      try {
-        const { authHeaders } = await import("./gw-auth.js");
-        const body: Record<string, unknown> = { status };
-        if (summary !== undefined) body.summary = summary;
-        if (keyOutputs !== undefined) body.keyOutputs = keyOutputs;
-        await fetch(
-          `http://127.0.0.1:${port}/pool/session/${encodeURIComponent(gatewaySessionId)}/status`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json", ...authHeaders() },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(2000),
-          },
-        );
-      } catch {
-        /* best-effort: never crash the TUI if gateway is unreachable */
-      }
-    }
+    // reportSubagentStatus is module-level (above); called with gatewaySessionId
+    // at turn_start (working) + turn end (done). No-op for top-level sessions.
 
     // Skill-search state: strip <available_skills> + inject compact summary +
     // register on-demand search tool (replaces inject-all-skills pattern).
@@ -665,14 +672,14 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // 'failed' is deferred — no clean lifecycle event for agent failure; the
     // gateway derives degraded state from liveness (absence of 'done' + exit).
     if (gatewaySessionId) {
-      pi.on("turn_start", () => void reportSubagentStatus("working"));
+      pi.on("turn_start", () => void reportSubagentStatus(gatewaySessionId, "working"));
       pi.on("agent_settled", () => {
         // Phase 3: parse structured result from the last assistant message.
         const parsed = parseDoneResult(lastAssistantTextCapture);
         if (parsed) {
-          void reportSubagentStatus("done", parsed.summary, parsed.keyOutputs);
+          void reportSubagentStatus(gatewaySessionId, "done", parsed.summary, parsed.keyOutputs);
         } else {
-          void reportSubagentStatus("done");
+          void reportSubagentStatus(gatewaySessionId, "done");
         }
       });
     }
