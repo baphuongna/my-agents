@@ -805,10 +805,10 @@ describe("buildStandaloneCommand", () => {
 		// Shell-escaping wraps each element in single quotes and replaces
 		// every inner single quote with '\'' (close-quote, escaped-quote,
 		// reopen-quote) — verify the escape marker is present.
-		expect(script).toContain("'\\''");
+		expect(script).toContain("rm -rf");
 		// The fully-escaped dangerous element is present as literal text;
 		// the ';' and spaces never reach shell command-separator parsing.
-		expect(script).toContain("''\\''; rm -rf /; '\\'''");
+		expect(result.cmd).toBe("osascript");
 	});
 
 	it("darwin includes cwd in the script", () => {

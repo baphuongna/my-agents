@@ -37,7 +37,13 @@ export function buildStandaloneCommand(
 		const shellEsc = (s: string): string => `'${s.replace(/'/g, "'\\''")}'`;
 		const cmdStr = opts.command.map(shellEsc).join(" ");
 		const cwdEsc = shellEsc(opts.cwd ?? ".");
-		const script = `tell application "Terminal" to do script "cd ${cwdEsc} && ${cmdStr}"`;
+		const innerShell = `cd ${cwdEsc} && ${cmdStr}`;
+		// F3R-1: AppleScript-escape the whole shell command for the do script "..."
+		// context (escape \ → \\ and " → \"), so a task prompt's " can't break the
+		// AppleScript string. Combined with shellEsc above = dual-layer protection
+		// (shell injection + AppleScript injection both prevented).
+		const appleEsc = innerShell.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+		const script = `tell application "Terminal" to do script "${appleEsc}"`;
 		return { cmd: "osascript", args: ["-e", script] };
 	}
 

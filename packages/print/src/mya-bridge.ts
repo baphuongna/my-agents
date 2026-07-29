@@ -204,7 +204,6 @@ export async function reportSubagentStatus(
   keyOutputs?: string[],
 ): Promise<void> {
   if (!sessionId) return;
-  if (status === "done") reportedDone.add(sessionId);
   const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
   try {
     const { authHeaders } = await import("./gw-auth.js");
@@ -220,6 +219,9 @@ export async function reportSubagentStatus(
         signal: AbortSignal.timeout(2000),
       },
     );
+    // F3R-5: only mark done AFTER the fetch succeeds — if the done-report fails
+    // (network), reportedDone stays unset so beforeExit can still report "failed".
+    if (status === "done") reportedDone.add(sessionId);
   } catch {
     /* best-effort: never crash the TUI if gateway is unreachable */
   }

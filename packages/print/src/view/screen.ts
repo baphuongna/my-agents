@@ -53,7 +53,9 @@ export const screenBackend: ViewBackend = {
 		// Without `select`, `screen -X kill` operates on the currently-focused
 		// window — which may be the main session window, not the one we opened.
 		// NEW-3 fix.
-		await runCapture("screen", ["-X", "select", handle.ref]);
-		await runCapture("screen", ["-X", "kill"]);
+		const sel = await runCapture("screen", ["-X", "select", handle.ref]);
+		// F3R-3: only kill if select succeeded — otherwise kill hits the
+		// currently-focused window (could be the main session).
+		if (sel.code === 0) await runCapture("screen", ["-X", "kill"]);
 	},
 };
