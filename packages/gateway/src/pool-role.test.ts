@@ -46,14 +46,14 @@ function post(port: number, path: string, payload: unknown): Promise<{ code: num
  * role-subagent children under their parent.
  */
 function mockHost() {
-  const meta = new Map<string, Partial<PoolAcquireInput>>();
+  const meta = new Map<string, Partial<PoolAcquireInput> & { status?: string }>();
   const poolList = new Map<string, { sessionId: string; busy: boolean; messages: number; lastActivity: number }>();
 
   const poolStatus = () => {
-    const out: Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string }> = [];
+    const out: Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string; status?: string }> = [];
     for (const e of poolList.values()) {
       const m = meta.get(e.sessionId);
-      out.push({ sessionId: e.sessionId, busy: e.busy, messages: e.messages, lastActivity: e.lastActivity, role: m?.role, task: m?.task, model: m?.model, parentSessionId: m?.parentSessionId });
+      out.push({ sessionId: e.sessionId, busy: e.busy, messages: e.messages, lastActivity: e.lastActivity, role: m?.role, task: m?.task, model: m?.model, parentSessionId: m?.parentSessionId, status: m?.status });
     }
     return out;
   };
@@ -68,12 +68,16 @@ function mockHost() {
     const out: PoolSubagentEntry[] = [];
     for (const [childId, m] of meta) {
       if (m.parentSessionId === sessionId) {
-        out.push({ id: childId, goal: m.task ?? "", status: "idle", depth: 1, role: m.role, task: m.task, model: m.model, parentSessionId: m.parentSessionId });
+        out.push({ id: childId, goal: m.task ?? "", status: m.status ?? "idle", depth: 1, role: m.role, task: m.task, model: m.model, parentSessionId: m.parentSessionId });
       }
     }
     return out;
   };
-  return { poolStatus, poolAcquire, poolSubagents, meta, poolList };
+  const poolSessionStatus = (sessionId: string, status: string) => {
+    const existing = meta.get(sessionId);
+    if (existing) meta.set(sessionId, { ...existing, status });
+  };
+  return { poolStatus, poolAcquire, poolSubagents, poolSessionStatus, meta, poolList };
 }
 
 describe("[unit] gateway /pool — role-subagent metadata + nesting", () => {
@@ -85,6 +89,7 @@ describe("[unit] gateway /pool — role-subagent metadata + nesting", () => {
     poolStatus: host.poolStatus,
     poolAcquire: host.poolAcquire,
     poolSubagents: host.poolSubagents,
+    poolSessionStatus: host.poolSessionStatus,
   });
 
   beforeAll(async () => {
@@ -148,5 +153,47 @@ describe("[unit] gateway /pool — role-subagent metadata + nesting", () => {
     expect(coder?.task).toBe("refactor X");
     expect(coder?.model).toBe("claude-opus");
     expect(coder?.parentSessionId).toBe("main-1");
+  });
+
+  it("POST /pool/session/:id/status with valid body returns {ok:true}", async () => {
+    // Acquire a session first
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, { status: "working" });
+    expect(r.code).toBe(200);
+    expect((JSON.parse(r.body) as { ok: boolean }).ok).toBe(true);
+    // status is stored in the mock meta
+    expect(host.meta.get(sid)?.status).toBe("working");
+  });
+
+  it("POST /pool/session/:id/status rejects unknown status value (400)", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, { status: "bogus" });
+    expect(r.code).toBe(400);
+    expect(JSON.parse(r.body)).toHaveProperty("error");
+  });
+
+  it("GET /pool/tree surfaces status after POST /pool/session/:id/status", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp", role: "coder", task: "refactor Y", parentSessionId: "main-tree-status" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    await post(port, `/pool/session/${sid}/status`, { status: "done" });
+    const r = await get(port, "/pool/tree");
+    expect(r.code).toBe(200);
+    const tree = JSON.parse(r.body) as Array<{ sessionId: string; status?: string; role?: string }>;
+    const node = tree.find((n) => n.sessionId === sid);
+    expect(node?.status).toBe("done");
+    // metadata preserved alongside status
+    expect(node?.role).toBe("coder");
+  });
+
+  it("POST /pool/session/:id/status on unknown session is accepted by gateway (host decides no-op)", async () => {
+    // The gateway does not know which sessions exist — it forwards to the host
+    // callback. The mock no-ops for unknown ids, so the gateway returns 200.
+    const r = await post(port, "/pool/session/nonexistent/status", { status: "failed" });
+    expect(r.code).toBe(200);
+    expect((JSON.parse(r.body) as { ok: boolean }).ok).toBe(true);
+    // host meta unchanged
+    expect(host.meta.get("nonexistent")).toBeUndefined();
   });
 });

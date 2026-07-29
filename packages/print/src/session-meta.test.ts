@@ -65,4 +65,40 @@ describe("[unit] SessionMetaStore — role-subagent metadata", () => {
     store.record("c1", { role: "coder", task: "t1", parentSessionId: "main" });
     expect(store.childrenOf("orphan")).toEqual([]);
   });
+
+  it("setStatus merges onto existing metadata (role/task/model/parentSessionId persist)", () => {
+    const store = new SessionMetaStore();
+    store.record("c1", { role: "coder", task: "refactor X", model: "claude-opus", parentSessionId: "main" });
+    store.setStatus("c1", "working");
+    const m = store.get("c1")!;
+    expect(m.status).toBe("working");
+    expect(m.role).toBe("coder");
+    expect(m.task).toBe("refactor X");
+    expect(m.model).toBe("claude-opus");
+    expect(m.parentSessionId).toBe("main");
+  });
+
+  it("setStatus is a no-op for an unknown sessionId", () => {
+    const store = new SessionMetaStore();
+    store.setStatus("nonexistent", "working");
+    expect(store.has("nonexistent")).toBe(false);
+    expect(store.get("nonexistent")).toBeUndefined();
+  });
+
+  it("setStatus result is visible via get() and childrenOf()", () => {
+    const store = new SessionMetaStore();
+    store.record("c1", { role: "coder", task: "t1", parentSessionId: "main" });
+    store.setStatus("c1", "done");
+    expect(store.get("c1")?.status).toBe("done");
+    const kids = store.childrenOf("main");
+    expect(kids[0]!.status).toBe("done");
+  });
+
+  it("childrenOf prefers stored status over statusOf callback", () => {
+    const store = new SessionMetaStore();
+    store.record("c1", { role: "coder", task: "t1", parentSessionId: "main", status: "working" });
+    // statusOf would say "idle" but stored status should win
+    const kids = store.childrenOf("main", () => "idle");
+    expect(kids[0]!.status).toBe("working");
+  });
 });

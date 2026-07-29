@@ -6,7 +6,7 @@
  *
  * [unit]
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mock isolation ─────────────────────────────────────────────────────────
 const { TMP_HOME, mockRoles } = vi.hoisted(() => ({
@@ -180,5 +180,106 @@ describe("[unit] task-at-startup (initialTask)", () => {
     const handlers = s.events.get("session_start")!;
     handlers.forEach((h) => void h({}, {}));
     expect(s.sentMessages).toContain("Write tests");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Phase 2: subagent task-status reporting
+// ═════════════════════════════════════════════════════════════════════════
+
+describe("[unit] subagent status reporting (gatewaySessionId)", () => {
+  let originalArgv: string[];
+
+  beforeEach(() => {
+    originalArgv = process.argv;
+    vi.unstubAllGlobals();
+  });
+
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
+
+  it("POSTs 'working' on turn_start when --gateway-session is set", async () => {
+    process.argv = ["node", "mya", "--gateway-session", "s-test"];
+    const fetchCalls: Array<{ url: string; method: string; body: string }> = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      fetchCalls.push({ url: String(url), method: init?.method ?? "GET", body: (init?.body as string) ?? "" });
+      return { ok: true, status: 200 } as Response;
+    });
+
+    const s = makeCapturingPi({ fullTools: ["read"] });
+    createMyaBridge({})(s.pi);
+
+    const handlers = s.events.get("turn_start")!;
+    handlers.forEach((h) => void h({ turnIndex: 0 }, {}));
+
+    // Wait for async fetch to resolve
+    await new Promise((r) => setTimeout(r, 20));
+
+    const statusCall = fetchCalls.find((c) => c.url.includes("/pool/session/s-test/status"));
+    expect(statusCall).toBeDefined();
+    expect(statusCall!.method).toBe("POST");
+    expect(JSON.parse(statusCall!.body)).toEqual({ status: "working" });
+  });
+
+  it("POSTs 'done' on agent_settled when --gateway-session is set", async () => {
+    process.argv = ["node", "mya", "--gateway-session", "s-done"];
+    const fetchCalls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      fetchCalls.push({ url: String(url), body: (init?.body as string) ?? "" });
+      return { ok: true, status: 200 } as Response;
+    });
+
+    const s = makeCapturingPi({ fullTools: ["read"] });
+    createMyaBridge({})(s.pi);
+
+    const handlers = s.events.get("agent_settled")!;
+    handlers.forEach((h) => void h({}, {}));
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    const statusCall = fetchCalls.find((c) => c.url.includes("/pool/session/s-done/status"));
+    expect(statusCall).toBeDefined();
+    expect(JSON.parse(statusCall!.body)).toEqual({ status: "done" });
+  });
+
+  it("does NOT report when --gateway-session is absent (top-level session)", async () => {
+    process.argv = ["node", "mya"];
+    const fetchCalls: Array<{ url: string }> = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      fetchCalls.push({ url: String(url) });
+      return { ok: true, status: 200 } as Response;
+    });
+
+    const s = makeCapturingPi({ fullTools: ["read"] });
+    createMyaBridge({})(s.pi);
+
+    // Fire any turn_start handlers (there may be none — status hooks are gated)
+    const turnHandlers = s.events.get("turn_start");
+    turnHandlers?.forEach((h) => void h({ turnIndex: 0 }, {}));
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    // No status-reporting calls at all
+    expect(fetchCalls.filter((c) => c.url.includes("/pool/session/") && c.url.includes("/status"))).toHaveLength(0);
+    // agent_settled handler is NOT registered (gatewaySessionId is falsy)
+    expect(s.events.has("agent_settled")).toBe(false);
+  });
+
+  it("never crashes when gateway is unreachable (best-effort)", async () => {
+    process.argv = ["node", "mya", "--gateway-session", "s-fail"];
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("ECONNREFUSED");
+    });
+
+    const s = makeCapturingPi({ fullTools: ["read"] });
+    createMyaBridge({})(s.pi);
+
+    const handlers = s.events.get("turn_start")!;
+    // Should not throw — void discards the rejected promise
+    expect(() => handlers.forEach((h) => void h({ turnIndex: 0 }, {}))).not.toThrow();
+
+    await new Promise((r) => setTimeout(r, 20));
+    // No assertion needed — survival is the test
   });
 });

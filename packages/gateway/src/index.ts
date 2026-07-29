@@ -142,6 +142,9 @@ export interface SessionMeta {
   model?: string;
   /** Parent session id — when set, the new session is registered as a child. */
   parentSessionId?: string;
+  /** Phase 2: task-status reported by the spawned mya
+   * ('working'|'done'|'failed'|'idle'|'acquired'). */
+  status?: string;
 }
 
 /** Input to poolAcquire: cwd plus optional role-subagent metadata + parent link.
@@ -175,6 +178,8 @@ export interface PoolTreeNode {
   task?: string;
   model?: string;
   parentSessionId?: string;
+  /** Phase 2: explicit task-status (richer than busy). Mirrors SessionMeta.status. */
+  status?: string;
   subagents: PoolSubagentEntry[];
 }
 
@@ -272,6 +277,8 @@ export interface GatewayOptions {
   poolPrompt?: (sessionId: string, text: string) => void;
   /** Optional: list subagents for a session (returns PoolSubagentEntry[]). */
   poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
+  /** Phase 2: set task-status for POST /pool/session/:id/status. */
+  poolSessionStatus?: (sessionId: string, status: string) => void;
   /** Optional: MCP server management callbacks. */
   mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
@@ -385,6 +392,8 @@ export class Gateway {
   private readonly poolAcquire?: (input: PoolAcquireInput | string) => string | Promise<string>;
   private readonly poolPrompt?: (sessionId: string, text: string) => void;
   private readonly poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
+  /** Phase 2: set task-status for a session (POST /pool/session/:id/status). */
+  private readonly poolSessionStatus?: (sessionId: string, status: string) => void;
   private readonly mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   private readonly mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
   private readonly mcpRemove?: (id: string) => boolean;
@@ -500,6 +509,7 @@ export class Gateway {
     this.poolAcquire = opts.poolAcquire;
     this.poolPrompt = opts.poolPrompt;
     this.poolSubagents = opts.poolSubagents;
+    this.poolSessionStatus = opts.poolSessionStatus;
     this.mcpList = opts.mcpList;
     this.mcpAdd = opts.mcpAdd;
     this.mcpRemove = opts.mcpRemove;
@@ -1407,6 +1417,25 @@ export class Gateway {
           const ok = this.poolKill(poolKillMatch[1]!);
           return send(ok ? 200 : 404, { ok });
         }
+        // Phase 2: task-status reporting — spawned mya POSTs working/done/failed.
+        const poolSessionStatusMatch = url.pathname.match(/^\/pool\/session\/([^/]+)\/status$/);
+        if (poolSessionStatusMatch && req.method === "POST" && this.poolSessionStatus) {
+          let body = "";
+          req.on("data", (c: Buffer) => (body += c.toString()));
+          req.on("end", () => {
+            try {
+              const { status } = JSON.parse(body || "{}") as { status?: string };
+              if (!status || !["working", "done", "failed", "idle", "acquired"].includes(status)) {
+                return send(400, { error: "status must be one of: working, done, failed, idle, acquired" });
+              }
+              this.poolSessionStatus!(decodeURIComponent(poolSessionStatusMatch[1]!), status);
+              return send(200, { ok: true });
+            } catch {
+              return send(400, { error: "invalid json" });
+            }
+          });
+          return;
+        }
         // Queue depth for a session (Phase 1 backpressure observability)
         const poolQueueMatch = url.pathname.match(/^\/pool\/queue\/(.+)$/);
         if (poolQueueMatch && req.method === "GET" && this.poolQueueDepth) {
@@ -1753,7 +1782,7 @@ export class Gateway {
         }
         // ── Agent tree: sessions + their subagents ──
         if (url.pathname === "/pool/tree" && req.method === "GET" && this.poolStatus && this.poolSubagents) {
-          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string }>;
+          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string; status?: string }>;
           const tree: PoolTreeNode[] = poolEntries.map((s) => ({
             sessionId: s.sessionId,
             busy: s.busy,
@@ -1764,6 +1793,8 @@ export class Gateway {
             task: s.task,
             model: s.model,
             parentSessionId: s.parentSessionId,
+            // Phase 2: explicit task-status (richer than busy).
+            status: s.status,
             subagents: this.poolSubagents!(s.sessionId),
           }));
           return send(200, tree);

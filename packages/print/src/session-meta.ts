@@ -41,6 +41,15 @@ export class SessionMetaStore {
     this.meta.set(sessionId, { ...m });
   }
 
+  /** Phase 2: update just the task-status for a session, merging onto existing
+   * metadata (role/task/model/parentSessionId are preserved). No-op if the
+   * session has no recorded metadata. */
+  setStatus(sessionId: string, status: string): void {
+    const existing = this.meta.get(sessionId);
+    if (!existing) return;
+    this.meta.set(sessionId, { ...existing, status });
+  }
+
   /** Get metadata for a session (or undefined). */
   get(sessionId: string): SessionMeta | undefined {
     return this.meta.get(sessionId);
@@ -69,7 +78,7 @@ export class SessionMetaStore {
       out.push({
         id: childId,
         goal: m.task ?? "",
-        status: statusOf?.(childId) ?? "acquired",
+        status: m.status ?? statusOf?.(childId) ?? "acquired",
         depth: 1,
         role: m.role,
         task: m.task,

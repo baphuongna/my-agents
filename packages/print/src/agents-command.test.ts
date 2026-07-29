@@ -41,15 +41,18 @@ function makeTree(): AgentTreeNode[] {
       busy: true,
       messages: 5,
       lastActivity: Date.now(),
+      status: "working",
       role: "default",
       subagents: [
         {
           id: "child-1",
           goal: "refactor X",
-          status: "busy",
+          status: "working",
           depth: 1,
           role: "coder",
           task: "refactor X",
+          lastActivity: Date.now(),
+          messages: 3,
         },
         {
           id: "child-2",
@@ -58,6 +61,8 @@ function makeTree(): AgentTreeNode[] {
           depth: 1,
           role: "reviewer",
           task: "review PR",
+          lastActivity: Date.now(),
+          messages: 1,
         },
       ],
     },
@@ -78,7 +83,7 @@ describe("[unit] renderAgentTree", () => {
     expect(out).toContain("[agents] Agent tree:");
     expect(out).toContain("main-1");
     expect(out).toContain("(default)");
-    expect(out).toContain("busy");
+    expect(out).toContain("working");
   });
 
   it("renders subagents nested under the main session", () => {
@@ -128,6 +133,72 @@ describe("[unit] renderAgentTree", () => {
     const out = renderAgentTree(tree);
     expect(out).toContain("● busy-s");
     expect(out).toContain("○ idle-s");
+  });
+
+  // ── Phase 2: task-status glyphs (working/done/failed/idle) ──────────────
+
+  it("renders ● glyph for 'working' status", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "w1", busy: false, messages: 0, lastActivity: 0, status: "working", subagents: [] },
+    ];
+    expect(renderAgentTree(tree)).toContain("● w1");
+  });
+
+  it("renders ✓ glyph for 'done' status", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "d1", busy: false, messages: 0, lastActivity: 0, status: "done", subagents: [] },
+    ];
+    expect(renderAgentTree(tree)).toContain("✓ d1");
+  });
+
+  it("renders ✗ glyph for 'failed' status", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "f1", busy: false, messages: 0, lastActivity: 0, status: "failed", subagents: [] },
+    ];
+    expect(renderAgentTree(tree)).toContain("✗ f1");
+  });
+
+  it("renders ○ glyph for 'idle' status", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "i1", busy: false, messages: 0, lastActivity: 0, status: "idle", subagents: [] },
+    ];
+    expect(renderAgentTree(tree)).toContain("○ i1");
+  });
+
+  it("falls back to busy-derived glyph when status is absent (backward compat)", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "b1", busy: true, messages: 0, lastActivity: 0, subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    expect(out).toContain("● b1");
+    expect(out).toContain("busy");
+  });
+
+  // ── Phase 2: relative lastActivity ─────────────────────────────────────
+
+  it("renders lastActivity as relative time", () => {
+    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    const tree: AgentTreeNode[] = [
+      { sessionId: "s1", busy: false, messages: 0, lastActivity: twoMinutesAgo, subagents: [] },
+    ];
+    expect(renderAgentTree(tree)).toContain("2m ago");
+  });
+
+  it("omits relative time when lastActivity is 0", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "s1", busy: false, messages: 0, lastActivity: 0, subagents: [] },
+    ];
+    expect(renderAgentTree(tree)).not.toContain("ago");
+  });
+
+  // ── Phase 2: subagent message counts ───────────────────────────────────
+
+  it("renders message count for subagents when present", () => {
+    const out = renderAgentTree(makeTree());
+    expect(out).toContain("child-1");
+    // child-1 has messages: 3
+    expect(out).toMatch(/child-1.*3 msgs/);
+    expect(out).toMatch(/child-2.*1 msgs/);
   });
 });
 

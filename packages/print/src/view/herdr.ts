@@ -20,6 +20,15 @@
  *           for spawn, track, or control — those concerns stay in the
  *           gateway logic layer.
  *
+ * focus():  `herdr agent focus <pane_id>` — switch to a previously opened
+ *           pane. NOTE: herdr's `pane focus` verb is direction-only
+ *           (cli/pane.rs requires `--direction`); there is no absolute
+ *           "focus this pane by id" under the `pane` verb. Absolute focus
+ *           lives under `agent`: herdr resolves the public pane id (the
+ *           `<workspace>:<pane_number>` stored in `ViewHandle.ref`) to the
+ *           detected agent and focuses its pane. Best-effort: non-zero exit
+ *           is silently ignored (older herdr / agent-not-yet-detected).
+ *
  * Env vars for detection: `HERDR_ENV`, `HERDR_SOCKET_PATH`.
  */
 import { runCapture } from "./run.js";
@@ -95,5 +104,15 @@ export const herdrBackend: ViewBackend = {
 		}
 
 		return { backendId: "herdr", ref: paneId };
+	},
+
+	async focus(handle: ViewHandle): Promise<void> {
+		// herdr has NO absolute `pane focus <id>` — that verb is direction-only
+		// (cli/pane.rs requires `--direction`). Absolute focus lives under
+		// `agent`: herdr resolves the public pane id to the detected agent and
+		// focuses its pane. Best-effort: silently ignore non-zero exit (older
+		// herdr / agent-not-yet-detected). `runCapture` only rejects on
+		// spawn-level errors (ENOENT), mirroring the tmux backend.
+		await runCapture("herdr", ["agent", "focus", handle.ref]);
 	},
 };

@@ -284,6 +284,30 @@ describe("herdrBackend", () => {
 			).rejects.toThrow("pane split failed");
 		});
 	});
+
+	describe("focus()", () => {
+		it("runs herdr agent focus with the handle ref", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await herdrBackend.focus?.({ backendId: "herdr", ref: "w1:p2" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"herdr",
+				["agent", "focus", "w1:p2"],
+				expect.objectContaining({
+					stdio: ["ignore", "pipe", "pipe"],
+				}),
+			);
+		});
+
+		it("resolves without throwing on non-zero exit (best-effort)", async () => {
+			mockSpawn.mockReturnValue(makeChild({ exitCode: 1 }));
+
+			await expect(
+				herdrBackend.focus?.({ backendId: "herdr", ref: "w1:p2" }),
+			).resolves.toBeUndefined();
+		});
+	});
 });
 
 // ══════════════════════════════════════════════════════════════════════════

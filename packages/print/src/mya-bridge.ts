@@ -176,9 +176,46 @@ function registerSharedCommand(
 /** Threshold for compressing bash output (~4K tokens). */
 const COMPRESS_THRESHOLD_TOKENS = 4096;
 
+/** Phase 2: extract --gateway-session <id> from argv (or MYA_GATEWAY_SESSION
+ * env) so spawned role-subagents can report task-status back to the gateway.
+ * Returns undefined for top-level sessions (no status reporting needed). */
+function extractGatewaySession(argv: string[]): string | undefined {
+  const idx = argv.indexOf("--gateway-session");
+  if (idx >= 0 && idx + 1 < argv.length) return argv[idx + 1];
+  return process.env["MYA_GATEWAY_SESSION"];
+}
+
 export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void {
   return (pi: MyaPiApi) => {
     let parentSessionId = "";
+
+    // Phase 2 status reporting: when this mya is spawned as a role-subagent
+    // (--gateway-session <id>), it reports working/done status back to the
+    // gateway so /agents surfaces live task progress. Undefined for top-level.
+    const gatewaySessionId = extractGatewaySession(process.argv.slice(2));
+
+    /**
+     * Phase 2: best-effort task-status reporting. Spawned role-subagents POST
+     * working/done to the gateway. No-op for top-level sessions. Never throws.
+     */
+    async function reportSubagentStatus(status: string): Promise<void> {
+      if (!gatewaySessionId) return;
+      const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+      try {
+        const { authHeaders } = await import("./gw-auth.js");
+        await fetch(
+          `http://127.0.0.1:${port}/pool/session/${encodeURIComponent(gatewaySessionId)}/status`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ status }),
+            signal: AbortSignal.timeout(2000),
+          },
+        );
+      } catch {
+        /* best-effort: never crash the TUI if gateway is unreachable */
+      }
+    }
 
     // Skill-search state: strip <available_skills> + inject compact summary +
     // register on-demand search tool (replaces inject-all-skills pattern).
@@ -556,6 +593,18 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
       pi.on("turn_end", () => void hooks.fire("post_turn", {}));
       pi.on("tool_call", () => void hooks.fire("pre_tool", {}));
       pi.on("tool_result", () => void hooks.fire("post_tool", {}));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PHASE 2 STATUS REPORTING: spawned role-subagent → gateway
+    // ═══════════════════════════════════════════════════════════════════
+    // Only fires when this mya is a spawned subagent (gatewaySessionId set).
+    // turn_start → "working"; agent_settled → "done".
+    // 'failed' is deferred — no clean lifecycle event for agent failure; the
+    // gateway derives degraded state from liveness (absence of 'done' + exit).
+    if (gatewaySessionId) {
+      pi.on("turn_start", () => void reportSubagentStatus("working"));
+      pi.on("agent_settled", () => void reportSubagentStatus("done"));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1864,6 +1913,8 @@ export interface AgentTreeNode {
   busy: boolean;
   messages: number;
   lastActivity: number;
+  /** Phase 2: explicit task-status from gateway ('working'|'done'|'failed'|'idle'|'acquired'). */
+  status?: string;
   role?: string;
   task?: string;
   model?: string;
@@ -1873,11 +1924,48 @@ export interface AgentTreeNode {
     goal: string;
     status: string;
     depth: number;
+    /** Phase 2: relative-time display (optional, from gateway). */
+    lastActivity?: number;
+    /** Phase 2: message count (optional, from gateway). */
+    messages?: number;
     role?: string;
     task?: string;
     model?: string;
     parentSessionId?: string;
   }>;
+}
+
+/** Format a timestamp as relative time (e.g. '2m ago'). Empty if no timestamp. */
+function timeAgo(ts: number): string {
+  if (!ts) return "";
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 0) return "now";
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+/** Map a task-status to a display glyph. Falls back to busy-derived glyph
+ * for backward compat (no status field). Recognizes legacy 'busy'/'running'
+ * values from subagents. */
+function statusGlyph(status?: string, busy?: boolean): string {
+  switch (status) {
+    case "working":
+    case "busy":
+    case "running": return "●";
+    case "done": return "✓";
+    case "failed": return "✗";
+    case "idle":
+    case "acquired": return "○";
+    default: return busy ? "●" : "○";
+  }
+}
+
+/** Human-readable status text. Falls back to busy/idle for backward compat. */
+function statusText(status?: string, busy?: boolean): string {
+  if (status) return status;
+  return busy ? "busy" : "idle";
 }
 
 /**
@@ -1886,20 +1974,31 @@ export interface AgentTreeNode {
  *
  * Each top-level node is a session; its subagents are listed indented beneath.
  * Nodes with role/task metadata are role-subagents (spawned via spawn-role-subagent).
+ * Phase 2: shows task-status glyphs (●/✓/✗/○), relative lastActivity, and
+ * subagent message counts when available.
  */
 export function renderAgentTree(tree: AgentTreeNode[]): string {
   if (tree.length === 0) return "[agents] No active sessions.";
   const lines: string[] = ["[agents] Agent tree:"];
   for (const node of tree) {
-    const status = node.busy ? "●" : "○";
+    const glyph = statusGlyph(node.status, node.busy);
     const roleLabel = node.role ? `(${node.role})` : "";
     const taskLabel = node.task ? ` "${node.task.slice(0, 60)}"` : "";
-    lines.push(`  ${status} ${node.sessionId} ${roleLabel}${taskLabel} — ${node.messages} msgs — ${node.busy ? "busy" : "idle"}`);
+    const activity = timeAgo(node.lastActivity);
+    const activityLabel = activity ? ` — ${activity}` : "";
+    lines.push(
+      `  ${glyph} ${node.sessionId} ${roleLabel}${taskLabel} — ${node.messages} msgs — ${statusText(node.status, node.busy)}${activityLabel}`,
+    );
     for (const sub of node.subagents) {
-      const subStatus = sub.status === "busy" || sub.status === "running" ? "●" : "○";
+      const subGlyph = statusGlyph(sub.status);
       const subRole = sub.role ? `(${sub.role})` : "";
       const subTask = sub.task ? ` "${sub.task.slice(0, 60)}"` : sub.goal ? ` "${sub.goal.slice(0, 60)}"` : "";
-      lines.push(`    └─ ${subStatus} ${sub.id} ${subRole}${subTask} — ${sub.status}`);
+      const subMsgs = sub.messages != null ? ` — ${sub.messages} msgs` : "";
+      const subActivity = timeAgo(sub.lastActivity ?? 0);
+      const subActivityLabel = subActivity ? ` — ${subActivity}` : "";
+      lines.push(
+        `    └─ ${subGlyph} ${sub.id} ${subRole}${subTask}${subMsgs} — ${statusText(sub.status)}${subActivityLabel}`,
+      );
     }
   }
   lines.push("\nActions: /agents open <id> | /agents kill <id>");
