@@ -16,11 +16,13 @@ import { renderAgentTree, type AgentTreeNode } from "./mya-bridge.js";
 
 const mockFocusRoleSubagentView = vi.hoisted(() => vi.fn());
 const mockForgetViewHandle = vi.hoisted(() => vi.fn());
+const mockWaitRoleSubagent = vi.hoisted(() => vi.fn());
 
 vi.mock("./role-subagent-spawn.js", () => ({
   spawnRoleSubagent: vi.fn(),
   focusRoleSubagentView: mockFocusRoleSubagentView,
   forgetViewHandle: mockForgetViewHandle,
+  waitRoleSubagent: mockWaitRoleSubagent,
 }));
 
 // Mock gw-auth to avoid reading real token files
@@ -310,6 +312,7 @@ describe("[unit] /agents slash command", () => {
     vi.unstubAllGlobals();
     mockFocusRoleSubagentView.mockReset();
     mockForgetViewHandle.mockReset();
+    mockWaitRoleSubagent.mockReset();
     const c = makeCapturingPi();
     pi = c.pi;
     commands = c.commands;
@@ -377,5 +380,52 @@ describe("[unit] /agents slash command", () => {
 
     const out = await runCmd(commands, "agents", "open s-nohandle");
     expect(out).toMatch(/no view handle/i);
+  });
+
+  // ── /agents wait <id> action ──────────────────────────────────────────
+
+  it("wait <id> calls waitRoleSubagent and returns done result with summary", async () => {
+    mockWaitRoleSubagent.mockResolvedValue({
+      status: "done",
+      summary: "All tests pass",
+      keyOutputs: ["file1.ts", "file2.ts"],
+    });
+
+    const out = await runCmd(commands, "agents", "wait s-target");
+    expect(mockWaitRoleSubagent).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "s-target" }),
+    );
+    expect(out).toContain("done");
+    expect(out).toContain("All tests pass");
+    expect(out).toContain("file1.ts");
+  });
+
+  it("wait <id> returns failed status with summary", async () => {
+    mockWaitRoleSubagent.mockResolvedValue({
+      status: "failed",
+      summary: "Build error occurred",
+    });
+
+    const out = await runCmd(commands, "agents", "wait s-failed");
+    expect(out).toContain("failed");
+    expect(out).toContain("Build error occurred");
+  });
+
+  it("wait <id> returns timeout status", async () => {
+    mockWaitRoleSubagent.mockResolvedValue({
+      status: "timeout",
+    });
+
+    const out = await runCmd(commands, "agents", "wait s-stuck");
+    expect(out).toMatch(/timeout/i);
+  });
+
+  it("wait <id> returns not_found status", async () => {
+    mockWaitRoleSubagent.mockResolvedValue({
+      status: "not_found",
+    });
+
+    const out = await runCmd(commands, "agents", "wait s-missing");
+    expect(out).toContain("not_found");
   });
 });

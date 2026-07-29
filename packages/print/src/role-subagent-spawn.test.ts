@@ -31,6 +31,7 @@ import {
   getViewHandle,
   focusRoleSubagentView,
   forgetViewHandle,
+  waitRoleSubagent,
   type SpawnRoleSubagentOpts,
 } from "./role-subagent-spawn.js";
 import type { ViewHandle } from "./view/view-backend.js";
@@ -222,5 +223,175 @@ describe("[unit] handle registry (getViewHandle / focusRoleSubagentView / forget
 
     forgetViewHandle("s-forget");
     expect(getViewHandle("s-forget")).toBeUndefined();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// waitRoleSubagent (polls GET /pool/tree until done/failed/timeout/not_found)
+// ══════════════════════════════════════════════════════════════════════════
+
+describe("[unit] waitRoleSubagent", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns done when status transitions working→done (2 poll cycles)", async () => {
+    let callCount = 0;
+    vi.stubGlobal("fetch", async () => {
+      callCount++;
+      const status = callCount === 1 ? "working" : "done";
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{
+          sessionId: "target-1",
+          status,
+          summary: "Task completed",
+          keyOutputs: ["file1.ts"],
+          subagents: [],
+        }],
+      } as Response;
+    });
+
+    const result = await waitRoleSubagent({
+      sessionId: "target-1",
+      gatewayUrl: "http://127.0.0.1:3000",
+      pollIntervalMs: 10,
+      timeoutMs: 5_000,
+    });
+
+    expect(result.status).toBe("done");
+    expect(result.summary).toBe("Task completed");
+    expect(result.keyOutputs).toEqual(["file1.ts"]);
+    expect(callCount).toBe(2);
+  });
+
+  it("returns failed when status transitions working→failed", async () => {
+    let callCount = 0;
+    vi.stubGlobal("fetch", async () => {
+      callCount++;
+      const status = callCount === 1 ? "working" : "failed";
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{
+          sessionId: "target-2",
+          status,
+          summary: "Something went wrong",
+          subagents: [],
+        }],
+      } as Response;
+    });
+
+    const result = await waitRoleSubagent({
+      sessionId: "target-2",
+      gatewayUrl: "http://127.0.0.1:3000",
+      pollIntervalMs: 10,
+      timeoutMs: 5_000,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.summary).toBe("Something went wrong");
+    expect(callCount).toBe(2);
+  });
+
+  it("returns timeout when the session never reaches terminal status", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{
+        sessionId: "stuck-1",
+        status: "working",
+        subagents: [],
+      }],
+    }) as Response);
+
+    const result = await waitRoleSubagent({
+      sessionId: "stuck-1",
+      gatewayUrl: "http://127.0.0.1:3000",
+      pollIntervalMs: 10,
+      timeoutMs: 30,
+    });
+
+    expect(result.status).toBe("timeout");
+  });
+
+  it("returns not_found when the session is absent from the tree", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{
+        sessionId: "other-session",
+        status: "working",
+        subagents: [],
+      }],
+    }) as Response);
+
+    const result = await waitRoleSubagent({
+      sessionId: "nonexistent",
+      gatewayUrl: "http://127.0.0.1:3000",
+      pollIntervalMs: 10,
+      timeoutMs: 100,
+    });
+
+    expect(result.status).toBe("not_found");
+  });
+
+  it("finds the session in nested subagents", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [{
+        sessionId: "parent-1",
+        status: "working",
+        subagents: [{
+          id: "nested-child",
+          status: "done",
+          summary: "Nested task done",
+          keyOutputs: ["nested.ts"],
+        }],
+      }],
+    }) as Response);
+
+    const result = await waitRoleSubagent({
+      sessionId: "nested-child",
+      gatewayUrl: "http://127.0.0.1:3000",
+      pollIntervalMs: 10,
+      timeoutMs: 5_000,
+    });
+
+    expect(result.status).toBe("done");
+    expect(result.summary).toBe("Nested task done");
+    expect(result.keyOutputs).toEqual(["nested.ts"]);
+  });
+
+  it("uses authHeaders (authorization) on each fetch call", async () => {
+    const calls: Array<{ headers?: Record<string, string> }> = [];
+    let callCount = 0;
+    vi.stubGlobal("fetch", async (_url: string | URL, init?: RequestInit) => {
+      callCount++;
+      calls.push({ headers: init?.headers as Record<string, string> | undefined });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{
+          sessionId: "auth-test",
+          status: callCount === 1 ? "working" : "done",
+          subagents: [],
+        }],
+      } as Response;
+    });
+
+    await waitRoleSubagent({
+      sessionId: "auth-test",
+      gatewayUrl: "http://127.0.0.1:3000",
+      pollIntervalMs: 10,
+      timeoutMs: 5_000,
+    });
+
+    expect(calls.length).toBe(2);
+    for (const c of calls) {
+      expect(c.headers?.authorization).toBe("Bearer test-token");
+    }
   });
 });

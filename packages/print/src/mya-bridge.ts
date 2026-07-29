@@ -69,6 +69,7 @@ import {
   spawnRoleSubagent,
   focusRoleSubagentView,
   forgetViewHandle,
+  waitRoleSubagent,
 } from "./role-subagent-spawn.js";
 import {
   stripAvailableSkillsBlock,
@@ -437,7 +438,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     registerSharedCommand(
       pi,
       "agents",
-      "View/manage role-subagents: /agents [open <id> | kill <id>]",
+      "View/manage role-subagents: /agents [open <id> | kill <id> | wait <id>]",
       async (args) => {
         const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
         const gatewayUrl = `http://127.0.0.1:${port}`;
@@ -471,6 +472,22 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           return focused
             ? `[agents] Focused view for ${id}`
             : `[agents] No view handle for ${id} (was it spawned in this session?)`;
+        }
+
+        // wait <id> — poll /pool/tree until the session completes
+        if (action === "wait" && parts[1]) {
+          const id = parts[1]!;
+          try {
+            const result = await waitRoleSubagent({ sessionId: id, gatewayUrl });
+            const waitLines: string[] = [`[agents] ${id}: ${result.status}`];
+            if (result.summary) waitLines.push(`  Summary: ${result.summary}`);
+            if (result.keyOutputs && result.keyOutputs.length > 0) {
+              waitLines.push(`  Key outputs: ${result.keyOutputs.join(", ")}`);
+            }
+            return waitLines.join("\n");
+          } catch (e) {
+            return `[agents] Wait error: ${e instanceof Error ? e.message : String(e)}`;
+          }
         }
 
         // default: render the agent tree
@@ -529,6 +546,48 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           } catch (e) {
             return {
               content: [{ type: "text" as const, text: `[spawn-role-subagent] Failed: ${e instanceof Error ? e.message : String(e)}` }],
+              isError: true,
+            };
+          }
+        },
+      });
+    } catch { /* tool name already registered */ }
+
+    // ── wait-role-subagent tool (LLM-invocable) ────────────────────────
+    // Lets the model wait for a previously spawned role-subagent to complete.
+    // Polls /pool/tree until the session reaches done/failed (or times out).
+    // Returns the structured result as text content.
+    try {
+      pi.registerTool({
+        name: "wait-role-subagent",
+        label: "Wait for Role Subagent",
+        description:
+          "Wait for a previously spawned role-subagent to complete (done/failed). " +
+          "Polls the gateway pool tree until the session reaches a terminal status " +
+          "or the timeout (5 min default) elapses. " +
+          "Returns the status, summary, and key outputs. " +
+          "Parameters: sessionId (the id returned by spawn-role-subagent).",
+        parameters: {
+          type: "object",
+          properties: {
+            sessionId: { type: "string", description: "Session ID of the role-subagent to wait for" },
+          },
+          required: ["sessionId"],
+        },
+        async execute(_id: string, params: { sessionId: string }) {
+          const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+          const gatewayUrl = `http://127.0.0.1:${port}`;
+          try {
+            const result = await waitRoleSubagent({ sessionId: params.sessionId, gatewayUrl });
+            const lines: string[] = [`[wait-role-subagent] ${params.sessionId}: ${result.status}`];
+            if (result.summary) lines.push(`Summary: ${result.summary}`);
+            if (result.keyOutputs && result.keyOutputs.length > 0) {
+              lines.push(`Key outputs: ${result.keyOutputs.join(", ")}`);
+            }
+            return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+          } catch (e) {
+            return {
+              content: [{ type: "text" as const, text: `[wait-role-subagent] Failed: ${e instanceof Error ? e.message : String(e)}` }],
               isError: true,
             };
           }
@@ -1957,7 +2016,7 @@ export interface AgentTreeNode {
 /** Format a timestamp as relative time (e.g. '2m ago'). Empty if no timestamp. */
 function timeAgo(ts: number): string {
   if (!ts) return "";
-  const s = Math.floor((Date.now() - ts) / 1000);
+  const s = Math.floor((nowWallclock() - ts) / 1000);
   if (s < 0) return "now";
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;

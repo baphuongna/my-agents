@@ -170,6 +170,10 @@ async function main(): Promise<void> {
     const { runLauncherLoop } = await import("./launcher.js");
     return runLauncherLoop();
   }
+  if (args[0] === "agents") {
+    const { runAgentsPanel } = await import("./agents-panel.js");
+    return runAgentsPanel();
+  }
   if (args[0] === "channels") {
     const { channelsList, channelsTest, channelsAdd } = await import("./channels-cli.js");
     const sub = args[1];
