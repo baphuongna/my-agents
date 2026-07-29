@@ -251,7 +251,7 @@ describe.skipIf(!MYA_BIN)("[real] mya CLI", () => {
 | **sync** | 1 | 3 | 17 | state sync, collab |
 | **desktop** | 1 | 1 | 12 | desktop lifecycle |
 | **council** | 4 | 3 | 24 | council, hindsight |
-| **web** | 6 | 4 | 24 | build, dashboard |
+| **web** | 6 | 14 | 76 | build, dashboard, app routes, markdown (url-safety + highlightTerms + streaming caret), xterm Terminal, plugin system (registry + routes + manifest + usePlugins + PluginPage), Modal bodyClassName |
 | **collab** | 2 | 2 | 11 | relay |
 | **skills** | 3 | 1 | 11 | curator |
 | **dap/dap-server** | 5 | 2 | 12 | debug, DAP server |
@@ -361,6 +361,14 @@ checkUrl(rawUrl, opts?) → GuardDecision  // NOT shouldBlockUrl / checkUrlSafet
 | 4 | bash tool | No command filtering (no sandbox per AGENTS.md) | ⚠️ By design |
 | 5 | ai/openai.ts:178 | `tc.index` not in TS interface (runtime works via JSON.parse) | ⚠️ Pre-existing |
 | 6 | tools/hashline | JS fallback `**/*.ts` glob divergence from native | ⚠️ Documented |
+| 7 | web/App.tsx (M13 distill) | Added `app-routes.test.ts` ([unit] ×6) — safety net guarding the data-driven routing refactor (distilled from hermes-agent/web). Asserts exact PAGE_ROUTES set, redirect targets, `/profiles/new` boundary. | ✅ Covered |
+| 8 | web/Markdown.tsx (F4 distill) | Added `markdown-features.test.tsx` ([unit] ×9) — guards the 2nd-pass hermes distillation (highlightTerms + streaming caret). Tests regex-escape safety, case-insensitivity, multi-block highlights, caret placement, empty-content caret. | ✅ Covered |
+| 9 | web/Terminal.tsx (F1 distill) | Added `Terminal.test.tsx` ([unit] ×4) — jsdom smoke for xterm.js mount/unmount (mocked matchMedia + canvas.getContext + ResizeObserver + requestAnimationFrame). F1 hermes distillation: xterm-backed Terminal component replacing the 1-line "coming soon" stub. | ✅ Covered |
+| 10 | web/PluginPage.tsx + plugin-registry (F2 distill) | Added `PluginPage.test.tsx` ([unit] ×3) + `plugin-registry.test.ts` ([unit] ×7) — covers page-registration lifecycle, useSyncExternalStore separation (slot vs page listeners), loading-fallback rendering, idempotent re-register, unsubscribe double-call safety. | ✅ Covered |
+| 11 | web/plugin-routes.tsx (F2 distill) | Added `plugin-routes.test.ts` ([unit] ×16) — pure-data tests for buildRoutes (override/addon/hidden semantics, reserved paths, key uniqueness, manifest-without-tab handling) + buildNavItems (nav merge, hidden skip, override replace) + resolveRouteElement (builtin/plugin/null resolution). | ✅ Covered |
+| 12 | web/Terminal.tsx | xterm.js adds ~326KB, now code-split via `React.lazy()` in ChatPage — loads only when user opens the Terminal modal. Terminal connects to gateway `/api/console` WS endpoint (same-origin `mya_ws` cookie auth). | ✅ Covered (code-split + gateway endpoint verified end-to-end) |
+| 14 | gateway/index.ts | Added `/api/console` WS endpoint (distilled from hermes-agent). Per-command `spawn()` with 30s timeout, streams stdout/stderr as ConsoleFrame, sends `ready`/`output`/`complete`. Same WS auth as `/events` (token/cookie + Origin check). Verified: `echo hello` → `output` + `complete` roundtrip. | ✅ Covered (end-to-end verified) |
+| 13 | web/ChatPage.tsx + Modal | Terminal modal uses `<Modal maxWidth="max-w-5xl" bodyClassName="p-0">` — Modal now supports `bodyClassName` prop (Phase 3 cleanup, replaced the `-m-5` hack). Terminal fills the modal full-bleed. | ✅ Covered |
 
 ---
 
