@@ -187,6 +187,12 @@ function extractGatewaySession(argv: string[]): string | undefined {
   return process.env["MYA_GATEWAY_SESSION"];
 }
 
+/** Module-level tracking of which sessions have already reported a terminal
+ * status. This guards `installFailureReporter` so beforeExit never overwrites
+ * a 'done' (NEW-2) and never reports 'failed' more than once (NEW-6). */
+const reportedDone = new Set<string>();
+const reportedFailed = new Set<string>();
+
 /** Phase 2: best-effort task-status reporting. Spawned role-subagents (--gateway-session
  * <id>) POST working/done to the gateway so /agents surfaces live task progress.
  * No-op when sessionId is undefined (top-level sessions). Never throws.
@@ -198,6 +204,7 @@ export async function reportSubagentStatus(
   keyOutputs?: string[],
 ): Promise<void> {
   if (!sessionId) return;
+  if (status === "done") reportedDone.add(sessionId);
   const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
   try {
     const { authHeaders } = await import("./gw-auth.js");
@@ -219,20 +226,22 @@ export async function reportSubagentStatus(
 }
 
 /** F7: best-effort failure reporter for spawned role-subagents.
- * When sessionId is set (this mya is a spawned subagent), register process-level
- * handlers so that if the subagent crashes before reporting 'done', the gateway
+ * When sessionId is set (this mya is a spawned subagent), register a beforeExit
+ * handler so that if the subagent crashes before reporting 'done', the gateway
  * sees 'failed' promptly (instead of waiting for the 5-min wait timeout).
- * Fire-and-forget — never throws, never swallows uncaughtException (reports
- * then lets default behavior proceed).
+ *
+ * NEW-2 + NEW-6: reports 'failed' at most once AND never after 'done'. The
+ * uncaughtException handler is intentionally NOT registered here — crash
+ * classification is owned by `installExceptionHandlers`, and registering an
+ * uncaughtException listener would suppress the default crash-exit behavior.
+ * Fire-and-forget — never throws.
  * No-op when sessionId is undefined (top-level sessions). */
 export function installFailureReporter(sessionId: string | undefined): void {
   if (!sessionId) return;
   process.on("beforeExit", () => {
+    if (reportedDone.has(sessionId) || reportedFailed.has(sessionId)) return;
+    reportedFailed.add(sessionId);
     void reportSubagentStatus(sessionId, "failed");
-  });
-  process.on("uncaughtException", () => {
-    void reportSubagentStatus(sessionId, "failed");
-    // Do NOT swallow — report then let default behavior proceed (process exits).
   });
 }
 
@@ -484,7 +493,8 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               signal: AbortSignal.timeout(2000),
             });
             if (r.ok) {
-              await closeRoleSubagentView(id);
+              // NEW-4: close is best-effort so forgetViewHandle always runs.
+              try { await closeRoleSubagentView(id); } catch { /* best-effort */ }
               forgetViewHandle(id);
               return `[agents] Killed ${id}`;
             }

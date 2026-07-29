@@ -100,6 +100,9 @@ export const herdrBackend: ViewBackend = {
 			...opts.command,
 		]);
 		if (run.code !== 0) {
+			// Close the orphaned pane before throwing — split succeeded so a pane
+			// was created; leaving it open leaks a visible empty pane (NEW-5).
+			await runCapture("herdr", ["pane", "close", paneId]).catch(() => {});
 			throw new Error(`herdr pane run failed (exit ${run.code})`);
 		}
 

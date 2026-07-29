@@ -373,4 +373,18 @@ describe("[unit] killSession (F9 close-on-kill wiring)", () => {
     expect(mockCloseRoleSubagentView).not.toHaveBeenCalled();
     expect(mockForgetViewHandle).not.toHaveBeenCalled();
   });
+
+  // NEW-4: closeRoleSubagentView throwing must NOT skip forgetViewHandle.
+  it("still calls forgetViewHandle when closeRoleSubagentView rejects", async () => {
+    vi.stubGlobal("fetch", async () => ({ ok: true, status: 200 }) as Response);
+    mockCloseRoleSubagentView.mockRejectedValue(new Error("close failed"));
+
+    const ok = await killSession("s-x");
+    expect(ok).toBe(true);
+    expect(mockCloseRoleSubagentView).toHaveBeenCalledTimes(1);
+    expect(mockCloseRoleSubagentView).toHaveBeenCalledWith("s-x");
+    // forgetViewHandle must STILL be called despite the close rejection.
+    expect(mockForgetViewHandle).toHaveBeenCalledTimes(1);
+    expect(mockForgetViewHandle).toHaveBeenCalledWith("s-x");
+  });
 });

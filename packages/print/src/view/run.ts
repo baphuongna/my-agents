@@ -28,7 +28,7 @@ export interface RunResult {
 export function runCapture(
 	cmd: string,
 	args: readonly string[],
-	opts?: { cwd?: string },
+	opts?: { cwd?: string; timeoutMs?: number },
 ): Promise<RunResult> {
 	return new Promise<RunResult>((resolve, reject) => {
 		const child = spawn(cmd, [...args], {
@@ -45,8 +45,12 @@ export function runCapture(
 		child.stderr?.on("data", (d: string) => {
 			stderr += d;
 		});
-		child.on("error", reject);
-		child.on("close", (code) => resolve({ stdout, stderr, code }));
+		const timer = setTimeout(() => {
+			try { child.kill("SIGKILL"); } catch {}
+			resolve({ stdout, stderr, code: null });
+		}, opts?.timeoutMs ?? 10_000);
+		child.on("error", (err) => { clearTimeout(timer); reject(err); });
+		child.on("close", (code) => { clearTimeout(timer); resolve({ stdout, stderr, code }); });
 	});
 }
 

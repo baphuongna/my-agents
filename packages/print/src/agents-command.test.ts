@@ -371,6 +371,17 @@ describe("[unit] /agents slash command", () => {
     expect(out).toMatch(/failed/i);
   });
 
+  it("kill still calls forgetViewHandle when closeRoleSubagentView rejects (NEW-4)", async () => {
+    // kill POST succeeds, but closeRoleSubagentView throws.
+    vi.stubGlobal("fetch", async () => ({ ok: true, status: 200 }) as Response);
+    mockCloseRoleSubagentView.mockRejectedValue(new Error("view backend gone"));
+
+    const out = await runCmd(commands, "agents", "kill s-x");
+    expect(out).toMatch(/killed/i);
+    // forgetViewHandle MUST still be called despite the close rejection.
+    expect(mockForgetViewHandle).toHaveBeenCalledWith("s-x");
+  });
+
   it("open <id> calls focusRoleSubagentView", async () => {
     mockFocusRoleSubagentView.mockResolvedValue(true);
 

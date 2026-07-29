@@ -49,10 +49,11 @@ export const screenBackend: ViewBackend = {
 	},
 
 	async close(handle: ViewHandle): Promise<void> {
-		// `screen -X kill` kills the current window (the one `focus` switched
-		// to). Screen does not support killing a specific window by ref via
-		// CLI in the same way tmux/herdr do  — we operate on the current
-		// window context. Best-effort.
+		// Select the target window by ref, THEN kill the now-selected window.
+		// Without `select`, `screen -X kill` operates on the currently-focused
+		// window — which may be the main session window, not the one we opened.
+		// NEW-3 fix.
+		await runCapture("screen", ["-X", "select", handle.ref]);
 		await runCapture("screen", ["-X", "kill"]);
 	},
 };

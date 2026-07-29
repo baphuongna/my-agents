@@ -22,7 +22,7 @@ vi.mock("node:child_process", () => ({
 
 // ── imports (after mock is registered) ───────────────────────────────────
 
-import { runDetached, commandExists } from "./run.js";
+import { runCapture, runDetached, commandExists } from "./run.js";
 
 // ── mock child factory ───────────────────────────────────────────────────
 
@@ -101,5 +101,79 @@ describe("[unit] commandExists", () => {
       throw new Error("spawn ENOENT");
     });
     expect(commandExists("cmux")).toBe(false);
+  });
+});
+
+// ── mock child with capture streams (for runCapture) ─────────────────────
+
+function makeCaptureChild(opts: { pid?: number } = {}): any {
+  const child: any = new EventEmitter();
+  child.pid = opts.pid ?? 12345;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.stdout.setEncoding = vi.fn();
+  child.stderr.setEncoding = vi.fn();
+  child.kill = vi.fn();
+  return child;
+}
+
+describe("[unit] runCapture", () => {
+  beforeEach(() => {
+    mockSpawn.mockReset();
+  });
+
+  it("resolves with stdout/stderr/code on close", async () => {
+    const child = makeCaptureChild();
+    mockSpawn.mockReturnValue(child);
+
+    const p = runCapture("echo", ["hi"]);
+    child.stdout.emit("data", "hello");
+    child.stderr.emit("data", "warn");
+    child.emit("close", 0);
+
+    const result = await p;
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe("hello");
+    expect(result.stderr).toBe("warn");
+  });
+
+  it("rejects on spawn error", async () => {
+    const child = makeCaptureChild();
+    mockSpawn.mockReturnValue(child);
+
+    const p = runCapture("missing", []);
+    child.emit("error", new Error("ENOENT"));
+
+    await expect(p).rejects.toThrow("ENOENT");
+  });
+
+  // NEW-7: a hanging command (never emits close) must be killed via SIGKILL
+  // after timeoutMs and resolve with code: null.
+  it("SIGKILLs the child and resolves with code:null on timeout", async () => {
+    const child = makeCaptureChild();
+    mockSpawn.mockReturnValue(child);
+
+    const start = Date.now();
+    const result = await runCapture("hanging-bin", [], { timeoutMs: 100 });
+    const elapsed = Date.now() - start;
+
+    expect(result.code).toBe(null);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+    // Should resolve promptly after the timeout, not hang.
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  it("clears the timeout when close fires before the deadline", async () => {
+    const child = makeCaptureChild();
+    mockSpawn.mockReturnValue(child);
+
+    const p = runCapture("fast", [], { timeoutMs: 100 });
+    child.emit("close", 0);
+
+    const result = await p;
+    expect(result.code).toBe(0);
+    expect(child.kill).not.toHaveBeenCalled();
   });
 });

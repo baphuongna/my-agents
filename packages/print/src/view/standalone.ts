@@ -27,16 +27,17 @@ export function buildStandaloneCommand(
 	opts: ViewOpenOpts,
 	hasTerminal?: (name: string) => boolean,
 ): { cmd: string; args: string[] } {
-	const cmdStr = [...opts.command].join(" ");
-	const cwd = opts.cwd ?? ".";
-
 	if (platform === "darwin") {
 		// macOS — use osascript to open Terminal.app and run the command.
-		// Escape `"` and `\` in the interpolated values so a task prompt
-		// containing `"` can't break out of the AppleScript string context
-		// (arbitrary text → injection). F3 fix.
-		const esc = (s: string): string => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-		const script = `tell application "Terminal" to do script "cd '${esc(cwd)}' && ${esc(cmdStr)}"`;
+		// Shell-escape each argv element (and cwd) with single-quote wrapping
+		// so a task prompt containing shell metacharacters (`;`, `$()`, `'`)
+		// can't break out of the AppleScript string or inject shell commands.
+		// NEW-1 fix (replaces the earlier `"`/`\`-only esc() which left shell
+		// metacharacters unescaped).
+		const shellEsc = (s: string): string => `'${s.replace(/'/g, "'\\''")}'`;
+		const cmdStr = opts.command.map(shellEsc).join(" ");
+		const cwdEsc = shellEsc(opts.cwd ?? ".");
+		const script = `tell application "Terminal" to do script "cd ${cwdEsc} && ${cmdStr}"`;
 		return { cmd: "osascript", args: ["-e", script] };
 	}
 

@@ -309,6 +309,31 @@ describe("herdrBackend", () => {
 				herdrBackend.open({ command: ["mya"] }),
 			).rejects.toThrow("pane split failed");
 		});
+
+		it("closes the orphaned pane when pane run fails (NEW-5)", async () => {
+			const paneJson = JSON.stringify({
+				result: { pane: { pane_id: "w1:p9" } },
+			});
+
+			mockSpawn.mockImplementation((_cmd: string, args: string[]) => {
+				// split returns JSON with pane_id → step 2 skipped.
+				if (args[1] === "split") return makeChild({ stdout: paneJson });
+				// pane run fails (non-zero exit).
+				if (args[1] === "run") return makeChild({ exitCode: 1 });
+				return makeChild({});
+			});
+
+			await expect(
+				herdrBackend.open({ command: ["mya"] }),
+			).rejects.toThrow("herdr pane run failed");
+
+			// Cleanup: herdr pane close <paneId> was called before throwing.
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"herdr",
+				["pane", "close", "w1:p9"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+		});
 	});
 
 	describe("focus()", () => {
@@ -675,12 +700,21 @@ describe("screenBackend", () => {
 	});
 
 	describe("close()", () => {
-		it("runs screen -X kill", async () => {
-			mockSpawn.mockReturnValue(makeChild({}));
+		it("runs screen -X select then -X kill (NEW-3)", async () => {
+			mockSpawn.mockImplementation(() => makeChild({}));
 
 			await screenBackend.close?.({ backendId: "screen", ref: "coder" });
 
-			expect(mockSpawn).toHaveBeenCalledWith(
+			// Two calls: select the target window, then kill the selected one.
+			expect(mockSpawn).toHaveBeenCalledTimes(2);
+			expect(mockSpawn).toHaveBeenNthCalledWith(
+				1,
+				"screen",
+				["-X", "select", "coder"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+			expect(mockSpawn).toHaveBeenNthCalledWith(
+				2,
 				"screen",
 				["-X", "kill"],
 				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
@@ -752,12 +786,29 @@ describe("standaloneBackend", () => {
 describe("buildStandaloneCommand", () => {
 	const opts: ViewOpenOpts = { command: ["mya", "--role", "coder"] };
 
-	it("darwin uses osascript to open Terminal.app", () => {
+	it("darwin uses osascript with shell-escaped argv (NEW-1)", () => {
 		const result = buildStandaloneCommand("darwin", opts);
 		expect(result.cmd).toBe("osascript");
 		expect(result.args[0]).toBe("-e");
 		expect(result.args[1]).toContain("Terminal");
-		expect(result.args[1]).toContain("mya --role coder");
+		// Each argv element is shell-escaped (wrapped in single quotes).
+		expect(result.args[1]).toContain("'mya'");
+		expect(result.args[1]).toContain("'--role'");
+		expect(result.args[1]).toContain("'coder'");
+	});
+
+	it("darwin escapes a shell-injection payload in argv (NEW-1)", () => {
+		const result = buildStandaloneCommand("darwin", {
+			command: ["mya", "'; rm -rf /; '"],
+		});
+		const script = result.args[1] as string;
+		// Shell-escaping wraps each element in single quotes and replaces
+		// every inner single quote with '\'' (close-quote, escaped-quote,
+		// reopen-quote) — verify the escape marker is present.
+		expect(script).toContain("'\\''");
+		// The fully-escaped dangerous element is present as literal text;
+		// the ';' and spaces never reach shell command-separator parsing.
+		expect(script).toContain("''\\''; rm -rf /; '\\'''");
 	});
 
 	it("darwin includes cwd in the script", () => {

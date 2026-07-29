@@ -262,7 +262,8 @@ export async function killSession(sessionId: string): Promise<boolean> {
     );
     if (r.ok) {
       // F9: close the view pane/window before forgetting the handle.
-      await closeRoleSubagentView(sessionId);
+      // NEW-4: best-effort close so forgetViewHandle always runs even if close throws.
+      try { await closeRoleSubagentView(sessionId); } catch { /* best-effort */ }
       forgetViewHandle(sessionId);
     }
     return r.ok;

@@ -45,7 +45,7 @@ vi.mock("./gw-auth.js", () => ({
   withAuth: (h: Record<string, string>) => h,
 }));
 
-import { installFailureReporter, createMyaBridge, type MyaPiApi } from "./mya-bridge.js";
+import { installFailureReporter, reportSubagentStatus, createMyaBridge, type MyaPiApi } from "./mya-bridge.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // F7: installFailureReporter — best-effort 'failed' status on crash
@@ -68,12 +68,13 @@ describe("[unit] installFailureReporter (F7)", () => {
     expect(onSpy).not.toHaveBeenCalled();
   });
 
-  it("registers beforeExit + uncaughtException handlers when sessionId is set", () => {
+  it("registers ONLY a beforeExit handler (NOT uncaughtException) when sessionId is set", () => {
     installFailureReporter("s-test");
 
     const events = onSpy.mock.calls.map((c) => c[0]);
     expect(events).toContain("beforeExit");
-    expect(events).toContain("uncaughtException");
+    // NEW-6: uncaughtException handler removed — installExceptionHandlers owns crash classification.
+    expect(events).not.toContain("uncaughtException");
   });
 
   it("beforeExit handler reports 'failed' status to the gateway", async () => {
@@ -99,27 +100,58 @@ describe("[unit] installFailureReporter (F7)", () => {
     expect(JSON.parse(statusCall!.body)).toEqual({ status: "failed" });
   });
 
-  it("uncaughtException handler reports 'failed' status to the gateway", async () => {
+  it("beforeExit does NOT report 'failed' after 'done' was reported (done-guard, NEW-2)", async () => {
     const fetchCalls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(url), body: String(init?.body ?? "") });
       return { ok: true } as Response;
     });
 
-    installFailureReporter("s-uncaught");
+    // Report 'done' first — this must take priority over the beforeExit failure report.
+    await reportSubagentStatus("s-done", "done");
+    expect(fetchCalls.length).toBe(1); // only the done report
 
-    // Find the uncaughtException handler and call it
-    const uncaughtCall = onSpy.mock.calls.find((c) => c[0] === "uncaughtException");
-    expect(uncaughtCall).toBeDefined();
-    const handler = uncaughtCall![1] as (err: unknown) => void;
-    // Pass an error (handler should report, not throw)
-    handler(new Error("boom"));
+    installFailureReporter("s-done");
 
+    // Fire the beforeExit handler.
+    const beforeExitCall = onSpy.mock.calls.find((c) => c[0] === "beforeExit");
+    expect(beforeExitCall).toBeDefined();
+    const handler = beforeExitCall![1] as () => void;
+    handler();
+
+    // Give any pending microtask a chance to run (there should be none).
+    await new Promise((r) => setTimeout(r, 10));
+
+    // NO additional fetch — done takes priority.
+    expect(fetchCalls.length).toBe(1);
+    expect(fetchCalls.every((c) => JSON.parse(c.body).status === "done")).toBe(true);
+  });
+
+  it("beforeExit reports 'failed' at most once (NEW-6)", async () => {
+    const fetchCalls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+      fetchCalls.push({ url: String(url), body: String(init?.body ?? "") });
+      return { ok: true } as Response;
+    });
+
+    installFailureReporter("s-once");
+
+    const beforeExitCall = onSpy.mock.calls.find((c) => c[0] === "beforeExit");
+    expect(beforeExitCall).toBeDefined();
+    const handler = beforeExitCall![1] as () => void;
+
+    // Fire the handler twice.
+    handler();
+    handler();
+
+    // Wait for the fire-and-forget reportSubagentStatus to complete.
     await vi.waitFor(() => expect(fetchCalls.length).toBeGreaterThan(0));
+    // Give any second (suppressed) call a chance to run.
+    await new Promise((r) => setTimeout(r, 10));
 
-    const statusCall = fetchCalls.find((c) => c.url.includes("/pool/session/s-uncaught/status"));
-    expect(statusCall).toBeDefined();
-    expect(JSON.parse(statusCall!.body)).toEqual({ status: "failed" });
+    // Only ONE fetch — the guard prevents a duplicate.
+    expect(fetchCalls.length).toBe(1);
+    expect(JSON.parse(fetchCalls[0]!.body)).toEqual({ status: "failed" });
   });
 });
 
