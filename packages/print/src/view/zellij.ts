@@ -52,4 +52,12 @@ export const zellijBackend: ViewBackend = {
 		// addressing panes by an externally-known ref via CLI.
 		await runCapture("zellij", ["action", "focus-next-pane"]);
 	},
+
+	async close(_handle: ViewHandle): Promise<void> {
+		// NO-OP: zellij has no clean "close pane by ref" CLI verb.
+		// `zellij action close-focus` closes the focused pane (unreliable),
+		// and there is no `--pane-id` or `-t <ref>` equivalent. Panes are
+		// cleaned up when the user exits zellij. Keeping this NO-OP avoids
+		// orphaned-pane confusion while respecting the SPI contract.
+	},
 };

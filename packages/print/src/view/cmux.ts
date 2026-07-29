@@ -13,14 +13,14 @@
  *           window running the command and prints its window index (`-P`).
  * focus():  `cmux select-window -t <ref>` — switch to a previously opened window.
  */
-import { runCapture } from "./run.js";
+import { runCapture, commandExists } from "./run.js";
 import type { ViewBackend, ViewHandle, ViewOpenOpts } from "./view-backend.js";
 
 export const cmuxBackend: ViewBackend = {
 	id: "cmux",
 
 	detect(): boolean {
-		return !!process.env.CMUX;
+		return !!process.env.CMUX && commandExists("cmux");
 	},
 
 	async open(opts: ViewOpenOpts): Promise<ViewHandle> {
@@ -41,5 +41,9 @@ export const cmuxBackend: ViewBackend = {
 
 	async focus(handle: ViewHandle): Promise<void> {
 		await runCapture("cmux", ["select-window", "-t", handle.ref]);
+	},
+
+	async close(handle: ViewHandle): Promise<void> {
+		await runCapture("cmux", ["kill-window", "-t", handle.ref]);
 	},
 };

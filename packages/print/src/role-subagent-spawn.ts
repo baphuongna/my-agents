@@ -51,11 +51,6 @@ export interface SpawnResult {
  */
 const handleRegistry = new Map<string, ViewHandle>();
 
-/** Get the ViewHandle for a previously spawned role-subagent (or undefined). */
-export function getViewHandle(sessionId: string): ViewHandle | undefined {
-  return handleRegistry.get(sessionId);
-}
-
 /** Focus the view of a previously spawned role-subagent.
  * Returns true if the focus was attempted, false if no handle/backend-focus. */
 export async function focusRoleSubagentView(sessionId: string): Promise<boolean> {
@@ -66,6 +61,18 @@ export async function focusRoleSubagentView(sessionId: string): Promise<boolean>
   const backend = VIEW_BACKENDS.find((b) => b.id === handle.backendId) ?? resolveViewBackend();
   if (!backend.focus) return false;
   await backend.focus(handle);
+  return true;
+}
+
+/** Close the view of a previously spawned role-subagent (e.g. on kill).
+ * Routes close to the backend that OPENED the handle (by id).
+ * Returns true if close was attempted, false if no handle or backend has no close(). */
+export async function closeRoleSubagentView(sessionId: string): Promise<boolean> {
+  const handle = handleRegistry.get(sessionId);
+  if (!handle) return false;
+  const backend = VIEW_BACKENDS.find((b) => b.id === handle.backendId) ?? resolveViewBackend();
+  if (!backend.close) return false;
+  await backend.close(handle);
   return true;
 }
 

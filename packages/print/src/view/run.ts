@@ -10,7 +10,7 @@
  * This module is part of the VIEW layer — it must not import any gateway,
  * pool, or logic-layer code.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 /** Result of a captured child process run. */
 export interface RunResult {
@@ -51,13 +51,40 @@ export function runCapture(
 }
 
 /**
+ * Check whether a command is resolvable on the current PATH.
+ *
+ * Runs `which <name>` synchronously. Returns true if exit code is 0,
+ * false on any error (binary not found, spawn failure).
+ *
+ * This is a SYNC helper because all `detect()` implementations are sync
+ * (interface constraint). Only used by the cmux backend for an extra guard;
+ * other backends exclusively rely on environment variables.
+ */
+export function commandExists(name: string): boolean {
+	try {
+		const result = spawnSync("which", [name], { stdio: "ignore" });
+		return result.status === 0;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Spawn a detached child (new process group) and return immediately.
  *
  * Used for launching terminal windows that should outlive the parent process.
  * Returns the child PID.
  */
-export function runDetached(cmd: string, args: readonly string[]): number {
-	const child = spawn(cmd, [...args], { stdio: "ignore", detached: true });
+export function runDetached(
+	cmd: string,
+	args: readonly string[],
+	opts?: { cwd?: string },
+): number {
+	const child = spawn(cmd, [...args], {
+		stdio: "ignore",
+		detached: true,
+		...(opts?.cwd ? { cwd: opts.cwd } : {}),
+	});
 	child.on("error", () => {}); // best-effort — ENOENT (missing terminal) must not crash the parent (F8)
 	child.unref();
 	return child.pid ?? 0;

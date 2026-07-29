@@ -70,7 +70,16 @@ export const standaloneBackend: ViewBackend = {
 
 	async open(opts: ViewOpenOpts): Promise<ViewHandle> {
 		const { cmd, args } = buildStandaloneCommand(process.platform, opts);
-		const pid = runDetached(cmd, args);
+		const pid = runDetached(cmd, args, { cwd: opts.cwd });
 		return { backendId: "standalone", ref: String(pid) };
+	},
+
+	async close(_handle: ViewHandle): Promise<void> {
+		// NO-OP: standalone opens a detached terminal window that is already
+		// fire-and-forget. The child process runs in a new OS window; closing
+		// it would require OS-specific window management (taskkill, pkill,
+		// osascript) which is out of scope for the CLI-only view layer.
+		// The OS terminal remains open — the user sees the spawned process
+		// output and closes the window manually.
 	},
 };

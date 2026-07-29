@@ -15,12 +15,14 @@ import { renderAgentTree, type AgentTreeNode } from "./mya-bridge.js";
 // ── Mock the role-subagent-spawn module so /agents command can import it ──
 
 const mockFocusRoleSubagentView = vi.hoisted(() => vi.fn());
+const mockCloseRoleSubagentView = vi.hoisted(() => vi.fn());
 const mockForgetViewHandle = vi.hoisted(() => vi.fn());
 const mockWaitRoleSubagent = vi.hoisted(() => vi.fn());
 
 vi.mock("./role-subagent-spawn.js", () => ({
   spawnRoleSubagent: vi.fn(),
   focusRoleSubagentView: mockFocusRoleSubagentView,
+  closeRoleSubagentView: mockCloseRoleSubagentView,
   forgetViewHandle: mockForgetViewHandle,
   waitRoleSubagent: mockWaitRoleSubagent,
 }));
@@ -311,6 +313,7 @@ describe("[unit] /agents slash command", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     mockFocusRoleSubagentView.mockReset();
+    mockCloseRoleSubagentView.mockReset();
     mockForgetViewHandle.mockReset();
     mockWaitRoleSubagent.mockReset();
     const c = makeCapturingPi();
@@ -354,6 +357,7 @@ describe("[unit] /agents slash command", () => {
     const out = await runCmd(commands, "agents", "kill s-target");
     expect(fetchCalls.some((c) => c.url.includes("/pool/kill/s-target") && c.method === "POST")).toBe(true);
     expect(out).toMatch(/killed/i);
+    expect(mockCloseRoleSubagentView).toHaveBeenCalledWith("s-target");
     expect(mockForgetViewHandle).toHaveBeenCalledWith("s-target");
   });
 

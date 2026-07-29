@@ -8,9 +8,9 @@
  *           the current session (`$STY`), so no explicit session reference is
  *           needed. The ref is the window title (or a constant when no title
  *           is given).
- * focus():  `screen -p <ref>` — best-effort switch to the window referenced by
- *           `handle.ref` (a title or number). Non-zero exit is silently ignored
- *           (best-effort), mirroring the herdr convention.
+ * focus():  `screen -X select <ref>` — in-session window select. The old
+ *           verb `-p <ref>` was WRONG (preselects on new screen start, not
+ *           switch). Non-zero exit is silently ignored (best-effort).
  *
  * Env vars for detection: `STY`.
  */
@@ -41,9 +41,18 @@ export const screenBackend: ViewBackend = {
 
 	async focus(handle: ViewHandle): Promise<void> {
 		// Best-effort: switch to the window referenced by handle.ref (title or
-		// number). `-p` selects the window by number or title. Non-zero exit is
-		// silently ignored — `runCapture` only rejects on spawn-level errors
+		// number). Use `-X select` — the CORRECT in-session window-select verb
+		// (`-p` preselects on new screen start, does NOT switch). Non-zero exit
+		// is silently ignored — `runCapture` only rejects on spawn-level errors
 		// (ENOENT), mirroring the herdr backend convention.
-		await runCapture("screen", ["-p", handle.ref]);
+		await runCapture("screen", ["-X", "select", handle.ref]);
+	},
+
+	async close(handle: ViewHandle): Promise<void> {
+		// `screen -X kill` kills the current window (the one `focus` switched
+		// to). Screen does not support killing a specific window by ref via
+		// CLI in the same way tmux/herdr do  — we operate on the current
+		// window context. Best-effort.
+		await runCapture("screen", ["-X", "kill"]);
 	},
 };

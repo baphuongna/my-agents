@@ -68,6 +68,7 @@ import { commandRegistry } from "./command-registry.js";
 import {
   spawnRoleSubagent,
   focusRoleSubagentView,
+  closeRoleSubagentView,
   forgetViewHandle,
   waitRoleSubagent,
 } from "./role-subagent-spawn.js";
@@ -217,6 +218,24 @@ export async function reportSubagentStatus(
   }
 }
 
+/** F7: best-effort failure reporter for spawned role-subagents.
+ * When sessionId is set (this mya is a spawned subagent), register process-level
+ * handlers so that if the subagent crashes before reporting 'done', the gateway
+ * sees 'failed' promptly (instead of waiting for the 5-min wait timeout).
+ * Fire-and-forget — never throws, never swallows uncaughtException (reports
+ * then lets default behavior proceed).
+ * No-op when sessionId is undefined (top-level sessions). */
+export function installFailureReporter(sessionId: string | undefined): void {
+  if (!sessionId) return;
+  process.on("beforeExit", () => {
+    void reportSubagentStatus(sessionId, "failed");
+  });
+  process.on("uncaughtException", () => {
+    void reportSubagentStatus(sessionId, "failed");
+    // Do NOT swallow — report then let default behavior proceed (process exits).
+  });
+}
+
 export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void {
   return (pi: MyaPiApi) => {
     let parentSessionId = "";
@@ -225,8 +244,10 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // (--gateway-session <id>), it reports working/done status back to the
     // gateway so /agents surfaces live task progress. Undefined for top-level.
     const gatewaySessionId = extractGatewaySession(process.argv.slice(2));
-    // reportSubagentStatus is module-level (above); called with gatewaySessionId
-    // at turn_start (working) + turn end (done). No-op for top-level sessions.
+    // F7: register a best-effort failure reporter so that if this subagent
+    // crashes (before reporting 'done'), the gateway sees 'failed' promptly
+    // instead of waiting for the 5-min waitRoleSubagent timeout.
+    installFailureReporter(gatewaySessionId);
 
     // Skill-search state: strip <available_skills> + inject compact summary +
     // register on-demand search tool (replaces inject-all-skills pattern).
@@ -463,6 +484,7 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
               signal: AbortSignal.timeout(2000),
             });
             if (r.ok) {
+              await closeRoleSubagentView(id);
               forgetViewHandle(id);
               return `[agents] Killed ${id}`;
             }
@@ -538,6 +560,17 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
         async execute(_id: string, params: { role: string; task: string; model?: string }) {
           const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
           const gatewayUrl = `http://127.0.0.1:${port}`;
+          // F11: validate role exists before spawning (mirror /role command resolution).
+          // A typo would otherwise silently run the default role.
+          if (params.role !== "default") {
+            const reg = freshRoles();
+            if (!reg.has(params.role)) {
+              return {
+                content: [{ type: "text" as const, text: `[spawn-role-subagent] role '${params.role}' not found in ~/.mya/roles/. Available: ${reg.list().map((r) => r.name).join(", ")}` }],
+                isError: true,
+              };
+            }
+          }
           try {
             const result = await spawnRoleSubagent({
               role: params.role,

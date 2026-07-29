@@ -15,9 +15,11 @@ import { EventEmitter } from "node:events";
 // ── mock node:child_process ──────────────────────────────────────────────
 
 const mockSpawn = vi.hoisted(() => vi.fn());
+const mockSpawnSync = vi.hoisted(() => vi.fn(() => ({ status: 0 })));
 
 vi.mock("node:child_process", () => ({
 	spawn: mockSpawn,
+	spawnSync: mockSpawnSync,
 }));
 
 // ── imports (after mock is registered) ───────────────────────────────────
@@ -178,6 +180,20 @@ describe("tmuxBackend", () => {
 			);
 		});
 	});
+
+	describe("close()", () => {
+		it("runs tmux kill-window with the handle ref", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await tmuxBackend.close?.({ backendId: "tmux", ref: "2" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"tmux",
+				["kill-window", "-t", "2"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+		});
+	});
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -318,6 +334,22 @@ describe("herdrBackend", () => {
 			).resolves.toBeUndefined();
 		});
 	});
+
+	describe("close()", () => {
+		it("runs herdr pane close with the handle ref", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await herdrBackend.close?.({ backendId: "herdr", ref: "w1:p2" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"herdr",
+				["pane", "close", "w1:p2"],
+				expect.objectContaining({
+					stdio: ["ignore", "pipe", "pipe"],
+				}),
+			);
+		});
+	});
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -336,13 +368,30 @@ describe("cmuxBackend", () => {
 	afterEach(() => restoreViewEnv());
 
 	describe("detect()", () => {
-		it("returns true when CMUX is set", () => {
-			process.env.CMUX = "/tmp/cmux-1000/default,12345,0";
-			expect(cmuxBackend.detect()).toBe(true);
+		beforeEach(() => {
+			mockSpawnSync.mockReset();
+			mockSpawnSync.mockReturnValue({ status: 0 });
 		});
 
-		it("returns false when CMUX is unset", () => {
+		it("returns true when CMUX is set and cmux binary exists", () => {
+			process.env.CMUX = "/tmp/cmux-1000/default,12345,0";
+			expect(cmuxBackend.detect()).toBe(true);
+			expect(mockSpawnSync).toHaveBeenCalledWith(
+				"which",
+				["cmux"],
+				expect.objectContaining({ stdio: "ignore" }),
+			);
+		});
+
+		it("returns false when CMUX is set but cmux binary not found", () => {
+			mockSpawnSync.mockReturnValue({ status: 1 });
+			process.env.CMUX = "/tmp/cmux-1000/default,12345,0";
 			expect(cmuxBackend.detect()).toBe(false);
+		});
+
+		it("returns false when CMUX is unset (skips binary check)", () => {
+			expect(cmuxBackend.detect()).toBe(false);
+			expect(mockSpawnSync).not.toHaveBeenCalled();
 		});
 	});
 
@@ -405,6 +454,20 @@ describe("cmuxBackend", () => {
 			expect(mockSpawn).toHaveBeenCalledWith(
 				"cmux",
 				["select-window", "-t", "2"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+		});
+	});
+
+	describe("close()", () => {
+		it("runs cmux kill-window with the handle ref", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await cmuxBackend.close?.({ backendId: "cmux", ref: "2" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"cmux",
+				["kill-window", "-t", "2"],
 				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
 			);
 		});
@@ -506,6 +569,15 @@ describe("zellijBackend", () => {
 			).resolves.toBeUndefined();
 		});
 	});
+
+	describe("close()", () => {
+		it("is a no-op (resolves immediately)", async () => {
+			await expect(
+				zellijBackend.close?.({ backendId: "zellij", ref: "x" }),
+			).resolves.toBeUndefined();
+			expect(mockSpawn).not.toHaveBeenCalled();
+		});
+	});
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -581,14 +653,14 @@ describe("screenBackend", () => {
 	});
 
 	describe("focus()", () => {
-		it("runs screen -p with the handle ref", async () => {
+		it("runs screen -X select with the handle ref (F10 fix)", async () => {
 			mockSpawn.mockReturnValue(makeChild({}));
 
 			await screenBackend.focus?.({ backendId: "screen", ref: "coder" });
 
 			expect(mockSpawn).toHaveBeenCalledWith(
 				"screen",
-				["-p", "coder"],
+				["-X", "select", "coder"],
 				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
 			);
 		});
@@ -599,6 +671,20 @@ describe("screenBackend", () => {
 			await expect(
 				screenBackend.focus?.({ backendId: "screen", ref: "coder" }),
 			).resolves.toBeUndefined();
+		});
+	});
+
+	describe("close()", () => {
+		it("runs screen -X kill", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await screenBackend.close?.({ backendId: "screen", ref: "coder" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"screen",
+				["-X", "kill"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
 		});
 	});
 });
@@ -620,6 +706,7 @@ describe("standaloneBackend", () => {
 			const handle = await standaloneBackend.open({
 				command: ["mya"],
 				title: "test",
+				cwd: "/tmp/project",
 			});
 
 			expect(handle.backendId).toBe("standalone");
@@ -631,8 +718,33 @@ describe("standaloneBackend", () => {
 				expect.objectContaining({
 					detached: true,
 					stdio: "ignore",
+					cwd: "/tmp/project",
 				}),
 			);
+		});
+
+		it("passes cwd to runDetached (F6 fix)", async () => {
+			mockSpawn.mockReturnValue(makeChild({ pid: 42 }));
+
+			await standaloneBackend.open({
+				command: ["mya"],
+				cwd: "/custom/dir",
+			});
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.any(Array),
+				expect.objectContaining({ cwd: "/custom/dir" }),
+			);
+		});
+	});
+
+	describe("close()", () => {
+		it("is a no-op (resolves immediately)", async () => {
+			await expect(
+				standaloneBackend.close?.({ backendId: "standalone", ref: "123" }),
+			).resolves.toBeUndefined();
+			expect(mockSpawn).not.toHaveBeenCalled();
 		});
 	});
 });

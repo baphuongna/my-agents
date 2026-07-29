@@ -13,11 +13,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mockOpenView = vi.hoisted(() => vi.fn());
 const mockBackendFocus = vi.hoisted(() => vi.fn());
+const mockBackendClose = vi.hoisted(() => vi.fn());
 
 vi.mock("./view/view-backend.js", () => ({
   openView: mockOpenView,
-  resolveViewBackend: () => ({ id: "mock", focus: mockBackendFocus }),
-  VIEW_BACKENDS: [{ id: "tmux", focus: mockBackendFocus }],
+  resolveViewBackend: () => ({ id: "mock", focus: mockBackendFocus, close: mockBackendClose }),
+  VIEW_BACKENDS: [{ id: "tmux", focus: mockBackendFocus, close: mockBackendClose }],
 }));
 
 // ── Mock gw-auth to avoid reading real token files ───────────────────────
@@ -28,8 +29,8 @@ vi.mock("./gw-auth.js", () => ({
 
 import {
   spawnRoleSubagent,
-  getViewHandle,
   focusRoleSubagentView,
+  closeRoleSubagentView,
   forgetViewHandle,
   waitRoleSubagent,
   type SpawnRoleSubagentOpts,
@@ -76,6 +77,7 @@ describe("[unit] spawnRoleSubagent", () => {
   beforeEach(() => {
     mockOpenView.mockReset();
     mockBackendFocus.mockReset();
+    mockBackendClose.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -173,26 +175,25 @@ describe("[unit] spawnRoleSubagent", () => {
     await expect(spawnRoleSubagent(makeOpts())).rejects.toThrow("no sessionId");
   });
 
-  it("stores the handle in the registry after spawn", async () => {
+  it("stores the handle in the registry after spawn (assert via focus return)", async () => {
     const { fetchMock } = mockFetchAcquire("s-reg");
     vi.stubGlobal("fetch", fetchMock);
     mockOpenView.mockResolvedValue({ backendId: "tmux", ref: "5" });
 
     await spawnRoleSubagent(makeOpts());
 
-    expect(getViewHandle("s-reg")).toEqual({ backendId: "tmux", ref: "5" });
+    // F5: getViewHandle removed — assert registry state indirectly via focus return
+    const focused = await focusRoleSubagentView("s-reg");
+    expect(focused).toBe(true);
   });
 });
 
-describe("[unit] handle registry (getViewHandle / focusRoleSubagentView / forget)", () => {
+describe("[unit] handle registry (focusRoleSubagentView / closeRoleSubagentView / forget)", () => {
   beforeEach(() => {
     mockOpenView.mockReset();
     mockBackendFocus.mockReset();
+    mockBackendClose.mockReset();
     vi.unstubAllGlobals();
-  });
-
-  it("getViewHandle returns undefined for unknown session", () => {
-    expect(getViewHandle("nonexistent-session-id")).toBeUndefined();
   });
 
   it("focusRoleSubagentView returns false when no handle exists", async () => {
@@ -213,16 +214,36 @@ describe("[unit] handle registry (getViewHandle / focusRoleSubagentView / forget
     expect(mockBackendFocus).toHaveBeenCalledWith({ backendId: "tmux", ref: "9" });
   });
 
-  it("forgetViewHandle removes the handle from the registry", async () => {
+  it("forgetViewHandle removes the handle from the registry (assert via focus return)", async () => {
     const { fetchMock } = mockFetchAcquire("s-forget");
     vi.stubGlobal("fetch", fetchMock);
     mockOpenView.mockResolvedValue({ backendId: "tmux", ref: "7" });
 
     await spawnRoleSubagent(makeOpts());
-    expect(getViewHandle("s-forget")).toBeDefined();
+    // Before forget: handle exists (focus returns true)
+    expect(await focusRoleSubagentView("s-forget")).toBe(true);
 
     forgetViewHandle("s-forget");
-    expect(getViewHandle("s-forget")).toBeUndefined();
+    // After forget: handle gone (focus returns false)
+    expect(await focusRoleSubagentView("s-forget")).toBe(false);
+  });
+
+  it("closeRoleSubagentView returns false when no handle exists", async () => {
+    expect(await closeRoleSubagentView("no-such-id")).toBe(false);
+  });
+
+  it("closeRoleSubagentView calls the backend's close when a handle exists", async () => {
+    const { fetchMock } = mockFetchAcquire("s-close");
+    vi.stubGlobal("fetch", fetchMock);
+    mockOpenView.mockResolvedValue({ backendId: "tmux", ref: "3" });
+    mockBackendClose.mockResolvedValue(undefined);
+
+    await spawnRoleSubagent(makeOpts());
+    const closed = await closeRoleSubagentView("s-close");
+
+    expect(closed).toBe(true);
+    expect(mockBackendClose).toHaveBeenCalledTimes(1);
+    expect(mockBackendClose).toHaveBeenCalledWith({ backendId: "tmux", ref: "3" });
   });
 
   it("releases the acquired session (POST /pool/kill) when openView fails (F2 — no dangling ghost)", async () => {

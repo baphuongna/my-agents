@@ -11,11 +11,27 @@
  *
  * [unit]
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ── Mock role-subagent-spawn + gw-auth so killSession can be unit-tested ──
+const mockFocusRoleSubagentView = vi.hoisted(() => vi.fn());
+const mockCloseRoleSubagentView = vi.hoisted(() => vi.fn());
+const mockForgetViewHandle = vi.hoisted(() => vi.fn());
+
+vi.mock("./role-subagent-spawn.js", () => ({
+  focusRoleSubagentView: mockFocusRoleSubagentView,
+  closeRoleSubagentView: mockCloseRoleSubagentView,
+  forgetViewHandle: mockForgetViewHandle,
+}));
+vi.mock("./gw-auth.js", () => ({
+  authHeaders: () => ({}),
+}));
+
 import {
   renderAgentsPanel,
   handlePanelKey,
   flattenTree,
+  killSession,
   type PanelState,
 } from "./agents-panel.js";
 import type { AgentTreeNode } from "./mya-bridge.js";
@@ -311,5 +327,50 @@ describe("[unit] handlePanelKey", () => {
     const original = makeState(1);
     handlePanelKey("q", original);
     expect(original.quit).toBe(false);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// killSession (F9: closes view pane before forgetting handle on kill)
+// ══════════════════════════════════════════════════════════════════════════
+
+describe("[unit] killSession (F9 close-on-kill wiring)", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    mockCloseRoleSubagentView.mockReset();
+    mockForgetViewHandle.mockReset();
+  });
+
+  it("posts to /pool/kill/<id> and returns true on success", async () => {
+    const fetchCalls: Array<{ url: string; method: string }> = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      fetchCalls.push({ url: String(url), method: init?.method ?? "GET" });
+      return { ok: true, status: 200 } as Response;
+    });
+
+    const ok = await killSession("s-target");
+    expect(ok).toBe(true);
+    expect(fetchCalls.some((c) => c.url.includes("/pool/kill/s-target") && c.method === "POST")).toBe(true);
+  });
+
+  it("calls closeRoleSubagentView before forgetViewHandle on successful kill", async () => {
+    vi.stubGlobal("fetch", async () => ({ ok: true, status: 200 }) as Response);
+    mockCloseRoleSubagentView.mockResolvedValue(true);
+
+    await killSession("s-close");
+
+    expect(mockCloseRoleSubagentView).toHaveBeenCalledTimes(1);
+    expect(mockCloseRoleSubagentView).toHaveBeenCalledWith("s-close");
+    expect(mockForgetViewHandle).toHaveBeenCalledTimes(1);
+    expect(mockForgetViewHandle).toHaveBeenCalledWith("s-close");
+  });
+
+  it("does NOT close or forget when kill POST fails", async () => {
+    vi.stubGlobal("fetch", async () => ({ ok: false, status: 404 }) as Response);
+
+    const ok = await killSession("s-fail");
+    expect(ok).toBe(false);
+    expect(mockCloseRoleSubagentView).not.toHaveBeenCalled();
+    expect(mockForgetViewHandle).not.toHaveBeenCalled();
   });
 });

@@ -13,7 +13,7 @@
  */
 import { supervisedTask, type SupervisedTaskHandle } from "@my-agent/core";
 import { authHeaders } from "./gw-auth.js";
-import { focusRoleSubagentView, forgetViewHandle } from "./role-subagent-spawn.js";
+import { focusRoleSubagentView, closeRoleSubagentView, forgetViewHandle } from "./role-subagent-spawn.js";
 import type { AgentTreeNode } from "./mya-bridge.js";
 
 // ── ANSI helpers (mirror the `A` object pattern from launcher.ts) ──────────
@@ -250,7 +250,7 @@ async function fetchAgentTree(): Promise<AgentTreeNode[]> {
 }
 
 /** Kill a session via POST /pool/kill/<id>. */
-async function killSession(sessionId: string): Promise<boolean> {
+export async function killSession(sessionId: string): Promise<boolean> {
   try {
     const r = await fetch(
       `http://127.0.0.1:${GW_PORT}/pool/kill/${encodeURIComponent(sessionId)}`,
@@ -260,7 +260,11 @@ async function killSession(sessionId: string): Promise<boolean> {
         signal: AbortSignal.timeout(1000),
       },
     );
-    if (r.ok) forgetViewHandle(sessionId);
+    if (r.ok) {
+      // F9: close the view pane/window before forgetting the handle.
+      await closeRoleSubagentView(sessionId);
+      forgetViewHandle(sessionId);
+    }
     return r.ok;
   } catch {
     return false;

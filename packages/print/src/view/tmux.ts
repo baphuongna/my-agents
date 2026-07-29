@@ -35,4 +35,8 @@ export const tmuxBackend: ViewBackend = {
 	async focus(handle: ViewHandle): Promise<void> {
 		await runCapture("tmux", ["select-window", "-t", handle.ref]);
 	},
+
+	async close(handle: ViewHandle): Promise<void> {
+		await runCapture("tmux", ["kill-window", "-t", handle.ref]);
+	},
 };

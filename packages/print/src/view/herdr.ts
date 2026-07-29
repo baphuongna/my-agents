@@ -115,4 +115,11 @@ export const herdrBackend: ViewBackend = {
 		// spawn-level errors (ENOENT), mirroring the tmux backend.
 		await runCapture("herdr", ["agent", "focus", handle.ref]);
 	},
+
+	async close(handle: ViewHandle): Promise<void> {
+		// Best-effort: `herdr pane close <ref>` closes the pane by id.
+		// Ignore non-zero exit (pane already gone, older herdr, etc.) —
+		// `runCapture` only rejects on spawn-level errors (ENOENT).
+		await runCapture("herdr", ["pane", "close", handle.ref]);
+	},
 };
