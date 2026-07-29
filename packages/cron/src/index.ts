@@ -20,6 +20,34 @@ import { validateCronBaseUrl as _validateBaseUrl } from "./scan.js";
  * this many ms in the past is considered a "ghost" and skipped (not fired). */
 export const ONESHOT_GRACE_MS = 120_000; // 2 minutes
 
+/** Catch-up grace window bounds (mirrors Hermes cron/jobs.py:693-694). */
+export const MIN_GRACE_MS = 120_000; // 2 minutes
+export const MAX_GRACE_MS = 7_200_000; // 2 hours
+
+/**
+ * Compute the catch-up grace window for a cron job from its schedule.
+ * Grace = half the schedule period, clamped to [MIN_GRACE_MS, MAX_GRACE_MS].
+ * For cron expressions, the period is derived from the first two fires.
+ *
+ * Mirrors Hermes `_compute_grace_seconds` (cron/jobs.py:686-717). NOTE: a stale
+ * job STILL fires once (anti-perpetual-defer, Hermes #33315) — grace is
+ * informational (observability), it does NOT gate firing.
+ */
+export function computeGraceMs(schedule: string | number, timezone?: string): number {
+  let periodMs: number;
+  if (typeof schedule === "number") {
+    periodMs = schedule; // on-interval trigger: schedule IS the period
+  } else {
+    const base = new Date(nowWallclock());
+    const first = computeNextFire(schedule, base, timezone);
+    if (!first) return MIN_GRACE_MS; // impossible expr → minimum grace
+    const second = computeNextFire(schedule, first, timezone);
+    if (!second) return MIN_GRACE_MS;
+    periodMs = second.getTime() - first.getTime();
+  }
+  return Math.max(MIN_GRACE_MS, Math.min(Math.floor(periodMs / 2), MAX_GRACE_MS));
+}
+
 export type TriggerType = "cron" | "on-interval" | "once";
 
 export interface CronJob {
@@ -64,9 +92,11 @@ export interface CronJob {
   contextFrom?: string[];
   /** Per-job skills to load (names). */
   skills?: string[];
-  /** F3: catch-up grace window (ms). If a cron job is more than this far past
-   * its nextRunAt, it is skipped (not fired) and advanced. Default: Infinity
-   * (backward compat — always fires). */
+  /** F4: catch-up grace window (ms) — RESERVED for future staleness-based
+   * observability. The scheduler ALWAYS fires a due job once (anti-perpetual-
+   * defer, Hermes #33315) regardless of this value; grace does NOT gate firing.
+   * computeGraceMs() computes the Hermes half-period default when a consumer is
+   * wired. Kept on the type for forward-compat + explicit operator intent. */
   graceMs?: number;
 }
 
@@ -380,14 +410,15 @@ export class CronScheduler {
           // every sweep (computeNextFire-null hazard).
           const next = computeNextFire(job.schedule, new Date(now), job.timezone)?.getTime();
           if (next == null) { job.enabled = false; this.dirty = true; continue; }
-          // F3: catch-up grace — check staleness BEFORE advancing.
-          const grace = job.graceMs ?? Infinity;
-          const isStale = grace !== Infinity && (now - job.nextRunAt!) > grace;
-          // Advance nextRunAt regardless (even stale jobs advance to next fire).
+          // F4: fire-once + fast-forward (Hermes #33315 anti-perpetual-defer). A
+          // stale job ALWAYS fires once then advances — grace never gates firing
+          // (the old `if (isStale) continue` was a perpetual-defer bug). The
+          // grace window (computeGraceMs) is reserved for future staleness-based
+          // observability; it is NOT computed in this hot path until a consumer
+          // is wired (avoids a 2× computeNextFire cost per due job per sweep).
           job.nextRunAt = next;
           this.dirty = true; // Phase 2C: the gateway persists this before firing
-          if (isStale) continue; // skip firing — too stale
-          out.push(job);
+          out.push(job); // F4: fire once even when stale
         }
       }
     }
