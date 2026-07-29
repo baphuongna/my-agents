@@ -126,6 +126,57 @@ export class ReadinessRegistry {
 
 // ─── HTTP/WS gateway ──────────────────────────────────────────────────────────
 
+/** Per-session role-subagent metadata, tracked by the host (e.g. main.ts) in an
+ * in-memory Map and surfaced through poolSubagents + GET /pool/tree. This is
+ * the "SessionMeta" shape shared between the gateway surface and the host.
+ *
+ * `parentSessionId` links a role-subagent to its spawning session so /pool/tree
+ * nests it: `main ▸ role-subagent`. */
+export interface SessionMeta {
+  /** Role name (e.g. "coder") for a role-subagent spawn. */
+  role?: string;
+  /** The task prompt the spawned mya should auto-run. */
+  task?: string;
+  /** Preferred model for the role-subagent. */
+  model?: string;
+  /** Parent session id — when set, the new session is registered as a child. */
+  parentSessionId?: string;
+}
+
+/** Input to poolAcquire: cwd plus optional role-subagent metadata + parent link.
+ * A bare string is also accepted for backward compatibility (treated as cwd). */
+export interface PoolAcquireInput extends SessionMeta {
+  cwd: string;
+}
+
+/** A single subagent entry returned by poolSubagents and nested in /pool/tree. */
+export interface PoolSubagentEntry {
+  id: string;
+  goal: string;
+  status: string;
+  depth: number;
+  output?: string;
+  /** Role-subagent metadata (present when this is a role-subagent). */
+  role?: string;
+  task?: string;
+  model?: string;
+  parentSessionId?: string;
+}
+
+/** A node in the GET /pool/tree response. */
+export interface PoolTreeNode {
+  sessionId: string;
+  busy: boolean;
+  messages: number;
+  lastActivity: number;
+  /** Role-subagent metadata (present when this session is a role-subagent). */
+  role?: string;
+  task?: string;
+  model?: string;
+  parentSessionId?: string;
+  subagents: PoolSubagentEntry[];
+}
+
 export interface GatewayOptions {
   host?: string;
   port?: number;
@@ -212,12 +263,14 @@ export interface GatewayOptions {
   poolStatus?: () => unknown;
   /** Optional: kill a pool session for POST /pool/kill/:id. */
   poolKill?: (sessionId: string) => boolean;
-  /** Optional: acquire a new pool session for POST /pool/acquire. */
-  poolAcquire?: (cwd: string) => string | Promise<string>;
+  /** Optional: acquire a new pool session for POST /pool/acquire. Accepts the
+   * extended input (cwd + role/task/model/parentSessionId) for role-subagent
+   * spawns, or a bare cwd string for backward compatibility. */
+  poolAcquire?: (input: PoolAcquireInput | string) => string | Promise<string>;
   /** Optional: send a prompt to a pool session for POST /pool/prompt/:id. */
   poolPrompt?: (sessionId: string, text: string) => void;
-  /** Optional: list subagents for a session (returns SubagentHandle[]). */
-  poolSubagents?: (sessionId: string) => Array<{ id: string; goal: string; status: string; depth: number; output?: string }>;
+  /** Optional: list subagents for a session (returns PoolSubagentEntry[]). */
+  poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
   /** Optional: MCP server management callbacks. */
   mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
@@ -328,9 +381,9 @@ export class Gateway {
   /** Optional pool kill callback. */
   private readonly poolKill?: (sessionId: string) => boolean;
   /** Optional pool acquire callback. */
-  private readonly poolAcquire?: (cwd: string) => string | Promise<string>;
+  private readonly poolAcquire?: (input: PoolAcquireInput | string) => string | Promise<string>;
   private readonly poolPrompt?: (sessionId: string, text: string) => void;
-  private readonly poolSubagents?: (sessionId: string) => Array<{ id: string; goal: string; status: string; depth: number; output?: string }>;
+  private readonly poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
   private readonly mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   private readonly mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
   private readonly mcpRemove?: (id: string) => boolean;
@@ -1361,9 +1414,18 @@ export class Gateway {
           req.on("data", (c: Buffer) => (body += c.toString()));
           req.on("end", async () => {
             try {
-              const { cwd } = JSON.parse(body || "{}") as { cwd?: string };
-              if (!cwd) return send(400, { error: "cwd required" });
-              const sessionId = await this.poolAcquire!(cwd);
+              const parsed = JSON.parse(body || "{}") as { cwd?: string; role?: string; task?: string; model?: string; parentSessionId?: string };
+              if (!parsed.cwd) return send(400, { error: "cwd required" });
+              // role/task/model/parentSessionId are optional role-subagent
+              // metadata; only forwarded when present so a bare {cwd} body is
+              // a plain acquire (backward compatible).
+              const sessionId = await this.poolAcquire!({
+                cwd: parsed.cwd,
+                ...(parsed.role !== undefined && { role: parsed.role }),
+                ...(parsed.task !== undefined && { task: parsed.task }),
+                ...(parsed.model !== undefined && { model: parsed.model }),
+                ...(parsed.parentSessionId !== undefined && { parentSessionId: parsed.parentSessionId }),
+              });
               return send(200, { sessionId });
             } catch {
               return send(400, { error: "invalid json" });
@@ -1686,12 +1748,17 @@ export class Gateway {
         }
         // ── Agent tree: sessions + their subagents ──
         if (url.pathname === "/pool/tree" && req.method === "GET" && this.poolStatus && this.poolSubagents) {
-          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number }>;
-          const tree = poolEntries.map((s) => ({
+          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string }>;
+          const tree: PoolTreeNode[] = poolEntries.map((s) => ({
             sessionId: s.sessionId,
             busy: s.busy,
             messages: s.messages,
             lastActivity: s.lastActivity,
+            // Role-subagent metadata (present only when the host attaches it).
+            role: s.role,
+            task: s.task,
+            model: s.model,
+            parentSessionId: s.parentSessionId,
             subagents: this.poolSubagents!(s.sessionId),
           }));
           return send(200, tree);

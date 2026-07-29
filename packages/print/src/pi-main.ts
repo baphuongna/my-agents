@@ -13,7 +13,9 @@ import { createMyaBridge } from "./mya-bridge.js";
 import * as shared from "./shared-instances.js";
 
 // Filter out mya-specific flags that pi doesn't understand.
-const MYA_FLAGS = new Set(["--no-launcher", "--print", "--json", "--rpc", "--debug"]);
+// --role/--task are consumed by the bridge (role-subagent startup); they must
+// NOT reach pi's arg parser.
+const MYA_FLAGS = new Set(["--no-launcher", "--print", "--json", "--rpc", "--debug", "--role", "--task"]);
 function filterMyaFlags(argv: string[]): string[] {
   return argv.filter((a, i, arr) => {
     if (MYA_FLAGS.has(a)) return false;
@@ -22,12 +24,37 @@ function filterMyaFlags(argv: string[]): string[] {
   });
 }
 
-export async function runPiInteractive(): Promise<void> {
+/** Exported for unit testing (flag stripping verification). */
+export { filterMyaFlags };
+
+/** Extract --role/--task values from an argv array (pure, testable). */
+export function extractRoleTask(argv: string[]): { role?: string; task?: string } {
+  const roleIdx = argv.indexOf("--role");
+  const taskIdx = argv.indexOf("--task");
+  return {
+    role: roleIdx >= 0 ? argv[roleIdx + 1] : undefined,
+    task: taskIdx >= 0 ? argv[taskIdx + 1] : undefined,
+  };
+}
+
+export interface RunPiInteractiveOpts {
+  /** Role to apply at startup (from --role flag). */
+  initialRole?: string;
+  /** Task to auto-inject as the first user prompt (from --task flag). */
+  initialTask?: string;
+}
+
+export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<void> {
   process.env.PI_SKIP_VERSION_CHECK = "1";
 
   // LAZY LOAD pi — this is the expensive import (2s, 12MB)
   // Only happens when user enters interactive mode, NOT at launcher startup.
   const { main } = await import("@my-agent/coding-agent");
+
+  // --role/--task: also extract from argv as fallback (e.g. when called directly).
+  const extracted = extractRoleTask(process.argv.slice(2));
+  const initialRole = opts?.initialRole ?? extracted.role;
+  const initialTask = opts?.initialTask ?? extracted.task;
 
   const myaBridge = createMyaBridge({
     auditLog: shared.auditLog,
@@ -51,6 +78,8 @@ export async function runPiInteractive(): Promise<void> {
     channels: shared.channels,
     roleRegistry: shared.roleRegistry,
     achievements: shared.achievements,
+    initialRole,
+    initialTask,
   });
 
   // Pass user args directly to pi — pi handles model selection, thinking level,

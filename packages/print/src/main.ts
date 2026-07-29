@@ -28,6 +28,7 @@ import { createRequire } from "node:module";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
+import { SessionMetaStore } from "./session-meta.js";
 import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config, achievements, memory, retrievalEngine, lifecycleManager, sqliteMemory } from "./shared-instances.js";
 import { loadRoles as loadRolesRegistry } from "@my-agent/core";
 
@@ -128,6 +129,7 @@ import { cronSessionToolConfig } from "./cron-role.js";
 import { DevicePairing, WebAuthnService } from "@my-agent/secrets";
 // R4-2 fix: cross-device approval relay.
 import { ApprovalRelay } from "@my-agent/gateway";
+import type { PoolAcquireInput } from "@my-agent/gateway";
 // F2 fix: lifecycle guard for cron flapping detection.
 import { LifecycleGuard } from "@my-agent/cron";
 // P7 (shard 07): process-level exception handlers.
@@ -250,9 +252,14 @@ async function main(): Promise<void> {
   const rpc = args.includes("--rpc");
   const debug = args.includes("--debug");
   // Flags that consume the next argument as their value
-  const FLAGS_WITH_VALUE = new Set(["--model", "--session", "--session-id", "--fork", "--session-dir", "--port", "--bg-id", "--gateway-session", "--gateway-url"]);
+  // --role/--task: role-subagent startup flags (see docs/mya-subagent-design.md).
+  const FLAGS_WITH_VALUE = new Set(["--model", "--session", "--session-id", "--fork", "--session-dir", "--port", "--bg-id", "--gateway-session", "--gateway-url", "--role", "--task"]);
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
+  const roleIdx = args.indexOf("--role");
+  const role = roleIdx >= 0 ? args[roleIdx + 1] : undefined;
+  const taskIdx = args.indexOf("--task");
+  const task = taskIdx >= 0 ? args[taskIdx + 1] : undefined;
   const positional = args.filter((a, i) => {
     if (a.startsWith("--")) return false;
     if (i > 0 && FLAGS_WITH_VALUE.has(args[i - 1]!)) return false; // value of a flag
@@ -300,7 +307,7 @@ async function main(): Promise<void> {
   // ── default: pi InteractiveMode directly ──
   // `mya` → pi TUI (as expected). `mya launcher` → session picker.
   if (!print && !prompt && !rpc && !debug) {
-    return runPiInteractive();
+    return runPiInteractive(role, task);
   }
 }
 
@@ -314,9 +321,9 @@ function readStdin(): Promise<string> {
   });
 }
 
-async function runPiInteractive(): Promise<void> {
+async function runPiInteractive(role?: string, task?: string): Promise<void> {
   const { runPiInteractive: runPi } = await import("./pi-main.js");
-  await runPi();
+  await runPi({ initialRole: role, initialTask: task });
 }
 
 async function runRpcServer(_model?: string): Promise<void> {
@@ -615,6 +622,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     }
   }
 
+  // Role-subagent metadata (role/task/model/parent) keyed by sessionId.
+  // Surfaced via poolStatus (node-level) + poolSubagents (child nesting).
+  const sessionMeta = new SessionMetaStore();
+
   const gw = new Gateway({
     port,
     // Phase 0C: token-free rootHtml. The dashboard obtains the token via an
@@ -694,11 +705,16 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     channels,
     channelsConfig: config.channels,
     channelRouter,
-    poolStatus: () => pool.list().map((e) => ({ sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile })),
-    poolKill: (id: string) => pool.release(id),
-    poolAcquire: async (cwd: string) => {
+    poolStatus: () => pool.list().map((e) => {
+      const meta = sessionMeta.get(e.sessionId);
+      return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId };
+    }),
+    poolKill: (id: string) => { sessionMeta.delete(id); return pool.release(id); },
+    poolAcquire: async (input: PoolAcquireInput | string) => {
+      const { cwd, role, task, model, parentSessionId } = typeof input === "string" ? ({ cwd: input } as PoolAcquireInput) : input;
       const sessionId = `s-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       await pool.createForCwd(sessionId, cwd);
+      if (role || task || model || parentSessionId) sessionMeta.record(sessionId, { role, task, model, parentSessionId });
       return sessionId;
     },
     poolPrompt: (sessionId: string, text: string) => {
@@ -706,12 +722,18 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         .catch((e) => console.warn(`[gateway] poolPrompt failed: ${(e as Error).message}`));
     },
     poolSubagents: (sessionId: string) => {
+      const entries: import("@my-agent/gateway").PoolSubagentEntry[] = [];
       try {
         const subagentMod = createRequire(import.meta.url)("../../coding-agent/src/core/subagent.ts");
-        return subagentMod.listSubagents(sessionId).map((s: { id: string; goal: string; status: string; depth: number; output: string }) => ({
-          id: s.id, goal: s.goal, status: s.status, depth: s.depth, output: s.output,
-        }));
-      } catch { return []; }
+        for (const s of subagentMod.listSubagents(sessionId) as Array<{ id: string; goal: string; status: string; depth: number; output: string }>) {
+          entries.push({ id: s.id, goal: s.goal, status: s.status, depth: s.depth, output: s.output });
+        }
+      } catch { /* no coding-agent subagents for this session */ }
+      // Role-subagent children linked via sessionMeta (parentSessionId).
+      for (const c of sessionMeta.childrenOf(sessionId, (id) => (pool.get(id)?.busy ? "busy" : "idle"))) {
+        entries.push({ id: c.id, goal: c.goal, status: c.status, depth: c.depth, role: c.role, task: c.task, model: c.model, parentSessionId: c.parentSessionId });
+      }
+      return entries;
     },
     mcpList: () => mcp.listServers().map((s) => ({
       id: s.id, command: s.command, args: s.args, phase: s.phase, health: s.health, tools: s.tools, lastError: s.lastError,

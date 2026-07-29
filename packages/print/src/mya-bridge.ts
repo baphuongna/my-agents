@@ -66,6 +66,11 @@ import { rankedCompact } from "@my-agent/prompts";
 import { adversarialReview } from "@my-agent/council";
 import { commandRegistry } from "./command-registry.js";
 import {
+  spawnRoleSubagent,
+  focusRoleSubagentView,
+  forgetViewHandle,
+} from "./role-subagent-spawn.js";
+import {
   stripAvailableSkillsBlock,
   buildIndex,
   fingerprintSkills,
@@ -124,6 +129,10 @@ export interface MyaBridgeOptions {
   roleRegistry?: RoleRegistry;
   /** J2: Achievement tracker for stat-driven unlock. */
   achievements?: { recordStat: (key: string, increment?: number) => unknown };
+  /** Role to apply at startup (from --role flag, set by role-subagent spawn). */
+  initialRole?: string;
+  /** Task to auto-inject as the first user prompt (from --task flag). */
+  initialTask?: string;
   registerTools?: (pi: MyaPiApi) => void;
 }
 
@@ -140,6 +149,9 @@ export interface MyaPiApi {
   setActiveTools?(toolNames: string[]): void;
   setModel?(model: { id: string; provider?: string }): Promise<boolean>;
   modelRegistry?: { getAll?(): Array<{ id: string; provider?: string }> };
+  /** Send a user message to the agent (always triggers a turn). Used for
+   * auto-injecting the initial task when a role-subagent is spawned. */
+  sendUserMessage?(content: string | unknown[]): void;
 }
 
 function uiOf(ctx: unknown): { notify: (m: string, t?: string) => void } {
@@ -193,6 +205,56 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // switching back to a permissive role RESTORES removed tools. Filtering
     // from getActiveTools() is one-way/destructive (removed tools never return).
     let originalTools: string[] | null = null;
+
+    /**
+     * Apply a role overlay: tool filter + model override + set currentRole.
+     * Reused by the /role command and startup role application (initialRole).
+     * Returns human-readable notes (for UI feedback).
+     */
+    async function applyRoleOverlay(role: RoleConfig): Promise<string[]> {
+      const notes: string[] = [];
+      // 1. Apply tool filter (fail-closed: always apply the filter result).
+      // BUG #1: filter from the ORIGINAL full tool set (captured once), not
+      // from getActiveTools() (current, possibly already-restricted).
+      if (pi.getActiveTools && pi.setActiveTools) {
+        try {
+          if (originalTools === null) {
+            originalTools = pi.getActiveTools();
+          }
+          const filtered = filterToolsForRole(originalTools, role);
+          pi.setActiveTools(filtered);
+          if (filtered.length === 0) {
+            notes.push(`⚠ no tools match role filter`);
+          } else {
+            notes.push(`tools: ${filtered.length}/${originalTools.length}`);
+          }
+        } catch (e) {
+          notes.push(`⚠ tool filter failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      } else {
+        notes.push(`⚠ tool filter unavailable`);
+      }
+      // 2. Apply model override (if role specifies a preferred model)
+      if (role.modelPrefer && pi.setModel && pi.modelRegistry) {
+        try {
+          const allModels = pi.modelRegistry.getAll?.() ?? [];
+          const match = allModels.find(
+            (m) => m.id === role.modelPrefer || m.id.includes(role.modelPrefer!),
+          );
+          if (match) {
+            const ok = await pi.setModel(match);
+            notes.push(ok ? `model: ${match.id}` : `⚠ setModel rejected`);
+          } else {
+            notes.push(`⚠ model "${role.modelPrefer}" not found`);
+          }
+        } catch (e) {
+          notes.push(`⚠ model override failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      // 3. Switch active role (prompt injection happens in before_agent_start).
+      currentRole = role;
+      return notes;
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // DREAM CYCLE: periodic deep consolidation (every 4h when idle)
@@ -299,56 +361,8 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
           return;
         }
 
-        // Apply role overlay: tools + model + prompt.
-        // These methods live on the `pi` handle (ExtensionAPI), not on `ctx`
-        // (ExtensionCommandContext). Calling them on ctx is dead code — the
-        // guard would always be false. Call on pi instead.
-        const notes: string[] = [];
-
-        // 1. Apply tool filter (fail-closed: always apply the filter result).
-        // BUG #1: filter from the ORIGINAL full tool set (captured once), not
-        // from getActiveTools() (current, possibly already-restricted). This
-        // makes role switching reversible: reviewer→default restores all tools.
-        if (pi.getActiveTools && pi.setActiveTools) {
-          try {
-            if (originalTools === null) {
-              originalTools = pi.getActiveTools(); // capture once, on first switch
-            }
-            const filtered = filterToolsForRole(originalTools, role);
-            pi.setActiveTools(filtered);
-            if (filtered.length === 0) {
-              notes.push(`⚠ no tools match role filter (check tool names)`);
-            } else {
-              notes.push(`tools: ${filtered.length}/${originalTools.length}`);
-            }
-          } catch (e) {
-            notes.push(`⚠ tool filter failed: ${e instanceof Error ? e.message : String(e)}`);
-          }
-        } else {
-          notes.push(`⚠ tool filter unavailable`);
-        }
-
-        // 2. Apply model override (if role specifies a preferred model)
-        if (role.modelPrefer && pi.setModel && pi.modelRegistry) {
-          try {
-            const allModels = pi.modelRegistry.getAll?.() ?? [];
-            const match = allModels.find(
-              (m) => m.id === role.modelPrefer || m.id.includes(role.modelPrefer!)
-            );
-            if (match) {
-              const ok = await pi.setModel(match);
-              notes.push(ok ? `model: ${match.id}` : `⚠ setModel rejected`);
-            } else {
-              notes.push(`⚠ model "${role.modelPrefer}" not found`);
-            }
-          } catch (e) {
-            notes.push(`⚠ model override failed: ${e instanceof Error ? e.message : String(e)}`);
-          }
-        }
-
-        // 3. Switch active role (prompt injection happens in before_agent_start).
-        // Not persisted: restart resets to default (intended).
-        currentRole = role;
+        // Apply role overlay: tools + model + prompt (shared logic).
+        const notes = await applyRoleOverlay(role);
         const summary = notes.length > 0 ? ` — ${notes.join(" · ")}` : "";
         uiOf(ctx).notify(`[role] Switched to "${role.name}": ${role.description}${summary}`, "info");
       },
@@ -356,11 +370,145 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     commandRegistry.register({ name: "role", description: "List or switch roles", handler: () => "" });
 
     // ═══════════════════════════════════════════════════════════════════
-    // SESSION START: capture session ID + load cron jobs
+    // STARTUP ROLE + TASK: apply --role at boot + auto-inject --task
+    // ═══════════════════════════════════════════════════════════════════
+    // When mya is spawned as a role-subagent (--role coder --task "..."),
+    // the role overlay is applied once at init and the task is auto-injected
+    // as the first user prompt so the worker starts executing immediately.
+    let initialTaskPending = opts.initialTask ?? "";
+
+    if (opts.initialRole) {
+      const reg = freshRoles();
+      const role = opts.initialRole === "default" ? reg.getDefault() : reg.get(opts.initialRole);
+      if (role) {
+        // Fire-and-forget: synchronous parts (tool filter) run immediately;
+        // async parts (model override via setModel) apply on next microtask.
+        void applyRoleOverlay(role).catch(() => {});
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // /agents — view/manage role-subagents (tree + open/kill actions)
+    // ═══════════════════════════════════════════════════════════════════
+    // Reads /pool/tree from the gateway and renders a tree (main ▸ subagents).
+    // Actions: open <id> → view.focus(handle); kill <id> → POST /pool/kill/<id>.
+    // This is the LOGIC layer — it goes through the view SPI (focusRoleSubagentView)
+    // and the gateway HTTP surface. It does NOT import any mux directly.
+    registerSharedCommand(
+      pi,
+      "agents",
+      "View/manage role-subagents: /agents [open <id> | kill <id>]",
+      async (args) => {
+        const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+        const gatewayUrl = `http://127.0.0.1:${port}`;
+        const parts = args.trim().split(/\s+/).filter(Boolean);
+        const action = parts[0] ?? "";
+
+        // kill <id> — POST /pool/kill/<id> via gateway HTTP
+        if (action === "kill" && parts[1]) {
+          const id = parts[1]!;
+          try {
+            const { authHeaders } = await import("./gw-auth.js");
+            const r = await fetch(`${gatewayUrl}/pool/kill/${encodeURIComponent(id)}`, {
+              method: "POST",
+              headers: authHeaders(),
+              signal: AbortSignal.timeout(2000),
+            });
+            if (r.ok) {
+              forgetViewHandle(id);
+              return `[agents] Killed ${id}`;
+            }
+            return `[agents] Kill failed (${r.status})`;
+          } catch (e) {
+            return `[agents] Kill error: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+
+        // open <id> — focus the view of a spawned role-subagent
+        if (action === "open" && parts[1]) {
+          const id = parts[1]!;
+          const focused = await focusRoleSubagentView(id);
+          return focused
+            ? `[agents] Focused view for ${id}`
+            : `[agents] No view handle for ${id} (was it spawned in this session?)`;
+        }
+
+        // default: render the agent tree
+        try {
+          const { authHeaders } = await import("./gw-auth.js");
+          const r = await fetch(`${gatewayUrl}/pool/tree`, {
+            headers: authHeaders(),
+            signal: AbortSignal.timeout(2000),
+          });
+          if (!r.ok) return `[agents] Gateway returned ${r.status}`;
+          const tree = (await r.json()) as AgentTreeNode[];
+          return renderAgentTree(tree);
+        } catch (e) {
+          return `[agents] Gateway unreachable: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    );
+
+    // ── spawn-role-subagent tool (LLM-invocable) ───────────────────────
+    // Lets the model spawn a role-subagent: acquire gateway session + open
+    // a view running mya with --role/--task. The spawned worker auto-runs
+    // the task and is tracked via /pool/tree (parentSessionId nesting).
+    // This is the LOGIC layer — calls openView() through the SPI, no mux import.
+    try {
+      pi.registerTool({
+        name: "spawn-role-subagent",
+        label: "Spawn Role Subagent",
+        description:
+          "Spawn a role-subagent in a new terminal view. The subagent boots with the " +
+          "given role applied and auto-runs the task. Tracked via /agents. " +
+          "Parameters: role (name from role registry), task (prompt), model (optional).",
+        parameters: {
+          type: "object",
+          properties: {
+            role: { type: "string", description: "Role name (e.g. 'coder', 'reviewer')" },
+            task: { type: "string", description: "Task prompt for the subagent to execute" },
+            model: { type: "string", description: "Preferred model (optional)" },
+          },
+          required: ["role", "task"],
+        },
+        async execute(_id: string, params: { role: string; task: string; model?: string }) {
+          const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
+          const gatewayUrl = `http://127.0.0.1:${port}`;
+          try {
+            const result = await spawnRoleSubagent({
+              role: params.role,
+              task: params.task,
+              model: params.model,
+              cwd: process.cwd(),
+              parentSessionId,
+              gatewayUrl,
+            });
+            return {
+              content: [{ type: "text" as const, text: `[spawn-role-subagent] Spawned ${params.role} subagent: session=${result.sessionId}, view=${result.handle.backendId}:${result.handle.ref}. Track via /agents.` }],
+            };
+          } catch (e) {
+            return {
+              content: [{ type: "text" as const, text: `[spawn-role-subagent] Failed: ${e instanceof Error ? e.message : String(e)}` }],
+              isError: true,
+            };
+          }
+        },
+      });
+    } catch { /* tool name already registered */ }
     // ═══════════════════════════════════════════════════════════════════
     pi.on("session_start", (event: unknown, ctx: unknown) => {
       const c = ctx as { sessionManager?: { getSessionId?: () => string } };
       parentSessionId = c?.sessionManager?.getSessionId?.() ?? `session-${nowWallclock().toString(36)}`;
+
+      // Auto-inject the initial task (--task flag) as the first user prompt
+      // so a spawned role-subagent starts executing immediately.
+      if (initialTaskPending) {
+        const task = initialTaskPending;
+        initialTaskPending = "";
+        if (pi.sendUserMessage) {
+          pi.sendUserMessage(task);
+        }
+      }
     });
 
     // Phase 0B: cron store ownership is gateway-only. The TUI no longer loads
@@ -1682,7 +1830,7 @@ ${hitLines}`);
     });
 
     registerSharedCommand(pi, "mya-help", "Show mya commands", async () =>
-      "[mya] Commands: /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /achievements, /webhooks\n" +
+      "[mya] Commands: /agents, /audit, /secrets, /skills, /memory, /dream, /role, /wallet, /eval, /sync, /collab, /acp, /workflow, /sign, /pkg, /council, /cron, /mcp, /channel, /achievements, /webhooks\n" +
       "Tools: code, paid_fetch, hashline_edit, browser_navigate/snapshot/click/type/scroll/back/press/screenshot, browser_search, osv_check, check_url_safety, image_generate, video_generate, kanban, disk_cleanup, cron_create/list/delete/run, delegate_task, MCP tools");
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1707,6 +1855,56 @@ ${hitLines}`);
 // ═══════════════════════════════════════════════════════════════════
 // Helper functions for wired features
 // ═══════════════════════════════════════════════════════════════════
+
+/** Tree node shape returned by GET /pool/tree (matches PoolTreeNode from
+ * @my-agent/gateway, declared locally to avoid a runtime gateway import in
+ * the pure rendering function). */
+export interface AgentTreeNode {
+  sessionId: string;
+  busy: boolean;
+  messages: number;
+  lastActivity: number;
+  role?: string;
+  task?: string;
+  model?: string;
+  parentSessionId?: string;
+  subagents: Array<{
+    id: string;
+    goal: string;
+    status: string;
+    depth: number;
+    role?: string;
+    task?: string;
+    model?: string;
+    parentSessionId?: string;
+  }>;
+}
+
+/**
+ * Render the agent tree (main session ▸ role-subagents) as text for the
+ * `/agents` slash command. Pure function — no I/O, no side effects.
+ *
+ * Each top-level node is a session; its subagents are listed indented beneath.
+ * Nodes with role/task metadata are role-subagents (spawned via spawn-role-subagent).
+ */
+export function renderAgentTree(tree: AgentTreeNode[]): string {
+  if (tree.length === 0) return "[agents] No active sessions.";
+  const lines: string[] = ["[agents] Agent tree:"];
+  for (const node of tree) {
+    const status = node.busy ? "●" : "○";
+    const roleLabel = node.role ? `(${node.role})` : "";
+    const taskLabel = node.task ? ` "${node.task.slice(0, 60)}"` : "";
+    lines.push(`  ${status} ${node.sessionId} ${roleLabel}${taskLabel} — ${node.messages} msgs — ${node.busy ? "busy" : "idle"}`);
+    for (const sub of node.subagents) {
+      const subStatus = sub.status === "busy" || sub.status === "running" ? "●" : "○";
+      const subRole = sub.role ? `(${sub.role})` : "";
+      const subTask = sub.task ? ` "${sub.task.slice(0, 60)}"` : sub.goal ? ` "${sub.goal.slice(0, 60)}"` : "";
+      lines.push(`    └─ ${subStatus} ${sub.id} ${subRole}${subTask} — ${sub.status}`);
+    }
+  }
+  lines.push("\nActions: /agents open <id> | /agents kill <id>");
+  return lines.join("\n");
+}
 
 /** Lazy LSP cascade: builds codegraph + runs diagnostics on first edit. */
 let _codegraph: unknown = null;

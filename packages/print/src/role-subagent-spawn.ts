@@ -1,0 +1,123 @@
+/**
+ * spawnRoleSubagent — the LOGIC layer for spawning a role-subagent.
+ *
+ * This is the ONLY module in the logic layer that imports the view SPI.
+ * It calls `openView()` / `resolveViewBackend()` against the interface — it
+ * does NOT import any mux (tmux, herdr, standalone) directly. Adding a new
+ * view backend is zero change here (it's handled by the SPI registry).
+ *
+ * Flow (per docs/mya-subagent-design.md — "End-to-end spawn flow"):
+ *   1. POST /pool/acquire {cwd, role, task, model, parentSessionId} → sessionId
+ *   2. Build argv: mya --gateway-session <id> --role <role> --task <task> [--model <m>]
+ *   3. openView({command: argv, title: role, cwd}) → ViewHandle (hand-off to view layer)
+ *   4. Track handle by sessionId (for /agents view.focus)
+ *
+ * The spawned mya process boots with the role applied + auto-runs the task.
+ * The parent session tracks it via /pool/tree (parentSessionId nesting).
+ */
+import { openView, resolveViewBackend, VIEW_BACKENDS, type ViewHandle } from "./view/view-backend.js";
+import { authHeaders } from "./gw-auth.js";
+
+/** Options for spawning a role-subagent. */
+export interface SpawnRoleSubagentOpts {
+  /** Role name (e.g. "coder"). Must exist in the role registry. */
+  role: string;
+  /** The task prompt the spawned mya should auto-run. */
+  task: string;
+  /** Preferred model for the role-subagent (optional). */
+  model?: string;
+  /** Working directory for the spawned session. */
+  cwd: string;
+  /** Parent session id — the new session is registered as its child. */
+  parentSessionId: string;
+  /** Gateway base URL (e.g. "http://127.0.0.1:3000"). */
+  gatewayUrl: string;
+}
+
+/** Result of a successful spawn. */
+export interface SpawnResult {
+  sessionId: string;
+  handle: ViewHandle;
+}
+
+/**
+ * In-process handle registry: sessionId → ViewHandle.
+ *
+ * When a role-subagent is spawned, its ViewHandle is stored here so the
+ * `/agents open <id>` command can call `view.focus(handle)` later.
+ * This is module-level (not per-bridge) because spawns and the /agents
+ * command both run in the main session's process.
+ */
+const handleRegistry = new Map<string, ViewHandle>();
+
+/** Get the ViewHandle for a previously spawned role-subagent (or undefined). */
+export function getViewHandle(sessionId: string): ViewHandle | undefined {
+  return handleRegistry.get(sessionId);
+}
+
+/** Focus the view of a previously spawned role-subagent.
+ * Returns true if the focus was attempted, false if no handle/backend-focus. */
+export async function focusRoleSubagentView(sessionId: string): Promise<boolean> {
+  const handle = handleRegistry.get(sessionId);
+  if (!handle) return false;
+  // MEDIUM-1 fix: route focus to the backend that OPENED the handle (by id),
+  // not whichever backend detects NOW (env could change mid-session).
+  const backend = VIEW_BACKENDS.find((b) => b.id === handle.backendId) ?? resolveViewBackend();
+  if (!backend.focus) return false;
+  await backend.focus(handle);
+  return true;
+}
+
+/** Remove a handle from the registry (e.g. after kill). */
+export function forgetViewHandle(sessionId: string): void {
+  handleRegistry.delete(sessionId);
+}
+
+/**
+ * Spawn a role-subagent: acquire a gateway session + open a view running mya.
+ *
+ * @returns { sessionId, handle } — the gateway session id + the view handle.
+ * @throws if the gateway acquire fails or the view backend can't open.
+ */
+export async function spawnRoleSubagent(opts: SpawnRoleSubagentOpts): Promise<SpawnResult> {
+  // 1. Acquire a gateway session with role/task/model/parent metadata.
+  const acquireRes = await fetch(`${opts.gatewayUrl}/pool/acquire`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      cwd: opts.cwd,
+      role: opts.role,
+      task: opts.task,
+      ...(opts.model !== undefined && { model: opts.model }),
+      parentSessionId: opts.parentSessionId,
+    }),
+  });
+  if (!acquireRes.ok) {
+    const body = await acquireRes.text().catch(() => "");
+    throw new Error(
+      `spawnRoleSubagent: /pool/acquire failed (${acquireRes.status})${body ? `: ${body}` : ""}`,
+    );
+  }
+  const acquired = (await acquireRes.json()) as { sessionId?: string };
+  const sessionId = acquired.sessionId;
+  if (!sessionId) {
+    throw new Error("spawnRoleSubagent: gateway returned no sessionId");
+  }
+
+  // 2. Build argv for the spawned mya process.
+  const argv: string[] = [
+    "mya",
+    "--gateway-session", sessionId,
+    "--role", opts.role,
+    "--task", opts.task,
+    ...(opts.model ? ["--model", opts.model] : []),
+  ];
+
+  // 3. Open a view running mya (SPI — no mux import in this file).
+  const handle = await openView({ command: argv, title: opts.role, cwd: opts.cwd });
+
+  // 4. Track the handle for /agents view.focus.
+  handleRegistry.set(sessionId, handle);
+
+  return { sessionId, handle };
+}
