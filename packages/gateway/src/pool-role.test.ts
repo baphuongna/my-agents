@@ -46,14 +46,14 @@ function post(port: number, path: string, payload: unknown): Promise<{ code: num
  * role-subagent children under their parent.
  */
 function mockHost() {
-  const meta = new Map<string, Partial<PoolAcquireInput> & { status?: string }>();
+  const meta = new Map<string, Partial<PoolAcquireInput> & { status?: string; summary?: string; keyOutputs?: string[] }>();
   const poolList = new Map<string, { sessionId: string; busy: boolean; messages: number; lastActivity: number }>();
 
   const poolStatus = () => {
-    const out: Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string; status?: string }> = [];
+    const out: Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string; status?: string; summary?: string; keyOutputs?: string[] }> = [];
     for (const e of poolList.values()) {
       const m = meta.get(e.sessionId);
-      out.push({ sessionId: e.sessionId, busy: e.busy, messages: e.messages, lastActivity: e.lastActivity, role: m?.role, task: m?.task, model: m?.model, parentSessionId: m?.parentSessionId, status: m?.status });
+      out.push({ sessionId: e.sessionId, busy: e.busy, messages: e.messages, lastActivity: e.lastActivity, role: m?.role, task: m?.task, model: m?.model, parentSessionId: m?.parentSessionId, status: m?.status, summary: m?.summary, keyOutputs: m?.keyOutputs });
     }
     return out;
   };
@@ -73,9 +73,9 @@ function mockHost() {
     }
     return out;
   };
-  const poolSessionStatus = (sessionId: string, status: string) => {
+  const poolSessionStatus = (sessionId: string, status: string, summary?: string, keyOutputs?: string[]) => {
     const existing = meta.get(sessionId);
-    if (existing) meta.set(sessionId, { ...existing, status });
+    if (existing) meta.set(sessionId, { ...existing, status, ...(summary !== undefined ? { summary } : {}), ...(keyOutputs !== undefined ? { keyOutputs } : {}) });
   };
   return { poolStatus, poolAcquire, poolSubagents, poolSessionStatus, meta, poolList };
 }
@@ -195,5 +195,84 @@ describe("[unit] gateway /pool — role-subagent metadata + nesting", () => {
     expect((JSON.parse(r.body) as { ok: boolean }).ok).toBe(true);
     // host meta unchanged
     expect(host.meta.get("nonexistent")).toBeUndefined();
+  });
+
+  // ── Phase 3: structured task results (summary + keyOutputs) ─────────────
+
+  it("POST /pool/session/:id/status with summary + keyOutputs returns 200 and stores them", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, {
+      status: "done",
+      summary: "Refactored auth module",
+      keyOutputs: ["src/auth.ts", "src/auth.test.ts"],
+    });
+    expect(r.code).toBe(200);
+    expect((JSON.parse(r.body) as { ok: boolean }).ok).toBe(true);
+    expect(host.meta.get(sid)?.summary).toBe("Refactored auth module");
+    expect(host.meta.get(sid)?.keyOutputs).toEqual(["src/auth.ts", "src/auth.test.ts"]);
+  });
+
+  it("GET /pool/tree surfaces summary and keyOutputs for done sessions", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp", role: "coder", task: "refactor Z" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    await post(port, `/pool/session/${sid}/status`, {
+      status: "done",
+      summary: "All tests pass",
+      keyOutputs: ["file1.ts", "file2.ts"],
+    });
+    const r = await get(port, "/pool/tree");
+    expect(r.code).toBe(200);
+    const tree = JSON.parse(r.body) as Array<{ sessionId: string; status?: string; summary?: string; keyOutputs?: string[]; role?: string }>;
+    const node = tree.find((n) => n.sessionId === sid);
+    expect(node?.status).toBe("done");
+    expect(node?.summary).toBe("All tests pass");
+    expect(node?.keyOutputs).toEqual(["file1.ts", "file2.ts"]);
+    // metadata preserved
+    expect(node?.role).toBe("coder");
+  });
+
+  it("POST /pool/session/:id/status rejects summary that is not a string (400)", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, {
+      status: "done",
+      summary: 12345,
+    });
+    expect(r.code).toBe(400);
+    expect(JSON.parse(r.body)).toHaveProperty("error");
+  });
+
+  it("POST /pool/session/:id/status rejects keyOutputs that is not an array (400)", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, {
+      status: "done",
+      keyOutputs: "not-an-array",
+    });
+    expect(r.code).toBe(400);
+    expect(JSON.parse(r.body)).toHaveProperty("error");
+  });
+
+  it("POST /pool/session/:id/status rejects keyOutputs array with non-string elements (400)", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, {
+      status: "done",
+      keyOutputs: ["valid.ts", 42],
+    });
+    expect(r.code).toBe(400);
+    expect(JSON.parse(r.body)).toHaveProperty("error");
+  });
+
+  it("backward compat: POST /pool/session/:id/status with just {status} still works", async () => {
+    const ar = await post(port, "/pool/acquire", { cwd: "/tmp" });
+    const sid = (JSON.parse(ar.body) as { sessionId: string }).sessionId;
+    const r = await post(port, `/pool/session/${sid}/status`, { status: "working" });
+    expect(r.code).toBe(200);
+    expect((JSON.parse(r.body) as { ok: boolean }).ok).toBe(true);
+    expect(host.meta.get(sid)?.status).toBe("working");
+    expect(host.meta.get(sid)?.summary).toBeUndefined();
+    expect(host.meta.get(sid)?.keyOutputs).toBeUndefined();
   });
 });

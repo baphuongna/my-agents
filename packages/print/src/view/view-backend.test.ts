@@ -29,13 +29,23 @@ import {
 } from "./view-backend.js";
 import { tmuxBackend } from "./tmux.js";
 import { herdrBackend } from "./herdr.js";
+import { cmuxBackend } from "./cmux.js";
+import { zellijBackend } from "./zellij.js";
+import { screenBackend } from "./screen.js";
 import { standaloneBackend, buildStandaloneCommand } from "./standalone.js";
 import type { ViewBackend, ViewOpenOpts } from "./view-backend.js";
 
 // ── env helpers ──────────────────────────────────────────────────────────
 
 /** Env vars read by any backend's detect(). */
-const ENV_KEYS = ["TMUX", "HERDR_ENV", "HERDR_SOCKET_PATH"] as const;
+const ENV_KEYS = [
+	"TMUX",
+	"HERDR_ENV",
+	"HERDR_SOCKET_PATH",
+	"CMUX",
+	"ZELLIJ",
+	"STY",
+] as const;
 
 let savedEnv: Record<string, string | undefined> = {};
 
@@ -314,6 +324,286 @@ describe("herdrBackend", () => {
 // standalone backend
 // ══════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════
+// cmux backend
+// ══════════════════════════════════════════════════════════════════════════
+
+describe("cmuxBackend", () => {
+	beforeEach(() => {
+		clearViewEnv();
+		mockSpawn.mockReset();
+	});
+	afterEach(() => restoreViewEnv());
+
+	describe("detect()", () => {
+		it("returns true when CMUX is set", () => {
+			process.env.CMUX = "/tmp/cmux-1000/default,12345,0";
+			expect(cmuxBackend.detect()).toBe(true);
+		});
+
+		it("returns false when CMUX is unset", () => {
+			expect(cmuxBackend.detect()).toBe(false);
+		});
+	});
+
+	describe("open()", () => {
+		it("spawns cmux new-window with title and command", async () => {
+			mockSpawn.mockReturnValue(makeChild({ stdout: "3\n" }));
+
+			const handle = await cmuxBackend.open({
+				command: ["mya", "--gateway-session", "abc", "--role", "coder"],
+				title: "coder",
+				cwd: "/tmp/project",
+			});
+
+			expect(handle).toEqual({ backendId: "cmux", ref: "3" });
+			expect(mockSpawn).toHaveBeenCalledTimes(1);
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"cmux",
+				[
+					"new-window",
+					"-P",
+					"-n",
+					"coder",
+					"mya",
+					"--gateway-session",
+					"abc",
+					"--role",
+					"coder",
+				],
+				expect.objectContaining({
+					cwd: "/tmp/project",
+					stdio: ["ignore", "pipe", "pipe"],
+				}),
+			);
+		});
+
+		it("omits -n when no title is provided", async () => {
+			mockSpawn.mockReturnValue(makeChild({ stdout: "1\n" }));
+
+			await cmuxBackend.open({ command: ["mya"] });
+
+			const callArgs = mockSpawn.mock.calls[0]!;
+			expect(callArgs[1]).not.toContain("-n");
+		});
+
+		it("throws on non-zero exit code", async () => {
+			mockSpawn.mockReturnValue(makeChild({ exitCode: 1 }));
+
+			await expect(cmuxBackend.open({ command: ["mya"] })).rejects.toThrow(
+				"cmux new-window failed",
+			);
+		});
+	});
+
+	describe("focus()", () => {
+		it("runs cmux select-window with the handle ref", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await cmuxBackend.focus?.({ backendId: "cmux", ref: "2" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"cmux",
+				["select-window", "-t", "2"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+		});
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// zellij backend
+// ══════════════════════════════════════════════════════════════════════════
+
+describe("zellijBackend", () => {
+	beforeEach(() => {
+		clearViewEnv();
+		mockSpawn.mockReset();
+	});
+	afterEach(() => restoreViewEnv());
+
+	describe("detect()", () => {
+		it("returns true when ZELLIJ is set", () => {
+			process.env.ZELLIJ = "0";
+			expect(zellijBackend.detect()).toBe(true);
+		});
+
+		it("returns false when ZELLIJ is unset", () => {
+			expect(zellijBackend.detect()).toBe(false);
+		});
+	});
+
+	describe("open()", () => {
+		it("spawns zellij run with title, cwd, and command", async () => {
+			mockSpawn.mockReturnValue(makeChild({ stdout: "pane-id-42\n" }));
+
+			const handle = await zellijBackend.open({
+				command: ["mya", "--gateway-session", "abc", "--role", "coder"],
+				title: "coder",
+				cwd: "/tmp/project",
+			});
+
+			expect(handle).toEqual({ backendId: "zellij", ref: "pane-id-42" });
+			expect(mockSpawn).toHaveBeenCalledTimes(1);
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"zellij",
+				[
+					"run",
+					"--name",
+					"coder",
+					"--cwd",
+					"/tmp/project",
+					"--",
+					"mya",
+					"--gateway-session",
+					"abc",
+					"--role",
+					"coder",
+				],
+				expect.objectContaining({
+					cwd: "/tmp/project",
+					stdio: ["ignore", "pipe", "pipe"],
+				}),
+			);
+		});
+
+		it("omits --name when no title is provided", async () => {
+			mockSpawn.mockReturnValue(makeChild({ stdout: "" }));
+
+			await zellijBackend.open({ command: ["mya"] });
+
+			const callArgs = mockSpawn.mock.calls[0]!;
+			expect(callArgs[1]).not.toContain("--name");
+		});
+
+		it("throws on non-zero exit code", async () => {
+			mockSpawn.mockReturnValue(makeChild({ exitCode: 1 }));
+
+			await expect(
+				zellijBackend.open({ command: ["mya"] }),
+			).rejects.toThrow("zellij run failed");
+		});
+	});
+
+	describe("focus()", () => {
+		it("runs zellij action focus-next-pane", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await zellijBackend.focus?.({ backendId: "zellij", ref: "x" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"zellij",
+				["action", "focus-next-pane"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+		});
+
+		it("resolves without throwing on non-zero exit (best-effort)", async () => {
+			mockSpawn.mockReturnValue(makeChild({ exitCode: 1 }));
+
+			await expect(
+				zellijBackend.focus?.({ backendId: "zellij", ref: "x" }),
+			).resolves.toBeUndefined();
+		});
+	});
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// screen backend
+// ══════════════════════════════════════════════════════════════════════════
+
+describe("screenBackend", () => {
+	beforeEach(() => {
+		clearViewEnv();
+		mockSpawn.mockReset();
+	});
+	afterEach(() => restoreViewEnv());
+
+	describe("detect()", () => {
+		it("returns true when STY is set", () => {
+			process.env.STY = "12345.pts-0.host";
+			expect(screenBackend.detect()).toBe(true);
+		});
+
+		it("returns false when STY is unset", () => {
+			expect(screenBackend.detect()).toBe(false);
+		});
+	});
+
+	describe("open()", () => {
+		it("spawns screen -t with title and command", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			const handle = await screenBackend.open({
+				command: ["mya", "--gateway-session", "abc", "--role", "coder"],
+				title: "coder",
+				cwd: "/tmp/project",
+			});
+
+			expect(handle).toEqual({ backendId: "screen", ref: "coder" });
+			expect(mockSpawn).toHaveBeenCalledTimes(1);
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"screen",
+				[
+					"-t",
+					"coder",
+					"mya",
+					"--gateway-session",
+					"abc",
+					"--role",
+					"coder",
+				],
+				expect.objectContaining({
+					cwd: "/tmp/project",
+					stdio: ["ignore", "pipe", "pipe"],
+				}),
+			);
+		});
+
+		it("uses default title when none is provided", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			const handle = await screenBackend.open({ command: ["mya"] });
+
+			const callArgs = mockSpawn.mock.calls[0]!;
+			expect(callArgs[1]).toContain("-t");
+			expect(callArgs[1]).toContain("screen-window");
+			expect(handle).toEqual({ backendId: "screen", ref: "screen-window" });
+		});
+
+		it("throws on non-zero exit code", async () => {
+			mockSpawn.mockReturnValue(makeChild({ exitCode: 1 }));
+
+			await expect(
+				screenBackend.open({ command: ["mya"] }),
+			).rejects.toThrow("screen -t failed");
+		});
+	});
+
+	describe("focus()", () => {
+		it("runs screen -p with the handle ref", async () => {
+			mockSpawn.mockReturnValue(makeChild({}));
+
+			await screenBackend.focus?.({ backendId: "screen", ref: "coder" });
+
+			expect(mockSpawn).toHaveBeenCalledWith(
+				"screen",
+				["-p", "coder"],
+				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+			);
+		});
+
+		it("resolves without throwing on non-zero exit (best-effort)", async () => {
+			mockSpawn.mockReturnValue(makeChild({ exitCode: 1 }));
+
+			await expect(
+				screenBackend.focus?.({ backendId: "screen", ref: "coder" }),
+			).resolves.toBeUndefined();
+		});
+	});
+});
+
+
 describe("standaloneBackend", () => {
 	beforeEach(() => mockSpawn.mockReset());
 
@@ -441,6 +731,44 @@ describe("resolveViewBackend", () => {
 		process.env.TMUX = "/tmp/tmux,1234,0";
 		process.env.HERDR_ENV = "1";
 		expect(resolveViewBackend().id).toBe("tmux");
+	});
+
+	it("returns cmux when only CMUX is set", () => {
+		process.env.CMUX = "/tmp/cmux,1234,0";
+		expect(resolveViewBackend().id).toBe("cmux");
+	});
+
+	it("returns zellij when only ZELLIJ is set", () => {
+		process.env.ZELLIJ = "0";
+		expect(resolveViewBackend().id).toBe("zellij");
+	});
+
+	it("returns screen when only STY is set", () => {
+		process.env.STY = "12345.pts-0.host";
+		expect(resolveViewBackend().id).toBe("screen");
+	});
+
+	it("prefers tmux over cmux (higher priority)", () => {
+		process.env.TMUX = "/tmp/tmux,1234,0";
+		process.env.CMUX = "/tmp/cmux,1234,0";
+		expect(resolveViewBackend().id).toBe("tmux");
+	});
+
+	it("prefers cmux over zellij (registry order)", () => {
+		process.env.CMUX = "/tmp/cmux,1234,0";
+		process.env.ZELLIJ = "0";
+		expect(resolveViewBackend().id).toBe("cmux");
+	});
+
+	it("prefers zellij over screen (registry order)", () => {
+		process.env.ZELLIJ = "0";
+		process.env.STY = "12345.pts-0.host";
+		expect(resolveViewBackend().id).toBe("zellij");
+	});
+
+	it("prefers screen over standalone when only STY is set", () => {
+		process.env.STY = "12345.pts-0.host";
+		expect(resolveViewBackend().id).not.toBe("standalone");
 	});
 });
 

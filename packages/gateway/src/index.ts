@@ -145,6 +145,10 @@ export interface SessionMeta {
   /** Phase 2: task-status reported by the spawned mya
    * ('working'|'done'|'failed'|'idle'|'acquired'). */
   status?: string;
+  /** Phase 3: structured result summary (parsed from <DONE> output). */
+  summary?: string;
+  /** Phase 3: structured result key outputs (parsed from <DONE> output). */
+  keyOutputs?: string[];
 }
 
 /** Input to poolAcquire: cwd plus optional role-subagent metadata + parent link.
@@ -165,6 +169,10 @@ export interface PoolSubagentEntry {
   task?: string;
   model?: string;
   parentSessionId?: string;
+  /** Phase 3: structured result summary. */
+  summary?: string;
+  /** Phase 3: structured result key outputs. */
+  keyOutputs?: string[];
 }
 
 /** A node in the GET /pool/tree response. */
@@ -180,6 +188,10 @@ export interface PoolTreeNode {
   parentSessionId?: string;
   /** Phase 2: explicit task-status (richer than busy). Mirrors SessionMeta.status. */
   status?: string;
+  /** Phase 3: structured result summary. */
+  summary?: string;
+  /** Phase 3: structured result key outputs. */
+  keyOutputs?: string[];
   subagents: PoolSubagentEntry[];
 }
 
@@ -278,7 +290,7 @@ export interface GatewayOptions {
   /** Optional: list subagents for a session (returns PoolSubagentEntry[]). */
   poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
   /** Phase 2: set task-status for POST /pool/session/:id/status. */
-  poolSessionStatus?: (sessionId: string, status: string) => void;
+  poolSessionStatus?: (sessionId: string, status: string, summary?: string, keyOutputs?: string[]) => void;
   /** Optional: MCP server management callbacks. */
   mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
@@ -393,7 +405,7 @@ export class Gateway {
   private readonly poolPrompt?: (sessionId: string, text: string) => void;
   private readonly poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
   /** Phase 2: set task-status for a session (POST /pool/session/:id/status). */
-  private readonly poolSessionStatus?: (sessionId: string, status: string) => void;
+  private readonly poolSessionStatus?: (sessionId: string, status: string, summary?: string, keyOutputs?: string[]) => void;
   private readonly mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
   private readonly mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
   private readonly mcpRemove?: (id: string) => boolean;
@@ -1418,17 +1430,33 @@ export class Gateway {
           return send(ok ? 200 : 404, { ok });
         }
         // Phase 2: task-status reporting — spawned mya POSTs working/done/failed.
+        // Phase 3: body may also include structured result (summary, keyOutputs).
         const poolSessionStatusMatch = url.pathname.match(/^\/pool\/session\/([^/]+)\/status$/);
         if (poolSessionStatusMatch && req.method === "POST" && this.poolSessionStatus) {
           let body = "";
           req.on("data", (c: Buffer) => (body += c.toString()));
           req.on("end", () => {
             try {
-              const { status } = JSON.parse(body || "{}") as { status?: string };
-              if (!status || !["working", "done", "failed", "idle", "acquired"].includes(status)) {
+              const parsed = JSON.parse(body || "{}") as { status?: string; summary?: unknown; keyOutputs?: unknown };
+              if (!parsed.status || !["working", "done", "failed", "idle", "acquired"].includes(parsed.status)) {
                 return send(400, { error: "status must be one of: working, done, failed, idle, acquired" });
               }
-              this.poolSessionStatus!(decodeURIComponent(poolSessionStatusMatch[1]!), status);
+              // Phase 3: validate optional structured-result fields.
+              let summary: string | undefined;
+              let keyOutputs: string[] | undefined;
+              if (parsed.summary !== undefined) {
+                if (typeof parsed.summary !== "string") {
+                  return send(400, { error: "summary must be a string" });
+                }
+                summary = parsed.summary;
+              }
+              if (parsed.keyOutputs !== undefined) {
+                if (!Array.isArray(parsed.keyOutputs) || !parsed.keyOutputs.every((x) => typeof x === "string")) {
+                  return send(400, { error: "keyOutputs must be an array of strings" });
+                }
+                keyOutputs = parsed.keyOutputs as string[];
+              }
+              this.poolSessionStatus!(decodeURIComponent(poolSessionStatusMatch[1]!), parsed.status, summary, keyOutputs);
               return send(200, { ok: true });
             } catch {
               return send(400, { error: "invalid json" });
@@ -1782,7 +1810,7 @@ export class Gateway {
         }
         // ── Agent tree: sessions + their subagents ──
         if (url.pathname === "/pool/tree" && req.method === "GET" && this.poolStatus && this.poolSubagents) {
-          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string; status?: string }>;
+          const poolEntries = this.poolStatus() as Array<{ sessionId: string; busy: boolean; messages: number; lastActivity: number; role?: string; task?: string; model?: string; parentSessionId?: string; status?: string; summary?: string; keyOutputs?: string[] }>;
           const tree: PoolTreeNode[] = poolEntries.map((s) => ({
             sessionId: s.sessionId,
             busy: s.busy,
@@ -1795,6 +1823,9 @@ export class Gateway {
             parentSessionId: s.parentSessionId,
             // Phase 2: explicit task-status (richer than busy).
             status: s.status,
+            // Phase 3: structured result (parsed from <DONE> output).
+            summary: s.summary,
+            keyOutputs: s.keyOutputs,
             subagents: this.poolSubagents!(s.sessionId),
           }));
           return send(200, tree);

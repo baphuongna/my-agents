@@ -30,6 +30,10 @@ export interface RoleChildEntry {
   task?: string;
   model?: string;
   parentSessionId?: string;
+  /** Phase 3: structured result summary (parsed from <DONE> output). */
+  summary?: string;
+  /** Phase 3: structured result key outputs (parsed from <DONE> output). */
+  keyOutputs?: string[];
 }
 
 export class SessionMetaStore {
@@ -48,6 +52,15 @@ export class SessionMetaStore {
     const existing = this.meta.get(sessionId);
     if (!existing) return;
     this.meta.set(sessionId, { ...existing, status });
+  }
+
+  /** Phase 3: set structured task result (summary + keyOutputs) for a session,
+   * merging onto existing metadata. No-op if the session has no recorded
+   * metadata. */
+  setResult(sessionId: string, summary: string, keyOutputs?: string[]): void {
+    const existing = this.meta.get(sessionId);
+    if (!existing) return;
+    this.meta.set(sessionId, { ...existing, summary, ...(keyOutputs ? { keyOutputs } : {}) });
   }
 
   /** Get metadata for a session (or undefined). */
@@ -84,6 +97,8 @@ export class SessionMetaStore {
         task: m.task,
         model: m.model,
         parentSessionId: m.parentSessionId,
+        summary: m.summary,
+        keyOutputs: m.keyOutputs,
       });
     }
     return out;

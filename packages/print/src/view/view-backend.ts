@@ -11,6 +11,9 @@
  */
 import { tmuxBackend } from "./tmux.js";
 import { herdrBackend } from "./herdr.js";
+import { cmuxBackend } from "./cmux.js";
+import { zellijBackend } from "./zellij.js";
+import { screenBackend } from "./screen.js";
 import { standaloneBackend } from "./standalone.js";
 
 /** Opaque handle to an opened view (pane / window / tab). */
@@ -60,6 +63,9 @@ export interface ViewBackend {
 export const VIEW_BACKENDS: ViewBackend[] = [
 	tmuxBackend,
 	herdrBackend,
+	cmuxBackend,
+	zellijBackend,
+	screenBackend,
 	standaloneBackend,
 ];
 

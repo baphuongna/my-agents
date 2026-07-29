@@ -198,17 +198,20 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
      * Phase 2: best-effort task-status reporting. Spawned role-subagents POST
      * working/done to the gateway. No-op for top-level sessions. Never throws.
      */
-    async function reportSubagentStatus(status: string): Promise<void> {
+    async function reportSubagentStatus(status: string, summary?: string, keyOutputs?: string[]): Promise<void> {
       if (!gatewaySessionId) return;
       const port = parseInt(process.env["MYA_PORT"] ?? "3000", 10);
       try {
         const { authHeaders } = await import("./gw-auth.js");
+        const body: Record<string, unknown> = { status };
+        if (summary !== undefined) body.summary = summary;
+        if (keyOutputs !== undefined) body.keyOutputs = keyOutputs;
         await fetch(
           `http://127.0.0.1:${port}/pool/session/${encodeURIComponent(gatewaySessionId)}/status`,
           {
             method: "POST",
             headers: { "content-type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ status }),
+            body: JSON.stringify(body),
             signal: AbortSignal.timeout(2000),
           },
         );
@@ -604,7 +607,15 @@ export function createMyaBridge(opts: MyaBridgeOptions): (pi: MyaPiApi) => void 
     // gateway derives degraded state from liveness (absence of 'done' + exit).
     if (gatewaySessionId) {
       pi.on("turn_start", () => void reportSubagentStatus("working"));
-      pi.on("agent_settled", () => void reportSubagentStatus("done"));
+      pi.on("agent_settled", () => {
+        // Phase 3: parse structured result from the last assistant message.
+        const parsed = parseDoneResult(lastAssistantTextCapture);
+        if (parsed) {
+          void reportSubagentStatus("done", parsed.summary, parsed.keyOutputs);
+        } else {
+          void reportSubagentStatus("done");
+        }
+      });
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -1919,6 +1930,10 @@ export interface AgentTreeNode {
   task?: string;
   model?: string;
   parentSessionId?: string;
+  /** Phase 3: structured result summary (parsed from <DONE> output). */
+  summary?: string;
+  /** Phase 3: structured result key outputs (parsed from <DONE> output). */
+  keyOutputs?: string[];
   subagents: Array<{
     id: string;
     goal: string;
@@ -1932,6 +1947,10 @@ export interface AgentTreeNode {
     task?: string;
     model?: string;
     parentSessionId?: string;
+    /** Phase 3: structured result summary. */
+    summary?: string;
+    /** Phase 3: structured result key outputs. */
+    keyOutputs?: string[];
   }>;
 }
 
@@ -1968,6 +1987,101 @@ function statusText(status?: string, busy?: boolean): string {
   return busy ? "busy" : "idle";
 }
 
+/** Phase 3: extract the first JSON object from a string that starts with '{'.
+ * Handles trailing text after the closing brace (e.g., when <DONE> is mid-text).
+ * Returns the original string if no valid JSON object boundary is found. */
+function extractJsonObject(s: string): string {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\" && inString) { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return s.slice(0, i + 1);
+    }
+  }
+  return s; // unbalanced — let JSON.parse throw naturally
+}
+
+/** Phase 3: parse structured task result from a <DONE>-tagged assistant message.
+ *
+ * Looks for `<DONE>` in the text. If found, extracts content after the tag.
+ * Tries JSON parse first (`<DONE>{"summary":"...","keyOutputs":[...]}`);
+ * if that fails, falls back to heuristic: first non-empty line = summary,
+ * remaining lines starting with `-`, `*`, or `•` = keyOutputs.
+ * Returns undefined if no `<DONE>` tag or empty content.
+ *
+ * Pure function — no I/O, no side effects.
+ */
+export function parseDoneResult(text: string): { summary?: string; keyOutputs?: string[] } | undefined {
+  const idx = text.indexOf("<DONE>");
+  if (idx < 0) return undefined;
+  const raw = text.slice(idx + "<DONE>".length).trim();
+  if (!raw) return undefined;
+
+  // Try JSON parse first. If raw starts with '{', try to extract just the
+  // JSON object (there may be trailing text after the closing brace).
+  try {
+    const jsonStr = raw.startsWith("{") ? extractJsonObject(raw) : raw;
+    const obj = JSON.parse(jsonStr) as { summary?: unknown; keyOutputs?: unknown };
+    const summary = typeof obj.summary === "string" ? obj.summary : undefined;
+    const keyOutputs = Array.isArray(obj.keyOutputs) && obj.keyOutputs.every((x) => typeof x === "string")
+      ? (obj.keyOutputs as string[])
+      : undefined;
+    if (summary === undefined && keyOutputs === undefined) return undefined;
+    return { ...(summary !== undefined ? { summary } : {}), ...(keyOutputs !== undefined ? { keyOutputs } : {}) };
+  } catch {
+    // Not valid JSON — fall through to heuristic.
+  }
+
+  // Heuristic: first non-empty line = summary; bullet lines = keyOutputs.
+  const lines = raw.split("\n").map((l) => l.trim());
+  let summary: string | undefined;
+  const keyOutputs: string[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    if (summary === undefined) {
+      summary = line;
+    } else if (/^[-*•]/.test(line)) {
+      keyOutputs.push(line.replace(/^[-*•]\s*/, ""));
+    }
+  }
+  if (summary === undefined) return undefined;
+  return { summary, ...(keyOutputs.length > 0 ? { keyOutputs } : {}) };
+}
+
+/** Phase 3: render structured result lines (summary + keyOutputs) for a done
+ * node or subagent. Returns [] when no summary/keyOutputs — preserving
+ * backward compat (identical output when fields are absent). */
+function renderResultLines(node: { status?: string; summary?: string; keyOutputs?: string[] }, indent: string): string[] {
+  const out: string[] = [];
+  if (node.status === "done" && node.summary) {
+    const truncated = node.summary.length > 80 ? node.summary.slice(0, 77) + "..." : node.summary;
+    out.push(`${indent}  ↳ ${truncated}`);
+  }
+  if (node.status === "done" && node.keyOutputs && node.keyOutputs.length > 0) {
+    const label = node.keyOutputs.length === 1 ? "1 output" : `${node.keyOutputs.length} outputs`;
+    // Show first 1-2 items, then the count if more.
+    if (node.keyOutputs.length <= 2) {
+      for (const item of node.keyOutputs) {
+        const truncated = item.length > 60 ? item.slice(0, 57) + "..." : item;
+        out.push(`${indent}    • ${truncated}`);
+      }
+    } else {
+      const first = node.keyOutputs[0]!;
+      const truncated = first.length > 60 ? first.slice(0, 57) + "..." : first;
+      out.push(`${indent}    • ${truncated} (${label})`);
+    }
+  }
+  return out;
+}
+
 /**
  * Render the agent tree (main session ▸ role-subagents) as text for the
  * `/agents` slash command. Pure function — no I/O, no side effects.
@@ -1989,6 +2103,8 @@ export function renderAgentTree(tree: AgentTreeNode[]): string {
     lines.push(
       `  ${glyph} ${node.sessionId} ${roleLabel}${taskLabel} — ${node.messages} msgs — ${statusText(node.status, node.busy)}${activityLabel}`,
     );
+    // Phase 3: structured result for done sessions.
+    for (const rl of renderResultLines(node, "    ")) lines.push(rl);
     for (const sub of node.subagents) {
       const subGlyph = statusGlyph(sub.status);
       const subRole = sub.role ? `(${sub.role})` : "";
@@ -1999,6 +2115,8 @@ export function renderAgentTree(tree: AgentTreeNode[]): string {
       lines.push(
         `    └─ ${subGlyph} ${sub.id} ${subRole}${subTask}${subMsgs} — ${statusText(sub.status)}${subActivityLabel}`,
       );
+      // Phase 3: structured result for done subagents.
+      for (const rl of renderResultLines(sub, "      ")) lines.push(rl);
     }
   }
   lines.push("\nActions: /agents open <id> | /agents kill <id>");

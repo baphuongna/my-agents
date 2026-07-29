@@ -707,7 +707,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     channelRouter,
     poolStatus: () => pool.list().map((e) => {
       const meta = sessionMeta.get(e.sessionId);
-      return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status };
+      return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status, summary: meta?.summary, keyOutputs: meta?.keyOutputs };
     }),
     poolKill: (id: string) => { sessionMeta.delete(id); return pool.release(id); },
     poolAcquire: async (input: PoolAcquireInput | string) => {
@@ -731,12 +731,13 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       } catch { /* no coding-agent subagents for this session */ }
       // Role-subagent children linked via sessionMeta (parentSessionId).
       for (const c of sessionMeta.childrenOf(sessionId, (id) => (pool.get(id)?.busy ? "busy" : "idle"))) {
-        entries.push({ id: c.id, goal: c.goal, status: c.status, depth: c.depth, role: c.role, task: c.task, model: c.model, parentSessionId: c.parentSessionId });
+        entries.push({ id: c.id, goal: c.goal, status: c.status, depth: c.depth, role: c.role, task: c.task, model: c.model, parentSessionId: c.parentSessionId, summary: c.summary, keyOutputs: c.keyOutputs });
       }
       return entries;
     },
-    poolSessionStatus: (sessionId: string, status: string) => {
+    poolSessionStatus: (sessionId: string, status: string, summary?: string, keyOutputs?: string[]) => {
       sessionMeta.setStatus(sessionId, status);
+      if (summary !== undefined) sessionMeta.setResult(sessionId, summary, keyOutputs);
     },
     mcpList: () => mcp.listServers().map((s) => ({
       id: s.id, command: s.command, args: s.args, phase: s.phase, health: s.health, tools: s.tools, lastError: s.lastError,

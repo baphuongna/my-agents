@@ -200,6 +200,74 @@ describe("[unit] renderAgentTree", () => {
     expect(out).toMatch(/child-1.*3 msgs/);
     expect(out).toMatch(/child-2.*1 msgs/);
   });
+
+  // ── Phase 3: structured result rendering (summary + keyOutputs) ──────────
+
+  it("shows summary for done agents that have one", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "done-1", busy: false, messages: 2, lastActivity: 0, status: "done", summary: "Refactored the auth module", subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    expect(out).toContain("Refactored the auth module");
+  });
+
+  it("shows keyOutputs count for done agents", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "done-2", busy: false, messages: 1, lastActivity: 0, status: "done", summary: "Done", keyOutputs: ["a.ts", "b.ts", "c.ts"], subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    expect(out).toContain("3 outputs");
+  });
+
+  it("shows up to 2 keyOutputs items inline when ≤2", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "done-3", busy: false, messages: 1, lastActivity: 0, status: "done", summary: "Done", keyOutputs: ["only-file.ts"], subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    expect(out).toContain("only-file.ts");
+  });
+
+  it("shows summary for done subagents", () => {
+    const tree: AgentTreeNode[] = [
+      {
+        sessionId: "main-x", busy: false, messages: 0, lastActivity: 0, status: "working", subagents: [
+          { id: "sub-done", goal: "test", status: "done", depth: 1, summary: "Subagent finished", keyOutputs: ["x.ts"], lastActivity: 0 },
+        ],
+      },
+    ];
+    const out = renderAgentTree(tree);
+    expect(out).toContain("Subagent finished");
+  });
+
+  it("agents without summary render normally (backward compat)", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "plain-1", busy: false, messages: 0, lastActivity: 0, status: "done", subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    // No extra indented result lines
+    expect(out).not.toContain("↳");
+    expect(out).toContain("✓ plain-1");
+  });
+
+  it("does not show summary for working agents (only done)", () => {
+    const tree: AgentTreeNode[] = [
+      { sessionId: "work-1", busy: true, messages: 3, lastActivity: 0, status: "working", summary: "Should not appear", subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    expect(out).not.toContain("Should not appear");
+  });
+
+  it("truncates long summary to ~80 chars", () => {
+    const longSummary = "S".repeat(120);
+    const tree: AgentTreeNode[] = [
+      { sessionId: "done-long", busy: false, messages: 0, lastActivity: 0, status: "done", summary: longSummary, subagents: [] },
+    ];
+    const out = renderAgentTree(tree);
+    // Should contain the truncated version (77 chars + "...")
+    expect(out).toContain("S".repeat(77) + "...");
+    // Should NOT contain the full 120-char string
+    expect(out).not.toContain("S".repeat(120));
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════
