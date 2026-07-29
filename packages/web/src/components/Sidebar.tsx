@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { usePlugins } from "@/lib/usePlugins";
 import { StatusStrip } from "./StatusStrip";
+import { PluginSlot } from "./PluginSlot";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { ProfileSwitcher } from "./ProfileSwitcher";
@@ -129,6 +130,9 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
           </button>
         </div>
 
+        {/* Plugin injection seam — top of sidebar. */}
+        <PluginSlot name="sidebar:top" />
+
         {/* Profile scope switcher (hidden when < 2 profiles) */}
         <ProfileSwitcher collapsed={collapsed} />
 
@@ -157,6 +161,8 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
             <div className="w-2 h-2 rounded-full bg-success/60 mx-auto" />
           )}
         </div>
+        {/* Plugin injection seam — bottom of sidebar. */}
+        <PluginSlot name="sidebar:bottom" />
       </aside>
     </>
   );

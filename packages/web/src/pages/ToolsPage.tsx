@@ -6,6 +6,7 @@ import { api, type ToolInfo } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, EmptyState, RefreshButton } from "@/components/PageBits";
+import { PluginSlot } from "@/components/PluginSlot";
 import { Zap, Search } from "lucide-react";
 
 const MODE_CONFIG: Record<
@@ -74,6 +75,8 @@ export function ToolsPage() {
 
   return (
     <div className="p-4 max-w-4xl w-full mx-auto space-y-3">
+      {/* Plugin injection seam — top of tools. */}
+      <PluginSlot name="tools:top" />
       <PageHeader
         title="Tools"
         icon={Zap}
@@ -144,6 +147,8 @@ export function ToolsPage() {
             </div>
           );
         })}
+      {/* Plugin injection seam — bottom of tools. */}
+      <PluginSlot name="tools:bottom" />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Badge } from "./ui/Badge";
 import { useHealth } from "@/hooks/useHealth";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
+import { PluginSlot } from "./PluginSlot";
 
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const { status, uptime } = useHealth();
@@ -15,6 +16,8 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
       <button className="lg:hidden btn-ghost p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={onMenuClick} aria-label="Toggle menu">
         <Menu size={18} />
       </button>
+      {/* Plugin injection seam — start of header. */}
+      <PluginSlot name="header:start" />
       <div className="flex-1" />
       {/* Status with animated glow */}
       <div className="flex items-center gap-2">
@@ -36,6 +39,8 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
           {formatDuration(uptime)}
         </Badge>
       )}
+      {/* Plugin injection seam — end of header. */}
+      <PluginSlot name="header:end" />
     </header>
   );
 }

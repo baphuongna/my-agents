@@ -12,6 +12,7 @@ import { formatTokenCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { usePageHeader } from "@/hooks/usePageHeader";
 import { useDebouncedValue } from "@/hooks/useDebounce";
+import { PluginSlot } from "@/components/PluginSlot";
 
 export function ModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -100,6 +101,8 @@ export function ModelsPage() {
 
   return (
     <div className="p-4 max-w-5xl space-y-3">
+      {/* Plugin injection seam — top of models. */}
+      <PluginSlot name="models:top" />
       <PageHeader
         title="Models"
         icon={Cpu}
@@ -170,6 +173,8 @@ export function ModelsPage() {
           </pre>
         </details>
       )}
+      {/* Plugin injection seam — bottom of models. */}
+      <PluginSlot name="models:bottom" />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, type ComponentType } from "react";
+import { useEffect, useState, useMemo, type ComponentType } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
@@ -7,7 +7,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageHeaderProvider } from "@/components/PageHeaderProvider";
 import { CommandPalette } from "@/components/CommandPalette";
 import { buildRoutes, resolveRouteElement, type BuiltinRoute } from "@/lib/plugin-routes";
-import { getPluginPage, registerPluginPage } from "@/lib/plugin-registry";
+import { getPluginPage } from "@/lib/plugin-registry";
+import { exposePluginSDK } from "@/lib/plugin-sdk";
 import { usePlugins } from "@/lib/usePlugins";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ChatPage } from "@/pages/ChatPage";
@@ -82,17 +83,10 @@ export const PAGE_ROUTES: Record<string, ComponentType> = {
 export const ROOT_REDIRECT = "/dashboard";
 export const FALLBACK_PATH = "/chat";
 
-// Expose plugin SDK on window so plugin bundles (loaded via <script> by
-// usePlugins) can register pages without bundling their own React copy.
-if (typeof window !== "undefined") {
-  const w = window as unknown as Record<string, unknown>;
-  if (!w["__MYA_PLUGINS__"]) {
-    w["__MYA_PLUGINS__"] = { register: registerPluginPage };
-  }
-  if (!w["React"]) {
-    w["React"] = React;
-  }
-}
+// Expose the plugin SDK (register pages/slots + React/hooks/utils) on window so
+// plugin bundles (loaded via <script> by usePlugins) can integrate without
+// bundling their own React copy. F5 port of Hermes exposePluginSDK().
+exposePluginSDK();
 
 export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
