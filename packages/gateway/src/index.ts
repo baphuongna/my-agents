@@ -12,8 +12,9 @@
  * Source: §12 Channels & Gateway, §13 Observability readiness, §25.6 contract.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { spawn, type ChildProcess } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, extname, resolve as pathResolve, sep as pathSep, dirname } from "node:path";
 export { ControlPlane, HandleLruCache } from "./control.js";
@@ -564,7 +565,7 @@ export class Gateway {
       this.wss = new WebSocketServer({ noServer: true });
       this.http.on("upgrade", (req, socket, head) => {
         const url = new URL(req.url ?? "/", `http://${this.host}`);
-        if (url.pathname === "/events") {
+        if (url.pathname === "/events" || url.pathname === "/api/console") {
           // Phase 15 M2 / 0C: check the WS token (if configured) via query param
           // OR the HttpOnly mya_ws cookie (token-free dashboard connects via cookie).
           if (this.wsToken) {
@@ -599,7 +600,11 @@ export class Gateway {
             socket.destroy();
             return;
           }
-          this.wss!.handleUpgrade(req, socket, head, (ws) => this.handleWs(ws, url, !!origin));
+          const isConsole = url.pathname === "/api/console";
+          this.wss!.handleUpgrade(req, socket, head, (ws) => {
+            if (isConsole) this.handleConsoleWs(ws);
+            else this.handleWs(ws, url, !!origin);
+          });
         } else {
           socket.destroy();
         }
@@ -1774,6 +1779,44 @@ export class Gateway {
           }
           return send(200, this.wsInfo());
         }
+        // ── Plugin system (distilled from hermes-agent plugins) ───────────
+        // Scan ~/.mya/agent/plugins/*/manifest.json for installed dashboard plugins.
+        if (url.pathname === "/api/dashboard/plugins" && req.method === "GET") {
+          const pluginsDir = join(homedir(), ".mya", "agent", "plugins");
+          const plugins: unknown[] = [];
+          if (existsSync(pluginsDir)) {
+            try {
+              for (const name of readdirSync(pluginsDir)) {
+                const manifestPath = join(pluginsDir, name, "manifest.json");
+                if (existsSync(manifestPath)) {
+                  try {
+                    plugins.push(JSON.parse(readFileSync(manifestPath, "utf8")));
+                  } catch { /* skip malformed manifest */ }
+                }
+              }
+            } catch { /* plugins dir unreadable */ }
+          }
+          return send(200, plugins);
+        }
+        // Serve plugin JS/CSS bundles from ~/.mya/agent/plugins/<name>/<file>
+        const pluginAsset = url.pathname.match(/^\/api\/dashboard-plugins\/([^/]+)\/(.+)$/);
+        if (pluginAsset && req.method === "GET") {
+          const pluginsDir = pathResolve(join(homedir(), ".mya", "agent", "plugins"));
+          const filePath = pathResolve(pluginsDir, pluginAsset[1]!, pluginAsset[2]!);
+          if (!filePath.startsWith(pluginsDir + pathSep)) {
+            return send(403, { error: "path traversal blocked" });
+          }
+          if (!existsSync(filePath)) return send(404, { error: "not found" });
+          const ext = extname(filePath);
+          const mime = this.mimeTypes[ext] ?? "application/octet-stream";
+          try {
+            res.writeHead(200, { "content-type": mime });
+            res.end(readFileSync(filePath));
+          } catch {
+            return send(500, { error: "read failed" });
+          }
+          return;
+        }
         // mya fork: Hermes SPA stub endpoints — return empty defaults for
         // Hermes-specific APIs that don't exist in mya's gateway.
         // Without these, the SPA gets 404s on mount and crashes.
@@ -1859,6 +1902,87 @@ export class Gateway {
   /** Record a healthy turn (for the /functional probe). */
   recordHealthyTurn(): void {
     this.healthyTurns++;
+  }
+
+  /**
+   * Console WS endpoint — distilled from hermes-agent /api/console.
+   * Runs each input line as a shell command (per-command spawn, no persistent
+   * PTY). Same WS auth as /events (token/cookie + Origin check). Runs as the
+   * gateway process user with a 30s per-command timeout.
+   */
+  private handleConsoleWs(ws: WebSocket): void {
+    const send = (frame: Record<string, unknown>): void => {
+      if (ws.readyState === 1 /* WebSocket.OPEN */) {
+        try {
+          ws.send(JSON.stringify(frame));
+        } catch {
+          /* socket may have closed mid-send */
+        }
+      }
+    };
+
+    send({ type: "ready", prompt: "mya$ " });
+
+    // Track the active child so we can: (a) kill it if a new command arrives
+    // before it finishes (prevents interleaved output), and (b) kill it when
+    // the WS closes (prevents orphaned long-running processes like `sleep 60`).
+    let activeChild: ChildProcess | null = null;
+
+    ws.on("message", (data: Buffer) => {
+      let msg: { type: string; line?: string };
+      try {
+        msg = JSON.parse(data.toString("utf8")) as { type: string; line?: string };
+      } catch {
+        send({ type: "error", message: "Malformed input." });
+        return;
+      }
+
+      if (msg.type !== "input" || typeof msg.line !== "string" || !msg.line.trim()) {
+        return;
+      }
+
+      // Kill any still-running previous command before starting a new one.
+      if (activeChild) {
+        try { activeChild.kill("SIGKILL"); } catch { /* already dead */ }
+        activeChild = null;
+      }
+
+      const child = spawn(msg.line, {
+        shell: process.env["SHELL"] ?? "/bin/sh",
+        cwd: process.cwd(),
+        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe"], // don't inherit gateway stdin
+      });
+      activeChild = child;
+
+      child.stdout?.on("data", (d: Buffer) =>
+        send({ type: "output", data: d.toString("utf8") }),
+      );
+      child.stderr?.on("data", (d: Buffer) =>
+        send({ type: "output", data: d.toString("utf8"), stream: "stderr" }),
+      );
+      child.on("error", (err: Error) => {
+        if (activeChild === child) activeChild = null;
+        send({ type: "error", message: err.message });
+      });
+      child.on("close", (code: number | null) => {
+        if (activeChild === child) activeChild = null;
+        send({
+          type: "complete",
+          status: code === 0 ? "ok" : `exit:${code ?? 1}`,
+          prompt: "mya$ ",
+        });
+      });
+    });
+
+    ws.on("close", () => {
+      // Kill any still-running child so closing the terminal modal doesn't
+      // orphan long-running commands (e.g. `sleep 60`, `tail -f`).
+      if (activeChild) {
+        try { activeChild.kill("SIGKILL"); } catch { /* already dead */ }
+        activeChild = null;
+      }
+    });
   }
 
   private handleWs(ws: WebSocket, url: URL, hasOrigin: boolean): void {
