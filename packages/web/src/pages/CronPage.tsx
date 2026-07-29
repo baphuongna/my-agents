@@ -260,7 +260,6 @@ function CronJobCard({
         description="This will permanently remove the cron job."
         confirmLabel="Delete"
         destructive
-        loading={del.isDeleting}
       />
     </Card>
   );

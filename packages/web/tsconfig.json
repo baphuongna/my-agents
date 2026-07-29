@@ -9,10 +9,10 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": false,
     "noEmit": true,
+    "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
-    },
-    "baseUrl": "."
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]

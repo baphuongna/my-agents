@@ -67,6 +67,7 @@ export function Modal({
   children,
   footer,
   maxWidth = "max-w-lg",
+  bodyClassName,
 }: {
   open: boolean;
   onClose: () => void;
@@ -74,6 +75,9 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   maxWidth?: string;
+  /** Override the body wrapper classes (default: "flex-1 overflow-y-auto p-5").
+   *  Pass "p-0" for full-bleed content like terminals. */
+  bodyClassName?: string;
 }) {
   useModalBehavior(open, onClose);
   if (!open) return null;
@@ -104,7 +108,7 @@ export function Modal({
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        <div className={cn("flex-1 overflow-y-auto p-5", bodyClassName)}>{children}</div>
         {footer && (
           <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">
             {footer}

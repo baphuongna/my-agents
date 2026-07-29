@@ -8,8 +8,10 @@ import {
   Terminal, MessageSquare, Radio, Plug, Package, Database,
   PanelLeftClose, PanelLeftOpen, Zap, Bell, Users, KeyRound,
   UserCircle, Webhook, Smartphone, Award, Cat, BookOpen, Gauge, Puzzle,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePlugins } from "@/lib/usePlugins";
 import { StatusStrip } from "./StatusStrip";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -50,6 +52,19 @@ const NAV_ITEMS: NavItem[] = [
 
 const COLLAPSE_KEY = "mya-sidebar-collapsed";
 
+// Map plugin manifest icon names (strings) → Lucide components.
+const PLUGIN_ICONS: Record<string, typeof Activity> = {
+  Activity, BarChart3, Clock, Cpu, FileText, FolderOpen, Settings,
+  Terminal, MessageSquare, Radio, Plug, Package, Database,
+  Zap, Bell, Users, KeyRound, UserCircle, Webhook, Smartphone,
+  Award, Cat, BookOpen, Gauge, Puzzle, Sparkles,
+};
+
+function resolvePluginIcon(name?: string): typeof Activity {
+  if (!name) return Puzzle;
+  return PLUGIN_ICONS[name] ?? Puzzle;
+}
+
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const [collapsed, setCollapsed] = useState(false);
   const { status: gwStatus, uptime } = useHealth();
@@ -65,8 +80,24 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
     localStorage.setItem(COLLAPSE_KEY, String(next));
   }
 
-  const mainItems = NAV_ITEMS.filter((i) => i.group === "main");
-  const configItems = NAV_ITEMS.filter((i) => i.group === "config");
+  const { manifests } = usePlugins();
+
+  // Plugin nav items — derived from manifests (distilled from hermes partitionSidebarNav).
+  const builtinPaths = new Set(NAV_ITEMS.map((n) => n.path));
+  const pluginItems: NavItem[] = manifests.flatMap((m) => {
+    const tab = m.tab;
+    if (!tab || tab.hidden || !tab.path) return [];
+    if (builtinPaths.has(tab.path)) return []; // skip override (route handles it)
+    return [{
+      path: tab.path,
+      label: tab.label ?? m.name,
+      icon: resolvePluginIcon(tab.icon),
+      group: tab.group ?? "main",
+    }];
+  });
+
+  const mainItems = [...NAV_ITEMS.filter((i) => i.group === "main"), ...pluginItems.filter((i) => i.group === "main")];
+  const configItems = [...NAV_ITEMS.filter((i) => i.group === "config"), ...pluginItems.filter((i) => i.group === "config")];
 
   return (
     <>

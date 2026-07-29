@@ -135,7 +135,7 @@ export function SyncPage() {
       )}
 
       {/* Pull result */}
-      {pullResult && (
+      {!!pullResult && (
         <Card>
           <CardTitle>Last Pull Result</CardTitle>
           <pre className="text-[10px] text-fg-muted font-mono overflow-x-auto mt-2 max-h-40 overflow-y-auto bg-bg-input rounded p-2">

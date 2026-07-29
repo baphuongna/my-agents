@@ -118,7 +118,7 @@ export function ScheduleBuilder({
           <span className="text-xs text-fg-muted">on day</span>
           <input
             type="number"
-            aria-label="Interval value" min={1} max={1440}
+            aria-label="Day of month" min={1}
             max={31}
             className="input w-20 text-center"
             value={value.monthDay}

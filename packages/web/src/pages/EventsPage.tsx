@@ -155,9 +155,7 @@ export function EventsPage() {
 
 function EventRow({ ev }: { ev: GatewayEvent }) {
   const style = EVENT_STYLES[ev.type] ?? { border: "border-l-accent", label: ev.type.toUpperCase().slice(0, 7) };
-  const data = { ...ev };
-  delete data.type;
-  delete data.timestamp;
+  const { type: _t, timestamp: _ts, ...data } = ev;
 
   return (
     <div

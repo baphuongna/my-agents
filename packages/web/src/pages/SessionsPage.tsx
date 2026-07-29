@@ -516,7 +516,6 @@ function SessionDetail({
         description="This action cannot be undone."
         confirmLabel="Delete"
         destructive
-        loading={del.isDeleting}
       />
     </div>
   );

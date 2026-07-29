@@ -22,21 +22,23 @@ export function Badge({
   color = "gray",
   config,
   className,
+  onClick,
 }: {
   children?: ReactNode;
   color?: Color;
   config?: BadgeConfig;
   className?: string;
+  onClick?: () => void;
 }) {
   if (config) {
     return (
-      <span className={cn(config.className, className)}>
+      <span className={cn(config.className, className)} onClick={onClick}>
         {children ?? config.label}
       </span>
     );
   }
   return (
-    <span className={cn(`badge-${color}`, className)}>
+    <span className={cn(`badge-${color}`, className)} onClick={onClick}>
       {children}
     </span>
   );

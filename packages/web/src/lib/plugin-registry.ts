@@ -48,7 +48,7 @@ const listeners = new Set<Listener>();
  *  Cleared on every mutation so the next read rebuilds a fresh reference. */
 const snapshotCache = new Map<PluginSlotName, SlotComponent[]>();
 
-function emit(): void {
+function emitSlots(): void {
   snapshotCache.clear();
   for (const fn of listeners) {
     try {
@@ -57,6 +57,27 @@ function emit(): void {
       /* swallow listener errors — one bad subscriber must not break others */
     }
   }
+}
+
+/* Page-registry listeners — kept separate from slot listeners so that page
+ * mutations don't trigger spurious slot re-renders (and vice versa). */
+const pageListeners = new Set<Listener>();
+function emitPages(): void {
+  for (const fn of pageListeners) {
+    try {
+      fn();
+    } catch {
+      /* swallow listener errors — one bad subscriber must not break others */
+    }
+  }
+}
+
+/** Subscribe to page-registry changes (for `useSyncExternalStore`). */
+export function subscribePages(listener: Listener): () => void {
+  pageListeners.add(listener);
+  return () => {
+    pageListeners.delete(listener);
+  };
 }
 
 /** Sort entries: lower priority first, ties broken by insertion order. */
@@ -104,7 +125,7 @@ export function registerSlot(
   } else {
     registry.set(slot, [entry]);
   }
-  emit();
+  emitSlots();
   let active = true;
   return () => {
     if (!active) return;
@@ -125,7 +146,7 @@ function unregisterEntry(slot: PluginSlotName, component: ComponentType): void {
   } else {
     registry.set(slot, entries);
   }
-  emit();
+  emitSlots();
 }
 
 /** Subscribe to registry changes (for `useSyncExternalStore`). */
@@ -156,5 +177,55 @@ export function totalRegistrations(): number {
 /** Clear all registrations. Primarily for tests / plugin hot-reload. */
 export function clearRegistry(): void {
   registry.clear();
-  emit();
+  emitSlots();
+}
+
+/* ======================================================================
+ * Plugin page registry — separate store for plugins that contribute a
+ * top-level route via their manifest (`tab.path` / `tab.override`).
+ * Distilled from hermes-agent/web buildRoutes pattern. Slot registration
+ * is independent from page registration; a single plugin can register
+ * both a slot component and a page component under the same name.
+ * ====================================================================== */
+
+const pageRegistry = new Map<string, ComponentType>();
+
+/**
+ * Register a React component to render at the path declared by a plugin's
+ * manifest. Idempotent — re-registering with the same name replaces the
+ * component (useful for HMR). Returns an unsubscribe function.
+ */
+export function registerPluginPage(name: string, component: ComponentType): () => void {
+  pageRegistry.set(name, component);
+  emitPages();
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    if (pageRegistry.get(name) === component) {
+      pageRegistry.delete(name);
+      emitPages();
+    }
+  };
+}
+
+/** Lookup a registered plugin page component by name. */
+export function getPluginPage(name: string): ComponentType | undefined {
+  return pageRegistry.get(name);
+}
+
+/** All currently registered plugin page names. */
+export function registeredPageNames(): string[] {
+  return [...pageRegistry.keys()];
+}
+
+/** Total registered plugin pages. */
+export function totalPluginPages(): number {
+  return pageRegistry.size;
+}
+
+/** Clear all page registrations (also clears slot registrations). For tests. */
+export function clearPluginPages(): void {
+  pageRegistry.clear();
+  emitPages();
 }

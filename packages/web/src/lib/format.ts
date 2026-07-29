@@ -132,7 +132,11 @@ export function parseSchedule(expr: string): ScheduleState {
   // R84: NaN guard on parseInt
   const safeInt = (s: string) => { const n = parseInt(s); return Number.isFinite(n) ? n : NaN; };
 
-  const [m, h, dom, , dow] = parts;
+  // parts.length === 5 guaranteed by the check above
+  const m = parts[0]!;
+  const h = parts[1]!;
+  const dom = parts[2]!;
+  const dow = parts[4]!;
 
   // Every N minutes
   if (m.startsWith("*/") && h === "*" && dom === "*") {

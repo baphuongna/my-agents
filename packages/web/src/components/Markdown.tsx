@@ -1,6 +1,10 @@
 /**
  * Lightweight Markdown renderer — code blocks, headings, lists, bold/italic/inline-code.
  * Port of Hermes Markdown.tsx pattern (custom parser, no library dependency).
+ *
+ * Distilled additions (2026-07-25, hermes-web-distill-v5 second-pass):
+ *   - `highlightTerms`: search-term highlight inside text fragments
+ *   - `streaming`: blinking caret at tail of last block (LLM streaming UX)
  */
 import { useMemo, type ReactNode } from "react";
 
@@ -90,7 +94,56 @@ function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
-function renderInline(text: string): ReactNode[] {
+/**
+ * Highlight occurrences of any `terms` inside a plain text fragment.
+ * Uses matchAll (non-stateful) to avoid the lastIndex bug of regex.test().
+ */
+function HighlightedText({
+  text,
+  terms,
+}: {
+  text: string;
+  terms?: string[];
+}): ReactNode {
+  if (!terms || terms.length === 0) return <>{text}</>;
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const regex = new RegExp(escaped.join("|"), "gi");
+  const matches: Array<{ start: number; end: number; text: string }> = [];
+  for (const m of text.matchAll(regex)) {
+    if (m[0].length === 0) continue;
+    matches.push({ start: m.index!, end: m.index! + m[0].length, text: m[0] });
+  }
+  if (matches.length === 0) return <>{text}</>;
+  const out: ReactNode[] = [];
+  let cursor = 0;
+  matches.forEach((hit, i) => {
+    if (hit.start > cursor) {
+      out.push(<span key={`t${i}`}>{text.slice(cursor, hit.start)}</span>);
+    }
+    out.push(
+      <mark key={`m${i}`} className="bg-warning/30 text-warning px-0.5">
+        {hit.text}
+      </mark>,
+    );
+    cursor = hit.end;
+  });
+  if (cursor < text.length) {
+    out.push(<span key="tend">{text.slice(cursor)}</span>);
+  }
+  return <>{out}</>;
+}
+
+/** Blinking caret appended to the tail of the last block during streaming. */
+function StreamingCaret() {
+  return (
+    <span
+      aria-hidden
+      className="inline-block w-[0.5em] h-[1em] ml-0.5 align-[-0.15em] bg-fg-muted animate-pulse"
+    />
+  );
+}
+
+function renderInline(text: string, terms?: string[]): ReactNode[] {
   // Process: **bold**, *italic*, `code`, [link](url)
   const nodes: ReactNode[] = [];
   let remaining = text;
@@ -113,14 +166,20 @@ function renderInline(text: string): ReactNode[] {
     }
 
     if (!earliest) {
-      nodes.push(remaining);
+      nodes.push(
+        <HighlightedText key={key++} text={remaining} terms={terms} />,
+      );
       break;
     }
 
     const { match, pattern } = earliest;
     const idx = match.index!;
 
-    if (idx > 0) nodes.push(remaining.slice(0, idx));
+    if (idx > 0) {
+      nodes.push(
+        <HighlightedText key={key++} text={remaining.slice(0, idx)} terms={terms} />,
+      );
+    }
 
     if (pattern === 0) {
       nodes.push(<strong key={key++} className="font-semibold text-fg">{match[1]}</strong>);
@@ -135,6 +194,7 @@ function renderInline(text: string): ReactNode[] {
     } else if (pattern === 3) {
       const href = match[2]!;
       // URL scheme allowlist — block javascript:, data:, vbscript: etc.
+      // Mya-specific: also allow /relative and #fragment (intentional UX).
       if (!/^(https?:|mailto:|[/#])/i.test(href)) {
         nodes.push(<span key={key++}>{match[1]}</span>);
       } else {
@@ -152,12 +212,24 @@ function renderInline(text: string): ReactNode[] {
   return nodes;
 }
 
-export function Markdown({ content }: { content: string }) {
+export function Markdown({
+  content,
+  highlightTerms,
+  streaming,
+}: {
+  content: string;
+  highlightTerms?: string[];
+  streaming?: boolean;
+}) {
   const blocks = useMemo(() => parseBlocks(content), [content]);
+  const caret = streaming ? <StreamingCaret /> : null;
+  const lastIdx = blocks.length - 1;
 
   return (
     <div className="text-sm text-fg leading-relaxed space-y-2">
       {blocks.map((block, i) => {
+        const isLast = i === lastIdx;
+        const blockCaret = isLast ? caret : null;
         switch (block.type) {
           case "code":
             return (
@@ -168,14 +240,15 @@ export function Markdown({ content }: { content: string }) {
                 {block.lang && (
                   <div className="text-[10px] text-fg-subtle mb-1 uppercase">{block.lang}</div>
                 )}
-                <code>{block.content}</code>
+                <code>{block.content}{blockCaret}</code>
               </pre>
             );
           case "heading": {
             const sizes = ["text-lg", "text-base", "text-sm", "text-xs"];
             return (
               <div key={i} className={`${sizes[block.level - 1] ?? "text-sm"} font-bold text-fg mt-3`}>
-                {block.content}
+                {renderInline(block.content, highlightTerms)}
+                {blockCaret}
               </div>
             );
           }
@@ -185,20 +258,26 @@ export function Markdown({ content }: { content: string }) {
             return block.ordered ? (
               <ol key={i} className="list-decimal list-inside space-y-0.5">
                 {block.items.map((item, j) => (
-                  <li key={j}>{renderInline(item)}</li>
+                  <li key={j}>{renderInline(item, highlightTerms)}</li>
                 ))}
               </ol>
             ) : (
               <ul key={i} className="list-disc list-inside space-y-0.5">
                 {block.items.map((item, j) => (
-                  <li key={j}>{renderInline(item)}</li>
+                  <li key={j}>{renderInline(item, highlightTerms)}</li>
                 ))}
               </ul>
             );
           case "paragraph":
-            return <p key={i}>{renderInline(block.content)}</p>;
+            return (
+              <p key={i}>
+                {renderInline(block.content, highlightTerms)}
+                {blockCaret}
+              </p>
+            );
         }
       })}
+      {blocks.length === 0 && caret}
     </div>
   );
 }

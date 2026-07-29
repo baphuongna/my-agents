@@ -2,19 +2,26 @@
  * ChatPage — premium chat experience with the agent.
  * Pool API + WebSocket streaming + Markdown + model picker.
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, lazy, Suspense } from "react";
 import { eventClient, type GatewayEvent } from "@/lib/ws";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/Markdown";
 import { ModelPickerDialog } from "@/components/ModelPickerDialog";
+import { Modal } from "@/lib/modal";
 import { useToast } from "@/lib/toast";
 import {
   Send, Loader2, Wrench, ChevronDown, ChevronRight,
-  RotateCcw, Cpu, Settings, Sparkles, Zap,
+  RotateCcw, Cpu, Settings, Sparkles, Zap, TerminalSquare, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { postJSON } from "@/lib/api";
+
+// Lazy-load Terminal (~329KB xterm bundle) so it's only fetched when the
+// user opens the modal. Vite splits it into its own chunk.
+const Terminal = lazy(() =>
+  import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
+);
 
 interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
@@ -38,13 +45,15 @@ export function ChatPage() {
   const [wsConnected, setWsConnected] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [activeModel, setActiveModel] = useState<string>("");
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     eventClient.connect();
-    return eventClient.onStatus(setWsConnected);
+    return eventClient.onStatus((status) => setWsConnected(status === "connected"));
   }, []);
 
   useEffect(() => {
@@ -166,6 +175,19 @@ export function ChatPage() {
         </div>
         <h1 className="text-sm font-semibold text-fg">Chat</h1>
         <div className="flex-1" />
+        {messages.length > 0 && (
+          <div className="relative">
+            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-fg-subtle pointer-events-none" />
+            <input
+              type="text"
+              className="input pl-7 pr-2 py-1 text-[11px] w-32 sm:w-40 rounded-lg"
+              placeholder="Search messages…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search messages"
+            />
+          </div>
+        )}
         <button
           className={cn("px-2.5 py-1 rounded-lg text-[11px] transition-all flex items-center gap-1.5 min-w-0 max-w-[120px]",
             activeModel ? "bg-bg-elevated text-fg border border-border/50 hover:border-accent/50" : "text-fg-muted hover:text-accent")}
@@ -173,6 +195,15 @@ export function ChatPage() {
         >
           <Cpu size={12} />
           {activeModel || "Select model"}
+        </button>
+        <button
+          className="btn-ghost p-1.5"
+          onClick={() => setTerminalOpen(true)}
+          title="Open terminal"
+          aria-label="Open terminal"
+          data-testid="open-terminal"
+        >
+          <TerminalSquare size={14} />
         </button>
         <div className="flex items-center gap-1">
           <span className={cn("w-1.5 h-1.5 rounded-full", wsConnected ? "bg-success" : "bg-danger", wsConnected && "animate-pulse")} />
@@ -183,6 +214,22 @@ export function ChatPage() {
           </button>
         )}
       </div>
+
+      {/* Terminal modal — opens xterm console (distilled from hermes HermesConsoleModal). */}
+      <Modal
+        open={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        title="Terminal"
+        maxWidth="max-w-5xl"
+        bodyClassName="p-0"
+      >
+          <Suspense fallback={<div className="h-full w-full flex items-center justify-center text-fg-muted text-sm">Loading terminal…</div>}>
+            <Terminal
+              wsUrl={typeof window !== "undefined" ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/console` : undefined}
+              className="h-full w-full"
+            />
+          </Suspense>
+      </Modal>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
@@ -212,7 +259,7 @@ export function ChatPage() {
         ) : (
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
             {messages.map((msg, i) => (
-              <MessageBubble key={i} msg={msg} onToggle={() => toggleCollapse(i)} />
+              <MessageBubble key={i} msg={msg} onToggle={() => toggleCollapse(i)} highlightTerms={searchQuery.trim() ? [searchQuery.trim()] : undefined} />
             ))}
             {busy && (
               <div className="flex items-center gap-2 pl-9 animate-fade-in">
@@ -266,7 +313,7 @@ export function ChatPage() {
   }
 }
 
-function MessageBubble({ msg, onToggle }: { msg: ChatMessage; onToggle: () => void }) {
+function MessageBubble({ msg, onToggle, highlightTerms }: { msg: ChatMessage; onToggle: () => void; highlightTerms?: string[] }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end animate-fade-in-up">
@@ -310,7 +357,7 @@ function MessageBubble({ msg, onToggle }: { msg: ChatMessage; onToggle: () => vo
       </div>
       <div className="flex-1 min-w-0">
         <div className="bg-bg-surface border border-border/40 rounded-2xl rounded-tl-md px-4 py-3">
-          <Markdown content={msg.content || (msg.streaming ? "" : "")} />
+          <Markdown content={msg.content || ""} streaming={msg.streaming} highlightTerms={highlightTerms} />
           {msg.streaming && !msg.content && (
             <div className="flex gap-1 py-1">
               {[0,1,2].map(i => <span key={i} className="w-1.5 h-1.5 rounded-full bg-accent/50 animate-bounce" style={{ animationDelay: `${i * 100}ms` }} />)}

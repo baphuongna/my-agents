@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, type ComponentType } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
@@ -6,6 +6,9 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageHeaderProvider } from "@/components/PageHeaderProvider";
 import { CommandPalette } from "@/components/CommandPalette";
+import { buildRoutes, resolveRouteElement, type BuiltinRoute } from "@/lib/plugin-routes";
+import { getPluginPage, registerPluginPage } from "@/lib/plugin-registry";
+import { usePlugins } from "@/lib/usePlugins";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { SessionsPage } from "@/pages/SessionsPage";
@@ -35,8 +38,75 @@ import { McpPage } from "@/pages/McpPage";
 import { SystemPage } from "@/pages/SystemPage";
 import { PluginsPage } from "@/pages/PluginsPage";
 
+/**
+ * Single source of truth for builtin page routes (path → page component).
+ * Distilled from hermes-agent/web `BUILTIN_ROUTES_CORE` (data-driven routing,
+ * commit a61183b5). Previously each route was a separate static `<Route>` line
+ * AND a `NAV_ITEMS` entry in Sidebar.tsx — adding a page meant two edits that
+ * could silently desync. Now one entry here drives the `<Route>` list.
+ * Exported so a unit test can assert the route set never drops a page.
+ */
+export const PAGE_ROUTES: Record<string, ComponentType> = {
+  "/dashboard": DashboardPage,
+  "/chat": ChatPage,
+  "/sessions": SessionsPage,
+  "/events": EventsPage,
+  "/cron": CronPage,
+  "/models": ModelsPage,
+  "/tools": ToolsPage,
+  "/files": FilesPage,
+  "/analytics": AnalyticsPage,
+  "/logs": LogsPage,
+  "/skills": SkillsPage,
+  "/keys": EnvPage,
+  "/push": PushPage,
+  "/collab": CollabPage,
+  "/sync": SyncPage,
+  "/config": ConfigPage,
+  "/status": StatusPage,
+  "/channels": ChannelsPage,
+  "/mcp": McpPage,
+  "/docs": DocsPage,
+  "/system": SystemPage,
+  "/plugins": PluginsPage,
+  "/profiles": ProfilesPage,
+  "/profiles/new": ProfileBuilderPage,
+  "/webhooks": WebhooksPage,
+  "/pairing": PairingPage,
+  "/pets": PetsPage,
+  "/achievements": AchievementsPage,
+};
+
+// Exported so a unit test guards against accidental redirect-target drift.
+// /redirects to /dashboard on cold load; * (catch-all) redirects unknown paths to /chat.
+export const ROOT_REDIRECT = "/dashboard";
+export const FALLBACK_PATH = "/chat";
+
+// Expose plugin SDK on window so plugin bundles (loaded via <script> by
+// usePlugins) can register pages without bundling their own React copy.
+if (typeof window !== "undefined") {
+  const w = window as unknown as Record<string, unknown>;
+  if (!w["__MYA_PLUGINS__"]) {
+    w["__MYA_PLUGINS__"] = { register: registerPluginPage };
+  }
+  if (!w["React"]) {
+    w["React"] = React;
+  }
+}
+
 export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { manifests } = usePlugins();
+
+  // Distilled from hermes-agent/web buildRoutes (commit a61183b5): merge builtin
+  // routes with plugin manifests. When plugins are discovered via
+  // usePlugins(), their routes render automatically via <PluginPage>.
+  const mergedRoutes = useMemo(() => {
+    const builtin: BuiltinRoute[] = Object.entries(PAGE_ROUTES).map(
+      ([path, component]) => ({ path, component }),
+    );
+    return buildRoutes(builtin, manifests);
+  }, [manifests]);
 
   useEffect(() => {
     document.title = "mya — Dashboard";
@@ -69,36 +139,15 @@ export default function App() {
         <PageHeaderProvider>
           <ErrorBoundary>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/sessions" element={<SessionsPage />} />
-            <Route path="/events" element={<EventsPage />} />
-            <Route path="/cron" element={<CronPage />} />
-            <Route path="/models" element={<ModelsPage />} />
-            <Route path="/tools" element={<ToolsPage />} />
-            <Route path="/files" element={<FilesPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/logs" element={<LogsPage />} />
-            <Route path="/skills" element={<SkillsPage />} />
-            <Route path="/keys" element={<EnvPage />} />
-            <Route path="/push" element={<PushPage />} />
-            <Route path="/collab" element={<CollabPage />} />
-            <Route path="/sync" element={<SyncPage />} />
-            <Route path="/config" element={<ConfigPage />} />
-            <Route path="/status" element={<StatusPage />} />
-            <Route path="/channels" element={<ChannelsPage />} />
-            <Route path="/mcp" element={<McpPage />} />
-            <Route path="/docs" element={<DocsPage />} />
-            <Route path="/system" element={<SystemPage />} />
-            <Route path="/plugins" element={<PluginsPage />} />
-            <Route path="/profiles" element={<ProfilesPage />} />
-            <Route path="/profiles/new" element={<ProfileBuilderPage />} />
-            <Route path="/webhooks" element={<WebhooksPage />} />
-            <Route path="/pairing" element={<PairingPage />} />
-            <Route path="/pets" element={<PetsPage />} />
-            <Route path="/achievements" element={<AchievementsPage />} />
-            <Route path="*" element={<Navigate to="/chat" replace />} />
+            <Route path="/" element={<Navigate to={ROOT_REDIRECT} replace />} />
+            {mergedRoutes.map((r) => (
+              <Route
+                key={r.key}
+                path={r.path}
+                element={resolveRouteElement(r.element, getPluginPage)}
+              />
+            ))}
+            <Route path="*" element={<Navigate to={FALLBACK_PATH} replace />} />
           </Routes>
           </ErrorBoundary>
         </PageHeaderProvider>

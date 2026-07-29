@@ -40,7 +40,7 @@ export function ThemeSwitcher() {
                 {/* Preview: reconstruct hex from RGB space-channel for swatches */}
                 {(() => {
                   const toHex = (rgb: string) => {
-                    const [r,g,b] = rgb.split(' ').map(Number);
+                    const [r = 0, g = 0, b = 0] = rgb.split(' ').map(Number);
                     return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
                   };
                   return <>
