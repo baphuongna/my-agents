@@ -279,8 +279,6 @@ async function main(): Promise<void> {
       extensionHost: packageHost,
       // A1: forward maxToolRounds from central config.
       ...(config.maxToolRounds ? { maxToolRounds: config.maxToolRounds } : {}),
-      // F2: forward per-subagent iteration cap (Hermes delegation.max_iterations port).
-      ...(config.maxSubagentToolRounds ? { maxSubagentToolRounds: config.maxSubagentToolRounds } : {}),
       // A2: forward maxSpawnDepth from central config.
       ...(config.maxSpawnDepth ? { maxSpawnDepth: config.maxSpawnDepth } : {}),
       ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),

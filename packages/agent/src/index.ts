@@ -112,9 +112,6 @@ export interface AgentConfig {
   /** A1: max tool rounds per turn (default 25). Caps the number of
    * provider→tool-call iterations before the loop aborts. */
   maxToolRounds?: number;
-  /** Per-subagent max tool rounds. Defaults to maxToolRounds when unset
-   *  (identical to prior behavior). Ported from Hermes delegation.max_iterations. */
-  maxSubagentToolRounds?: number;
   /** A2: max subagent spawn depth (default 2). Prevents infinite recursion.
    * Depth 1 = subagents can't spawn their own subagents. */
   maxSpawnDepth?: number;
@@ -613,9 +610,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
       toolSchemas: openAITools,
       audit,
       hooks: config.hooks,
-      // F2: forward per-subagent iteration cap; default = maxToolRounds (Hermes
-      // delegation.max_iterations port — subagents can have a distinct cap).
-      maxToolRounds: config.maxSubagentToolRounds ?? config.maxToolRounds,
+      // A1: forward maxToolRounds to subagent path too (cold-verify finding).
+      maxToolRounds: config.maxToolRounds,
       // P3-20: forward compressHistory to subagent path (was missing → subagent
       // turns on context-full would retry without compression and eventually fail).
       compressHistory: (history) => {
