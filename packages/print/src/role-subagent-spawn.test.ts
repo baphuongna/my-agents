@@ -224,6 +224,17 @@ describe("[unit] handle registry (getViewHandle / focusRoleSubagentView / forget
     forgetViewHandle("s-forget");
     expect(getViewHandle("s-forget")).toBeUndefined();
   });
+
+  it("releases the acquired session (POST /pool/kill) when openView fails (F2 — no dangling ghost)", async () => {
+    const { fetchMock, calls } = mockFetchAcquire("s-f2");
+    vi.stubGlobal("fetch", fetchMock);
+    mockOpenView.mockRejectedValue(new Error("tmux new-window failed"));
+    await expect(spawnRoleSubagent(makeOpts())).rejects.toThrow("tmux new-window failed");
+    // the acquired session must be killed so it doesn't dangle in the pool
+    const killCall = calls.find((c) => c.url.includes("/pool/kill/s-f2"));
+    expect(killCall).toBeDefined();
+    expect(killCall?.method).toBe("POST");
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════

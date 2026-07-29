@@ -47,9 +47,9 @@ async function pollTreeForStatus(
     try {
       const r = await fetch(`http://127.0.0.1:${port}/pool/tree`);
       if (r.ok) {
-        const tree = (await r.json()) as Array<{ sessionId: string; taskStatus?: string; subagents?: Array<{ id: string; status?: string }> }>;
+        const tree = (await r.json()) as Array<{ sessionId: string; status?: string; subagents?: Array<{ id: string; status?: string }> }>;
         const found = tree.find((n) => n.sessionId === sessionId);
-        if (found?.taskStatus === want) return true;
+        if (found?.status === want) return true;
       }
     } catch {
       /* transient */

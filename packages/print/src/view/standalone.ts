@@ -32,7 +32,11 @@ export function buildStandaloneCommand(
 
 	if (platform === "darwin") {
 		// macOS — use osascript to open Terminal.app and run the command.
-		const script = `tell application "Terminal" to do script "cd '${cwd}' && ${cmdStr}"`;
+		// Escape `"` and `\` in the interpolated values so a task prompt
+		// containing `"` can't break out of the AppleScript string context
+		// (arbitrary text → injection). F3 fix.
+		const esc = (s: string): string => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+		const script = `tell application "Terminal" to do script "cd '${esc(cwd)}' && ${esc(cmdStr)}"`;
 		return { cmd: "osascript", args: ["-e", script] };
 	}
 

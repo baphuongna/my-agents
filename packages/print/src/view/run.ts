@@ -58,6 +58,7 @@ export function runCapture(
  */
 export function runDetached(cmd: string, args: readonly string[]): number {
 	const child = spawn(cmd, [...args], { stdio: "ignore", detached: true });
+	child.on("error", () => {}); // best-effort — ENOENT (missing terminal) must not crash the parent (F8)
 	child.unref();
 	return child.pid ?? 0;
 }

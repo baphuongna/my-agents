@@ -242,10 +242,18 @@ export async function spawnRoleSubagent(opts: SpawnRoleSubagentOpts): Promise<Sp
   ];
 
   // 3. Open a view running mya (SPI — no mux import in this file).
-  const handle = await openView({ command: argv, title: opts.role, cwd: opts.cwd });
-
   // 4. Track the handle for /agents view.focus.
-  handleRegistry.set(sessionId, handle);
-
-  return { sessionId, handle };
+  // F2: if openView fails, release the acquired session so it doesn't dangle
+  //    in the pool as a ghost with no running process.
+  try {
+    const handle = await openView({ command: argv, title: opts.role, cwd: opts.cwd });
+    handleRegistry.set(sessionId, handle);
+    return { sessionId, handle };
+  } catch (e) {
+    await fetch(`${opts.gatewayUrl}/pool/kill/${encodeURIComponent(sessionId)}`, {
+      method: "POST",
+      headers: authHeaders(),
+    }).catch(() => {});
+    throw e;
+  }
 }
