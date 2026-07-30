@@ -502,7 +502,11 @@ export class ModelRuntime implements Models {
 
 	async login(providerId: string, type: AuthType, interaction: AuthInteraction): Promise<Credential> {
 		const credential = await this.models.login(providerId, type, interaction);
-		await this.refresh({ allowNetwork: this.modelNetworkEnabled });
+		// Guard against a slow/unreachable provider model-list fetch freezing
+		// the login dialog indefinitely. The interactive refresh uses a 15s
+		// AbortController; login/logout had no timeout — a hung refreshModels
+		// call left the LoginDialog stuck (Ctrl+C/Escape not handled after submit).
+		await this.refreshWithTimeout();
 		return credential;
 	}
 
@@ -510,7 +514,20 @@ export class ModelRuntime implements Models {
 		await this.models.logout(providerId);
 		// Reset credential-dependent compatibility projections before the unconfigured provider is skipped by refresh.
 		this.recomposeProvider(providerId);
-		await this.refresh({ allowNetwork: this.modelNetworkEnabled });
+		await this.refreshWithTimeout();
+	}
+
+	/** Refresh model availability with a 15s network timeout so a slow/unreachable
+		 *  provider endpoint cannot freeze the login/logout dialog forever. Mirrors
+		 *  the timeout in refreshWithNetwork (interactive /models refresh). */
+	private async refreshWithTimeout(timeoutMs = 15_000): Promise<void> {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), timeoutMs);
+		try {
+			await this.refresh({ allowNetwork: this.modelNetworkEnabled, signal: controller.signal });
+		} finally {
+			clearTimeout(timeout);
+		}
 	}
 
 	async refresh(options: ModelsRefreshOptions = {}): Promise<ModelsRefreshResult> {
