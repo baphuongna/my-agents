@@ -1461,7 +1461,7 @@ ${hitLines}`);
         async execute(_id: string, params: { script: string; input?: unknown; timeout_ms?: number }) {
           // createRequire avoids TS6059 (rootDir violation) that await import() triggers;
           // same pattern as main.ts poolSubagents and shared-instances.ts.
-          const { spawnSubagent, trackSubagent } = createRequire(import.meta.url)("../../coding-agent/src/core/subagent.ts");
+          const { spawnSubagent, trackSubagent } = createRequire(import.meta.url)("./pi-subagent.ts");
           // Unrestricted (pi-core parity): subagent cwd is NOT bounded to the
           // workspace — same as pi core's delegate/subagent path.
           const spawn = async (goal: string, o: { allowedTools?: string[]; cwd?: string } = {}): Promise<string> => {
@@ -1602,7 +1602,7 @@ ${hitLines}`);
     // ── delegate_task (subagent) ──────────────────────────────────────
     try {
       // @ts-ignore — cross-package dynamic import resolved by esbuild
-      void import("../../coding-agent/src/core/subagent.js").then((mod) => {
+      void import("./pi-subagent.js").then((mod) => {
         const { spawnSubagent, trackSubagent, MAX_SUBAGENT_DEPTH } = mod;
         pi.registerTool({
           name: "delegate_task",

@@ -2,7 +2,7 @@
 /**
  * Bundle mya CLI — builds from PROJECT SOURCE (not npm, not vendored JS dist).
  *
- * Pi TypeScript source is IN packages/coding-agent.
+ * Pi comes from npm (@earendil-works/pi-coding-agent).
  * esbuild resolves @my-agent/* from these source packages directly.
  * pi-agent-core + pi-ai + pi-tui resolve from node_modules (@earendil-works/* npm packages).
  * No vendored JS. Source is owned by mya.
@@ -83,7 +83,7 @@ await build({
 });
 
 // Copy theme JSONs from source
-const themeSrc = path.resolve("packages/coding-agent/src/modes/interactive/theme");
+const themeSrc = path.resolve("node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme");
 const themeDst = path.resolve("dist/modes/interactive/theme");
 if (fs.existsSync(themeSrc)) {
   fs.mkdirSync(themeDst, { recursive: true });

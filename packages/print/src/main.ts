@@ -376,7 +376,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       // get all mya tools (osv_check, image_generate, kanban, etc.), achievements,
       // cron tools, brain recall, and all other bridge features.
       // @ts-expect-error — resolved by esbuild from project source
-      const { createAgentSession } = await import("../../coding-agent/src/index.ts");
+      const { createAgentSession, DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
       const cronOpts = cronSessionToolConfig(sessionId);
 
       // Build the mya-bridge factory for this session
@@ -389,12 +389,19 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
         channels, roleRegistry, achievements,
       });
 
-      const bridgeOpts = { extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory }] };
+      // pi 0.83.0 createAgentSession has no extensionFactories option; the
+      // mya-bridge extension is wired through a DefaultResourceLoader instead.
+      const resourceLoader = new DefaultResourceLoader({
+        cwd: _cwd ?? process.cwd(),
+        agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
+        extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory }],
+      });
+      await resourceLoader.reload();
       const result = await createAgentSession({
         cwd: _cwd ?? process.cwd(),
         agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
         ...cronOpts,
-        ...bridgeOpts,
+        resourceLoader,
       });
       // Emit session_start so bridge hooks capture the session ID.
       try { await (result.session as unknown as { bindExtensions: (opts?: unknown) => Promise<void> }).bindExtensions({ mode: "print" }); } catch { /* best-effort */ }
@@ -724,7 +731,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     poolSubagents: (sessionId: string) => {
       const entries: import("@my-agent/gateway").PoolSubagentEntry[] = [];
       try {
-        const subagentMod = createRequire(import.meta.url)("../../coding-agent/src/core/subagent.ts");
+        const subagentMod = createRequire(import.meta.url)("./pi-subagent.ts");
         for (const s of subagentMod.listSubagents(sessionId) as Array<{ id: string; goal: string; status: string; depth: number; output: string }>) {
           entries.push({ id: s.id, goal: s.goal, status: s.status, depth: s.depth, output: s.output });
         }
@@ -948,9 +955,9 @@ async function runSubagentTest(args: string[]): Promise<void> {
   const goal = args[0] ?? "Reply with exactly: hello from subagent";
   const parentDepth = parseInt(args[1] ?? "0", 10);
   // @ts-ignore - resolved by esbuild from project source
-  const { createAgentSession } = await import("../../coding-agent/src/index.ts");
+  const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
   // @ts-ignore - resolved by esbuild from project source
-  const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } = await import("../../coding-agent/src/core/subagent.ts");
+  const { spawnSubagent, trackSubagent, listSubagents, MAX_SUBAGENT_DEPTH } = await import("./pi-subagent.js");
   console.log(`Subagent test (max depth: ${MAX_SUBAGENT_DEPTH})\n`);
   const parent = await createAgentSession({
     cwd: process.cwd(),

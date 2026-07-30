@@ -13,7 +13,7 @@
 export const FLAGS_WITH_VALUE = new Set([
   // mya-specific
   "--port", "--bg-id", "--gateway-session", "--gateway-url", "--role", "--task",
-  // pi value-flags (keep in sync with packages/coding-agent/src/cli/args.ts)
+  // pi value-flags (keep in sync with @earendil-works/pi-coding-agent args)
   "--model", "--session", "--session-id", "--fork", "--session-dir",
   "--provider", "--api-key", "--models", "--thinking", "--mode",
   "--system-prompt", "--append-system-prompt", "--name", "-n",

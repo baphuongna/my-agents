@@ -6,9 +6,16 @@
  *
  * The bridge injects mya packages into pi's TUI so they are visible during
  * interactive use.
+ *
+ * BREAKING CHANGE (fork → npm migration):
+ * The npm pi-coding-agent loader provides @mariozechner/* extension aliases
+ * but NOT @my-agent/* aliases (e.g. @my-agent/pi-agent-core, @my-agent/tui,
+ * @my-agent/pi-ai). User extensions or skills in ~/.mya/agent/ that import
+ * @my-agent/pi-* must be updated to use @earendil-works/* package names.
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { registerBuiltInApiProviders } from "@earendil-works/pi-ai/compat";
 import { createMyaBridge } from "./mya-bridge.js";
 import * as shared from "./shared-instances.js";
 
@@ -47,9 +54,14 @@ export interface RunPiInteractiveOpts {
 export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<void> {
   process.env.PI_SKIP_VERSION_CHECK = "1";
 
+  // Defensive: pi-ai/compat registers built-in API providers at module scope,
+  // but esbuild's lazy CJS init may defer that call. Invoke explicitly before
+  // importing pi so providers are guaranteed registered.
+  registerBuiltInApiProviders();
+
   // LAZY LOAD pi — this is the expensive import (2s, 12MB)
   // Only happens when user enters interactive mode, NOT at launcher startup.
-  const { main } = await import("@my-agent/coding-agent");
+  const { main } = await import("@earendil-works/pi-coding-agent");
 
   // --role/--task: also extract from argv as fallback (e.g. when called directly).
   const extracted = extractRoleTask(process.argv.slice(2));
