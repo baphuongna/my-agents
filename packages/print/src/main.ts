@@ -255,9 +255,21 @@ async function main(): Promise<void> {
   const print = args.includes("--print") || json;
   const rpc = args.includes("--rpc");
   const debug = args.includes("--debug");
-  // Flags that consume the next argument as their value
+  // Flags that consume the next argument as their value (mirrors pi's cli/args.ts).
   // --role/--task: role-subagent startup flags (see docs/mya-subagent-design.md).
-  const FLAGS_WITH_VALUE = new Set(["--model", "--session", "--session-id", "--fork", "--session-dir", "--port", "--bg-id", "--gateway-session", "--gateway-url", "--role", "--task"]);
+  // --provider is critical: without it, `mya --provider minimax --task '...'` leaks
+  // `minimax` into positional, producing a truthy prompt that triggers print-mode
+  // dispatch — bypassing InteractiveMode and the mya-bridge extension entirely.
+  const FLAGS_WITH_VALUE = new Set([
+    // mya-specific
+    "--port", "--bg-id", "--gateway-session", "--gateway-url", "--role", "--task",
+    // pi value-flags (keep in sync with packages/coding-agent/src/cli/args.ts)
+    "--model", "--session", "--session-id", "--fork", "--session-dir",
+    "--provider", "--api-key", "--models", "--thinking", "--mode",
+    "--system-prompt", "--append-system-prompt", "--name", "-n",
+    "--tools", "-t", "--exclude-tools", "-xt",
+    "--export", "--extension", "-e", "--skill", "--prompt-template", "--theme",
+  ]);
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
   const roleIdx = args.indexOf("--role");

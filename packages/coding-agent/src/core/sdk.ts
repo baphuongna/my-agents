@@ -6,7 +6,7 @@ import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
-import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
+import type { ExtensionRunner, InlineExtension, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { convertToLlm } from "./messages.ts";
 import { findInitialModel } from "./model-resolver.ts";
 import { ModelRuntime } from "./model-runtime.ts";
@@ -71,6 +71,9 @@ export interface CreateAgentSessionOptions {
 	excludeTools?: string[];
 	/** Custom tools to register (in addition to built-in tools). */
 	customTools?: ToolDefinition[];
+
+	/** Inline extension factories to load (merged with file-based extensions). */
+	extensionFactories?: InlineExtension[];
 
 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
 	resourceLoader?: ResourceLoader;
@@ -181,7 +184,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
 
 	if (!resourceLoader) {
-		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager, extensionFactories: options.extensionFactories });
 		await resourceLoader.reload();
 		time("resourceLoader.reload");
 	}
