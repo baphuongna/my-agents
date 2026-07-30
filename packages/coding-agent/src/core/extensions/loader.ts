@@ -7,11 +7,11 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as _bundledPiAgentCore from "@my-agent/pi-agent-core";
-import type { Provider } from "@my-agent/pi-ai";
-import * as _bundledPiAiCompat from "@my-agent/pi-ai/compat";
-import * as _bundledPiAiOauth from "@my-agent/pi-ai/oauth";
-import * as _bundledPiAiProviders from "@my-agent/pi-ai/providers/all";
+import * as _bundledPiAgentCore from "@earendil-works/pi-agent-core";
+import type { Provider } from "@earendil-works/pi-ai";
+import * as _bundledPiAiCompat from "@earendil-works/pi-ai/compat";
+import * as _bundledPiAiOauth from "@earendil-works/pi-ai/oauth";
+import * as _bundledPiAiProviders from "@earendil-works/pi-ai/providers/all";
 import type { KeyId } from "@my-agent/tui";
 import * as _bundledPiTui from "@my-agent/tui";
 import { createJiti } from "jiti/static";
@@ -62,6 +62,11 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@my-agent/pi-ai/oauth": _bundledPiAiOauth,
 	"@my-agent/pi-ai/providers/all": _bundledPiAiProviders,
 	"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,
+	"@earendil-works/pi-agent-core": _bundledPiAgentCore,
+	"@earendil-works/pi-ai": _bundledPiAiCompat,
+	"@earendil-works/pi-ai/compat": _bundledPiAiCompat,
+	"@earendil-works/pi-ai/oauth": _bundledPiAiOauth,
+	"@earendil-works/pi-ai/providers/all": _bundledPiAiProviders,
 	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
 	"@mariozechner/pi-tui": _bundledPiTui,
 	"@mariozechner/pi-ai": _bundledPiAiCompat,
@@ -99,16 +104,16 @@ function getAliases(): Record<string, string> {
 	};
 
 	const piCodingAgentEntry = packageIndex;
-	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@my-agent/pi-agent-core");
+	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@earendil-works/pi-agent-core");
 	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@my-agent/tui");
 	// Extensions resolve the pi-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
-	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@my-agent/pi-ai/compat");
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@my-agent/pi-ai/oauth");
+	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@earendil-works/pi-ai/compat");
+	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
 	const piAiProvidersEntry = resolveWorkspaceOrImport(
 		"ai/dist/providers/all.js",
-		"@my-agent/pi-ai/providers/all",
+		"@earendil-works/pi-ai/providers/all",
 	);
 
 	_aliases = {
@@ -133,6 +138,13 @@ function getAliases(): Record<string, string> {
 		"@sinclair/typebox/compile": typeboxCompileEntry,
 		"@sinclair/typebox/value": typeboxValueEntry,
 	};
+
+	// Add @earendil-works/* aliases (forward compat for extensions using new package names)
+	_aliases["@earendil-works/pi-agent-core"] = piAgentCoreEntry;
+	_aliases["@earendil-works/pi-ai"] = piAiCompatEntry;
+	_aliases["@earendil-works/pi-ai/compat"] = piAiCompatEntry;
+	_aliases["@earendil-works/pi-ai/oauth"] = piAiOauthEntry;
+	_aliases["@earendil-works/pi-ai/providers/all"] = piAiProvidersEntry;
 
 	return _aliases;
 }
