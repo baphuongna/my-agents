@@ -2,9 +2,9 @@
 /**
  * Bundle mya CLI — builds from PROJECT SOURCE (not npm, not vendored JS dist).
  *
- * Pi TypeScript source is IN packages/ (coding-agent, tui).
+ * Pi TypeScript source is IN packages/coding-agent.
  * esbuild resolves @my-agent/* from these source packages directly.
- * pi-agent-core + pi-ai resolve from node_modules (@earendil-works/* npm packages).
+ * pi-agent-core + pi-ai + pi-tui resolve from node_modules (@earendil-works/* npm packages).
  * No vendored JS. Source is owned by mya.
  */
 

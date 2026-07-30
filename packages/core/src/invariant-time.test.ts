@@ -21,11 +21,10 @@ describe("Invariant #10 — single time helper (no Date.now() outside core.time)
       else if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) {
         // the sole allowed source of wall-clock time:
         if (full.endsWith(join("core", "src", "time.ts"))) continue;
-        // Exclude vendored pi upstream packages (coding-agent, tui).
-        // These are owned by pi and use Date.now() natively; mya's invariant applies
+        // Exclude vendored pi upstream package (coding-agent).
+        // Owned by pi and uses Date.now() natively; mya's invariant applies
         // only to code mya owns (core, ai, cron, gateway, memory, tools, print, etc.).
         if (full.includes(join("packages", "coding-agent"))) continue;
-        if (full.includes(join("packages", "tui"))) continue;
         // Web SPA runs in the browser — cannot import @my-agent/core (Node-only).
         if (full.includes(join("packages", "web"))) continue;
         // Exclude @hermes/shared (cloned from Hermes, uses Date.now natively)

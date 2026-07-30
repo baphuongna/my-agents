@@ -7,7 +7,7 @@
     "@earendil-works/pi-agent-core": "0.83.0",
     "@earendil-works/pi-ai": "0.83.0",
     "@my-agent/ai": "*",
-    "@my-agent/tui": "*",
+    "@earendil-works/pi-tui": "0.83.0",
     "@my-agent/core": "*"
   },
   "piConfig": {
