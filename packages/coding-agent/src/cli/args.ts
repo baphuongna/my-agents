@@ -43,6 +43,13 @@ export interface Args {
 	themes?: string[];
 	noThemes?: boolean;
 	noContextFiles?: boolean;
+	/** Pool / role-subagent startup flags (consumed by main.ts + mya-bridge).
+	 *  Registered here so they are recognized (not rejected as unknown) by the
+	 *  strict validator in agent-session-services.ts. */
+	gatewaySession?: string;
+	gatewayUrl?: string;
+	role?: string;
+	task?: string;
 	listModels?: string | true;
 	offline?: boolean;
 	verbose?: boolean;
@@ -168,6 +175,14 @@ export function parseArgs(args: string[]): Args {
 			result.noThemes = true;
 		} else if (arg === "--no-context-files" || arg === "-nc") {
 			result.noContextFiles = true;
+		} else if (arg === "--gateway-session" && i + 1 < args.length) {
+			result.gatewaySession = args[++i];
+		} else if (arg === "--gateway-url" && i + 1 < args.length) {
+			result.gatewayUrl = args[++i];
+		} else if (arg === "--role" && i + 1 < args.length) {
+			result.role = args[++i];
+		} else if (arg === "--task" && i + 1 < args.length) {
+			result.task = args[++i];
 		} else if (arg === "--list-models") {
 			// Check if next arg is a search pattern (not a flag or file arg)
 			if (i + 1 < args.length && !args[i + 1].startsWith("-") && !args[i + 1].startsWith("@")) {
@@ -232,6 +247,7 @@ ${chalk.bold("Commands:")}
   ${APP_NAME} update [source|self|pi]   Update pi, extensions, or model catalogs
   ${APP_NAME} list                      List installed extensions from settings
   ${APP_NAME} config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
+  ${APP_NAME} agents                    Live panel showing role-subagents (spawned via tool or /agents)
   ${APP_NAME} <command> --help          Show help for install/remove/uninstall/update/list/config
 
 ${chalk.bold("Options:")}
@@ -268,6 +284,8 @@ ${chalk.bold("Options:")}
   --theme <path>                 Load a theme file or directory (can be used multiple times)
   --no-themes                    Disable theme discovery and loading
   --no-context-files, -nc        Disable AGENTS.md and CLAUDE.md discovery and loading
+  --role <name>                  Start as a role-subagent (sets role metadata + session overlay)
+  --task <text>                  Initial task for a role-subagent (use with --role)
   --export <file>                Export session file to HTML and exit
   --list-models [search]         List available models (with optional fuzzy search)
   --verbose                      Force verbose startup (overrides quietStartup setting)

@@ -30,7 +30,7 @@ describe.skipIf(!MYA_BIN)("[real] 'mya agents' — live panel polls /pool/tree",
   });
 
   it("the panel's refresh loop GETs /pool/tree from the gateway", async (ctx) => {
-    if (!hasAgentsSub) return ctx.skip("bundle stale — 'mya agents' subcommand absent; rebuild dist/mya.js");
+    if (!hasAgentsSub) { ctx.skip(); return; } // bundle stale — 'mya agents' absent; rebuild dist/mya.js
 
     let treeHits = 0;
     const server: Server = createServer((req, res) => {

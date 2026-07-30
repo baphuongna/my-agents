@@ -56,7 +56,7 @@ describe("[unit] installFailureReporter (F7)", () => {
 
   beforeEach(() => {
     vi.unstubAllGlobals();
-    onSpy = vi.spyOn(process, "on").mockImplementation(() => process);
+    onSpy = vi.spyOn(process, "on").mockImplementation(() => process) as never;
   });
 
   afterEach(() => {
