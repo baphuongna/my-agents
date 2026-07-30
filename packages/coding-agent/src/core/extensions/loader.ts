@@ -45,7 +45,7 @@ import type {
 } from "./types.ts";
 
 /** Modules available to extensions via virtualModules (for compiled Bun binary) */
-const VIRTUAL_MODULES: Record<string, unknown> = {
+export const VIRTUAL_MODULES: Record<string, unknown> = {
 	typebox: _bundledTypebox,
 	"typebox/compile": _bundledTypeboxCompile,
 	"typebox/value": _bundledTypeboxValue,
@@ -85,7 +85,38 @@ const require = createRequire(import.meta.url);
  */
 let _aliases: Record<string, string> | null = null;
 
-function getAliases(): Record<string, string> {
+/**
+ * Resolve a pi package specifier to an absolute file path.
+ *
+ * Uses `import.meta.resolve` in production (Node.js ESM). Falls back to
+ * manual resolution via package.json exports for environments where
+ * `import.meta.resolve` is unavailable (e.g., vitest's Vite SSR transform).
+ */
+function resolvePiEntry(specifier: string): string {
+	if (typeof import.meta.resolve === "function") {
+		return fileURLToPath(import.meta.resolve(specifier));
+	}
+	// Fallback: locate the package directory and resolve the exports entry
+	// manually. Needed for vitest's Vite SSR which doesn't support import.meta.resolve.
+	const parts = specifier.split("/");
+	// Handle scoped packages: @scope/name[/subpath...]
+	const pkgName = parts[0].startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];
+	const subParts = parts[0].startsWith("@") ? parts.slice(2) : parts.slice(1);
+	const subpath = subParts.length > 0 ? `./${subParts.join("/")}` : ".";
+	const searchPaths = require.resolve.paths(pkgName);
+	if (!searchPaths) throw new Error(`Cannot resolve package search paths: ${pkgName}`);
+	const pkgDir = searchPaths.map((p) => path.join(p, pkgName)).find((p) => fs.existsSync(p));
+	if (!pkgDir) throw new Error(`Package directory not found: ${pkgName}`);
+	const pkgJson = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf-8"));
+	const exportEntry = pkgJson.exports?.[subpath] ?? pkgJson.exports?.["."];
+	const resolved =
+		typeof exportEntry === "string"
+			? exportEntry
+			: (exportEntry?.import ?? exportEntry?.default ?? pkgJson.main ?? "./index.js");
+	return path.resolve(pkgDir, resolved);
+}
+
+export function getAliases(): Record<string, string> {
 	if (_aliases) return _aliases;
 
 	const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -95,27 +126,15 @@ function getAliases(): Record<string, string> {
 	const typeboxCompileEntry = require.resolve("typebox/compile");
 	const typeboxValueEntry = require.resolve("typebox/value");
 
-	const packagesRoot = path.resolve(__dirname, "../../../../");
-	const resolveWorkspaceOrImport = (workspaceRelativePath: string, specifier: string): string => {
-		const workspacePath = path.join(packagesRoot, workspaceRelativePath);
-		if (fs.existsSync(workspacePath)) {
-			return workspacePath;
-		}
-		return fileURLToPath(import.meta.resolve(specifier));
-	};
-
 	const piCodingAgentEntry = packageIndex;
-	const piAgentCoreEntry = resolveWorkspaceOrImport("agent/dist/index.js", "@earendil-works/pi-agent-core");
-	const piTuiEntry = resolveWorkspaceOrImport("tui/dist/index.js", "@earendil-works/pi-tui");
+	const piAgentCoreEntry = resolvePiEntry("@earendil-works/pi-agent-core");
+	const piTuiEntry = resolvePiEntry("@earendil-works/pi-tui");
 	// Extensions resolve the pi-ai root to the compat entrypoint (a strict
 	// superset of the core entrypoint): existing extensions using the old
 	// global API keep working at runtime until compat is removed.
-	const piAiCompatEntry = resolveWorkspaceOrImport("ai/dist/compat.js", "@earendil-works/pi-ai/compat");
-	const piAiOauthEntry = resolveWorkspaceOrImport("ai/dist/oauth.js", "@earendil-works/pi-ai/oauth");
-	const piAiProvidersEntry = resolveWorkspaceOrImport(
-		"ai/dist/providers/all.js",
-		"@earendil-works/pi-ai/providers/all",
-	);
+	const piAiCompatEntry = resolvePiEntry("@earendil-works/pi-ai/compat");
+	const piAiOauthEntry = resolvePiEntry("@earendil-works/pi-ai/oauth");
+	const piAiProvidersEntry = resolvePiEntry("@earendil-works/pi-ai/providers/all");
 
 	_aliases = {
 		"@earendil-works/pi-coding-agent": piCodingAgentEntry,

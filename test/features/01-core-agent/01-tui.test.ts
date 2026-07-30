@@ -138,35 +138,17 @@ function parseEofPolicy(opts: { dirtySession: boolean }): { action: string } {
 // ──────────────────────────────────────────────────────────────
 
 describe("[smoke] TUI modules", () => {
-	it("loads TUI engine module", async () => {
-		const mod = await import("../../../packages/tui/src/engine.ts").catch(() => null);
-		// Module may not exist or may exist — we just want no syntax error
-		expect(mod === null || typeof mod === "object").toBe(true);
-	});
-
-	it("loads TUI app module", async () => {
-		const mod = await import("../../../packages/tui/src/app.ts").catch(() => null);
-		expect(mod === null || typeof mod === "object").toBe(true);
-	});
-
-	it("loads theme module without throw", async () => {
-		const mod = await import("../../../packages/tui/src/themes.ts").catch(() => null);
-		expect(mod === null || typeof mod === "object").toBe(true);
-	});
-
-	it("loads editor module", async () => {
-		const mod = await import("../../../packages/tui/src/editor.ts").catch(() => null);
-		expect(mod === null || typeof mod === "object").toBe(true);
-	});
-
-	it("loads transcript module (rich + plain)", async () => {
-		const tr = await import("../../../packages/tui/src/transcript.tsx").catch(() => null);
-		expect(tr === null || typeof tr === "object").toBe(true);
-	});
-
-	it("loads sanitize module without throw", async () => {
-		const mod = await import("../../../packages/tui/src/sanitize.ts").catch(() => null);
-		expect(mod === null || typeof mod === "object").toBe(true);
+	it("loads @earendil-works/pi-tui public API without throw", async () => {
+		// The old internal modules (engine.ts, app.ts, themes.ts, etc.) were
+		// removed when TUI migrated to the npm package @earendil-works/pi-tui.
+		// We now smoke-test the public API surface instead.
+		const mod = await import("@earendil-works/pi-tui");
+		expect(typeof mod).toBe("object");
+		expect(mod).not.toBeNull();
+		// Spot-check a few well-known exports
+		expect(typeof mod.TUI).toBe("function");
+		expect(typeof mod.Editor).toBe("function");
+		expect(typeof mod.KeybindingsManager).toBe("function");
 	});
 
 	it("constructs ArrayHistory without throw", () => {

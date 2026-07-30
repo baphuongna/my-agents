@@ -13,7 +13,7 @@
  * Unlike pi (which shells out to `fd`), this is a pure-Node recursive walk so
  * it has no external binary dependency and is deterministic across platforms.
  *
- * Source: §7 Tool System; vendored/pi/dist/core/tools/find.js.
+ * Source: §7 Tool System; @earendil-works/pi-agent-core/dist/core/tools/find.js.
  */
 import { readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";

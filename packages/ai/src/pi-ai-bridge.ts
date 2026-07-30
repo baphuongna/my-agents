@@ -1,7 +1,7 @@
 /**
  * pi-ai Provider bridge — wraps pi-ai's 30+ providers into ProviderProfile.
  *
- * pi-ai event protocol (real, from vendored/pi-ai/dist/types.d.ts):
+ * pi-ai event protocol (real, from @earendil-works/pi-ai/dist/types.d.ts):
  *   start → text_start → text_delta* → text_end → toolcall_* → done/error
  *
  * This bridge consumes the actual event types and converts them to mya StreamEvent.
@@ -14,7 +14,7 @@ import type {
   SystemPrompt,
 } from "@my-agent/core";
 
-// ── Real pi-ai event types (from vendored/pi-ai/dist/types.d.ts) ──
+// ── Real pi-ai event types (from @earendil-works/pi-ai/dist/types.d.ts) ──
 
 interface PiAiToolCall {
   type: "toolCall";

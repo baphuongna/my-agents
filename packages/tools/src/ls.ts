@@ -10,7 +10,7 @@
  * 8 KB for NUL bytes) so callers can distinguish text from binary files without
  * a separate read. Disabled by default; enable with `detectBinary: true`.
  *
- * Source: §7 Tool System; vendored/pi/dist/core/tools/ls.js.
+ * Source: §7 Tool System; @earendil-works/pi-agent-core/dist/core/tools/ls.js.
  */
 import { readdir, stat, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

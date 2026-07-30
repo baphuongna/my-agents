@@ -2414,7 +2414,7 @@ function parseChannelWebhook(channelId: string, body: string): ChannelMessage | 
 }
 
 /** Model metadata: known context window, max tokens, reasoning capability.
- * Values sourced from vendored/pi-ai/dist/models.generated.js. Covers all
+ * Values sourced from @earendil-works/pi-ai/dist/models.generated.js. Covers all
  * providers in PROVIDER_REGISTRY with known values. */
 const MODEL_METADATA: Record<string, { contextWindow?: number; maxTokens?: number; reasoning?: boolean }> = {
   anthropic:         { contextWindow: 200000,  maxTokens: 128000, reasoning: true  },

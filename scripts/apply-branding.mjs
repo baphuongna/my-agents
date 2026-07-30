@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 
-const PI_NM = "vendored/pi/dist";
+const PI_NM = "node_modules/@earendil-works/pi-coding-agent/dist";
 
 if (!existsSync(PI_NM)) {
   console.log("✓ pi-coding-agent not in node_modules, skipping branding");

@@ -526,8 +526,12 @@ describe("[§21 unit] Gamification", () => {
 	});
 
 	it("pet sprite renderer (truecolor ANSI)", async () => {
-		const m = await import("../../../packages/tui/src/components/pet-sprite.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		// pet-sprite.ts was an internal module of the old workspace tui package;
+		// it has moved into @earendil-works/pi-tui npm package internals.
+		// Smoke-test the pi-tui package itself loads cleanly.
+		const m = await import("@earendil-works/pi-tui");
+		expect(typeof m).toBe("object");
+		expect(m).not.toBeNull();
 	});
 
 	it("petdex (3 sprites: cat, dog, robot)", () => {
