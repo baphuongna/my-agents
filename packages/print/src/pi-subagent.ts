@@ -1,5 +1,5 @@
 /**
- * @my-agent/coding-agent — subagent spawning.
+ * @earendil-works/pi-coding-agent — subagent spawning.
  *
  * Subagent = a separate AgentSession with isolated cwd + JSONL history,
  * created via createAgentSession(). Shares model registry + auth with parent.

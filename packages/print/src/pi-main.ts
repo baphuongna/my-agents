@@ -9,8 +9,8 @@
  *
  * BREAKING CHANGE (fork → npm migration):
  * The npm pi-coding-agent loader provides @mariozechner/* extension aliases
- * but NOT @my-agent/* aliases (e.g. @my-agent/pi-agent-core, @my-agent/tui,
- * @my-agent/pi-ai). User extensions or skills in ~/.mya/agent/ that import
+ * but NOT @my-agent/* aliases (e.g. @earendil-works/pi-agent-core, @earendil-works/pi-tui,
+ * @earendil-works/pi-ai). User extensions or skills in ~/.mya/agent/ that import
  * @my-agent/pi-* must be updated to use @earendil-works/* package names.
  */
 import { homedir } from "node:os";

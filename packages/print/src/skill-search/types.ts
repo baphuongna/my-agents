@@ -6,7 +6,7 @@
 
 /**
  * Subset cua Pi's Skill interface (skills.ts:75) ma extension can.
- * Khong export tu @my-agent/coding-agent — phai khai bao local.
+ * Khong export tu @earendil-works/pi-coding-agent — phai khai bao local.
  */
 export interface PiSkill {
 	name: string;
