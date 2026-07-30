@@ -1,4 +1,4 @@
-import type { TextContent } from "@my-agent/pi-ai";
+import type { TextContent } from "@earendil-works/pi-ai";
 import type { Component } from "@my-agent/tui";
 import { Box, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@my-agent/tui";
 import type { MessageRenderer } from "../../../core/extensions/types.ts";

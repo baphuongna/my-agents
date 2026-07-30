@@ -4,6 +4,8 @@
   "type": "module",
   "main": "src/main.ts",
   "dependencies": {
+    "@earendil-works/pi-agent-core": "0.83.0",
+    "@earendil-works/pi-ai": "0.83.0",
     "@my-agent/ai": "*",
     "@my-agent/tui": "*",
     "@my-agent/core": "*"

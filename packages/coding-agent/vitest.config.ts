@@ -1,10 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-const aiSrcIndex = fileURLToPath(new URL("../ai/src/index.ts", import.meta.url));
-const aiSrcCompat = fileURLToPath(new URL("../ai/src/compat.ts", import.meta.url));
-const aiSrcOAuth = fileURLToPath(new URL("../ai/src/oauth.ts", import.meta.url));
-const agentSrcIndex = fileURLToPath(new URL("../agent/src/index.ts", import.meta.url));
+const aiSrcIndex = fileURLToPath(new URL("../pi-ai-src/src/index.ts", import.meta.url));
+const aiSrcCompat = fileURLToPath(new URL("../pi-ai-src/src/compat.ts", import.meta.url));
+const aiSrcOAuth = fileURLToPath(new URL("../pi-ai-src/src/oauth.ts", import.meta.url));
+const aiSrcProvidersAll = fileURLToPath(new URL("../pi-ai-src/src/providers/all.ts", import.meta.url));
+const agentSrcIndex = fileURLToPath(new URL("../pi-agent-src/src/index.ts", import.meta.url));
 const tuiSrcIndex = fileURLToPath(new URL("../tui/src/index.ts", import.meta.url));
 
 export default defineConfig({
@@ -25,6 +26,7 @@ export default defineConfig({
 			{ find: /^@earendil-works\/pi-ai$/, replacement: aiSrcIndex },
 			{ find: /^@earendil-works\/pi-ai\/compat$/, replacement: aiSrcCompat },
 			{ find: /^@earendil-works\/pi-ai\/oauth$/, replacement: aiSrcOAuth },
+			{ find: /^@earendil-works\/pi-ai\/providers\/all$/, replacement: aiSrcProvidersAll },
 			{ find: /^@earendil-works\/pi-agent-core$/, replacement: agentSrcIndex },
 			{ find: /^@earendil-works\/pi-tui$/, replacement: tuiSrcIndex },
 			{ find: /^@mariozechner\/pi-ai$/, replacement: aiSrcIndex },

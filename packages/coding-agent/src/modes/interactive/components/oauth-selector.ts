@@ -1,4 +1,4 @@
-import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@my-agent/pi-ai";
+import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@earendil-works/pi-ai";
 import {
 	Container,
 	type Focusable,

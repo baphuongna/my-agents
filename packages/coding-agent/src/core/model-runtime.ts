@@ -28,8 +28,8 @@ import {
 	type ProviderHeaders,
 	type SimpleStreamOptions,
 	type StreamOptions,
-} from "@my-agent/pi-ai";
-import * as builtinProviderCatalog from "@my-agent/pi-ai/providers/all";
+} from "@earendil-works/pi-ai";
+import * as builtinProviderCatalog from "@earendil-works/pi-ai/providers/all";
 import { getAgentDir } from "../config.ts";
 import { AuthStorage as DefaultAuthStorage } from "./auth-storage.ts";
 import { ModelConfig } from "./model-config.ts";

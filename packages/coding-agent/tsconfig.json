@@ -6,8 +6,6 @@
   },
   "include": ["src"],
   "references": [
-    { "path": "../pi-ai-src" },
-    { "path": "../pi-agent-src" },
     { "path": "../tui" }
   ]
 }
