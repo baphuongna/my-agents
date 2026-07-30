@@ -49,13 +49,15 @@ export const screenBackend: ViewBackend = {
 	},
 
 	async close(handle: ViewHandle): Promise<void> {
-		// Select the target window by ref, THEN kill the now-selected window.
-		// Without `select`, `screen -X kill` operates on the currently-focused
-		// window — which may be the main session window, not the one we opened.
-		// NEW-3 fix.
-		const sel = await runCapture("screen", ["-X", "select", handle.ref]);
-		// F3R-3: only kill if select succeeded — otherwise kill hits the
-		// currently-focused window (could be the main session).
-		if (sel.code === 0) await runCapture("screen", ["-X", "kill"]);
+		// F3R-3: screen -X select returns 0 regardless of whether the window
+		// exists (exit code reflects command delivery, not success), so a
+		// code-guard is ineffective. Use `screen -Q windows` (≥4.06) to verify
+		// the window exists BEFORE selecting + killing — otherwise kill hits
+		// the currently-focused window (could be the main session).
+		const windows = await runCapture("screen", ["-Q", "windows"]);
+		if (windows.stdout.includes(handle.ref)) {
+			await runCapture("screen", ["-X", "select", handle.ref]);
+			await runCapture("screen", ["-X", "kill"]);
+		}
 	},
 };

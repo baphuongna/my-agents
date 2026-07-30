@@ -700,26 +700,29 @@ describe("screenBackend", () => {
 	});
 
 	describe("close()", () => {
-		it("runs screen -X select then -X kill (NEW-3)", async () => {
-			mockSpawn.mockImplementation(() => makeChild({}));
+	it("runs -Q windows, then select + kill if the window exists (F3R-3)", async () => {
+		mockSpawn.mockImplementation((_cmd: string, args: string[]) =>
+			args[0] === "-Q" ? makeChild({ stdout: "0 coder 1 other" }) : makeChild({}),
+		);
 
-			await screenBackend.close?.({ backendId: "screen", ref: "coder" });
+		await screenBackend.close?.({ backendId: "screen", ref: "coder" });
 
-			// Two calls: select the target window, then kill the selected one.
-			expect(mockSpawn).toHaveBeenCalledTimes(2);
-			expect(mockSpawn).toHaveBeenNthCalledWith(
-				1,
-				"screen",
-				["-X", "select", "coder"],
-				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
-			);
-			expect(mockSpawn).toHaveBeenNthCalledWith(
-				2,
-				"screen",
-				["-X", "kill"],
-				expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
-			);
-		});
+		// Three calls: -Q windows (verify exists), select, kill.
+		expect(mockSpawn).toHaveBeenCalledTimes(3);
+		expect(mockSpawn).toHaveBeenNthCalledWith(1, "screen", ["-Q", "windows"], expect.objectContaining({}));
+		expect(mockSpawn).toHaveBeenNthCalledWith(2, "screen", ["-X", "select", "coder"], expect.objectContaining({}));
+		expect(mockSpawn).toHaveBeenNthCalledWith(3, "screen", ["-X", "kill"], expect.objectContaining({}));
+	});
+
+	it("does NOT kill if the window isn't in -Q windows (F3R-3 guard)", async () => {
+		mockSpawn.mockImplementation(() => makeChild({ stdout: "0 other 1 main" }));
+
+		await screenBackend.close?.({ backendId: "screen", ref: "coder" });
+
+		// Only -Q windows ran; select + kill skipped (ref not found).
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		expect(mockSpawn).toHaveBeenNthCalledWith(1, "screen", ["-Q", "windows"], expect.objectContaining({}));
+	});
 	});
 });
 
@@ -805,7 +808,7 @@ describe("buildStandaloneCommand", () => {
 		// Shell-escaping wraps each element in single quotes and replaces
 		// every inner single quote with '\'' (close-quote, escaped-quote,
 		// reopen-quote) — verify the escape marker is present.
-		expect(script).toContain("rm -rf");
+		expect(script).toContain("'mya'");  // positive: first arg shell-escaped (single-quote wrapped)
 		// The fully-escaped dangerous element is present as literal text;
 		// the ';' and spaces never reach shell command-separator parsing.
 		expect(result.cmd).toBe("osascript");
