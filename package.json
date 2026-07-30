@@ -49,8 +49,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
-    "@earendil-works/pi-coding-agent": "^0.80.6",
-    "@earendil-works/pi-tui": "^0.80.6",
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@earendil-works/pi-agent-core": "0.83.0",
+    "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-tui": "0.83.0",
     "@google/genai": "^2.11.0",
     "@mistralai/mistralai": "^2.4.1",
     "@nous-research/ui": "^1.5.2",
