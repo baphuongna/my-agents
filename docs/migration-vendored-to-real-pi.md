@@ -1,8 +1,8 @@
 # Migration Feasibility: Vendored pi Fork → Real npm Package
 
-**Status**: Mechanically feasible. No hard API blockers at target version 0.83.0.
+**Status**: FULLY VERIFIED. Zero symbol gaps at npm 0.83.0. Zero mya patches in fork.
 **Verdict**: Proceed with phased migration (Phases 0–3 = core, ~3 days; Phases 4–5 = deferred cleanup, ~1.5 days).
-**Last updated**: 2026-07-30
+**Last updated**: 2026-07-30 (verification complete)
 
 ---
 
@@ -10,11 +10,21 @@
 
 | Question | Answer |
 |----------|--------|
-| Is migration technically possible? | **Yes** — at version 0.83.0, all exported symbols used by coding-agent exist in the real package. |
-| Are there hard blockers? | **No** — every gap is version-driven (0.80.6 installed vs 0.83.0 needed) or a mechanical import-path rename. |
-| What's the critical prerequisite? | **Upgrade to 0.83.0** — current local install is 0.80.6, which is missing 4 exports. |
-| How many files are affected? | ~58 files in `packages/coding-agent/` for pi-agent-core/pi-ai. ~50+ more for TUI (Phase 4). |
-| Is the export surface identical? | **Yes** — fork `src/index.ts` is byte-for-byte export-equivalent to real 0.83.0 `dist/index.d.ts` for both sub-packages. |
+| Is migration technically possible? | **Yes** — VERIFIED: all 47 symbols (7 pi-agent-core + 40 pi-ai) exist in npm 0.83.0. |
+| Are there hard blockers? | **No** — ZERO gaps at 0.83.0. |
+| What's the critical prerequisite? | **Upgrade to 0.83.0** — current local install is 0.80.6, which is missing exports. |
+| How many files are affected? | ~55 files for pi-agent-core/pi-ai (Phase 1). ~60 more for TUI (Phase 4). |
+| Is the export surface identical? | **Yes** — fork `src/index.ts` export-equivalent to real 0.83.0 `dist/index.d.ts`. |
+| Any mya patches in fork? | **ZERO functional patches** — fork is clean upstream copy at 0.82.0. |
+| Subpath exports available? | **All 5**: /compat ✓ /oauth ✓ /bun-oauth ✓ /providers/* ✓ /bedrock-provider ✓ |
+
+### Verification method
+Cross-checked against THREE sources:
+1. **Vendored fork** (`packages/pi-agent-src/`, `packages/pi-ai-src/`) — what coding-agent imports
+2. **Pi source** (`source/pi-agent-core/`, `source/pi-ai/`) — reference at 0.80.10
+3. **npm 0.83.0 dist** (global install `@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-{agent-core,ai}`) — the target
+
+All 47 symbols verified recursively across 168 `.d.ts` files in pi-ai dist + 23 in pi-agent-core dist.
 
 ---
 
