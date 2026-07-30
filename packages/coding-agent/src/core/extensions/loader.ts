@@ -88,16 +88,17 @@ let _aliases: Record<string, string> | null = null;
 /**
  * Resolve a pi package specifier to an absolute file path.
  *
- * Uses `import.meta.resolve` in production (Node.js ESM). Falls back to
- * manual resolution via package.json exports for environments where
- * `import.meta.resolve` is unavailable (e.g., vitest's Vite SSR transform).
+ * Uses `import.meta.resolve` in production (Node.js ESM, Bun, vitest forks pool).
+ * Falls back to manual resolution via package.json exports for hypothetical
+ * environments where `import.meta.resolve` is unavailable.
  */
 function resolvePiEntry(specifier: string): string {
 	if (typeof import.meta.resolve === "function") {
 		return fileURLToPath(import.meta.resolve(specifier));
 	}
-	// Fallback: locate the package directory and resolve the exports entry
-	// manually. Needed for vitest's Vite SSR which doesn't support import.meta.resolve.
+	// Fallback: locate the package directory and resolve the exports entry manually.
+	// NOTE: All current environments (Node ≥20.9, Bun, vitest forks) support import.meta.resolve.
+	// This fallback exists for robustness only and does NOT handle wildcard exports (./providers/*).
 	const parts = specifier.split("/");
 	// Handle scoped packages: @scope/name[/subpath...]
 	const pkgName = parts[0].startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];

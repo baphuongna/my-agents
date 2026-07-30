@@ -8,7 +8,7 @@
  *  - SYSTEM: shell out to `mya` TTY-detached, verify TUI starts
  *  - TUI UI: pexpect/PTY spawn `mya`, type commands, observe screen
  *
- * Reference: packages/tui/, packages/print/src/pi-main.ts (InteractiveMode)
+ * Reference: @earendil-works/pi-tui (npm), packages/print/src/pi-main.ts (InteractiveMode)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -118,7 +118,7 @@ describe("[unit] REPL signal handlers (Ctrl-C, EOF)", () => {
 });
 
 // Inline helper for the above REPL parsing logic
-// (matches packages/tui/src/engine.ts:parseSigintPolicy)
+// (matches @earendil-works/pi-tui (npm)src/engine.ts:parseSigintPolicy)
 function parseInterruptPolicy(opts: {
 	inFlight: boolean;
 	secondTime?: boolean;
@@ -241,7 +241,7 @@ describe("[real] REPL transcript + key bindings", () => {
 	});
 });
 
-// Layer-action helper (matches packages/tui/src/keybindings.ts)
+// Layer-action helper (matches @earendil-works/pi-tui (npm)src/keybindings.ts)
 function parseLayerAction(key: string, ctx: { inFlight?: boolean } = {}): string {
 	switch (key) {
 		case "ctrl+l": return "clear-screen";
