@@ -66,6 +66,7 @@ import { PiAiProviderBridge } from "@my-agent/ai";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 import { createExporter } from "./exporters.js";
 
 export interface AgentConfig {
@@ -943,7 +944,7 @@ export { AgentPool, type AgentPoolOptions, type AgentSessionEntry, type AgentSes
  *   openai-codex-responses, google-generative-ai, google-vertex, mistral-conversations,
  *   bedrock-converse-stream.
  * Multi-API providers pick the most common default.
- * Source: vendored/pi-ai/dist/providers/*.js + env-api-keys.js (35 text providers). */
+ * Source: @earendil-works/pi-ai/dist/providers/*.js + env-api-keys.js (35 text providers). */
 export const PI_AI_PROVIDERS: Array<{ envKey: string; providerId: string; defaultModel: string; defaultApi: string }> = [
   // ── anthropic-messages API ──
   { envKey: "ANTHROPIC_API_KEY", providerId: "anthropic", defaultModel: "claude-sonnet-4-20250514", defaultApi: "anthropic-messages" },
@@ -998,11 +999,19 @@ function autoDetectPiAiProviders(
   let requireFn: NodeRequire;
   try { requireFn = createRequire(import.meta.url); }
   catch { return bridges; }
+  // Resolve @earendil-works/pi-ai package directory. The package uses ESM-only
+  // exports (no "require" condition), so we locate the install dir via
+  // resolve.paths and require the provider files by absolute path.
+  const searchPaths = requireFn.resolve.paths("@earendil-works/pi-ai") ?? [];
+  const piAiPkgDir = searchPaths
+    .map((p) => join(p, "@earendil-works", "pi-ai"))
+    .find((p) => existsSync(join(p, "dist", "providers")));
+  if (!piAiPkgDir) return bridges;
   for (const cfg of PI_AI_PROVIDERS) {
     const apiKey = tryResolve(cfg.envKey);
     if (!apiKey) continue;
     try {
-      const mod = requireFn(`../../vendored/pi-ai/dist/providers/${cfg.providerId}.js`);
+      const mod = requireFn(join(piAiPkgDir, "dist", "providers", `${cfg.providerId}.js`));
       const ProviderClass = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
       if (typeof ProviderClass !== "function") continue;
       const provider = new ProviderClass({ apiKey });

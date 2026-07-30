@@ -228,12 +228,21 @@ function detectCouncilMembers(): CouncilMember[] | undefined {
   try { requireFn = createRequire(import.meta.url); }
   catch { return undefined; }
 
+  // Resolve @earendil-works/pi-ai package directory. The package uses ESM-only
+  // exports (no "require" condition), so we locate the install dir via
+  // resolve.paths and require the provider files by absolute path.
+  const searchPaths = requireFn.resolve.paths("@earendil-works/pi-ai") ?? [];
+  const piAiPkgDir = searchPaths
+    .map((p) => join(p, "@earendil-works", "pi-ai"))
+    .find((p) => existsSync(join(p, "dist", "providers")));
+  if (!piAiPkgDir) return undefined;
+
   const members: CouncilMember[] = [];
   for (const cfg of COUNCIL_PROVIDERS) {
     const apiKey = process.env[cfg.envKey];
     if (!apiKey) continue;
     try {
-      const mod = requireFn(`../../../vendored/pi-ai/dist/providers/${cfg.providerId}.js`);
+      const mod = requireFn(join(piAiPkgDir, "dist", "providers", `${cfg.providerId}.js`));
       const factory = mod.default ?? mod[Object.keys(mod).find((k) => k.toLowerCase().includes("provider")) ?? ""] ?? Object.values(mod)[0];
       if (typeof factory !== "function") continue;
       // pi-ai provider factories return a Provider object (envApiKeyAuth reads
