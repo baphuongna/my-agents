@@ -130,10 +130,12 @@ describe.skipIf(!MYA_BIN || !HERDR_AVAILABLE)(
   "[system] herdr view backend — spawns subagent with --gateway-session",
   () => {
     let ref: string | undefined;
+    let savedHerdr: string | undefined;
 
     afterEach(async () => {
       if (ref) await run("herdr", ["pane", "close", ref]).catch(() => {});
       ref = undefined;
+      process.env.HERDR_ENV = savedHerdr; // LOW-2: restore env mutation
     });
 
     it("herdrBackend.open() spawns a subagent pane that reports done", async () => {
@@ -205,6 +207,7 @@ describe.skipIf(!MYA_BIN || !HERDR_AVAILABLE)(
 
         // 4. Open a herdr pane running the wrapper script.
         //    Set HERDR_ENV so herdrBackend.detect() returns true.
+        savedHerdr = process.env.HERDR_ENV;
         process.env.HERDR_ENV = "1";
         const handle = await herdrBackend.open({
           command: ["bash", scriptPath],

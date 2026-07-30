@@ -135,6 +135,9 @@ import { LifecycleGuard } from "@my-agent/cron";
 // P7 (shard 07): process-level exception handlers.
 import { installExceptionHandlers } from "./exception-handler.js";
 
+// Flag-value / positional extraction — shared with main-flags.test.ts (no copy-drift).
+import { FLAGS_WITH_VALUE, extractPositional } from "./cli-flags.js";
+
 async function main(): Promise<void> {
   // P7 (shard 07): install process-level exception handlers (transient → logged;
   // fatal → logged + exit). Installed at the very top of main so every code path
@@ -255,33 +258,14 @@ async function main(): Promise<void> {
   const print = args.includes("--print") || json;
   const rpc = args.includes("--rpc");
   const debug = args.includes("--debug");
-  // Flags that consume the next argument as their value (mirrors pi's cli/args.ts).
-  // --role/--task: role-subagent startup flags (see docs/mya-subagent-design.md).
-  // --provider is critical: without it, `mya --provider minimax --task '...'` leaks
-  // `minimax` into positional, producing a truthy prompt that triggers print-mode
-  // dispatch — bypassing InteractiveMode and the mya-bridge extension entirely.
-  const FLAGS_WITH_VALUE = new Set([
-    // mya-specific
-    "--port", "--bg-id", "--gateway-session", "--gateway-url", "--role", "--task",
-    // pi value-flags (keep in sync with packages/coding-agent/src/cli/args.ts)
-    "--model", "--session", "--session-id", "--fork", "--session-dir",
-    "--provider", "--api-key", "--models", "--thinking", "--mode",
-    "--system-prompt", "--append-system-prompt", "--name", "-n",
-    "--tools", "-t", "--exclude-tools", "-xt",
-    "--export", "--extension", "-e", "--skill", "--prompt-template", "--theme",
-  ]);
+  // FLAGS_WITH_VALUE + extractPositional are module-level exports (see above).
   const modelIdx = args.indexOf("--model");
   const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
   const roleIdx = args.indexOf("--role");
   const role = roleIdx >= 0 ? args[roleIdx + 1] : undefined;
   const taskIdx = args.indexOf("--task");
   const task = taskIdx >= 0 ? args[taskIdx + 1] : undefined;
-  const positional = args.filter((a, i) => {
-    if (a.startsWith("--")) return false;
-    if (i > 0 && FLAGS_WITH_VALUE.has(args[i - 1]!)) return false; // value of a flag
-    if (a === model) return false;
-    return true;
-  });
+  const positional = extractPositional(args, model);
 
   if (rpc) {
     return runRpcServer(model);

@@ -2,40 +2,12 @@
 // Regression: --provider was missing, causing `mya --provider minimax --task '...'`
 // to leak `minimax` into positional[], producing a truthy prompt that triggered
 // print-mode dispatch — bypassing InteractiveMode and the mya-bridge extension.
-// This test mirrors the exact filter logic from main.ts to ensure value-flags
-// are correctly recognized.
+//
+// Imports the ACTUAL FLAGS_WITH_VALUE + extractPositional from cli-flags.ts (the
+// single source of truth) — NOT a local copy. This catches drift: if someone
+// removes a flag from the real set, this test fails.
 import { describe, it, expect } from "vitest";
-
-/**
- * Replicate the FLAGS_WITH_VALUE set from packages/print/src/main.ts.
- * This MUST stay in sync with the source. If this test fails, the source
- * FLAGS_WITH_VALUE set is missing a flag that pi's cli/args.ts consumes.
- *
- * Flags marked (pi) come from packages/coding-agent/src/cli/args.ts.
- * Flags marked (mya) are mya-specific.
- */
-const FLAGS_WITH_VALUE = new Set([
-  // mya-specific
-  "--port", "--bg-id", "--gateway-session", "--gateway-url", "--role", "--task",
-  // pi value-flags (keep in sync with packages/coding-agent/src/cli/args.ts)
-  "--model", "--session", "--session-id", "--fork", "--session-dir",
-  "--provider", "--api-key", "--models", "--thinking", "--mode",
-  "--system-prompt", "--append-system-prompt", "--name", "-n",
-  "--tools", "-t", "--exclude-tools", "-xt",
-  "--export", "--extension", "-e", "--skill", "--prompt-template", "--theme",
-]);
-
-/** Filter positional args — mirrors main.ts:265-272 exactly. */
-function extractPositional(args: string[]): string[] {
-  const modelIdx = args.indexOf("--model");
-  const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
-  return args.filter((a, i) => {
-    if (a.startsWith("--")) return false;
-    if (i > 0 && FLAGS_WITH_VALUE.has(args[i - 1]!)) return false;
-    if (a === model) return false;
-    return true;
-  });
-}
+import { FLAGS_WITH_VALUE, extractPositional } from "./cli-flags.js";
 
 describe("[unit] FLAGS_WITH_VALUE — value-consuming flags don't leak into positional", () => {
   describe("critical flags (used in role-subagent spawn)", () => {
@@ -125,6 +97,28 @@ describe("[unit] FLAGS_WITH_VALUE — value-consuming flags don't leak into posi
       const positional = extractPositional(args);
       const prompt = positional.join(" ").trim();
       expect(prompt).toBe("summarize this file"); // truthy → triggers print mode
+    });
+  });
+
+  // Direct set checks — catches drift if a flag is removed from FLAGS_WITH_VALUE.
+  describe("FLAGS_WITH_VALUE set contents (source-of-truth)", () => {
+    it("includes --provider (the regression flag)", () => {
+      expect(FLAGS_WITH_VALUE.has("--provider")).toBe(true);
+    });
+    it("includes all mya-specific flags", () => {
+      for (const f of ["--gateway-session", "--gateway-url", "--role", "--task", "--port", "--bg-id"]) {
+        expect(FLAGS_WITH_VALUE.has(f), f).toBe(true);
+      }
+    });
+  });
+
+  // Edge cases (reviewer LOW-3): flag as last arg / flag with no value.
+  describe("edge cases — flag with absent value", () => {
+    it("--provider as last arg produces empty positional", () => {
+      expect(extractPositional(["--provider"])).toEqual([]);
+    });
+    it("--provider with no value followed by another flag", () => {
+      expect(extractPositional(["--provider", "--role", "t", "hello"])).toEqual(["hello"]);
     });
   });
 });
