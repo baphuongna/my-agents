@@ -11,7 +11,7 @@
 //
 // This is HONEST: it exits non-zero if ANY package has type errors. The repo
 // currently carries a pre-existing backlog (see docs/TYPECHECK-BASELINE.md) —
-// ~93% of it is in vendored pi-fork code (coding-agent/pi-ai-src/pi-agent-src).
+// ~93% of it is in vendored pi-fork code (coding-agent).
 // Use `--owned` to exclude vendored packages and focus on project-owned code.
 // Use `--json` for machine-readable output. Use `--pkg <name>` to check one.
 //
@@ -27,7 +27,8 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 
 // Vendored pi-fork packages — forked source we don't "own" fixing type-by-type.
-const VENDORED = new Set(["coding-agent", "pi-ai-src", "pi-agent-src"]);
+// (pi-ai-src + pi-agent-src deleted in Phase 3 migration; coding-agent remains.)
+const VENDORED = new Set(["coding-agent"]);
 
 const argv = process.argv.slice(2);
 const ownedOnly = argv.includes("--owned");
@@ -104,7 +105,7 @@ if (failing.length) {
   for (const r of failing)
     console.log(`  ${String(r.errors).padStart(5)}  ${r.pkg}${VENDORED.has(r.pkg) ? "  (vendored)" : ""}`);
   console.log(
-    `\nTotal: ${total} error(s). Vendored coding-agent/pi-ai-src/pi-agent-src carry the bulk — run \`npm run typecheck:owned\` to focus on project-owned code. See docs/TYPECHECK-BASELINE.md.`,
+    `\nTotal: ${total} error(s). Vendored coding-agent carries the bulk — run \`npm run typecheck:owned\` to focus on project-owned code. See docs/TYPECHECK-BASELINE.md.`,
   );
 } else {
   console.log("✓ No type errors.");

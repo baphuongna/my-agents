@@ -2,9 +2,10 @@
 /**
  * Bundle mya CLI — builds from PROJECT SOURCE (not npm, not vendored JS dist).
  *
- * Pi TypeScript source is IN packages/ (coding-agent, pi-ai-src, pi-agent-src).
+ * Pi TypeScript source is IN packages/ (coding-agent, tui).
  * esbuild resolves @my-agent/* from these source packages directly.
- * No external pi dependency. No vendored JS. Source is owned by mya.
+ * pi-agent-core + pi-ai resolve from node_modules (@earendil-works/* npm packages).
+ * No vendored JS. Source is owned by mya.
  */
 
 import { build } from "esbuild";
@@ -19,13 +20,8 @@ const sourceResolve = {
   name: "source-resolve",
   setup(b) {
     // Map @my-agent/* to packages/ source (.ts files, not .js dist)
-    // Package-name → source-dir remap (when package name ≠ directory).
-    const dirRemap = { "pi-ai": "pi-ai-src", "pi-agent-core": "pi-agent-src" };
     // Explicit subpath overrides (file not derivable by convention).
-    const srcSubpaths = {
-      "@my-agent/pi-ai/compat": "packages/pi-ai-src/src/compat.ts",
-      "@my-agent/pi-ai/oauth": "packages/pi-ai-src/src/oauth.ts",
-    };
+    const srcSubpaths = {};
 
     // Resolve ALL @my-agent/* from packages/ SOURCE (.ts), not compiled dist.
     // This means editing ANY package's source is picked up by `npm run bundle`
@@ -35,7 +31,7 @@ const sourceResolve = {
     b.onResolve({ filter: /^@my-agent\// }, (args) => {
       if (srcSubpaths[args.path]) return { path: path.resolve(srcSubpaths[args.path]) };
       const pkg = args.path.replace(/^@my-agent\//, "").replace(/\/.*$/, "");
-      const dir = dirRemap[pkg] || pkg;
+      const dir = pkg;
       const stripped = args.path.slice(("@my-agent/" + pkg).length).replace(/^\//, "");
       const base = `packages/${dir}/src`;
       const candidates = stripped
