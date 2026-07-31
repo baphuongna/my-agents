@@ -274,64 +274,6 @@ async function configureProvider(id: string, envKey: string, apiKey: string, act
 
 /** Run OAuth login flow via gateway — polls /providers/:id/oauth/status.
  * Displays auth URL / device code / waiting / done / error. */
-async function runOAuthFlow(providerId: string, oauthName?: string): Promise<void> {
-  const dbg = (msg: string) => { try { require("node:fs").appendFileSync("/tmp/mya-prompt-debug.log", `[${Date.now()}] OAUTH: ${msg}\n`); } catch {} };
-  const label = oauthName ?? providerId;
-  process.stdout.write(A.clear);
-  process.stdout.write(`\n  ${A.bold(A.accent("mya"))} ${A.muted("OAuth Login")}\n`);
-  process.stdout.write(`  ${A.dim2("─".repeat(50))}\n\n`);
-  process.stdout.write(`  ${A.muted("Starting OAuth flow for " + label + "...")}\n`);
-  // Start the flow
-  try {
-    const resp = await fetch(`http://127.0.0.1:${GW_PORT}/providers/${providerId}/oauth`, {
-      method: "POST",
-      headers: withAuth({}),
-      signal: AbortSignal.timeout(5000),
-    });
-  } catch (e) {
-    process.stdout.write(`\n  ${A.red("✗ Failed to start OAuth flow")}\n  ${A.dim2("Press any key...")}`);
-    await waitForKey();
-    return;
-  }
-  // Poll for status
-  for (let i = 0; i < 90; i++) { // max 180 seconds
-    await new Promise((r) => setTimeout(r, 2000));
-    let state: { status?: string; url?: string; code?: string; error?: string };
-    try {
-      const r = await fetch(`http://127.0.0.1:${GW_PORT}/providers/${providerId}/oauth/status`, {
-        headers: withAuth({}),
-        signal: AbortSignal.timeout(2000),
-      });
-      state = await r.json() as typeof state;
-    } catch { continue; }
-    process.stdout.write(A.clear);
-    process.stdout.write(`\n  ${A.bold(A.accent("mya"))} ${A.muted("OAuth Login — " + label)}\n`);
-    process.stdout.write(`  ${A.dim2("─".repeat(50))}\n\n`);
-    if (state.status === "auth_url" && state.url) {
-      process.stdout.write(`  ${A.green("Browser opened. Complete sign-in in your browser.")}\n\n`);
-      process.stdout.write(`  ${A.dim2("If browser didn't open, visit:")}\n  ${A.accent(state.url)}\n\n`);
-      process.stdout.write(`  ${A.dim2("Waiting for authentication...")}`);
-    } else if (state.status === "device_code" && state.url) {
-      process.stdout.write(`  ${A.green("Open this URL and enter the code:")}\n\n`);
-      process.stdout.write(`  ${A.accent(state.url)}\n\n`);
-      process.stdout.write(`  ${A.bold("Code: " + A.accent(state.code ?? "???"))}\n\n`);
-      process.stdout.write(`  ${A.dim2("Waiting for authentication...")}`);
-    } else if (state.status === "done") {
-      process.stdout.write(`  ${A.green("✓ Login successful!")}\n  ${A.dim2("Credentials saved to ~/.mya/agent/auth.json")}\n  ${A.dim2("Restart gateway to apply: systemctl --user restart mya-gateway")}`);
-      await waitForKey();
-      return;
-    } else if (state.status === "error") {
-      process.stdout.write(`  ${A.red("✗ " + (state.error ?? "OAuth failed"))}\n  ${A.dim2("Press any key...")}`);
-      await waitForKey();
-      return;
-    } else {
-      process.stdout.write(`  ${A.dim2("Waiting for OAuth flow to start...")}`);
-    }
-    process.stdout.write(`\n\n  ${A.dim2("(timeout in " + Math.max(0, 180 - i * 2) + "s)")}`);
-  }
-  process.stdout.write(`\n\n  ${A.red("✗ OAuth timed out")}\n  ${A.dim2("Press any key...")}`);
-  await waitForKey();
-}
 
 async function killSubagent(sessionId: string): Promise<boolean> {
   try {
@@ -1101,15 +1043,11 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
               process.stdout.write(`\n  ${result.ok ? A.green("✓ Removed") : A.red("✗ Failed")}\n  ${A.dim2("Restart gateway: systemctl --user restart mya-gateway")}`);
             }
           } else if (p.hasOAuth && p.envKey) {
-            // Both OAuth and API key available — show selector like pi /login
+            // Both OAuth and API key available
             const choice = await inlinePrompt(`Login to ${p.name ?? p.id}`,
-              `1. Sign in with an account (${p.oauthName ?? "subscription"})\n2. Sign in with an API key (${p.envKey})\n\nType 1 or 2:`);
-            if (choice === "1") {
-              // OAuth flow stays in launcher — gateway handles pi-ai login,
-              // launcher polls for device_code/auth_url/done/error.
-              try { await runOAuthFlow(p.id, p.oauthName); }
-              catch { /* runOAuthFlow handles its own errors */ }
-            } else if (choice === "2") {
+              `1. Sign in with an API key (${p.envKey})\n2. Sign in with an account (${p.oauthName ?? "subscription"})\n\nType 1 or 2:\n(Tip: option 2 works best in the TUI — close launcher and run /login ${p.id})`);
+            if (choice === "1" || choice === "2") {
+              // Both paths lead to API key input (option 2 hint shown above)
               const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.`);
               if (apiKey) {
                 const result = await configureProvider(p.id, p.envKey, apiKey, "add");
@@ -1117,9 +1055,9 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
               }
             }
           } else if (p.hasOAuth) {
-            // OAuth only (e.g. openai-codex)
-            try { await runOAuthFlow(p.id, p.oauthName); }
-            catch { /* runOAuthFlow handles errors */ }
+            // OAuth only — show hint to use TUI
+            process.stdout.write(`\n  ${A.muted(p.name ?? p.id)} requires subscription login.\n  ${A.dim2("Close launcher and run: mya → /login " + p.id)}\n  ${A.dim2("Press any key...")}`);
+            await waitForKey();
           } else {
             // API key only
             const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.`);
