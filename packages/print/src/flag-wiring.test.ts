@@ -68,9 +68,9 @@ describe("[unit] filterMyaFlags strips --role/--task from pi args", () => {
     expect(filtered).not.toContain("--task");
     expect(filtered).not.toContain("coder");
     expect(filtered).not.toContain("do thing");
-    // gateway-session is NOT a mya flag (it's consumed by pi), so it stays
-    expect(filtered).toContain("--gateway-session");
-    expect(filtered).toContain("s1");
+    // gateway-session IS a mya flag (not recognized by pi), so it's stripped
+    expect(filtered).not.toContain("--gateway-session");
+    expect(filtered).not.toContain("s1");
   });
 
   it("preserves positional args that are not flag values", () => {

@@ -22,7 +22,10 @@ import * as shared from "./shared-instances.js";
 // Filter out mya-specific flags that pi doesn't understand.
 // --role/--task are consumed by the bridge (role-subagent startup); they must
 // NOT reach pi's arg parser.
-const MYA_FLAGS = new Set(["--no-launcher", "--print", "--json", "--rpc", "--debug", "--role", "--task"]);
+const MYA_FLAGS = new Set([
+  "--no-launcher", "--print", "--json", "--rpc", "--debug",
+  "--role", "--task", "--gateway-session", "--gateway-url", "--no-session",
+]);
 function filterMyaFlags(argv: string[]): string[] {
   return argv.filter((a, i, arr) => {
     if (MYA_FLAGS.has(a)) return false;
