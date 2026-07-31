@@ -842,7 +842,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
 
     const onData = async (data: Buffer) => {
       if (resolved) return;
-      const k = data.toString();
+      const k = data.toString().replace(/\x1bO([ABCD])/g, "\x1b[$1");
 
       if (k === "\x03" || k === "\x04") { cleanup(); return; }
       if (k === "q") { cleanup(); return; }
