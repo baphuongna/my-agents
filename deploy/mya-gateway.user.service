@@ -23,10 +23,12 @@ EnvironmentFile=-/home/bom/.mya/gateway.env
 WorkingDirectory=/home/bom/source/my-agent
 
 # ── Restart policy ──
-Restart=on-failure
-RestartSec=3
-StartLimitInterval=60
-StartLimitBurst=5
+# Restart=always: even clean exits (reboot, SIGTERM) get restarted.
+# This ensures the gateway is always available when the user session is active.
+Restart=always
+RestartSec=5
+StartLimitInterval=300
+StartLimitBurst=10
 
 # ── Logging ──
 StandardOutput=journal
