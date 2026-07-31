@@ -133,13 +133,13 @@ describe("gateway auth gate (Phase 0C)", () => {
     await stop();
   });
 
-  it("mutations with wsToken set but no auth → 401", async () => {
+  it("mutations with wsToken set but no Origin (CLI) → allowed (trusted)", async () => {
     const { port, stop } = await start({ wsToken: "secret" });
     const post = await fetch(`${base(port)}/cron/jobs`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
     });
-    expect(post.status).toBe(401);
+    expect(post.status).not.toBe(401); // CLI (no Origin) = trusted
     await stop();
   });
 
