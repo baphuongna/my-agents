@@ -276,7 +276,6 @@ async function configureProvider(id: string, envKey: string, apiKey: string, act
  * Displays auth URL / device code / waiting / done / error. */
 async function runOAuthFlow(providerId: string, oauthName?: string): Promise<void> {
   const dbg = (msg: string) => { try { require("node:fs").appendFileSync("/tmp/mya-prompt-debug.log", `[${Date.now()}] OAUTH: ${msg}\n`); } catch {} };
-  dbg(`runOAuthFlow START providerId=${providerId}`);
   const label = oauthName ?? providerId;
   process.stdout.write(A.clear);
   process.stdout.write(`\n  ${A.bold(A.accent("mya"))} ${A.muted("OAuth Login")}\n`);
@@ -284,17 +283,13 @@ async function runOAuthFlow(providerId: string, oauthName?: string): Promise<voi
   process.stdout.write(`  ${A.muted("Starting OAuth flow for " + label + "...")}\n`);
   // Start the flow
   try {
-    dbg(`POST /providers/${providerId}/oauth`);
     const resp = await fetch(`http://127.0.0.1:${GW_PORT}/providers/${providerId}/oauth`, {
       method: "POST",
       headers: withAuth({}),
       signal: AbortSignal.timeout(5000),
     });
-    dbg(`POST response: ${resp.status} ${resp.statusText}`);
   } catch (e) {
-    dbg(`POST failed: ${e instanceof Error ? e.message : String(e)}`);
     process.stdout.write(`\n  ${A.red("✗ Failed to start OAuth flow")}\n  ${A.dim2("Press any key...")}`);
-    dbg(`POST failed, waiting for key`);
     await waitForKey();
     return;
   }
@@ -323,22 +318,18 @@ async function runOAuthFlow(providerId: string, oauthName?: string): Promise<voi
       process.stdout.write(`  ${A.dim2("Waiting for authentication...")}`);
     } else if (state.status === "done") {
       process.stdout.write(`  ${A.green("✓ Login successful!")}\n  ${A.dim2("Credentials saved to ~/.mya/agent/auth.json")}\n  ${A.dim2("Restart gateway to apply: systemctl --user restart mya-gateway")}`);
-      dbg(`poll done, waiting for key`);
       await waitForKey();
       return;
     } else if (state.status === "error") {
       process.stdout.write(`  ${A.red("✗ " + (state.error ?? "OAuth failed"))}\n  ${A.dim2("Press any key...")}`);
-      dbg(`poll error: ${state.error}`);
       await waitForKey();
       return;
     } else {
       process.stdout.write(`  ${A.dim2("Waiting for OAuth flow to start...")}`);
-      dbg(`poll status: ${state.status}`);
     }
     process.stdout.write(`\n\n  ${A.dim2("(timeout in " + Math.max(0, 180 - i * 2) + "s)")}`);
   }
   process.stdout.write(`\n\n  ${A.red("✗ OAuth timed out")}\n  ${A.dim2("Press any key...")}`);
-  dbg(`timed out, waiting for key`);
   await waitForKey();
 }
 
@@ -1111,15 +1102,11 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
             }
           } else if (p.hasOAuth && p.envKey) {
             // Both OAuth and API key available — show selector like pi /login
-            const dbg = (msg: string) => { try { require("node:fs").appendFileSync("/tmp/mya-prompt-debug.log", `[${Date.now()}] ${msg}\n`); } catch {} };
-            dbg(`PROVIDER: p=${p.id} hasOAuth=${p.hasOAuth} envKey=${p.envKey} configured=${p.configured}`);
             const choice = await inlinePrompt(`Login to ${p.name ?? p.id}`,
               `1. Sign in with an account (${p.oauthName ?? "subscription"})\n2. Sign in with an API key (${p.envKey})\n\nType 1 or 2:`);
-            dbg(`PROVIDER: choice=${JSON.stringify(choice)}`);
             if (choice === "1") {
-              dbg(`PROVIDER: starting runOAuthFlow(${p.id})`);
-              try { await runOAuthFlow(p.id, p.oauthName); dbg(`PROVIDER: runOAuthFlow done OK`); }
-              catch (e) { dbg(`PROVIDER: runOAuthFlow ERROR: ${e instanceof Error ? e.message : String(e)}`); }
+              try { await runOAuthFlow(p.id, p.oauthName); }
+              catch { /* runOAuthFlow handles its own errors */ }
             } else if (choice === "2") {
               const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.`);
               if (apiKey) {

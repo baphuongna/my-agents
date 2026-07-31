@@ -719,7 +719,13 @@ export class Gateway {
       }
       const credential = await models.login(providerId, "oauth", {
         signal: AbortSignal.timeout(180000), // 3 min timeout
-        prompt: async () => { throw new Error("Interactive prompts not supported via launcher OAuth"); },
+        prompt: async (p: { type: string; message?: string; options?: Array<{ id: string; label: string }> }) => {
+          // Log the prompt type for debugging, then throw — full interactive
+          // prompt support requires a bidirectional launcher↔gateway channel.
+          const state = this.oauthFlows.get(providerId);
+          if (state) { state.status = "error"; state.error = `OAuth requires interactive prompt (${p.type}): ${p.message ?? ""}`; }
+          throw new Error(`Interactive prompt required (${p.type})`);
+        },
         notify: async (event: { type: string; url?: string; verificationUri?: string; userCode?: string; message?: string }) => {
           const state = this.oauthFlows.get(providerId);
           if (!state) return;
