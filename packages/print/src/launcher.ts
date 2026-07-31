@@ -57,7 +57,7 @@ interface GatewayInfo {
   uptime?: number;
   channels?: Array<{ id: string; type: string; alias?: string; label: string; enabled: boolean; configured: boolean; health: string }>;
   cronJobs?: Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; nextRunAt?: number; lastStatus?: string; lastError?: string; jobType?: string; deliveryTarget?: string }>;
-  providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>;
+  providers?: Array<{ id: string; name: string; envKey: string; model: string; configured: boolean; reasoning?: boolean; contextWindow?: number; maxTokens?: number }>;
   subagents?: { active: number; total: number };
   agentTree?: AgentTreeEntry[];
   mcpServers?: Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
@@ -108,7 +108,7 @@ async function loadGatewayInfo(): Promise<GatewayInfo> {
   const [health, sessions, status, cronJobs, tree, mcpServers, skills, memoryStats, roles] = await Promise.all([
     fetchJson<{ state: string; ok: boolean }>(`http://127.0.0.1:${GW_PORT}/health/live`),
     loadGatewaySessions(),
-    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
+    fetchJson<{ model?: string; uptime?: number; channels?: GatewayInfo["channels"]; providers?: Array<{ id: string; name: string; envKey: string; model: string; configured: boolean }>; subagents?: GatewayInfo["subagents"]; version?: string; pid?: number }>(`http://127.0.0.1:${GW_PORT}/status`),
     fetchJson<Array<{ id: string; name: string; trigger: string; schedule: string | number; prompt: string; enabled: boolean; lastRunAt?: number; nextRunAt?: number; lastStatus?: string; lastError?: string; jobType?: string; deliveryTarget?: string }>>(`http://127.0.0.1:${GW_PORT}/cron/jobs`),
     fetchJson<AgentTreeEntry[]>(`http://127.0.0.1:${GW_PORT}/pool/tree`),
     fetchJson<GatewayInfo["mcpServers"]>(`http://127.0.0.1:${GW_PORT}/mcp/servers`),
@@ -1033,10 +1033,10 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
             }
           } else {
             // Add API key
-            const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.\nStored securely in ~/.mya/agent/auth.json.`);
+            const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.`);
             if (apiKey) {
               const result = await configureProvider(p.id, p.envKey, apiKey, "add");
-              process.stdout.write(`\n  ${result.ok ? A.green("✓ Saved to ~/.mya/gateway.env") : A.red("✗ Failed")}\n  ${A.dim2("Restart gateway: systemctl --user restart mya-gateway")}`);
+              process.stdout.write(`\n  ${result.ok ? A.green("✓ Saved to ~/.mya/agent/auth.json") : A.red("✗ Failed")}\n  ${A.dim2("Restart gateway to apply: press 'R' or systemctl --user restart mya-gateway")}`);
             }
           }
           if (isTTY) process.stdin.setRawMode(true);

@@ -161,7 +161,7 @@ describe("Gateway /models returns real metadata", () => {
         const models = (await res.json()) as Array<{ provider: string; contextWindow?: number; maxTokens?: number; reasoning?: boolean }>;
         const anthropic = models.find((m) => m.provider === "anthropic");
         expect(anthropic).toBeDefined();
-        expect(anthropic!.contextWindow).toBe(200000);
+        expect(anthropic!.contextWindow).toBe(1000000);
         expect(anthropic!.maxTokens).toBe(128000);
         expect(anthropic!.reasoning).toBe(true);
       } finally {

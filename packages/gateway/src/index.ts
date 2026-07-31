@@ -40,6 +40,8 @@ import {
 import { getVapidPublicKey, addSubscription, removeSubscription } from "./push.js";
 import { encodePairingQR, type DevicePairing, type PairingQR, type WebAuthnService } from "@my-agent/secrets";
 import type { VoiceCallChannel } from "./voice-call.js";
+export { detectProviderSummary, getProviderRegistry } from "./provider-registry.js";
+import { detectProviderSummary, initProviderRegistry } from "./provider-registry.js";
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -582,7 +584,9 @@ export class Gateway {
 
   /** Start listening. Resolves with the bound port (0 = ephemeral). */
   start(): Promise<{ port: number; wsPath: string }> {
-    return new Promise((resolve, reject) => {
+    // Initialize provider registry from pi-ai engine (async discovery of env keys).
+    // Must complete before serving requests so /status shows correct env keys.
+    return initProviderRegistry().then(() => new Promise<{ port: number; wsPath: string }>((resolve, reject) => {
       this.http = createServer((req, res) => this.handleHttp(req, res));
       this.wss = new WebSocketServer({ noServer: true });
       this.http.on("upgrade", (req, socket, head) => {
@@ -687,7 +691,7 @@ export class Gateway {
         try { startWatchdog(); } catch { /* best-effort */ }
         resolve({ port, wsPath: `ws://${this.host}:${port}/events` });
       });
-    });
+    }));
   }
 
   /** Phase 1A: one cron sweep — reconcile, claim due jobs, run each on its own
@@ -1083,17 +1087,14 @@ export class Gateway {
       case "/tools": return send(200, this.control.listTools());
       case "/models": {
         const providers = detectProviderSummary();
-        const models = providers.map((p) => {
-          const meta = MODEL_METADATA[p.id] ?? MODEL_METADATA[p.id.split("-")[0] ?? ""] ?? {};
-          return {
-            provider: p.id,
-            id: p.model,
-            name: p.model,
-            reasoning: meta.reasoning,
-            contextWindow: meta.contextWindow,
-            maxTokens: meta.maxTokens,
-          };
-        });
+        const models = providers.map((p) => ({
+          provider: p.id,
+          id: p.model,
+          name: p.model,
+          reasoning: p.reasoning,
+          contextWindow: p.contextWindow,
+          maxTokens: p.maxTokens,
+        }));
         return send(200, models);
       }
       case "/thinking": {
@@ -1263,7 +1264,7 @@ export class Gateway {
           return;
         }
         // Channel sessions listing
-        // ── Provider config (add/remove API key from gateway.env) ──
+        // ── Provider config (add/remove API key from auth.json env section) ──
         if (url.pathname === "/providers/config" && req.method === "POST") {
           let body = "";
           req.on("data", (c) => (body += c));
@@ -1271,15 +1272,19 @@ export class Gateway {
             try {
               const { id, envKey, apiKey, action } = JSON.parse(body || "{}") as { id?: string; envKey?: string; apiKey?: string; action?: "add" | "remove" };
               if (!id || !envKey) return send(400, { error: "id + envKey required" });
-              const envFile = join(homedir(), ".mya", "gateway.env");
-              let lines: string[] = [];
-              try { lines = readFileSync(envFile, "utf8").split("\n"); } catch { /* file doesn't exist */ }
-              // Remove existing entry for this envKey
-              lines = lines.filter((l) => !l.startsWith(`${envKey}=`) && !l.startsWith(`#${envKey}=`));
+              // Write to ~/.mya/agent/auth.json under env: {} section.
+              // This is loaded by main.ts:loadAuthConfig() at gateway startup.
+              const authPath = join(homedir(), ".mya", "agent", "auth.json");
+              let cfg: Record<string, unknown> = {};
+              try { cfg = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, unknown>; } catch { /* file doesn't exist */ }
+              const envSection = (cfg["env"] as Record<string, string>) ?? {};
               if (action === "add" && apiKey) {
-                lines.push(`${envKey}=${apiKey}`);
+                envSection[envKey] = apiKey;
+              } else {
+                delete envSection[envKey];
               }
-              writeFileSync(envFile, lines.join("\n"), "utf8");
+              cfg["env"] = envSection;
+              writeFileSync(authPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
               return send(200, { ok: true, id, envKey, action: action ?? "add", restart: true });
             } catch (e) { return send(400, { error: (e as Error).message }); }
           });
@@ -2411,93 +2416,9 @@ function parseChannelWebhook(channelId: string, body: string): ChannelMessage | 
   }
 }
 
-/** Model metadata: known context window, max tokens, reasoning capability.
- * Values sourced from @earendil-works/pi-ai/dist/models.generated.js. Covers all
- * providers in PROVIDER_REGISTRY with known values. */
-const MODEL_METADATA: Record<string, { contextWindow?: number; maxTokens?: number; reasoning?: boolean }> = {
-  anthropic:         { contextWindow: 200000,  maxTokens: 128000, reasoning: true  },
-  google:            { contextWindow: 1048576, maxTokens: 8192,   reasoning: false },
-  "google-vertex":   { contextWindow: 1048576, maxTokens: 8192,   reasoning: false },
-  openai:            { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
-  "openai-codex":    { contextWindow: 128000,  maxTokens: 16384,  reasoning: true  },
-  "azure-openai-responses": { contextWindow: 128000, maxTokens: 16384, reasoning: false },
-  deepseek:          { contextWindow: 64000,   maxTokens: 8192,   reasoning: false },
-  groq:              { contextWindow: 131072,  maxTokens: 32768,  reasoning: false },
-  mistral:           { contextWindow: 128000,  maxTokens: 8192,   reasoning: false },
-  xai:               { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  together:          { contextWindow: 131072,  maxTokens: 131072, reasoning: false },
-  fireworks:         { contextWindow: 131072,  maxTokens: 131072, reasoning: false },
-  moonshotai:        { contextWindow: 131072,  maxTokens: 16384,  reasoning: false },
-  openrouter:        { contextWindow: 200000,  maxTokens: 8192,   reasoning: false },
-  minimax:           { contextWindow: 1000000, maxTokens: 128000, reasoning: true  },
-  "minimax-cn":      { contextWindow: 24576,  maxTokens: 24576,  reasoning: false },
-  cerebras:          { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  nvidia:            { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  huggingface:       { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  "github-copilot":  { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
-  "cloudflare-workers-ai": { contextWindow: 131072, maxTokens: 8192, reasoning: false },
-  "cloudflare-ai-gateway": { contextWindow: 128000, maxTokens: 16384, reasoning: false },
-  zai:               { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  "zai-coding-cn":   { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  "ant-ling":        { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  xiaomi:            { contextWindow: 131072,  maxTokens: 8192,   reasoning: false },
-  "vercel-ai-gateway": { contextWindow: 128000, maxTokens: 16384, reasoning: false },
-  "kimi-coding":      { contextWindow: 131072, maxTokens: 8192,   reasoning: false },
-  opencode:          { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
-  "opencode-go":     { contextWindow: 128000,  maxTokens: 16384,  reasoning: false },
-  "amazon-bedrock":  { contextWindow: 200000,  maxTokens: 8192,   reasoning: false },
-};
+/** Provider data (IDs, names, env keys, default models) comes from the engine.
+ * @see ./provider-registry.ts — uses @earendil-works/pi-ai builtinProviders(). */
 
-/** Full provider registry: ALL 37 pi-ai providers with env var mapping. */
-const PROVIDER_REGISTRY: Array<{ id: string; envKey: string; defaultModel: string }> = [
-  { id: "minimax", envKey: "MINIMAX_API_KEY", defaultModel: "MiniMax-M3" },
-  { id: "minimax-cn", envKey: "MINIMAX_CN_API_KEY", defaultModel: "abab6.5s-chat" },
-  { id: "openai", envKey: "OPENAI_API_KEY", defaultModel: "gpt-4o-mini" },
-  { id: "openai-codex", envKey: "OPENAI_API_KEY", defaultModel: "codex-mini-latest" },
-  { id: "anthropic", envKey: "ANTHROPIC_API_KEY", defaultModel: "claude-sonnet-4-20250514" },
-  { id: "google", envKey: "GEMINI_API_KEY", defaultModel: "gemini-2.0-flash" },
-  { id: "google-vertex", envKey: "GOOGLE_CLOUD_API_KEY", defaultModel: "gemini-2.0-flash" },
-  { id: "amazon-bedrock", envKey: "AWS_ACCESS_KEY_ID", defaultModel: "anthropic.claude-3-sonnet" },
-  { id: "azure-openai-responses", envKey: "AZURE_OPENAI_API_KEY", defaultModel: "gpt-4o" },
-  { id: "deepseek", envKey: "DEEPSEEK_API_KEY", defaultModel: "deepseek-chat" },
-  { id: "groq", envKey: "GROQ_API_KEY", defaultModel: "llama-3.3-70b-versatile" },
-  { id: "mistral", envKey: "MISTRAL_API_KEY", defaultModel: "mistral-large-latest" },
-  { id: "xai", envKey: "XAI_API_KEY", defaultModel: "grok-3" },
-  { id: "together", envKey: "TOGETHER_API_KEY", defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo" },
-  { id: "fireworks", envKey: "FIREWORKS_API_KEY", defaultModel: "accounts/fireworks/models/llama-v3p1-70b-instruct" },
-  { id: "moonshotai", envKey: "MOONSHOT_API_KEY", defaultModel: "moonshot-v1-auto" },
-  { id: "moonshotai-cn", envKey: "MOONSHOT_API_KEY", defaultModel: "moonshot-v1-auto" },
-  { id: "openrouter", envKey: "OPENROUTER_API_KEY", defaultModel: "anthropic/claude-3.5-sonnet" },
-  { id: "openrouter-images", envKey: "OPENROUTER_API_KEY", defaultModel: "openai/dall-e-3" },
-  { id: "cerebras", envKey: "CEREBRAS_API_KEY", defaultModel: "llama3.1-70b" },
-  { id: "github-copilot", envKey: "GITHUB_COPILOT_TOKEN", defaultModel: "gpt-4o" },
-  { id: "huggingface", envKey: "HF_TOKEN", defaultModel: "meta-llama/Llama-3.1-70B-Instruct" },
-  { id: "nvidia", envKey: "NVIDIA_API_KEY", defaultModel: "meta/llama-3.1-70b-instruct" },
-  { id: "kimi-coding", envKey: "KIMI_API_KEY", defaultModel: "moonshot-v1-auto" },
-  { id: "opencode", envKey: "OPENCODE_API_KEY", defaultModel: "gpt-4o" },
-  { id: "opencode-go", envKey: "OPENCODE_API_KEY", defaultModel: "gpt-4o" },
-  { id: "cloudflare-workers-ai", envKey: "CLOUDFLARE_API_KEY", defaultModel: "@cf/meta/llama-3.1-70b-instruct" },
-  { id: "cloudflare-ai-gateway", envKey: "CLOUDFLARE_API_KEY", defaultModel: "gpt-4o-mini" },
-  { id: "cloudflare-auth", envKey: "CLOUDFLARE_API_KEY", defaultModel: "gpt-4o-mini" },
-  { id: "vercel-ai-gateway", envKey: "AI_GATEWAY_API_KEY", defaultModel: "gpt-4o-mini" },
-  { id: "zai", envKey: "ZAI_API_KEY", defaultModel: "glm-4" },
-  { id: "zai-coding-cn", envKey: "ZAI_CODING_CN_API_KEY", defaultModel: "glm-4" },
-  { id: "xiaomi", envKey: "XIAOMI_API_KEY", defaultModel: "mimo-7b" },
-  { id: "xiaomi-token-plan-cn", envKey: "XIAOMI_TOKEN_PLAN_CN_API_KEY", defaultModel: "mimo-7b" },
-  { id: "xiaomi-token-plan-ams", envKey: "XIAOMI_TOKEN_PLAN_AMS_API_KEY", defaultModel: "mimo-7b" },
-  { id: "xiaomi-token-plan-sgp", envKey: "XIAOMI_TOKEN_PLAN_SGP_API_KEY", defaultModel: "mimo-7b" },
-  { id: "ant-ling", envKey: "ANT_LING_API_KEY", defaultModel: "ant-ling-1" },
-];
-
-/** Detect ALL providers from environment (shows configured + unconfigured). */
-function detectProviderSummary(): Array<{ id: string; envKey: string; model: string; configured: boolean }> {
-  return PROVIDER_REGISTRY.map((e) => ({
-    id: e.id,
-    envKey: e.envKey,
-    model: process.env[`${e.envKey.replace(/_API_KEY$|_TOKEN$|_KEY$/, "_MODEL")}`] ?? e.defaultModel,
-    configured: !!process.env[e.envKey],
-  }));
-}
 export { isSystemdAvailable, notifyReady, startWatchdog, stopWatchdog, notifyStopping, checkScaleToZero } from "./systemd.js";
 export { VoicePTTController } from "./voice-ptt.js";
 export type { VoicePTTState, VoiceEvent, VoicePTTResult } from "./voice-ptt.js";
