@@ -51,20 +51,40 @@ const sourceResolve = {
   },
 };
 
-// ── Dedupe: remove nested pi-* copies under pi-coding-agent ──
-// npm installs @earendil-works/pi-ai/pi-agent-core/pi-tui as BOTH top-level
-// and nested deps of pi-coding-agent (same version). esbuild bundles both →
-// module-level singletons (e.g. bundledLoaders in load.js) get duplicated →
-// registerBunOAuthFlows() sets one instance, OAuth code reads the other.
-// Fix: delete nested copies before bundling so esbuild resolves to top-level.
-const NESTED_BASE = "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works";
-for (const pkg of ["pi-ai", "pi-agent-core", "pi-tui"]) {
-  const nested = path.resolve(`${NESTED_BASE}/${pkg}`);
-  if (fs.existsSync(nested)) {
-    fs.rmSync(nested, { recursive: true });
-    console.log(`  dedup: removed nested ${pkg}`);
+// ── Dedupe: remove same-version nested copies under pi-coding-agent ──
+// npm installs many packages as BOTH top-level AND nested deps of
+// pi-coding-agent. esbuild bundles both → module-level singletons get
+// duplicated → subtle runtime bugs (e.g. OAuth bundledLoaders split).
+// Fix: delete nested copies where the version matches top-level.
+// Different versions are KEPT (pi-coding-agent was tested with those).
+const NESTED_NM = path.resolve("node_modules/@earendil-works/pi-coding-agent/node_modules");
+function readVersion(pkgDir) {
+  try {
+    const pj = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pj)) return null;
+    return JSON.parse(fs.readFileSync(pj, "utf-8")).version ?? null;
+  } catch { return null; }
+}
+let dedupRemoved = 0;
+if (fs.existsSync(NESTED_NM)) {
+  for (const entry of fs.readdirSync(NESTED_NM)) {
+    const nestedEntry = path.join(NESTED_NM, entry);
+    if (entry.startsWith("@")) {
+      for (const sub of fs.readdirSync(nestedEntry)) {
+        const np = path.join(nestedEntry, sub);
+        const tp = path.resolve(`node_modules/${entry}/${sub}`);
+        const nv = readVersion(np), tv = readVersion(tp);
+        if (nv && tv && nv === tv) { fs.rmSync(np, { recursive: true }); dedupRemoved++; }
+      }
+      if (fs.existsSync(nestedEntry) && fs.readdirSync(nestedEntry).length === 0) fs.rmSync(nestedEntry, { recursive: true });
+    } else {
+      const tp = path.resolve(`node_modules/${entry}`);
+      const nv = readVersion(nestedEntry), tv = readVersion(tp);
+      if (nv && tv && nv === tv) { fs.rmSync(nestedEntry, { recursive: true }); dedupRemoved++; }
+    }
   }
 }
+if (dedupRemoved > 0) console.log(`  dedup: removed ${dedupRemoved} same-version nested packages`);
 
 await build({
   entryPoints: ["packages/print/src/main.ts"],
