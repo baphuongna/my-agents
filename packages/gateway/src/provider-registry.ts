@@ -19,6 +19,10 @@ export interface ProviderEntry {
   allEnvKeys: string[];
   /** First model in the provider's catalog (pi-ai's default ordering). */
   model: string;
+  /** True if provider supports OAuth (subscription) login. */
+  hasOAuth: boolean;
+  /** OAuth display name (e.g. "Anthropic (Claude Pro/Max)"). */
+  oauthName?: string;
   /** Model metadata from pi-ai engine. */
   contextWindow?: number;
   maxTokens?: number;
@@ -90,6 +94,8 @@ export async function initProviderRegistry(): Promise<ProviderEntry[]> {
       envKey: primary,
       allEnvKeys,
       model: first?.id ?? "",
+      hasOAuth: !!p.auth.oauth,
+      oauthName: p.auth.oauth?.name,
       contextWindow: first?.contextWindow,
       maxTokens: first?.maxTokens,
       reasoning: first?.reasoning,
@@ -128,6 +134,8 @@ export function getProviderRegistry(): ProviderEntry[] {
       envKey: primary,
       allEnvKeys: keys,
       model: first?.id ?? "",
+      hasOAuth: !!p.auth.oauth,
+      oauthName: p.auth.oauth?.name,
       contextWindow: first?.contextWindow,
       maxTokens: first?.maxTokens,
       reasoning: first?.reasoning,

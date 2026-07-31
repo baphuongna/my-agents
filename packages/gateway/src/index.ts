@@ -438,6 +438,8 @@ export class Gateway {
   private onThinkingChange?: (level: string | undefined) => void;
   /** One-shot delivery-channel warning flag. */
   private cronDeliveredWarned = false;
+  /** OAuth flow state: providerId → { status, url?, code?, error? }. */
+  private oauthFlows = new Map<string, { status: string; url?: string; code?: string; error?: string }>();
   /** Static file directory (optional — Phase 25.2 build pipeline). */
   private readonly staticDir?: string;
 
@@ -692,6 +694,61 @@ export class Gateway {
         resolve({ port, wsPath: `ws://${this.host}:${port}/events` });
       });
     }));
+  }
+
+  /** Start an OAuth login flow for a provider (subscription login).
+   * Uses pi-ai builtinModels + InMemoryCredentialStore, then persists the
+   * resulting credential to ~/.mya/agent/auth.json in CredentialStore format.
+   * State is tracked in this.oauthFlows for the launcher to poll. */
+  private async startOAuthFlow(providerId: string): Promise<void> {
+    if (this.oauthFlows.has(providerId)) return; // already in progress
+    this.oauthFlows.set(providerId, { status: "pending" });
+    try {
+      const { InMemoryCredentialStore } = await import("@earendil-works/pi-ai");
+      const { builtinModels } = await import("@earendil-works/pi-ai/providers/all");
+      const store = new InMemoryCredentialStore();
+      const models = builtinModels({ credentials: store });
+      const provider = models.getProvider(providerId);
+      if (!provider?.auth.oauth) {
+        this.oauthFlows.set(providerId, { status: "error", error: "Provider does not support OAuth" });
+        return;
+      }
+      const credential = await models.login(providerId, "oauth", {
+        signal: AbortSignal.timeout(180000), // 3 min timeout
+        prompt: async () => { throw new Error("Interactive prompts not supported via launcher OAuth"); },
+        notify: async (event: { type: string; url?: string; verificationUri?: string; userCode?: string; message?: string }) => {
+          const state = this.oauthFlows.get(providerId);
+          if (!state) return;
+          if (event.type === "auth_url" && event.url) {
+            state.status = "auth_url";
+            state.url = event.url;
+            // Open browser best-effort
+            try {
+              const { exec } = await import("node:child_process");
+              const cmd = process.platform === "darwin" ? `open "${event.url}"` : process.platform === "win32" ? `start "" "${event.url}"` : `xdg-open "${event.url}"`;
+              exec(cmd, () => {});
+            } catch { /* best-effort */ }
+          } else if (event.type === "device_code" && event.verificationUri) {
+            state.status = "device_code";
+            state.url = event.verificationUri;
+            state.code = event.userCode;
+          }
+        },
+      });
+      // Persist credential to auth.json in CredentialStore format
+      const authPath = join(homedir(), ".mya", "agent", "auth.json");
+      let cfg: Record<string, unknown> = {};
+      try { cfg = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, unknown>; } catch { /* create */ }
+      cfg[providerId] = credential;
+      writeFileSync(authPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+      this.oauthFlows.set(providerId, { status: "done" });
+      // Clean up after 30 seconds
+      setTimeout(() => this.oauthFlows.delete(providerId), 30_000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.oauthFlows.set(providerId, { status: "error", error: msg === "Login cancelled" ? "cancelled" : msg });
+      setTimeout(() => this.oauthFlows.delete(providerId), 30_000);
+    }
   }
 
   /** Phase 1A: one cron sweep — reconcile, claim due jobs, run each on its own
@@ -1285,6 +1342,19 @@ export class Gateway {
             } catch (e) { return send(400, { error: (e as Error).message }); }
           });
           return;
+        }
+        // ── OAuth login flow (subscription providers) ──
+        const oauthStartMatch = url.pathname.match(/^\/providers\/([^/]+)\/oauth$/);
+        if (oauthStartMatch && req.method === "POST") {
+          const providerId = oauthStartMatch[1]!;
+          this.startOAuthFlow(providerId);
+          return send(200, { ok: true, status: "pending" });
+        }
+        const oauthStatusMatch = url.pathname.match(/^\/providers\/([^/]+)\/oauth\/status$/);
+        if (oauthStatusMatch && req.method === "GET") {
+          const providerId = oauthStatusMatch[1]!;
+          const state = this.oauthFlows.get(providerId);
+          return send(200, state ?? { status: "none" });
         }
         // ── Channel config + test ──
         const channelConfigMatch = url.pathname.match(/^\/channels\/([^/]+)\/config$/);
