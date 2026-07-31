@@ -459,13 +459,14 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
     };
     let resolved = false;
     let refreshTimer: SupervisedTaskHandle | undefined;
+    let promptActive = false; // true when inlinePrompt is open — skip refresh
     const isTTY = !!process.stdin.isTTY;
     if (isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdout.write(A.altScreenOn + A.mouseOn + A.hideCursor);
 
     const refresh = async () => {
-      if (state.refreshing) return;
+      if (state.refreshing || promptActive) return;
       state.refreshing = true;
       try {
         state.info = await loadGatewayInfo();
@@ -932,6 +933,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           return;
         }
         if (k === "a") {
+          promptActive = true;
           process.stdin.pause();
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
@@ -947,6 +949,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.resume();
           process.stdout.write(A.altScreenOn + A.hideCursor);
           process.stdin.on("data", onData);
+          promptActive = false;
           void refresh();
           return;
         }
@@ -989,6 +992,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           return;
         }
         if (k === "a") {
+          promptActive = true;
           process.stdin.pause();
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
@@ -1008,6 +1012,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.resume();
           process.stdout.write(A.altScreenOn + A.hideCursor);
           process.stdin.on("data", onData);
+          promptActive = false;
           void refresh();
           return;
         }
@@ -1018,6 +1023,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         if (k === "\r" || k === "\n" || k === "a") {
           const p = providers[state.sel];
           if (!p) return;
+          promptActive = true;
           process.stdin.pause();
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
@@ -1041,6 +1047,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.resume();
           process.stdout.write(A.altScreenOn + A.hideCursor);
           process.stdin.on("data", onData);
+          promptActive = false;
           void refresh();
           return;
         }
@@ -1072,6 +1079,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           return;
         }
         if (k === "a") {
+          promptActive = true;
           process.stdin.pause();
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
@@ -1099,6 +1107,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.resume();
           process.stdout.write(A.altScreenOn + A.hideCursor);
           process.stdin.on("data", onData);
+          promptActive = false;
           void refresh();
           return;
         }
