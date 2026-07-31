@@ -1269,18 +1269,17 @@ export class Gateway {
             try {
               const { id, envKey, apiKey, action } = JSON.parse(body || "{}") as { id?: string; envKey?: string; apiKey?: string; action?: "add" | "remove" };
               if (!id || !envKey) return send(400, { error: "id + envKey required" });
-              // Write to ~/.mya/agent/auth.json under env: {} section.
-              // This is loaded by main.ts:loadAuthConfig() at gateway startup.
+              // Write to ~/.mya/agent/auth.json in pi CredentialStore format.
+              // Same format as TUI /login: { "providerId": { "type": "api_key", "key": "xxx" } }
+              // This is the single source of truth — /login and launcher use the same format.
               const authPath = join(homedir(), ".mya", "agent", "auth.json");
               let cfg: Record<string, unknown> = {};
               try { cfg = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, unknown>; } catch { /* file doesn't exist */ }
-              const envSection = (cfg["env"] as Record<string, string>) ?? {};
               if (action === "add" && apiKey) {
-                envSection[envKey] = apiKey;
+                cfg[id] = { type: "api_key", key: apiKey };
               } else {
-                delete envSection[envKey];
+                delete cfg[id];
               }
-              cfg["env"] = envSection;
               writeFileSync(authPath, JSON.stringify(cfg, null, 2) + "\n", "utf8");
               return send(200, { ok: true, id, envKey, action: action ?? "add", restart: true });
             } catch (e) { return send(400, { error: (e as Error).message }); }

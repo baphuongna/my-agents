@@ -62,17 +62,28 @@ function loadAuthConfig(): void {
   try {
     const authPath = join(homedir(), ".mya", "agent", "auth.json");
     const raw = readFileSync(authPath, "utf8");
-    const cfg = JSON.parse(raw) as Record<string, { key?: string }>;
-    if (cfg.minimax?.key && !process.env["MINIMAX_API_KEY"]) {
-      process.env["MINIMAX_API_KEY"] = envLineSafe(cfg.minimax.key);
+    const cfg = JSON.parse(raw) as Record<string, unknown>;
+    // Build providerId → envKey map from pi-ai engine (via gateway provider registry).
+    let providerToEnvKey: Map<string, string>;
+    try {
+      providerToEnvKey = new Map(getProviderRegistry().map((p) => [p.id, p.envKey]));
+    } catch { providerToEnvKey = new Map(); }
+    // pi CredentialStore format: { "providerId": { "type": "api_key", "key": "xxx" } }
+    // Unified: same format as TUI /login. Set env vars for gateway detection.
+    for (const [providerId, entry] of Object.entries(cfg)) {
+      if (providerId === "env") continue;
+      if (typeof entry !== "object" || entry === null) continue;
+      const cred = entry as { type?: string; key?: string };
+      if (cred.type === "api_key" && cred.key) {
+        const envKey = providerToEnvKey.get(providerId);
+        if (envKey) setEnvIfAllowed(envKey, cred.key);
+        // Legacy minimax/openai shortcut keys
+        else if (providerId === "minimax") setEnvIfAllowed("MINIMAX_API_KEY", cred.key);
+        else if (providerId === "openai") setEnvIfAllowed("OPENAI_API_KEY", cred.key);
+      }
     }
-    if (cfg.openai?.key && !process.env["OPENAI_API_KEY"]) {
-      process.env["OPENAI_API_KEY"] = envLineSafe(cfg.openai.key);
-    }
-    // Generic env overrides: { env: { VAR: "value" } } → process.env (if not preset).
-    // For CAMOFOX_URL, BROWSERBASE_API_KEY, search keys, etc. — so the TUI picks them
-    // up without manual `env VAR=... mya` (tmux server doesn't propagate shell exports).
-    const envCfg = (cfg as Record<string, unknown>)["env"] as Record<string, unknown> | undefined;
+    // Generic env overrides: { env: { VAR: "value" } } → process.env (backward compat).
+    const envCfg = cfg["env"] as Record<string, unknown> | undefined;
     if (envCfg && typeof envCfg === "object") {
       for (const [k, v] of Object.entries(envCfg)) {
         if (typeof v === "string") setEnvIfAllowed(k, v);
@@ -128,7 +139,7 @@ import { cronSessionToolConfig } from "./cron-role.js";
 // R3-3 fix: wire DevicePairing + WebAuthn (were never instantiated → endpoints 404).
 import { DevicePairing, WebAuthnService } from "@my-agent/secrets";
 // R4-2 fix: cross-device approval relay.
-import { ApprovalRelay } from "@my-agent/gateway";
+import { ApprovalRelay, getProviderRegistry } from "@my-agent/gateway";
 import type { PoolAcquireInput } from "@my-agent/gateway";
 // F2 fix: lifecycle guard for cron flapping detection.
 import { LifecycleGuard } from "@my-agent/cron";
