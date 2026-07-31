@@ -559,12 +559,19 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           }
         }
       } else if (state.tab === "cron") {
-        if (!state.info.cronJobs?.length) {
+        const allJobs = state.info.cronJobs ?? [];
+        if (!allJobs.length) {
           lines.push(`  ${A.muted("No cron jobs.")}`);
           lines.push(`  ${A.muted("Add: ")}${A.accent("mya cron add <name> <schedule> <prompt>")}`);
         } else {
-          for (let i = 0; i < state.info.cronJobs.length; i++) {
-            const job = state.info.cronJobs[i]!;
+          // Viewport scroll — same pattern as providers/mcp/skills tabs
+          const maxRows = Math.max(3, Math.floor((h - 8) / 2)); // each job = 2 lines (job + prompt)
+          const half = Math.floor(maxRows / 2);
+          const start = Math.max(0, Math.min(state.cronSel - half, Math.max(0, allJobs.length - maxRows)));
+          const end = Math.min(allJobs.length, start + maxRows);
+          if (start > 0) lines.push(`  ${A.dim2("  ↑ " + start + " above")}`);
+          for (let i = start; i < end; i++) {
+            const job = allJobs[i]!;
             const is = i === state.cronSel;
             const icon = job.enabled ? A.green("●") : A.dim2("○");
             const sched = job.trigger === "on-interval" ? `every ${(job.schedule as number) / 1000}s` : String(job.schedule);
@@ -584,6 +591,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
               lines.push(is ? `  ${A.selBg(promptLine + A.clrEol)}` : `  ${promptLine}`);
             }
           }
+          if (end < allJobs.length) lines.push(`  ${A.dim2("  ↓ " + (allJobs.length - end) + " more — ↓ to scroll")}`);
         }
       } else if (state.tab === "providers") {
         const providers = state.info.providers ?? [];
@@ -802,7 +810,7 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
         : state.tab === "channels"
           ? "1-8 tabs | ↑/↓ | Space toggle | t test | a add | q quit"
           : state.tab === "cron"
-            ? "1-8 tabs | ↑/↓ | Space toggle | r run | d delete | a add | q quit"
+            ? "1-8 tabs | ↑/↓ scroll | Space toggle | r run | d delete | a add | R refresh | q quit"
             : state.tab === "providers"
               ? "1-8 tabs | ↑/↓ | a/Enter = add/edit key | d = remove | q quit"
               : state.tab === "mcp"
@@ -838,7 +846,8 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
 
       if (k === "\x03" || k === "\x04") { cleanup(); return; }
       if (k === "q") { cleanup(); return; }
-      if (k === "r") { void refresh(); return; }
+      if (k === "r" && state.tab !== "cron") { void refresh(); return; }
+      if (k === "R") { void refresh(); return; }
 
       // Tab switch
       if (k === "\t" || k === "\x1b[Z") {
