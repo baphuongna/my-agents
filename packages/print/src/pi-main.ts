@@ -112,7 +112,11 @@ export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<voi
   // Pi's CLI parser puts positional args into messages[0], which becomes
   // the initialMessage — InteractiveMode processes /commands automatically.
   if (opts?.initialCommand) {
-    piArgs.push(opts.initialCommand);
+    // Pi processes /commands via editor.onSubmit, NOT session.prompt().
+    // Inject the command as simulated keystrokes after pi TUI initializes.
+    setTimeout(() => {
+      process.stdin.emit("data", Buffer.from(opts.initialCommand! + "\r"));
+    }, 2000);
   }
   await main(piArgs, { extensionFactories: [{ name: "mya-bridge", factory: myaBridge }] });
 }
