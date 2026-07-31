@@ -378,7 +378,7 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       for (const hintLine of hint.split("\n")) {
         process.stdout.write(`  ${A.dim2(hintLine)}\n`);
       }
-      process.stdout.write(`\n  ${A.dim2("Enter = confirm  ·  Ctrl+C = cancel  ·  empty Enter = skip")}\n`);
+      process.stdout.write(`\n  ${A.dim2("Enter = confirm  ·  Esc = cancel  ·  empty Enter = skip")}\n`);
     };
     const cleanup = (result?: string) => {
       if (resolved) return;
@@ -390,9 +390,10 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
     const onData = (data: Buffer) => {
       const k = data.toString();
       if (k === "\x03" || k === "\x04") { cleanup(); return; }
-      // NOTE: no bare \x1b (ESC) handler — terminal mode transitions emit
-      // stray \x1b bytes that would close the prompt instantly.
-      // Use Enter (empty = cancel) or Ctrl+C to exit.
+      if (k === "\x1b") { cleanup(); return; }
+      // Stray \x1b bytes from mode transitions are consumed during the
+      // 100ms delay before handler registration. After registration,
+      // \x1b is a genuine ESC keypress = cancel.
       if (k === "\r" || k === "\n") { cleanup(buf.trim() || undefined); return; }
       if (k === "\x7f" || k === "\b") { buf = buf.slice(0, -1); render(); return; }
       if (k.length === 1 && k >= " ") {
@@ -402,9 +403,6 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       }
     };
     render();
-    // Delay handler registration to flush stray bytes from mode transitions
-    // (alt screen exit, raw mode toggle emit \x1b, \r etc to stdin).
-    // resume() without listener discards buffered data; after 100ms it's safe.
     setTimeout(() => {
       if (resolved) return;
       process.stdin.on("data", onData);
