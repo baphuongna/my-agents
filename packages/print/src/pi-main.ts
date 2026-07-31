@@ -16,6 +16,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { registerBuiltInApiProviders } from "@earendil-works/pi-ai/compat";
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { createMyaBridge } from "./mya-bridge.js";
 import * as shared from "./shared-instances.js";
 
@@ -58,6 +59,11 @@ export interface RunPiInteractiveOpts {
 
 export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<void> {
   process.env.PI_SKIP_VERSION_CHECK = "1";
+
+  // Register OAuth flows for esbuild bundle — pi-ai uses variable-specifier
+  // dynamic imports that bundlers can't follow. registerBunOAuthFlows imports
+  // all 7 OAuth implementations eagerly so they're embedded in the bundle.
+  registerBunOAuthFlows();
 
   // Defensive: pi-ai/compat registers built-in API providers at module scope,
   // but esbuild's lazy CJS init may defer that call. Invoke explicitly before

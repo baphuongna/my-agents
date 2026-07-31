@@ -22,8 +22,14 @@ import {
   DEFAULT_COMPRESSION_CONFIG,
   type CompressionConfig,
 } from "@my-agent/prompts";
+// ── Unify pi + mya agent directory ──
+// Point pi at ~/.mya/agent/ so both pi (/login, createAgentSession) and mya
+// (gateway, launcher) share the SAME auth.json. Without this, pi defaults to
+// ~/.pi/agent/ and OAuth/API-key credentials are split across two files.
 import { homedir } from "node:os";
 import { join } from "node:path";
+const MYA_AGENT_DIR = join(homedir(), ".mya", "agent");
+process.env.PI_CODING_AGENT_DIR ??= MYA_AGENT_DIR;
 import { createRequire } from "node:module";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
