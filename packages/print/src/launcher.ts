@@ -322,7 +322,7 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       for (const hintLine of hint.split("\n")) {
         process.stdout.write(`  ${A.dim2(hintLine)}\n`);
       }
-      process.stdout.write(`\n  ${A.dim2("Enter = confirm  ·  Esc = cancel")}\n`);
+      process.stdout.write(`\n  ${A.dim2("Enter = confirm  ·  Ctrl+C = cancel  ·  empty Enter = skip")}\n`);
     };
     const cleanup = (result?: string) => {
       if (resolved) return;
@@ -334,7 +334,9 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
     const onData = (data: Buffer) => {
       const k = data.toString();
       if (k === "\x03" || k === "\x04") { cleanup(); return; }
-      if (k === "\x1b") { cleanup(); return; }
+      // NOTE: no bare \x1b (ESC) handler — terminal mode transitions emit
+      // stray \x1b bytes that would close the prompt instantly.
+      // Use Enter (empty = cancel) or Ctrl+C to exit.
       if (k === "\r" || k === "\n") { cleanup(buf.trim() || undefined); return; }
       if (k === "\x7f" || k === "\b") { buf = buf.slice(0, -1); render(); return; }
       if (k.length === 1 && k >= " ") {
@@ -344,14 +346,7 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       }
     };
     render();
-    // Delay handler registration to flush residual bytes from mode transitions.
-    // Without this, leftover escape sequences (e.g. \x1b from alt screen exit)
-    // hit onData immediately and close the prompt (\x1b = cancel).
-    // resume() without a listener discards buffered data; after 50ms it's safe.
-    setTimeout(() => {
-      if (resolved) return;
-      process.stdin.on("data", onData);
-    }, 50);
+    process.stdin.on("data", onData);
   });
 }
 
@@ -428,10 +423,7 @@ function pickDirectory(initial: string): Promise<string | undefined> {
     };
 
     render();
-    setTimeout(() => {
-      if (resolved) return;
-      process.stdin.on("data", onData);
-    }, 50);
+    process.stdin.on("data", onData);
   });
 }
 
@@ -1293,15 +1285,11 @@ export async function runLauncherLoop(): Promise<void> {
 /** Wait for any keypress (used after external action messages). */
 function waitForKey(): Promise<void> {
   return new Promise<void>((resolve) => {
-    let done = false;
     const isTTY = !!process.stdin.isTTY;
     if (isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
-    const h = () => { if (!done) { done = true; process.stdin.removeListener("data", h); resolve(); } };
-    setTimeout(() => {
-      if (done) return;
-      process.stdin.on("data", h);
-    }, 50);
+    const h = () => { process.stdin.removeListener("data", h); resolve(); };
+    process.stdin.on("data", h);
   });
 }
 
