@@ -402,7 +402,13 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       }
     };
     render();
-    process.stdin.on("data", onData);
+    // Delay handler registration to flush stray bytes from mode transitions
+    // (alt screen exit, raw mode toggle emit \x1b, \r etc to stdin).
+    // resume() without listener discards buffered data; after 100ms it's safe.
+    setTimeout(() => {
+      if (resolved) return;
+      process.stdin.on("data", onData);
+    }, 100);
   });
 }
 
