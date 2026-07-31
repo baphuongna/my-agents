@@ -1105,8 +1105,9 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
             const choice = await inlinePrompt(`Login to ${p.name ?? p.id}`,
               `1. Sign in with an account (${p.oauthName ?? "subscription"})\n2. Sign in with an API key (${p.envKey})\n\nType 1 or 2:`);
             if (choice === "1") {
-              try { await runOAuthFlow(p.id, p.oauthName); }
-              catch { /* runOAuthFlow handles its own errors */ }
+              // Delegate to pi's /login — pi handles full OAuth flow (browser, prompts)
+              cleanup({ kind: "login" as never, provider: p.id });
+              return;
             } else if (choice === "2") {
               const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.`);
               if (apiKey) {
@@ -1115,8 +1116,9 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
               }
             }
           } else if (p.hasOAuth) {
-            // OAuth only (e.g. openai-codex)
-            await runOAuthFlow(p.id, p.oauthName);
+            // OAuth only (e.g. openai-codex) — delegate to pi /login
+            cleanup({ kind: "login" as never, provider: p.id });
+            return;
           } else {
             // API key only
             const apiKey = await inlinePrompt(`Add ${p.id}`, `Secret API key value for ${p.envKey}.`);
@@ -1365,6 +1367,12 @@ export async function runLauncherLoop(): Promise<void> {
         await waitForKey();
       }
       resumeTab = "skills";
+    } else if ((result as { kind: string }).kind === "login") {
+      // OAuth login — delegate to pi TUI /login command
+      const provider = (result as { provider: string }).provider;
+      const { runPiInteractive } = await import("./pi-main.js");
+      await runPiInteractive({ initialCommand: `/login ${provider}` });
+      resumeTab = "providers";
     } else {
       const _exhaustive: never = result;
       void _exhaustive;

@@ -52,6 +52,8 @@ export interface RunPiInteractiveOpts {
   initialRole?: string;
   /** Task to auto-inject as the first user prompt (from --task flag). */
   initialTask?: string;
+  /** Command to auto-run on startup (e.g. "/login anthropic"). */
+  initialCommand?: string;
 }
 
 export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<void> {
@@ -106,6 +108,12 @@ export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<voi
   // extensions + themes still load normally.
   process.env.MYA_SKILL_SOURCE = join(homedir(), ".mya", "agent", "skills");
   const piArgs = filterMyaFlags(process.argv.slice(2));
+  // Inject initial command (e.g. "/login anthropic") as a positional arg.
+  // Pi's CLI parser puts positional args into messages[0], which becomes
+  // the initialMessage — InteractiveMode processes /commands automatically.
+  if (opts?.initialCommand) {
+    piArgs.push(opts.initialCommand);
+  }
   await main(piArgs, { extensionFactories: [{ name: "mya-bridge", factory: myaBridge }] });
 }
 
