@@ -33,8 +33,6 @@ walk(PI_NM, (file) => {
   src = src.replace(/then restart pi\./g, "then restart mya.");
   src = src.replace(/Start without extensions using "pi -ne"/g, 'Start without extensions using "mya -ne"');
   src = src.replace(/pi has joined Earendil/g, "mya");
-  // pi-tui → mya/tui
-  src = src.replace(/@earendil-works\/pi-tui/g, "@my-agent/tui");
   if (src !== orig) {
     writeFileSync(file, src);
     count++;

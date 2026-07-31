@@ -29,16 +29,18 @@ crates/natives/*.dylib
 
 # pi-crew / agent artifacts (session-local)
 .crew/
+!.crew/artifacts/
+!.crew/graphs/
+!.crew/artifacts/.gitkeep
+!.crew/graphs/.gitkeep
+
+# vendored deps (deleted — all available via npm)
+/vendored/
 
 # reference source clones — external repos, NOT part of the agent
 # (kept locally for spec authoring; spec prose stands alone without them)
 source/*
 !source/.learned/
 
-/.crew/
-/.crew
-!.crew/artifacts/
-!.crew/graphs/
-!.crew/artifacts/.gitkeep
-!.crew/graphs/.gitkeep
+# runtime prompt cache
 .prompts/

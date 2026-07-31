@@ -25,6 +25,10 @@
     { "path": "packages/pkg" },
     { "path": "packages/eval" },
     { "path": "packages/council" },
-    { "path": "packages/workflows" }
+    { "path": "packages/workflows" },
+    { "path": "packages/channels" },
+    { "path": "packages/dap-server" },
+    { "path": "packages/desktop" },
+    { "path": "packages/signing" }
   ]
 }

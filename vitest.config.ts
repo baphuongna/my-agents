@@ -8,9 +8,8 @@ export default defineConfig({
     // tests that use the `@/` alias (matching web's vite.config.ts).
     alias: [
       { find: "@/", replacement: fileURLToPath(new URL("packages/web/src/", import.meta.url)) },
-      // highlight.js v11 removed ./lib/index.js from its exports map, but
-      // coding-agent/src/utils/syntax-highlight.ts imports it directly (works
-      // under Bun). Redirect to the file so vitest resolves it too.
+      // highlight.js v11 removed ./lib/index.js from its exports map.
+      // Redirect to the file so vitest resolves it too.
       {
         find: "highlight.js/lib/index.js",
         replacement: fileURLToPath(new URL("node_modules/highlight.js/lib/index.js", import.meta.url)),

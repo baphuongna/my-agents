@@ -9,15 +9,11 @@
 // build-mode command (`tsc -b --force`) emits artifacts. So instead we run
 // `tsc --noEmit -p <pkg>/tsconfig.json` per package and aggregate.
 //
-// This is HONEST: it exits non-zero if ANY package has type errors. The repo
-// currently carries a pre-existing backlog (see docs/TYPECHECK-BASELINE.md) —
-// ~93% of it is in vendored pi-fork code (coding-agent).
-// Use `--owned` to exclude vendored packages and focus on project-owned code.
+// This is HONEST: it exits non-zero if ANY package has type errors.
 // Use `--json` for machine-readable output. Use `--pkg <name>` to check one.
 //
 // Usage:
-//   npm run typecheck            # all packages (honest; red until backlog cleared)
-//   npm run typecheck:owned      # project-owned only (excludes vendored)
+//   npm run typecheck            # all packages
 //   node scripts/typecheck.mjs --pkg memory   # one package (fast dev loop)
 import { readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -26,12 +22,7 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-// Vendored pi-fork packages — forked source we don't "own" fixing type-by-type.
-// (pi-ai-src + pi-agent-src deleted in Phase 3 migration; coding-agent remains.)
-const VENDORED = new Set(["coding-agent"]);
-
 const argv = process.argv.slice(2);
-const ownedOnly = argv.includes("--owned");
 const asJson = argv.includes("--json");
 const pkgIdx = argv.indexOf("--pkg");
 const onlyPkg = pkgIdx !== -1 ? argv[pkgIdx + 1] : undefined;
@@ -42,7 +33,6 @@ let targets = readdirSync(pkgsDir).filter(
     statSync(join(pkgsDir, n)).isDirectory() &&
     existsSync(join(pkgsDir, n, "tsconfig.json")),
 );
-if (ownedOnly) targets = targets.filter((p) => !VENDORED.has(p));
 if (onlyPkg) targets = targets.filter((p) => p === onlyPkg);
 
 const CONCURRENCY = 6;
@@ -89,23 +79,19 @@ const clean = results.filter((r) => r.errors === 0).map((r) => r.pkg);
 const total = results.reduce((s, r) => s + r.errors, 0);
 
 if (asJson) {
-  process.stdout.write(JSON.stringify({ ownedOnly, total, elapsed, clean, failing }));
+  process.stdout.write(JSON.stringify({ total, elapsed, clean, failing }));
   process.exit(failing.length > 0 ? 1 : 0);
 }
 
-const scope = onlyPkg
-  ? `--pkg ${onlyPkg}`
-  : ownedOnly
-    ? "project-owned (vendored excluded)"
-    : "all packages";
+const scope = onlyPkg ? `--pkg ${onlyPkg}` : "all packages";
 console.log(`\nTypecheck [${scope}] — ${results.length} package(s), ${elapsed}s`);
 if (clean.length && !onlyPkg) console.log(`✓ ${clean.length} clean: ${clean.join(", ")}`);
 if (failing.length) {
   console.log(`\n✗ ${failing.length} package(s) with errors:`);
   for (const r of failing)
-    console.log(`  ${String(r.errors).padStart(5)}  ${r.pkg}${VENDORED.has(r.pkg) ? "  (vendored)" : ""}`);
+    console.log(`  ${String(r.errors).padStart(5)}  ${r.pkg}`);
   console.log(
-    `\nTotal: ${total} error(s). Vendored coding-agent carries the bulk — run \`npm run typecheck:owned\` to focus on project-owned code. See docs/TYPECHECK-BASELINE.md.`,
+    `\nTotal: ${total} error(s). See docs/TYPECHECK-BASELINE.md.`,
   );
 } else {
   console.log("✓ No type errors.");

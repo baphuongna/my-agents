@@ -7,7 +7,7 @@
 3. Create `tsconfig.json` (extends `../../tsconfig.base.json`, references deps)
 4. Add to root `tsconfig.json` references + run `npm install`
 5. Implement `src/index.ts` (public API)
-6. Write tests (`/tmp/<name>-test.mjs` or `packages/<name>/test/`)
+6. Write tests (`packages/<name>/src/*.test.ts`)
 7. `npm run build && npm run typecheck`
 
 ## Package conventions
@@ -30,16 +30,15 @@ Key lesson (R24, reinforced across R37–R44): **read actual code, don't trust s
 
 ## Testing
 
-Each package has a `/tmp/<name>-test.mjs` script (or `packages/<name>/test/`). Run them individually:
+Each package has co-located test files (`packages/<name>/src/*.test.ts`). Run the full suite:
 
 ```sh
-node /tmp/r3-test.mjs        # core
-node /tmp/t1-test.mjs        # Tier 1
-node /tmp/t2-test.mjs        # Tier 2
-node /tmp/t4-test.mjs        # x402
+npx vitest run                 # all tests (~5,370 tests across 282 files)
+npx vitest run <file>          # one test file
+npx vitest run --testTimeout=5000
 ```
 
-The full sweep (110 tests) verifies no regressions across all packages.
+All tests must pass before merge — **NO TEST = NO MERGE**.
 
 ## Commit style
 

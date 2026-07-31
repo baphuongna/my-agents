@@ -30,7 +30,6 @@
     "bundle": "node scripts/bundle.mjs",
     "dist": "npm run build && npm run bundle",
     "typecheck": "node scripts/typecheck.mjs",
-    "typecheck:owned": "node scripts/typecheck.mjs --owned",
     "clean": "tsc -b --clean && rm -rf packages/*/dist",
     "natives:build": "cargo build -p my-agent-natives",
     "desktop:dev": "cargo run -p my-agent-desktop-shell",
