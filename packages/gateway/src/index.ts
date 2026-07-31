@@ -42,6 +42,12 @@ import { encodePairingQR, type DevicePairing, type PairingQR, type WebAuthnServi
 import type { VoiceCallChannel } from "./voice-call.js";
 export { detectProviderSummary, getProviderRegistry } from "./provider-registry.js";
 import { detectProviderSummary, initProviderRegistry } from "./provider-registry.js";
+import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
+// Register OAuth flow loaders statically (esbuild can't resolve variable-specifier
+// dynamic imports — bun-oauth imports them eagerly and registers at module load).
+registerBunOAuthFlows();
 
 // ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
 
@@ -704,8 +710,6 @@ export class Gateway {
     if (this.oauthFlows.has(providerId)) return; // already in progress
     this.oauthFlows.set(providerId, { status: "pending" });
     try {
-      const { InMemoryCredentialStore } = await import("@earendil-works/pi-ai");
-      const { builtinModels } = await import("@earendil-works/pi-ai/providers/all");
       const store = new InMemoryCredentialStore();
       const models = builtinModels({ credentials: store });
       const provider = models.getProvider(providerId);
@@ -724,9 +728,8 @@ export class Gateway {
             state.url = event.url;
             // Open browser best-effort
             try {
-              const { exec } = await import("node:child_process");
               const cmd = process.platform === "darwin" ? `open "${event.url}"` : process.platform === "win32" ? `start "" "${event.url}"` : `xdg-open "${event.url}"`;
-              exec(cmd, () => {});
+              spawn(cmd, { shell: true, detached: true, stdio: "ignore" }).unref();
             } catch { /* best-effort */ }
           } else if (event.type === "device_code" && event.verificationUri) {
             state.status = "device_code";
