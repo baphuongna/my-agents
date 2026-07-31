@@ -15,8 +15,14 @@
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { registerBuiltInApiProviders } from "@earendil-works/pi-ai/compat";
+import { registerBuiltInApiProviders, setBedrockProviderModule } from "@earendil-works/pi-ai/compat";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
+// Pre-import bedrock implementation — pi-ai uses variable-specifier dynamic
+// import for AWS SDK (hidden from bundlers). Without this, Bedrock provider
+// crashes at runtime: "Cannot find module ./bedrock-converse-stream.js".
+// Resolved by bundle.mjs esbuild plugin → actual file path.
+// @ts-ignore — virtual specifier resolved by bundle.mjs
+import * as bedrockImpl from "pi-ai-bedrock-impl";
 import { createMyaBridge } from "./mya-bridge.js";
 import * as shared from "./shared-instances.js";
 
@@ -61,9 +67,12 @@ export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<voi
   process.env.PI_SKIP_VERSION_CHECK = "1";
 
   // Register OAuth flows for esbuild bundle — pi-ai uses variable-specifier
-  // dynamic imports that bundlers can't follow. registerBunOAuthFlows imports
-  // all 7 OAuth implementations eagerly so they're embedded in the bundle.
+  // dynamic imports for OAuth (hidden from bundlers). registerBunOAuthFlows
+  // imports all 7 OAuth implementations eagerly so they're embedded.
   registerBunOAuthFlows();
+
+  // Pre-register bedrock implementation (same pattern as OAuth above).
+  setBedrockProviderModule(bedrockImpl);
 
   // Defensive: pi-ai/compat registers built-in API providers at module scope,
   // but esbuild's lazy CJS init may defer that call. Invoke explicitly before

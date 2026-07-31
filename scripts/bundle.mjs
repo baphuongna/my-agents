@@ -47,6 +47,11 @@ const sourceResolve = {
     b.onResolve({ filter: /^react-devtools-core/ }, () => ({ path: "stub-dep", namespace: "stub-dep" }));
     // highlight.js subpaths → external (tree-shaken to main package)
     b.onResolve({ filter: /^highlight\.js\/lib/ }, () => ({ path: "highlight.js", external: true }));
+    // bedrock-converse-stream.js — pi-ai hides it behind variable-specifier
+    // dynamic import (AWS SDK). Resolve to actual file so it gets bundled.
+    b.onResolve({ filter: /^pi-ai-bedrock-impl$/ }, () => ({
+      path: path.resolve("node_modules/@earendil-works/pi-ai/dist/api/bedrock-converse-stream.js"),
+    }));
     b.onLoad({ filter: /.*/, namespace: "stub-dep" }, () => ({ contents: "export default undefined;", loader: "js" }));
   },
 };
