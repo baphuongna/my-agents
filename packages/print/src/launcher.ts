@@ -344,7 +344,14 @@ function inlinePrompt(label: string, hint: string, defaultValue = ""): Promise<s
       }
     };
     render();
-    process.stdin.on("data", onData);
+    // Delay handler registration to flush residual bytes from mode transitions.
+    // Without this, leftover escape sequences (e.g. \x1b from alt screen exit)
+    // hit onData immediately and close the prompt (\x1b = cancel).
+    // resume() without a listener discards buffered data; after 50ms it's safe.
+    setTimeout(() => {
+      if (resolved) return;
+      process.stdin.on("data", onData);
+    }, 50);
   });
 }
 
@@ -421,7 +428,10 @@ function pickDirectory(initial: string): Promise<string | undefined> {
     };
 
     render();
-    process.stdin.on("data", onData);
+    setTimeout(() => {
+      if (resolved) return;
+      process.stdin.on("data", onData);
+    }, 50);
   });
 }
 
@@ -991,10 +1001,6 @@ function runLauncherUI(initialTab?: Tab): Promise<{ kind: "session"; id: string 
           process.stdin.removeListener("data", onData);
           if (isTTY) process.stdin.setRawMode(false);
           process.stdout.write(A.altScreenOff + A.showCursor);
-          // Drain any residual bytes (e.g. leftover \x1b from escape sequences)
-          // before opening inlinePrompt — otherwise the prompt opens then
-          // immediately closes (the residual byte cancels it).
-          await new Promise((r) => setTimeout(r, 50));
           const name = await inlinePrompt("Cron Job Name", "Cron job name (kebab-case: e.g. daily-standup, weekly-review)");
           if (name) {
             const schedule = await inlinePrompt("Schedule", "When to run. Either:\ncron: '0 9 * * MON'  (min hour day month day-of-week)\ninterval-ms: '3600000'  (milliseconds; 3600000 = every hour)", "0 9 * * *");
@@ -1287,11 +1293,15 @@ export async function runLauncherLoop(): Promise<void> {
 /** Wait for any keypress (used after external action messages). */
 function waitForKey(): Promise<void> {
   return new Promise<void>((resolve) => {
+    let done = false;
     const isTTY = !!process.stdin.isTTY;
     if (isTTY) process.stdin.setRawMode(true);
     process.stdin.resume();
-    const h = () => { process.stdin.removeListener("data", h); resolve(); };
-    process.stdin.on("data", h);
+    const h = () => { if (!done) { done = true; process.stdin.removeListener("data", h); resolve(); } };
+    setTimeout(() => {
+      if (done) return;
+      process.stdin.on("data", h);
+    }, 50);
   });
 }
 
