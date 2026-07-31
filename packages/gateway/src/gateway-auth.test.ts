@@ -21,10 +21,10 @@ describe("gateway auth gate (Phase 0C)", () => {
     await stop();
   });
 
-  it("rejects /cron/jobs without auth → 401", async () => {
+  it("allows GET /cron/jobs without auth → 200 (GET is always open)", async () => {
     const { port, stop } = await start({ wsToken: "secret" });
     const r = await fetch(`${base(port)}/cron/jobs`);
-    expect(r.status).toBe(401);
+    expect(r.status).toBe(200);
     await stop();
   });
 
@@ -35,10 +35,10 @@ describe("gateway auth gate (Phase 0C)", () => {
     await stop();
   });
 
-  it("rejects a wrong Bearer token → 401", async () => {
+  it("GET /cron/jobs with wrong Bearer still 200 (GET is open)", async () => {
     const { port, stop } = await start({ wsToken: "secret" });
     const r = await fetch(`${base(port)}/cron/jobs`, { headers: { authorization: "Bearer wrong" } });
-    expect(r.status).toBe(401);
+    expect(r.status).toBe(200);
     await stop();
   });
 
@@ -113,54 +113,34 @@ describe("gateway auth gate (Phase 0C)", () => {
     await stop();
   });
 
-  it("G1/2 (C11): cron MUTATIONS are NOT opened by MYA_NO_WS_TOKEN — require wsToken or MYA_CRON_UNSAFE_NO_AUTH", async () => {
-    // wsToken unset (dev MYA_NO_WS_TOKEN) + no MYA_CRON_UNSAFE_NO_AUTH → cron POST blocked.
-    const orig = process.env["MYA_CRON_UNSAFE_NO_AUTH"];
-    delete process.env["MYA_CRON_UNSAFE_NO_AUTH"];
-    try {
-      const { port, stop } = await start({ wsToken: undefined });
-      const post = await fetch(`${base(port)}/cron/jobs`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
-      });
-      expect(post.status).toBe(401); // not implicitly open
-      await stop();
-    } finally {
-      if (orig !== undefined) process.env["MYA_CRON_UNSAFE_NO_AUTH"] = orig;
-    }
+  it("G1/2: dev mode (no wsToken) — cron mutations are open → 201", async () => {
+    const { port, stop } = await start({ wsToken: undefined });
+    const post = await fetch(`${base(port)}/cron/jobs`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
+    });
+    expect(post.status).toBe(201);
+    await stop();
   });
 
-  it("G1/2: cron mutations allowed with MYA_CRON_UNSAFE_NO_AUTH=1 (explicit dev bypass)", async () => {
-    const orig = process.env["MYA_CRON_UNSAFE_NO_AUTH"];
-    process.env["MYA_CRON_UNSAFE_NO_AUTH"] = "1";
-    try {
-      const { port, stop } = await start({ wsToken: undefined });
-      const post = await fetch(`${base(port)}/cron/jobs`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
-      });
-      expect(post.status).not.toBe(401); // explicitly allowed
-      await stop();
-    } finally {
-      if (orig !== undefined) process.env["MYA_CRON_UNSAFE_NO_AUTH"] = orig;
-      else delete process.env["MYA_CRON_UNSAFE_NO_AUTH"];
-    }
+  it("G1/2: dev mode — POST /cron/approval-mode is open (not 401)", async () => {
+    const { port, stop } = await start({ wsToken: undefined });
+    const post = await fetch(`${base(port)}/cron/approval-mode`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "approve" }),
+    });
+    expect(post.status).not.toBe(401); // dev mode: mutations are open
+    await stop();
   });
 
-  it("G1/2: POST /cron/approval-mode is also a cron mutation — blocked in dev (regex covers /cron/*)", async () => {
-    const orig = process.env["MYA_CRON_UNSAFE_NO_AUTH"];
-    delete process.env["MYA_CRON_UNSAFE_NO_AUTH"];
-    try {
-      const { port, stop } = await start({ wsToken: undefined });
-      const post = await fetch(`${base(port)}/cron/approval-mode`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: "approve" }),
-      });
-      expect(post.status).toBe(401); // approval-mode flip is a sensitive mutation
-      await stop();
-    } finally {
-      if (orig !== undefined) process.env["MYA_CRON_UNSAFE_NO_AUTH"] = orig;
-    }
+  it("mutations with wsToken set but no auth → 401", async () => {
+    const { port, stop } = await start({ wsToken: "secret" });
+    const post = await fetch(`${base(port)}/cron/jobs`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "x", schedule: "0 9 * * *", prompt: "p" }),
+    });
+    expect(post.status).toBe(401);
+    await stop();
   });
 
   it("G8: POST /cron/approval-mode runtime-flips deny↔approve", async () => {

@@ -597,11 +597,18 @@ export class Gateway {
               if (typeof c !== "string") return false;
               for (const part of c.split(";")) {
                 const [k, ...v] = part.trim().split("=");
-                if (k === "mya_ws" && v.join("=") === this.wsToken) return true;
+                if (k === "mya_ws") {
+                  const cv = Buffer.from(v.join("="));
+                  const ct = Buffer.from(this.wsToken);
+                  if (cv.length === ct.length && cv.length > 0 && timingSafeEqual(cv, ct)) return true;
+                }
               }
               return false;
             })();
-            if (token !== this.wsToken && !cookieOk) {
+            const tokenBuf = token ? Buffer.from(token) : Buffer.alloc(0);
+            const wsBuf = Buffer.from(this.wsToken);
+            const tokenOk = tokenBuf.length === wsBuf.length && tokenBuf.length > 0 && timingSafeEqual(tokenBuf, wsBuf);
+            if (!tokenOk && !cookieOk) {
               socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
               socket.destroy();
               return;
@@ -949,14 +956,17 @@ export class Gateway {
       res.writeHead(code, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
     };
-    // Phase 0C: auth gate — ONLY for browser requests (has Origin header).
-    // CLI/launcher (no Origin) is always trusted: gateway binds to loopback only.
-    // Browser needs wsToken via Bearer header or HttpOnly cookie.
-    // When wsToken is unset (MYA_NO_WS_TOKEN dev), everything is open for everyone.
-    const hasOrigin = typeof req.headers.origin === "string" && req.headers.origin.length > 0;
-    if (hasOrigin && this.wsToken && !this.isAuthAllowlisted(url, req.method, req.headers.accept)) {
+    // Phase 0C: auth gate.
+    // GET/OPTIONS: always open (reading is safe — loopback only).
+    // Mutations (POST/DELETE/PATCH): require wsToken when set.
+    //   Browser → cookie/Bearer + CSRF (same-origin) check.
+    //   CLI/launcher → Bearer from ~/.mya/agent/gw.token (auto via gw-auth.ts).
+    // Dev (MYA_NO_WS_TOKEN → wsToken unset): everything open.
+    const isMutation = req.method !== "GET" && req.method !== "OPTIONS";
+    if (isMutation && this.wsToken && !this.isAuthAllowlisted(url, req.method, req.headers.accept)) {
       if (!this.isAuthed(req)) return send(401, { error: "unauthorized" });
       // CSRF defense: browser state-changing request must come from same origin.
+      // No-Origin callers (curl/CLI) are unaffected.
       if (req.method && req.method !== "GET" && !this.isOwnOrigin(req)) {
         return send(403, { error: "cross-origin state change blocked" });
       }
