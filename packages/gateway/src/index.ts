@@ -949,29 +949,17 @@ export class Gateway {
       res.writeHead(code, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(body));
     };
-    // Phase 0C: auth gate. Non-allowlist routes require the WS token (Bearer
-    // header OR HttpOnly cookie). Allowlist: health/ready probes, PWA assets
-    // (manifest/icons/sw), GET / (rootHtml — which SETS the cookie), channel
-    // webhooks + pairing (own auth). When wsToken is unset (MYA_NO_WS_TOKEN dev)
-    // everything is open.
-    if (this.wsToken && !this.isAuthAllowlisted(url, req.method, req.headers.accept)) {
+    // Phase 0C: auth gate — ONLY for browser requests (has Origin header).
+    // CLI/launcher (no Origin) is always trusted: gateway binds to loopback only.
+    // Browser needs wsToken via Bearer header or HttpOnly cookie.
+    // When wsToken is unset (MYA_NO_WS_TOKEN dev), everything is open for everyone.
+    const hasOrigin = typeof req.headers.origin === "string" && req.headers.origin.length > 0;
+    if (hasOrigin && this.wsToken && !this.isAuthAllowlisted(url, req.method, req.headers.accept)) {
       if (!this.isAuthed(req)) return send(401, { error: "unauthorized" });
-      // CSRF defense: a state-changing request carrying an Origin header must
-      // come from the gateway's OWN origin (same port). SameSite=Strict is the
-      // same registrable site across localhost ports, so it alone can't stop a
-      // malicious localhost page on another port. No-Origin callers (curl/CLI)
-      // are unaffected.
+      // CSRF defense: browser state-changing request must come from same origin.
       if (req.method && req.method !== "GET" && !this.isOwnOrigin(req)) {
         return send(403, { error: "cross-origin state change blocked" });
       }
-    }
-    // C11: cron MUTATIONS (any /cron/* non-GET route — jobs + approval-mode)
-    // require auth (wsToken) OR an explicit MYA_CRON_UNSAFE_NO_AUTH=1 — never
-    // implicitly opened by MYA_NO_WS_TOKEN (the dashboard dev bypass). Covers
-    // POST/DELETE/PATCH/RUN on /cron/jobs* AND POST /cron/approval-mode.
-    const isCronMutation = req.method !== "GET" && req.method !== "OPTIONS" && /^\/cron\//.test(url.pathname);
-    if (isCronMutation && !this.wsToken && !process.env["MYA_CRON_UNSAFE_NO_AUTH"]) {
-      return send(401, { error: "cron mutations require wsToken auth (or MYA_CRON_UNSAFE_NO_AUTH=1)" });
     }
     // mya fork: Hermes SPA session stat stubs — must come before /sessions/:id match
     if (url.pathname === "/sessions/stats" && req.method === "GET")
