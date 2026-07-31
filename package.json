@@ -85,5 +85,12 @@
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
     "vitest": "^2.1.9"
+  },
+  "overrides": {
+    "@earendil-works/pi-coding-agent": {
+      "@earendil-works/pi-ai": "$@earendil-works/pi-ai",
+      "@earendil-works/pi-agent-core": "$@earendil-works/pi-agent-core",
+      "@earendil-works/pi-tui": "$@earendil-works/pi-tui"
+    }
   }
 }

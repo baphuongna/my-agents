@@ -51,6 +51,21 @@ const sourceResolve = {
   },
 };
 
+// ── Dedupe: remove nested pi-* copies under pi-coding-agent ──
+// npm installs @earendil-works/pi-ai/pi-agent-core/pi-tui as BOTH top-level
+// and nested deps of pi-coding-agent (same version). esbuild bundles both →
+// module-level singletons (e.g. bundledLoaders in load.js) get duplicated →
+// registerBunOAuthFlows() sets one instance, OAuth code reads the other.
+// Fix: delete nested copies before bundling so esbuild resolves to top-level.
+const NESTED_BASE = "node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works";
+for (const pkg of ["pi-ai", "pi-agent-core", "pi-tui"]) {
+  const nested = path.resolve(`${NESTED_BASE}/${pkg}`);
+  if (fs.existsSync(nested)) {
+    fs.rmSync(nested, { recursive: true });
+    console.log(`  dedup: removed nested ${pkg}`);
+  }
+}
+
 await build({
   entryPoints: ["packages/print/src/main.ts"],
   bundle: true,
