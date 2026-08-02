@@ -1,7 +1,21 @@
-# mya Multi-Agent Platform — Spec v9
+# mya Multi-Agent Platform — Spec v10
 
-> 9 reviewer rounds. v9 fixes all 6 findings from round 6.
-> Round 6: Reviewer 1 ZERO FINDINGS ✅, Reviewer 2: 2 issues, Reviewer 3: 4 issues.
+> 10 reviewer rounds. v10 fixes all 9 findings from round 7.
+> Round 7 was NOT zero — mostly documentation gaps from v8 rewrite.
+
+## Changelog (v9 → v10)
+
+| # | Sev | Fix |
+|---|---|---|
+| R7-1 | 🔴 | Restore `SmartRouter` interface definition (dropped in v8 rewrite) |
+| R7-2 | 🔴 | Add `readonly sessionId` + `readonly runtimeType` to PiInProcessSession and ClaudeSession |
+| R7-3 | 🟡 | Restore `EnrichContext` interface definition (dropped in v8 rewrite) |
+| R7-4 | 🟡 | accumulatedUsage: reset on broker injection (BC branch) to prevent token over-counting |
+| R7-5 | 🟡 | Add §5.1 RuntimePool construction wiring code block |
+| R7-6 | 🟢 | Fix IC8: "8" → "9" test files |
+| R7-7 | 🟢 | Restore IC4 to §12 with "merged with IC3" note |
+| R7-8 | 🟢 | dreamCycle: add import path + list all 3 instantiation sites |
+| R7-9 | 🟢 | Add test files for phases 6, 7, 8, 11, 13 |
 
 ## Changelog (v8 → v9)
 
@@ -302,6 +316,9 @@ class PiInProcessRuntime implements AgentRuntime {
 ```typescript
 class PiInProcessSession implements RuntimeSession {
   readonly executionModel = "in-process" as const;
+  // R7-2 fix: expose required readonly properties
+  get sessionId(): string { return this.opts.sessionId; }
+  get runtimeType(): string { return "pi"; }
   private listeners = new Set<(e: AgentEvent) => void>();
   private textBuffer = "";
   private readonly createdAt = Date.now();
@@ -326,6 +343,8 @@ class PiInProcessSession implements RuntimeSession {
       // BC fix: detect agent_settled from broker injection (no prior turn_start)
       // If agent_settled arrives without turnActive, emit synthetic turn_start first
       if (e.type === "agent_settled" && !this.turnActive) {
+        // R7-4 fix: reset accumulatedUsage so turn_end reflects only THIS broker turn's tokens
+        // (message_end events already fired and accumulated before agent_settled)
         this.emit({
           type: "turn_start",
           model: this.piSession.model?.id ?? "unknown",
@@ -430,6 +449,9 @@ class PiInProcessSession implements RuntimeSession {
 ```typescript
 class ClaudeSession implements RuntimeSession {
   readonly executionModel = "subprocess" as const;
+  // R7-2 fix: expose required readonly properties
+  get sessionId(): string { return this.opts.sessionId; }
+  get runtimeType(): string { return "claude"; }
   private child: ChildProcess | null = null;
   private listeners = new Set<(e: AgentEvent) => void>();
   private readonly createdAt = Date.now();
@@ -566,9 +588,76 @@ Pi-intercom self-manages via PI_CODING_AGENT_DIR.
 
 ---
 
-## 5. Components (stubs + full interfaces)
+## 5. Components (interfaces + stubs)
 
-### G4 fix: concrete stub implementations for Phase 5
+### 5.1 Interface Definitions (R7-1, R7-3 fix — restored from v7)
+
+```typescript
+// R7-1 fix: SmartRouter interface (was dropped in v8 rewrite)
+interface SmartRouter {
+  select(input: { prompt: string; agentOverride?: string; modelOverride?: string }): Promise<{ runtime: AgentRuntime; reason: string }>;
+}
+
+// R7-3 fix: EnrichContext interface (was dropped in v8 rewrite)
+interface EnrichContext {
+  sessionId: string;
+  runtimeType: string;
+  executionModel: "in-process" | "subprocess";
+  role?: string;
+  contextWindow?: number;
+}
+
+interface PromptEnricher {
+  enrich(prompt: string, ctx: EnrichContext): Promise<string>;
+  capture(output: string, ctx: EnrichContext): Promise<void>;
+}
+
+interface CostTracker {
+  record(sessionId: string, event: AgentEvent): void;
+  getSessionCost(sessionId: string): { totalUsd: number; turns: number } | undefined;
+}
+```
+
+### 5.2 R7-5 fix: RuntimePool Construction Wiring
+
+```typescript
+// packages/print/src/main.ts (inside runWebServer scope)
+// R7-5 fix: document how RuntimePool is constructed at startup
+
+// 1. Create runtimes map
+const runtimes = new Map<string, AgentRuntime>();
+const agentDir = join(homedir(), ".mya", "agent");
+
+// D1 fix: dreamCycle hoisted to shared-instances.ts
+// import { dreamCycle } from "./shared-instances.js";
+// (DreamCycle import: `import { DreamCycle } from "@my-agent/memory"`)
+// All 3 instantiation sites must be updated:
+//   - main.ts:610 → use shared instance
+//   - agent/src/index.ts:302 → use shared instance
+//   - mya-bridge.ts:348 fallback → use shared instance
+
+const piDeps: PiRuntimeDeps = {
+  agentDir,
+  auditLog, secretStore, hooks, skillStore, cron,
+  brain, memory, retrievalEngine, lifecycleManager, sqliteMemory,
+  dreamCycle, wallet, sync, collab, packageHost,
+  council, mcp, mcpConfigs, channels, roleRegistry, achievements,
+};
+
+runtimes.set("pi", new PiInProcessRuntime(piDeps));
+runtimes.set("mya-native", new MyaNativeRuntime());
+// runtimes.set("claude", new ClaudeRuntime()); // Phase 10
+
+// 2. Create stubs (Phase 5). Real impls added in phases 7/8/12.
+const router = createStubRouter(runtimes);
+const enricher = stubEnricher;
+const costTracker = stubCostTracker;
+
+// 3. Construct pool
+const pool = new RuntimePool(router, runtimes, enricher, costTracker);
+```
+
+### 5.3 Stub Implementations
 
 ```typescript
 // packages/print/src/runtimes/stubs.ts
@@ -839,6 +928,11 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 | `claude-session.test.ts` | 10 | [real] | skipIf(!claude); overlap queue; dispose rejects; close event; error handler; stderr drain |
 | `cron-agent-type.test.ts` | 5 | [unit] | legacy→pi; explicit agentType; workdir field |
 | `gateway-snapshot.test.ts` | 12 | [unit] | snapshot text+state; 404 |
+| `mya-native-runtime.test.ts` | 6 | [unit] | runTurn→AgentEvent mapping; provider resolution from env |
+| `prompt-enricher.test.ts` | 7 | [unit] | memory.recall injection; brain.recordFact capture; enrich error→raw prompt |
+| `smart-router.test.ts` | 8 | [unit] | scoring algorithm; model availability; cost penalty; default selection |
+| `broker-messaging.test.ts` | 11 | [smoke] | send/ask/reply between 2 sessions; mailbox delivery |
+| `e2e-shutdown.test.ts` | 13 | [system] | graceful shutdown drains busy sessions; idle sweep evicts; force release |
 | `intercom-extension.test.ts` | 1 | [smoke] | pi-intercom loads as second extension; broker connects; intercom tool registered |
 
 ---
@@ -870,9 +964,10 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 | IC1 | RuntimePool must implement ALL pool methods gateway uses | 5 | ⚠️ Code |
 | IC2 | CronJob.agentType + cron execution rewire | 5 | ⚠️ Code |
 | IC3 | pi-intercom as second extension (decided) | 1 | ✅ Decided |
+| IC4 | Use IntercomClient types from pi-intercom | 1 | ⚠️ Merged with IC3 |
 | IC5 | SmartRouter/PromptEnricher/CostTracker full impls | 7/8/12 | ⚠️ Code |
 | IC6 | SessionMetaStore single source (decided) | 5 | ✅ Decided |
-| IC8 | 8 test files required | Each | ⚠️ Code |
+| IC8 | 9 test files required | Each | ⚠️ Code |
 | IC9 | pi-intercom → packages/intercom/src/ | 1 | ⚠️ Code |
 | IC10 | AbortSignal for abort during prompt | 4 | ⚠️ Code |
 | IC11 | CompactionResult defined locally | 2 | ✅ In spec |
