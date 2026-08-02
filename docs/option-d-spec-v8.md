@@ -1,7 +1,18 @@
-# mya Multi-Agent Platform — Spec v8
+# mya Multi-Agent Platform — Spec v9
 
-> 8 reviewer rounds. This version fixes all 11 findings from round 5.
-> Round 5 was NOT zero — 3 HIGH + 5 MEDIUM + 3 LOW found.
+> 9 reviewer rounds. v9 fixes all 6 findings from round 6.
+> Round 6: Reviewer 1 ZERO FINDINGS ✅, Reviewer 2: 2 issues, Reviewer 3: 4 issues.
+
+## Changelog (v8 → v9)
+
+| # | Sev | Fix |
+|---|---|---|
+| C5 | 🟡 | ClaudeSession: `settled` guard prevents double turn_end (error+close both fire on spawn failure) |
+| C6 | 🟢 | compact(): restore `?? 0` on tokensBefore (accidentally dropped v7→v8) |
+| D1 | 🟡 | dreamCycle: fix misleading comment + document provenance (hoist to shared-instances.ts) |
+| D2 | 🟡 | stubRouter: redesign as closure capturing runtimes Map (was empty Map → always threw) |
+| D3 | 🟢 | §11: add G1 and G3 verification checklist rows |
+| D4 | 🟢 | §10: add Phase 1 test for pi-intercom extension discovery |
 
 ## Changelog (v7 → v8)
 
@@ -163,7 +174,9 @@ import type { ModelRuntime, AgentSession as PiAgentSession } from "@earendil-wor
 // G1 fix: receive shared instances via constructor
 interface PiRuntimeDeps {
   agentDir: string;
-  // These come from shared-instances.ts in main.ts
+  // D1 fix: dreamCycle must be hoisted to shared-instances.ts (currently in runWebServer scope).
+  // Implementation: add `export const dreamCycle = new DreamCycle({ brain });` to shared-instances.ts.
+  // Then PiInProcessRuntime can receive it via PiRuntimeDeps like all other shared instances.
   auditLog: AuditLog;
   secretStore: SecretStore;
   hooks: HookRegistry;
@@ -377,7 +390,7 @@ class PiInProcessSession implements RuntimeSession {
 
   async compact(): Promise<CompactionResult> {
     const result = await this.piSession.compact();
-    return { tokensBefore: result.tokensBefore, tokensAfter: result.estimatedTokensAfter ?? 0, strategy: "native" };
+    return { tokensBefore: result.tokensBefore ?? 0, tokensAfter: result.estimatedTokensAfter ?? 0, strategy: "native" };
   }
 
   getState(): SessionState {
@@ -474,10 +487,12 @@ class ClaudeSession implements RuntimeSession {
         });
 
         let exitCode: number | null = null;
+        let settled = false;  // C5 fix: guard against double turn_end (error+close both fire on spawn failure)
         this.child!.on("exit", (code) => { exitCode = code; });
 
         // H5 fix: close fires after ALL stdio consumed
         this.child!.on("close", () => {
+          if (settled) return; settled = true;  // C5 fix
           if (exitCode !== null && exitCode !== 0 && !this.abortController?.signal.aborted) {
             this.emit({ type: "error", message: `Claude exited with code ${exitCode}`, recoverable: false });
           }
@@ -485,8 +500,9 @@ class ClaudeSession implements RuntimeSession {
           resolve();
         });
 
-        // BA fix: re-add 'error' handler (was dropped in v7 — spawn failure crashes)
+        // BA fix: 'error' handler for spawn failures (ENOENT)
         this.child!.on("error", (err) => {
+          if (settled) return; settled = true;  // C5 fix
           this.emit({ type: "error", message: err.message, recoverable: false });
           this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
           resolve();
@@ -559,15 +575,17 @@ Pi-intercom self-manages via PI_CODING_AGENT_DIR.
 
 // Phase 5 stubs — replaced with real impls in later phases
 
-export const stubRouter: SmartRouter = {
-  async select(input) {
-    // Phase 5: always return pi (default). Phase 8 adds scoring.
-    const rt = this.runtimes.get(input.agentOverride ?? "pi");
-    if (!rt) throw new Error("No runtime available");
-    return { runtime: rt, reason: "stub default" };
-  },
-  runtimes: new Map(),  // populated at startup
-} as any;
+// D2 fix: stubRouter is a factory that captures runtimes Map (was empty Map → always threw)
+export function createStubRouter(runtimes: Map<string, AgentRuntime>): SmartRouter {
+  return {
+    async select(input) {
+      // Phase 5: always return pi (default). Phase 8 adds scoring.
+      const rt = runtimes.get(input.agentOverride ?? "pi");
+      if (!rt) throw new Error("No runtime available");
+      return { runtime: rt, reason: "stub default" };
+    },
+  };
+}
 
 export const stubEnricher: PromptEnricher = {
   async enrich(prompt) { return prompt; },  // Phase 7 adds memory injection
@@ -821,6 +839,7 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 | `claude-session.test.ts` | 10 | [real] | skipIf(!claude); overlap queue; dispose rejects; close event; error handler; stderr drain |
 | `cron-agent-type.test.ts` | 5 | [unit] | legacy→pi; explicit agentType; workdir field |
 | `gateway-snapshot.test.ts` | 12 | [unit] | snapshot text+state; 404 |
+| `intercom-extension.test.ts` | 1 | [smoke] | pi-intercom loads as second extension; broker connects; intercom tool registered |
 
 ---
 
@@ -838,6 +857,9 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 | idleSince > 0 after acquire | 5 |
 | release(force) works on busy session | 5 |
 | PiAgentSession type imported | 4 |
+| PiRuntimeDeps shared instances via constructor (incl. dreamCycle hoisted) | 5 |
+| CronJob.workdir field present | 5 |
+| ClaudeSession settled guard (no double turn_end) | 10 |
 
 ---
 
