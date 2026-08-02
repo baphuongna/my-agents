@@ -1,7 +1,16 @@
-# mya Multi-Agent Platform — Spec v10
+# mya Multi-Agent Platform — Spec v11
 
-> 10 reviewer rounds. v10 fixes all 9 findings from round 7.
-> Round 7 was NOT zero — mostly documentation gaps from v8 rewrite.
+> 11 reviewer rounds. v11 fixes all 4 findings from round 8.
+> Round 8 was NOT zero — accumulatedUsage fix was comment-only.
+
+## Changelog (v10 → v11)
+
+| # | Sev | Fix |
+|---|---|---|
+| R8-1 | 🔴 | accumulatedUsage broker injection: remove misleading comment, document 0-token reporting (snapshot-and-subtract is Phase 4 impl detail) |
+| R8-2 | 🟡 | adapter capture(): add `executionModel` to EnrichContext call |
+| R8-3 | 🟡 | IC8: "9" → "14" test files |
+| R8-4 | 🟢 | PiInProcessSession catch: guard turn_end with `if (this.turnActive)` |
 
 ## Changelog (v9 → v10)
 
@@ -341,10 +350,10 @@ class PiInProcessSession implements RuntimeSession {
       }
 
       // BC fix: detect agent_settled from broker injection (no prior turn_start)
-      // If agent_settled arrives without turnActive, emit synthetic turn_start first
+      // R8-1 fix: broker-injected turns report 0 tokens (cannot isolate per-turn usage
+      // without deeper pi integration — message_end already fired before agent_settled).
+      // Phase 4 impl: consider snapshot-and-subtract for accurate token counting.
       if (e.type === "agent_settled" && !this.turnActive) {
-        // R7-4 fix: reset accumulatedUsage so turn_end reflects only THIS broker turn's tokens
-        // (message_end events already fired and accumulated before agent_settled)
         this.emit({
           type: "turn_start",
           model: this.piSession.model?.id ?? "unknown",
@@ -393,9 +402,13 @@ class PiInProcessSession implements RuntimeSession {
         });
       }
     } catch (e) {
-      this.turnActive = false;
-      this.emit({ type: "error", message: String(e), recoverable: false });
-      this.emit({ type: "turn_end", tokensIn: this.accumulatedUsage.tokensIn, tokensOut: this.accumulatedUsage.tokensOut });
+      // R8-4 fix: only emit turn_end if turn is still active (avoid double turn_end
+      // when agent_settled already fired before prompt() rejection)
+      if (this.turnActive) {
+        this.turnActive = false;
+        this.emit({ type: "error", message: String(e), recoverable: false });
+        this.emit({ type: "turn_end", tokensIn: this.accumulatedUsage.tokensIn, tokensOut: this.accumulatedUsage.tokensOut });
+      }
       throw e;
     }
   }
@@ -878,7 +891,86 @@ class RuntimePool {
 
 ### 7.2 RuntimeSessionAdapter
 
-(Same as v7 — verified correct. C2 fix present.)
+(R8-2 fix: v7 code updated — `capture()` call now includes `executionModel`)
+
+```typescript
+class RuntimeSessionAdapter implements AgentSession {
+  private listeners = new Set<(e: unknown) => void>();
+  private textBuffer = "";
+  private turnLock = Promise.resolve();
+
+  constructor(
+    private session: RuntimeSession,
+    private enricher: PromptEnricher,
+    private costTracker: CostTracker,
+    private onBusyChange?: (busy: boolean) => void,
+    private onMessage?: () => void,
+  ) {
+    this.session.onEvent((event) => {
+      if (event.type === "text") this.textBuffer += event.delta;
+      this.costTracker.record(this.session.sessionId, event);
+      this.listeners.forEach(l => l(event));
+    });
+  }
+
+  async prompt(text: string, _options?: unknown): Promise<void> {
+    const prev = this.turnLock;
+    let release!: () => void;
+    this.turnLock = new Promise<void>((r) => { release = r; });
+    this.onBusyChange?.(true);
+
+    try {
+      await prev;
+
+      let enriched = text;
+      try {
+        enriched = await this.enricher.enrich(text, {
+          sessionId: this.session.sessionId,
+          runtimeType: this.session.runtimeType,
+          executionModel: this.session.executionModel,
+        });
+      } catch (e) { console.warn(`[adapter] enrich failed: ${e}`); }
+
+      this.textBuffer = "";
+
+      try {
+        await this.session.prompt(enriched);
+        this.onMessage?.();
+      } catch (e) {
+        console.warn(`[adapter] session.prompt failed: ${e}`);
+        throw e;
+      }
+
+      if (this.textBuffer) {
+        try {
+          // R8-2 fix: include executionModel (was missing — compile error)
+          await this.enricher.capture(this.textBuffer, {
+            sessionId: this.session.sessionId,
+            runtimeType: this.session.runtimeType,
+            executionModel: this.session.executionModel,
+          });
+        } catch (e) { console.warn(`[adapter] capture failed: ${e}`); }
+      }
+    } finally {
+      this.onBusyChange?.(false);
+      release();
+    }
+  }
+
+  subscribe(listener: (e: unknown) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  abort(): void {
+    void this.session.dispose().catch(() => {});
+  }
+
+  get sessionFile(): string | undefined { return undefined; }
+  getState(): SessionState { return this.session.getState(); }
+  getTextBuffer(): string { return this.textBuffer; }
+}
+```
 
 ### 7.3-7.4 WebSocket, Shutdown
 
@@ -967,7 +1059,7 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 | IC4 | Use IntercomClient types from pi-intercom | 1 | ⚠️ Merged with IC3 |
 | IC5 | SmartRouter/PromptEnricher/CostTracker full impls | 7/8/12 | ⚠️ Code |
 | IC6 | SessionMetaStore single source (decided) | 5 | ✅ Decided |
-| IC8 | 9 test files required | Each | ⚠️ Code |
+| IC8 | 14 test files required | Each | ⚠️ Code |
 | IC9 | pi-intercom → packages/intercom/src/ | 1 | ⚠️ Code |
 | IC10 | AbortSignal for abort during prompt | 4 | ⚠️ Code |
 | IC11 | CompactionResult defined locally | 2 | ✅ In spec |
