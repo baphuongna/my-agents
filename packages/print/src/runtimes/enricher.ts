@@ -6,14 +6,16 @@ const MAX_INJECTION_HITS = 5;
 const MAX_INJECTION_CHARS = 2000;
 const MAX_CAPTURE_CHARS = 4096;
 const DEFAULT_NOTABILITY = 0.5;
-// R3-MEDIUM: RRF fused scores max ≈ 4/(60+1) = 0.066. Threshold must be
-// below that or the entire retrieval/search domain is silently dropped.
-const MIN_SCORE = 0.05;
+// R3-MEDIUM: RRF fused scores max ≈ 4/(60+1) = 0.066. With graph arm empty
+// (no wikilinks), realistic 3-arm max = 3/(60+1) = 0.049. Threshold must be
+// below that. 0.01 lets single-arm rank-1 (1/61=0.016) through; quality is
+// ensured by MAX_INJECTION_HITS=5 cap with score sorting.
+const MIN_SCORE = 0.01;
 const PER_HIT_BUDGET = Math.floor(MAX_INJECTION_CHARS / MAX_INJECTION_HITS); // 400
 
 export class MemoryEnricher implements PromptEnricher {
   constructor(
-    private memory?: { recall(query: string, opts?: { topK?: number }): any[] | Promise<any[]> },
+    private memory?: { recall(query: string, opts?: { topK?: number }): any[] | Promise<any[]>; record?(fact: any): any },
     private brain?: { recordFact(fact: any): any },
   ) {}
 
@@ -48,20 +50,27 @@ export class MemoryEnricher implements PromptEnricher {
   }
 
   async capture(output: string, ctx: EnrichContext): Promise<void> {
-    if (!this.brain || !output.trim()) return;
+    if (!output.trim()) return;
     // MEDIUM-3 fix: skip capture for cron sessions — they accumulate facts
     // on every sweep and pollute the brain with repetitive job output.
     if (ctx.sessionId.startsWith("_cron:")) return;
+    const fact = {
+      id: `capture:${ctx.sessionId}:${nowWallclock()}`, // MEDIUM-2: id carries session marker for echo filter
+      kind: "event" as const,
+      entity: `session:${ctx.sessionId}`,
+      content: output.slice(0, MAX_CAPTURE_CHARS),
+      visibility: "private" as const,
+      notability: DEFAULT_NOTABILITY,
+      source: "runtime-capture",
+    };
     try {
-      await this.brain.recordFact({
-        id: `capture:${ctx.sessionId}:${nowWallclock()}`, // MEDIUM-2: id carries session marker for echo filter
-        kind: "event",
-        entity: `session:${ctx.sessionId}`,
-        content: output.slice(0, MAX_CAPTURE_CHARS),
-        visibility: "private",
-        notability: DEFAULT_NOTABILITY,
-        source: "runtime-capture",
-      });
+      // R4-LOW: route through memory.record() for TTL + domain fan-out
+      // (falls back to brain.recordFact if memory.record unavailable).
+      if (this.memory?.record) {
+        await this.memory.record(fact);
+      } else if (this.brain) {
+        await this.brain.recordFact(fact);
+      }
     } catch {
       // never block on capture failure
     }
