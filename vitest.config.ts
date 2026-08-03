@@ -14,6 +14,13 @@ export default defineConfig({
         find: "highlight.js/lib/index.js",
         replacement: fileURLToPath(new URL("node_modules/highlight.js/lib/index.js", import.meta.url)),
       },
+      // pi-ai hides bedrock impl behind a virtual specifier (AWS SDK dynamic
+      // import). bundle.mjs resolves it; vitest needs the same alias so
+      // pi-main.test.ts (filterMyaFlags) can load the module.
+      {
+        find: "pi-ai-bedrock-impl",
+        replacement: fileURLToPath(new URL("node_modules/@earendil-works/pi-ai/dist/api/bedrock-converse-stream.js", import.meta.url)),
+      },
     ],
   },
   test: {
