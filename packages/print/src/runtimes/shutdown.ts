@@ -1,5 +1,6 @@
 // packages/print/src/runtimes/shutdown.ts
 import type { RuntimePool } from "./pool.js";
+import { nowWallclock } from "@my-agent/core";
 import type { CostTrackerImpl } from "./cost-tracker.js";
 
 export interface ShutdownOptions {
@@ -14,7 +15,7 @@ export async function gracefulShutdown(
 ): Promise<{ drained: number; forced: number; evicted: number }> {
   const timeout = opts?.drainTimeoutMs ?? 30_000;
   const force = opts?.forceKill ?? true;
-  const startTime = Date.now();
+  const startTime = nowWallclock();
 
   const entries = pool.list();
   const busy = entries.filter(e => e.busy);
@@ -30,7 +31,7 @@ export async function gracefulShutdown(
     const drainPromise = Promise.all(
       busy.map(async (entry) => {
         const deadline = startTime + timeout;
-        while (Date.now() < deadline) {
+        while (nowWallclock() < deadline) {
           const current = pool.get(entry.sessionId);
           if (!current || !current.busy) return;
           await new Promise<void>(r => setTimeout(r, 500));
@@ -46,7 +47,6 @@ export async function gracefulShutdown(
 
   pool.dispose();
 
-  const aggregate = costTracker.getAggregateCost();
 
   return { drained: busy.length - forced, forced, evicted: idle.length };
 }

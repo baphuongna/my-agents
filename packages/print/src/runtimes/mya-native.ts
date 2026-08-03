@@ -6,6 +6,7 @@ import type {
 } from "@my-agent/core";
 import { nowWallclock } from "@my-agent/core";
 import type { RuntimeEvent } from "@my-agent/core";
+import { join } from "node:path";
 
 // ─── Event Normalizer (pure function) ─────────────────────────────────────────
 
@@ -71,9 +72,9 @@ export function mapMyaEvent(
           }));
         }
         case "AwaitingApproval": {
-          // MEDIUM fix: surface approval requests as error events (UI can display)
+          // MED-8 fix: surface approval as error event (not tool_call — semantic mismatch)
           const call = te.call;
-          return [{ type: "tool_call", toolCallId: call?.id ?? "", name: call?.name ?? "awaiting_approval", args: call?.args ?? {} }];
+          return [{ type: "error", message: `Approval required for tool: ${call?.name ?? "unknown"}`, recoverable: true }];
         }
         default:
           return [];
@@ -130,7 +131,7 @@ export class MyaNativeSession implements RuntimeSession {
     this.emit({ type: "turn_start", model: this.model, sessionId: this.opts.sessionId });
     try {
       const { createAgent } = await import("@my-agent/agent");
-      const agent = await createAgent({} as any);
+      const agent = await createAgent({ memoryDir: join(this.opts.agentDir, "memory") } as any);
       const state = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
       await agent.run(text, (event: RuntimeEvent) => {
         const mapped = mapMyaEvent(event, state);

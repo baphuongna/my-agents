@@ -92,9 +92,13 @@ describe("[unit] mapMyaEvent", () => {
     expect(mapMyaEvent(e as any, mkState())).toEqual([{ type: "tool_result", toolCallId: "tc1", output: "ok", error: false }]);
   });
 
-  it("AwaitingApproval → [tool_call]", () => {
+  it("AwaitingApproval → [error]", () => {
     const e = { kind: "turn", stage: "event", turnEvent: { state: "AwaitingApproval", call: { id: "tc1", name: "dangerous_op", args: {} } } };
-    expect(mapMyaEvent(e as any, mkState())).toEqual([{ type: "tool_call", toolCallId: "tc1", name: "dangerous_op", args: {} }]);
+    const result = mapMyaEvent(e as any, mkState());
+    expect(result).toHaveLength(1);
+    expect(result[0]!.type).toBe("error");
+    expect((result[0] as any).message).toContain("dangerous_op");
+    expect((result[0] as any).recoverable).toBe(true);
   });
 
   it("health event → empty array", () => {

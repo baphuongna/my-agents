@@ -20,7 +20,6 @@ interface AccumulatedUsage {
 export class PiEventNormalizer {
   static toAgentEvent(
     rawEvent: unknown,
-    _session: PiSessionLike,
     usage: AccumulatedUsage,
   ): AgentEvent | null {
     const e = rawEvent as { type: string; [key: string]: unknown };

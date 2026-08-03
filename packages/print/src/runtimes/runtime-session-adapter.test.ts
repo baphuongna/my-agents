@@ -36,7 +36,7 @@ describe("[unit] RuntimeSessionAdapter", () => {
     const enricher = { ...stubEnricher, enrich: vi.fn(async (p: string) => `[enriched] ${p}`) };
     const adapter = new RuntimeSessionAdapter(session, enricher, stubCostTracker);
     await adapter.prompt("hello");
-    expect(session.prompt).toHaveBeenCalledWith("[enriched] hello");
+    expect(session.prompt).toHaveBeenCalledWith("[enriched] hello", undefined);
   });
 
   it("busy toggles via onBusyChange", async () => {
@@ -60,7 +60,7 @@ describe("[unit] RuntimeSessionAdapter", () => {
     const enricher = { ...stubEnricher, enrich: vi.fn(async () => { throw new Error("enrich failed"); }) };
     const adapter = new RuntimeSessionAdapter(session, enricher, stubCostTracker);
     await adapter.prompt("raw text");
-    expect(session.prompt).toHaveBeenCalledWith("raw text");
+    expect(session.prompt).toHaveBeenCalledWith("raw text", undefined);
   });
 
   it("text events accumulate in textBuffer", async () => {

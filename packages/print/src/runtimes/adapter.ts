@@ -3,7 +3,7 @@
 import type { AgentSession } from "@my-agent/agent";
 import type {
   RuntimeSession, PromptEnricher, CostTracker,
-  SessionState, EnrichContext,
+  SessionState, EnrichContext, PromptOpts,
 } from "@my-agent/core";
 
 export class RuntimeSessionAdapter implements AgentSession {
@@ -49,7 +49,8 @@ export class RuntimeSessionAdapter implements AgentSession {
       this.textBuffer = "";
 
       try {
-        await this.session.prompt(enriched);
+        // MED-11 fix: forward PromptOpts to underlying session
+        await this.session.prompt(enriched, _options as PromptOpts);
         this.onMessage?.();
       } catch (e) {
         console.warn(`[adapter] session.prompt failed: ${e}`);

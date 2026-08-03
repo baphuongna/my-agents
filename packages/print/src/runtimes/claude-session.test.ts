@@ -15,10 +15,10 @@ describe("[unit] ClaudeEventNormalizer", () => {
     expect(ClaudeEventNormalizer.parseLine(line)).toEqual({ type: "tool_call", toolCallId: "tc1", name: "bash", args: { cmd: "ls" } });
   });
 
-  it("result with usage returns _usage_update", () => {
+  it("result with usage returns usage update", () => {
     const line = JSON.stringify({ type: "result", usage: { input_tokens: 100, output_tokens: 50 }, cost: 0.01 });
     const result = ClaudeEventNormalizer.parseLine(line) as any;
-    expect(result?.type).toBe("_usage_update");
+    expect(result?._type).toBe("usage");
     expect(result?.tokensIn).toBe(100);
   });
 

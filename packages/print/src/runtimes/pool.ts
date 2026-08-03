@@ -24,7 +24,7 @@ export interface RuntimePoolEntry {
 
 export class RuntimePool {
   private entries = new Map<string, RuntimePoolEntry>();
-  private maxSessions = parseInt(process.env.MYA_MAX_SESSIONS ?? "16", 10);
+  private maxSessions = (() => { const n = parseInt(process.env.MYA_MAX_SESSIONS ?? "16", 10); return Number.isFinite(n) && n > 0 ? n : 16; })();
   private idleTtlMs = 3_600_000;
   private sweepTimer: NodeJS.Timeout | null = null;
 

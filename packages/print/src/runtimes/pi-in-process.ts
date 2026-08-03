@@ -1,7 +1,6 @@
 // packages/print/src/runtimes/pi-in-process.ts
 
 import { join } from "node:path";
-import { homedir } from "node:os";
 import type { Model, Api } from "@earendil-works/pi-ai";
 import type { ModelRuntime, AgentSession as PiAgentSession } from "@earendil-works/pi-coding-agent";
 
@@ -145,8 +144,10 @@ export class PiInProcessSession implements RuntimeSession {
   private accumulatedUsage = { tokensIn: 0, tokensOut: 0 };
   private turnActive = false;
 
+  private unsubscribePi: (() => void) | null = null;
+
   constructor(private piSession: PiAgentSession, private opts: StartOpts) {
-    this.piSession.subscribe((event: unknown) => {
+    this.unsubscribePi = this.piSession.subscribe((event: unknown) => {
       const e = event as { type: string };
 
       if (e.type === "message_end") {
@@ -166,7 +167,7 @@ export class PiInProcessSession implements RuntimeSession {
         });
       }
 
-      const agentEvent = PiEventNormalizer.toAgentEvent(event, this.piSession as any, this.accumulatedUsage);
+      const agentEvent = PiEventNormalizer.toAgentEvent(event, this.accumulatedUsage);
 
       if (agentEvent?.type === "turn_end") {
         this.turnActive = false;
@@ -254,7 +255,8 @@ export class PiInProcessSession implements RuntimeSession {
   isIdle(): boolean { return this.piSession.isIdle; }
 
   async dispose(): Promise<void> {
-    try { this.piSession.dispose(); } catch {}
+    this.unsubscribePi?.();
+    try { this.piSession.dispose(); } catch (e) { console.warn("[pi] dispose failed:", e); }
   }
 
   onEvent(handler: (e: AgentEvent) => void): () => void {

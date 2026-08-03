@@ -7,14 +7,15 @@ const MIN_SCORE = 0.3;
 
 export class MemoryEnricher implements PromptEnricher {
   constructor(
-    private memory?: { recall(query: string, opts?: { topK?: number }): any[] },
+    private memory?: { recall(query: string, opts?: { topK?: number }): any[] | Promise<any[]> },
     private brain?: { recordFact(fact: any): Promise<void> },
   ) {}
 
   async enrich(prompt: string, _ctx: EnrichContext): Promise<string> {
     if (!this.memory) return prompt;
     try {
-      const results = this.memory.recall(prompt, { topK: MAX_INJECTION_HITS });
+      // MED-6 fix: await recall() (may be async in real MemoryManager)
+      const results = await this.memory.recall(prompt, { topK: MAX_INJECTION_HITS });
       const hits = results?.flatMap((r: any) => r?.hits ?? []) ?? [];
       const filtered = hits
         .filter((h: any) => (h?.score ?? 0) >= MIN_SCORE)

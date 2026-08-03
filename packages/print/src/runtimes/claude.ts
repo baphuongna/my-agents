@@ -30,9 +30,9 @@ export class ClaudeEventNormalizer {
         return null;
 
       case "result":
-        // R5-4 fix: return usage update event (caught by session, not emitted to listeners)
+        // HIGH-1 fix: return typed UsageUpdate instead of invalid AgentEvent cast
         if (obj.usage) {
-          return { type: "_usage_update" as any, tokensIn: obj.usage.input_tokens ?? 0, tokensOut: obj.usage.output_tokens ?? 0, costUsd: obj.cost } as any;
+          return { _type: "usage", tokensIn: obj.usage.input_tokens ?? 0, tokensOut: obj.usage.output_tokens ?? 0, costUsd: obj.cost } as any;
         }
         return null;
 
@@ -50,12 +50,24 @@ export class ClaudeEventNormalizer {
 export class ClaudeRuntime implements AgentRuntime {
   readonly runtimeType = "claude";
   readonly displayName = "Claude CLI (subprocess)";
+  private availableCache: boolean | null = null;
+  private availableCacheTime = 0;
+  private static AVAILABLE_TTL_MS = 60_000;
 
   isAvailable(): boolean {
+    // HIGH-2 fix: cache result for 60s to avoid blocking event loop on every router call
+    const now = nowWallclock();
+    if (this.availableCache !== null && now - this.availableCacheTime < ClaudeRuntime.AVAILABLE_TTL_MS) {
+      return this.availableCache;
+    }
     try {
       const result = spawnSync("claude", ["--version"], { stdio: "pipe", timeout: 5000 });
-      return result.status === 0;
+      this.availableCache = result.status === 0;
+      this.availableCacheTime = now;
+      return this.availableCache;
     } catch {
+      this.availableCache = false;
+      this.availableCacheTime = now;
       return false;
     }
   }
@@ -119,7 +131,7 @@ export class ClaudeSession implements RuntimeSession {
     await this.doPrompt(text, _opts);
     while (this.promptQueue.length > 0) {
       const item = this.promptQueue.shift()!;
-      try { await item.fn(); } catch {}
+      try { await item.fn(); } catch (e) { console.warn("[claude] queue drain error:", e); }
     }
   }
 
@@ -143,7 +155,7 @@ export class ClaudeSession implements RuntimeSession {
           const event = ClaudeEventNormalizer.parseLine(line);
           if (!event) return;
           // R6-4 fix: catch _usage_update to update lastUsage
-          if ((event as any).type === "_usage_update") {
+          if ((event as any)._type === "usage") {
             this.lastUsage.tokensIn = (event as any).tokensIn;
             this.lastUsage.tokensOut = (event as any).tokensOut;
             if ((event as any).costUsd) this.lastUsage.costUsd = (event as any).costUsd;
@@ -175,11 +187,11 @@ export class ClaudeSession implements RuntimeSession {
     }
   }
 
-  async setModel(model: any): Promise<void> { this.modelId = model.id; }
+  async setModel(model: any): Promise<void> { this.modelId = model.id; this.emit({ type: "model_changed", model: model.id }); }
   setThinking(_level: ThinkingLevel): void {}
   async compact(): Promise<CompactionResult> { return { tokensBefore: 0, tokensAfter: 0, strategy: "continue-session" }; }
   getState(): SessionState {
-    return { model: this.modelId, thinking: "medium", status: this.busy ? "thinking" : "idle", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, contextPct: 0, contextWindow: 200_000, costUsd: this.lastUsage.costUsd, startedAt: this.createdAt, lastActivity: nowWallclock() };
+    return { model: this.modelId, thinking: "off", status: this.busy ? "thinking" : "idle", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, contextPct: 0, contextWindow: 200_000, costUsd: this.lastUsage.costUsd, startedAt: this.createdAt, lastActivity: nowWallclock() };
   }
   isIdle(): boolean { return !this.busy; }
 

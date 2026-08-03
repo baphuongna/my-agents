@@ -46,12 +46,14 @@ export class SmartRouterImpl implements SmartRouter {
       if (!rt.isAvailable()) continue;
       const keywords = this.customKeywords.get(name) ?? DEFAULT_KEYWORDS[name] ?? [];
       const keywordScore = keywords.reduce((score, kw) => {
-        const regex = new RegExp(`\\b${kw}\\b`, "i");
+        const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(`\\b${escaped}\\b`, "i");
         return score + (regex.test(input.prompt) ? 1 : 0);
       }, 0);
       const cost = rt.costPerMTokens?.() ?? { input: 0, output: 0 };
       const totalCost = cost.input + cost.output;
-      const costScore = totalCost > 0 ? 1 / (1 + totalCost / 10) : 1;
+      // LOW-9 fix: missing costPerMTokens → neutral 0.5, not optimal 1.0
+      const costScore = totalCost > 0 ? 1 / (1 + totalCost / 10) : 0.5;
       scores.push({ name, runtime: rt, keywordScore, costScore });
     }
 
