@@ -34,7 +34,8 @@ export async function gracefulShutdown(
         const deadline = startTime + timeout;
         while (nowWallclock() < deadline) {
           const current = pool.get(entry.sessionId);
-          if (!current || !current.busy) { naturallyDrained++; return; }
+          if (!current) return; // F10 fix: session already gone — don't count
+          if (!current.busy) { naturallyDrained++; return; }
           await new Promise<void>(r => setTimeout(r, 500));
         }
         if (force) {

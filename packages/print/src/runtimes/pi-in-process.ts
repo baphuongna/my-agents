@@ -176,7 +176,7 @@ export class PiInProcessSession implements RuntimeSession {
 
       if (agentEvent) {
         if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
-        this.listeners.forEach(l => l(agentEvent));
+        this.emit(agentEvent);
       }
     });
   }

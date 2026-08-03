@@ -90,3 +90,15 @@ describe("[unit] CostTrackerImpl — copy independence", () => {
     expect(ct.getFullCost("s1")!.tokensIn).toBe(100);
   });
 });
+
+describe("[unit] CostTrackerImpl — costUsd edge cases", () => {
+  it("costUsd: 0 with non-zero tokens does NOT trigger rate fallback", () => {
+    const ct = new CostTrackerImpl();
+    ct.setRuntimeType("s1", "pi");
+    ct.record("s1", { type: "turn_end", tokensIn: 1000, tokensOut: 500, costUsd: 0 });
+    const cost = ct.getSessionCost("s1")!;
+    expect(cost.totalUsd).toBe(0); // costUsd was 0, not undefined
+    // tokens still accumulate
+    expect(ct.getFullCost("s1")!.tokensIn).toBe(1000);
+  });
+});

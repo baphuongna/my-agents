@@ -141,3 +141,18 @@ describe("[unit] RuntimePool", () => {
     expect(pool.size).toBe(0);
   });
 });
+
+describe("[unit] RuntimePool — concurrent acquire dedup (M1 fix)", () => {
+  it("concurrent acquireWithRuntime for same sessionId deduplicates", async () => {
+    const runtimes = new Map([["pi", makeMockRuntime("pi")]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    const [r1, r2] = await Promise.all([
+      pool.acquireWithRuntime("s1", { agentType: "pi" }),
+      pool.acquireWithRuntime("s1", { agentType: "pi" }),
+    ]);
+    // Both should get the same session
+    expect(r1.session).toBe(r2.session);
+    expect(pool.size).toBe(1);
+    pool.dispose();
+  });
+});

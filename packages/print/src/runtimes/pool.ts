@@ -68,7 +68,16 @@ export class RuntimePool {
 
     // M1 fix: check for pending creation to prevent race
     const pendingCreate = this.pending.get(sessionId);
-    if (pendingCreate) return pendingCreate;
+    if (pendingCreate) {
+      // F2 fix: validate agentType matches pending creation
+      if (opts?.agentType) {
+        const result = await pendingCreate;
+        if (result.runtimeType !== opts.agentType) {
+          throw new Error(`Session ${sessionId} pending as ${result.runtimeType}, cannot reassign to ${opts.agentType}`);
+        }
+      }
+      return pendingCreate;
+    }
 
     const createPromise = this._doAcquireWithRuntime(sessionId, opts);
     this.pending.set(sessionId, createPromise);
@@ -156,7 +165,7 @@ export class RuntimePool {
     const entry = this.entries.get(sessionId);
     if (!entry) return false;
     if (entry.busy && !opts?.force) return false;
-    void Promise.resolve(entry.session.abort()).catch(() => {});
+    this.costTracker.forget?.(sessionId); void Promise.resolve(entry.session.abort()).catch(() => {});
     this.entries.delete(sessionId);
     return true;
   }
@@ -173,9 +182,9 @@ export class RuntimePool {
     for (const [id, entry] of this.entries) {
       if (entry.busy) continue;
       if (now - entry.idleSince > this.idleTtlMs) {
+        this.costTracker.forget?.(id);
         void Promise.resolve(entry.session.abort()).catch(() => {});
         this.entries.delete(id);
-        this.costTracker.forget?.(id);
       }
     }
   }
@@ -183,6 +192,7 @@ export class RuntimePool {
   dispose(): void {
     if (this.sweepTimer) { clearInterval(this.sweepTimer); this.sweepTimer = null; }
     for (const entry of this.entries.values()) {
+      this.costTracker.forget?.(entry.sessionId);
       void Promise.resolve(entry.session.abort()).catch(() => {});
     }
     this.entries.clear();
