@@ -169,7 +169,7 @@ describe("[unit] RuntimePool — concurrent agentType mismatch", () => {
     const errors = results.filter(r => r instanceof Error);
     const successes = results.filter(r => !(r instanceof Error));
     expect(successes.length).toBeGreaterThanOrEqual(1);
-    expect(errors.length).toBeGreaterThanOrEqual(0);
+    expect(errors.some(e => e instanceof Error)).toBe(true);
     pool.dispose();
   });
 });

@@ -182,7 +182,8 @@ export class RuntimePool {
     const entry = this.entries.get(sessionId);
     if (!entry) return false;
     if (entry.busy && !opts?.force) return false;
-    this.costTracker.forget?.(sessionId); try { void Promise.resolve(entry.session.abort()).catch(() => {}); } catch {}
+    this.costTracker.forget?.(sessionId);
+    void Promise.resolve(entry.session.abort()).catch(() => {});
     this.entries.delete(sessionId);
     return true;
   }

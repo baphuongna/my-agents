@@ -15,6 +15,8 @@ import { nowWallclock } from "@my-agent/core";
 
 export class ClaudeEventNormalizer {
   static parseLine(line: string): AgentEvent | null {
+    // M2 note: result type returns { _type: "usage" } as any for internal usage extraction.
+    // Callers must check (event as any)._type === "usage" before treating as AgentEvent.
     let obj: any;
     try { obj = JSON.parse(line); } catch { return null; }
 
@@ -110,6 +112,7 @@ export class ClaudeSession implements RuntimeSession {
   private promptQueue: Array<{ fn: () => Promise<void>; reject: (e: Error) => void }> = [];
   private sessionDir: string;
   private lastUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
+  private disposed = false;
 
   constructor(private opts: StartOpts) {
     this.modelId = opts.modelId ?? "claude-sonnet-4-20250514";
@@ -136,7 +139,7 @@ export class ClaudeSession implements RuntimeSession {
   }
 
   private async doPrompt(text: string, _opts?: PromptOpts): Promise<void> {
-    this.busy = true;
+    if (this.disposed) throw new Error("Session disposed"); this.busy = true;
     this.lastUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 }; // M2 fix: reset per prompt
     this.emit({ type: "turn_start", model: this.modelId, sessionId: this.opts.sessionId });
 
@@ -147,7 +150,7 @@ export class ClaudeSession implements RuntimeSession {
     });
 
     // BB fix: drain stderr to prevent pipe deadlock
-    this.child.stderr?.on("data", () => {});
+    this.child.stderr?.on("data", (d: Buffer) => { if (process.env.DEBUG_CLAUDE) console.debug("[claude stderr]", d.toString().trim()); });
 
     try {
       await new Promise<void>((resolve) => {
@@ -185,7 +188,7 @@ export class ClaudeSession implements RuntimeSession {
         });
       });
     } finally {
-      this.busy = false;
+      this.disposed = true; this.busy = false;
     }
   }
 
@@ -203,7 +206,7 @@ export class ClaudeSession implements RuntimeSession {
     for (const item of this.promptQueue) { item.reject(err); }
     this.promptQueue = [];
     this.listeners.clear();
-    this.busy = false;
+    this.disposed = true; this.busy = false;
   }
 
   onEvent(handler: (e: AgentEvent) => void): () => void {

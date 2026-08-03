@@ -48,7 +48,7 @@ export class CostTrackerImpl implements CostTracker {
         if (event.costUsd > 0) cost.totalUsd += event.costUsd;
       } else {
         const rt = this.runtimeTypes.get(sessionId) ?? "pi";
-        const rate = COST_RATES[rt] ?? COST_RATES["pi"]!;
+        const rate = COST_RATES[rt] ?? COST_RATES["pi"] ?? { input: 3, output: 15 };
         cost.totalUsd +=
           (event.tokensIn / 1_000_000) * rate.input +
           (event.tokensOut / 1_000_000) * rate.output;

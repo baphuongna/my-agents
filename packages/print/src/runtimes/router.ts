@@ -82,6 +82,7 @@ export class SmartRouterImpl implements SmartRouter {
       }
     }
 
-    return { runtime: best.runtime, reason: `scored:${best.name}(kw=${best.keywordScore})` };
+    const reason = best.keywordScore === 0 ? `fallback-no-default:${best.name}` : `scored:${best.name}(kw=${best.keywordScore})`;
+    return { runtime: best.runtime, reason };
   }
 }
