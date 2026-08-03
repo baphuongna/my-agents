@@ -30,6 +30,7 @@ Replace the Phase 5 `stubCostTracker` with a real implementation that:
 // packages/print/src/runtimes/cost-tracker.ts
 
 import type { AgentEvent, CostTracker } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 interface SessionCost {
   totalUsd: number;
@@ -56,7 +57,9 @@ export class CostTrackerImpl implements CostTracker {
     if (!cost) {
       cost = {
         totalUsd: 0, turns: 0, tokensIn: 0, tokensOut: 0,
-        events: 0, startedAt: nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18), lastActivity: nowWallclock(),
+        events: 0,
+        startedAt: nowWallclock(),
+        lastActivity: nowWallclock(),
       };
       this.sessions.set(sessionId, cost);
     }
@@ -76,9 +79,10 @@ export class CostTrackerImpl implements CostTracker {
       if (event.costUsd !== undefined && event.costUsd > 0) {
         cost.totalUsd += event.costUsd;
       } else {
-      cost.totalUsd +=
-        (event.tokensIn / 1_000_000) * rate.input +
-        (event.tokensOut / 1_000_000) * rate.output;
+        cost.totalUsd +=
+          (event.tokensIn / 1_000_000) * rate.input +
+          (event.tokensOut / 1_000_000) * rate.output;
+      }
     }
   }
 

@@ -70,7 +70,7 @@ export async function gracefulShutdown(
         while (nowWallclock() < deadline) {
           const current = pool.get(entry.sessionId);
           if (!current || !current.busy) return;
-          await sleep(500);
+          await new Promise(r => setTimeout(r, 500));  // R6-5 fix: inline sleep
         }
         // Force release if still busy
         if (force) {
@@ -100,9 +100,7 @@ export async function gracefulShutdown(
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+// R6-5 fix: sleep() helper removed — use inline new Promise(r => setTimeout(r, ms))
 ```
 
 ### Step 2: Wire shutdown signals
@@ -212,6 +210,7 @@ const gateway = new Gateway({
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AgentRuntime } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import
 import { RuntimePool } from "./pool.js";
 import { createStubRouter, stubEnricher } from "./stubs.js";  // R3-7 fix: add missing imports
 import { gracefulShutdown } from "./shutdown.js";

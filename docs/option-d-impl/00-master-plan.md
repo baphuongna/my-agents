@@ -55,7 +55,7 @@ packages/
 | 9 | `claude-cli-flags.md` (spike document) | 10 |
 | 10 | `ClaudeRuntime`, `ClaudeSession`, `ClaudeEventNormalizer` | 5 |
 | 11 | Inter-agent messaging via pi-intercom extension | (no code exports — runtime behavior) |
-| 12 | `CostTracker` (real impl), `GET /sessions/:id/snapshot` route | 5, gateway |
+| 12 | `CostTracker` (real impl), `GET /pool/sessions/:id/snapshot` route | 5, gateway |
 | 13 | Shutdown handler, idle sweep integration, E2E tests | gateway |
 
 ### Critical Path (must be sequential):
@@ -86,7 +86,7 @@ packages/
 | settled guard | Both 'close' and 'error' events check settled flag — prevents double turn_end |
 | dreamCycle hoisted to shared-instances.ts | PiInProcessRuntime receives it via constructor (G1 fix) |
 | IC6: no SessionMetaStore | Session state lives in RuntimeSession.getState() |
-| Snapshot route in Phase 12 | GET /sessions/:id/snapshot — needs CostTracker data |
+| Snapshot route in Phase 12 | GET /pool/sessions/:id/snapshot — needs CostTracker data |
 
 ## 5. Milestones & Acceptance Gates
 

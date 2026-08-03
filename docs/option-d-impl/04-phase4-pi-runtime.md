@@ -103,6 +103,7 @@ Maps pi's event types to the uniform `AgentEvent` union.
 ```typescript
 // packages/print/src/runtimes/pi-event-normalizer.ts
 import type { AgentEvent } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 interface PiSessionLike {
   readonly model?: { id: string };

@@ -74,6 +74,7 @@ This is a **pure function** that parses a single `stream-json` line into an
 // packages/print/src/runtimes/claude-event-normalizer.ts
 
 import type { AgentEvent } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 /**
  * Translates a single stream-json line from `claude -p --output-format stream-json`
@@ -234,6 +235,7 @@ The code follows spec §2.2 exactly, including all fixes:
 
 import type { Model, Api } from "@earendil-works/pi-ai";
 import type { AgentEvent, AgentRuntime, RuntimeSession, StartOpts, SessionState, ThinkingLevel, ModelInfo, AgentCapabilities, CompactionResult, PromptOpts } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -449,9 +451,12 @@ class ClaudeSession implements RuntimeSession {
           // Parse the stream-json line into an AgentEvent
           const event = ClaudeEventNormalizer.parseLine(line);
           if (event) {
-            // Track usage from result line
-            if (event.type === "error") {
-              // errors are also emitted as events
+            // R6-4 fix: catch _usage_update to update lastUsage (don't emit to listeners)
+            if ((event as any).type === "_usage_update") {
+              this.lastUsage.tokensIn = (event as any).tokensIn;
+              this.lastUsage.tokensOut = (event as any).tokensOut;
+              if ((event as any).costUsd) this.lastUsage.costUsd = (event as any).costUsd;
+              return;  // don't emit internal event (exits line callback)
             }
             this.emit(event);
           }
@@ -721,6 +726,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentEvent, StartOpts } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 // ── Check if claude binary is available ──
 function claudeAvailable(): boolean {

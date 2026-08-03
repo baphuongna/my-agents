@@ -262,6 +262,7 @@ replacement target; the Phase 7 `MemoryEnricher` implements the same interface.
 import { describe, it, expect, vi } from "vitest";
 import { MemoryEnricher } from "./enricher.js";
 import type { EnrichContext, MemoryHit } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 import type { MemoryDomainEntry } from "@my-agent/memory";  // F-7 fix: from memory, not core
 
 // ── Mock factories ──
