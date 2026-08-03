@@ -34,7 +34,7 @@ export function mapMyaEvent(
           // Defensive: some providers may emit error chunks directly
           if (chunk.kind === "error") {
             const err = chunk.error;
-            return [{ type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "stream error", recoverable: err?.recoverable ?? false }];
+            return [{ type: "error", message: err?.context?.reason ?? String(err?.context?.cause ?? "stream error"), recoverable: err?.recoverable ?? false }];
           }
           return [];
         }
@@ -46,7 +46,7 @@ export function mapMyaEvent(
         case "Failed":
         case "Recoverable": {
           const err = te.error;
-          return [{ type: "error", message: err?.context?.reason ?? String(err?.context?.cause ?? err?.context?.reason ?? "turn failed"), recoverable: te.state === "Recoverable" }];
+          return [{ type: "error", message: err?.context?.reason ?? String(err?.context?.cause ?? "turn failed"), recoverable: te.state === "Recoverable" }];
         }
         case "Cancelled":
           return [{ type: "error", message: te.reason ?? "cancelled", recoverable: false }];
@@ -140,9 +140,9 @@ export class MyaNativeSession implements RuntimeSession {
     this.textBuffer = "";
     this.busy = true;
     this.emit({ type: "turn_start", model: this.model, sessionId: this.opts.sessionId });
+    const state = { tokensIn: 0, tokensOut: 0, costUsd: 0 }; // M2 fix: outside try for catch access
     try {
       const agent = await this.getAgent();
-      const state = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
       await agent.run(text, (event: RuntimeEvent) => {
         const mapped = mapMyaEvent(event, state);
         for (const m of mapped) {
@@ -153,8 +153,9 @@ export class MyaNativeSession implements RuntimeSession {
       this.lastState = state;
       this.emit({ type: "turn_end", tokensIn: state.tokensIn, tokensOut: state.tokensOut, ...(state.costUsd > 0 ? { costUsd: state.costUsd } : {}) });
     } catch (e) {
+      this.lastState = state; // M2 fix: preserve partial usage on error
       this.emit({ type: "error", message: String(e), recoverable: false });
-      this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
+      this.emit({ type: "turn_end", tokensIn: state.tokensIn, tokensOut: state.tokensOut, ...(state.costUsd > 0 ? { costUsd: state.costUsd } : {}) });
       throw e;
     } finally {
       this.busy = false;

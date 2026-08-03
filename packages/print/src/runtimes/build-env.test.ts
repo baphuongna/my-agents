@@ -59,4 +59,11 @@ describe("[unit] buildAgentEnv", () => {
     const env = buildAgentEnv();
     expect(env.GOOGLE_API_KEY).toBeUndefined();
   });
+
+  it("rejects array as auth.json root", () => {
+    mkdirSync(join(tmpHome, ".mya", "agent"), { recursive: true });
+    writeFileSync(join(tmpHome, ".mya", "agent", "auth.json"), JSON.stringify(["not", "valid"]));
+    const env = buildAgentEnv();
+    expect(env.PI_CODING_AGENT_DIR).toBeDefined();
+  });
 });

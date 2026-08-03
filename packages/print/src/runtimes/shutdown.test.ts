@@ -83,3 +83,15 @@ describe("[unit] gracefulShutdown — busy drain", () => {
     expect(result.forced).toBe(1);
   });
 });
+
+describe("[unit] gracefulShutdown — forceKill: false", () => {
+  it("does not force-release when forceKill is false", async () => {
+    const runtimes = new Map([["pi", makeMockRuntime()]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    const ct = new CostTrackerImpl();
+    await pool.acquire("s1");
+    pool.get("s1")!.busy = true;
+    const result = await gracefulShutdown(pool, ct, { drainTimeoutMs: 200, forceKill: false });
+    expect(result.forced).toBe(0);
+  });
+});

@@ -166,11 +166,12 @@ export class ClaudeSession implements RuntimeSession {
         });
 
         let exitCode: number | null = null;
+        let exitSignal: string | null = null;
         let settled = false;
-        this.child!.on("exit", (code) => { exitCode = code; });
+        this.child!.on("exit", (code, signal) => { exitCode = code; exitSignal = signal; });
         this.child!.on("close", () => {
           if (settled) return; settled = true;
-          if (exitCode !== null && exitCode !== 0) {
+          if ((exitCode !== null && exitCode !== 0) || exitSignal) {
             this.emit({ type: "error", message: `Claude exited with code ${exitCode}`, recoverable: false });
           }
           this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd > 0 ? { costUsd: this.lastUsage.costUsd } : {}) });
@@ -179,7 +180,7 @@ export class ClaudeSession implements RuntimeSession {
         this.child!.on("error", (err) => {
           if (settled) return; settled = true;
           this.emit({ type: "error", message: err.message, recoverable: false });
-          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut });
+          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd > 0 ? { costUsd: this.lastUsage.costUsd } : {}) });
           resolve();
         });
       });
