@@ -12,62 +12,74 @@ import type { RuntimeEvent } from "@my-agent/core";
 interface MyaNormalizerState {
   tokensIn: number;
   tokensOut: number;
+  costUsd: number;
 }
 
+/** Map a RuntimeEvent to zero or more AgentEvents (array for multi-call batches). */
 export function mapMyaEvent(
   event: RuntimeEvent,
   state: MyaNormalizerState,
-): AgentEvent | null {
+): AgentEvent[] {
   const e = event as any;
   switch (e.kind) {
     case "turn":
-      // stage: "start" and stage: "end" are bare envelopes — no turnEvent
-      if (e.stage !== "event") return null;
+      if (e.stage !== "event") return [];
       const te = e.turnEvent;
-      if (!te) return null;
+      if (!te) return [];
       switch (te.state) {
         case "Streaming": {
           const chunk = te.chunk;
-          if (!chunk) return null;
-          if (chunk.kind === "text") return { type: "text", delta: chunk.text ?? "" };
+          if (!chunk) return [];
+          if (chunk.kind === "text") return [{ type: "text", delta: chunk.text ?? "" }];
+          // Defensive: some providers may emit error chunks directly
           if (chunk.kind === "error") {
             const err = chunk.error;
-            return { type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "stream error", recoverable: err?.recoverable ?? false };
+            return [{ type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "stream error", recoverable: err?.recoverable ?? false }];
           }
-          return null;
+          return [];
         }
         case "Completed":
           state.tokensIn += te.usage?.input ?? 0;
           state.tokensOut += te.usage?.output ?? 0;
-          return null; // turn_end emitted by prompt()
+          state.costUsd += te.cost?.usd ?? 0;
+          return [];
         case "Failed":
         case "Recoverable": {
           const err = te.error;
-          return { type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "turn failed", recoverable: te.state === "Recoverable" };
+          return [{ type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "turn failed", recoverable: te.state === "Recoverable" }];
         }
         case "Cancelled":
-          return { type: "error", message: te.reason ?? "cancelled", recoverable: false };
+          return [{ type: "error", message: te.reason ?? "cancelled", recoverable: false }];
         case "ToolCalls": {
-          if (!te.calls?.length) return null;
-          const call = te.calls[0];
-          return { type: "tool_call", toolCallId: call?.id ?? "", name: call?.name ?? "", args: call?.args ?? {} };
+          // MEDIUM fix: emit ALL tool calls in batch, not just first
+          if (!te.calls?.length) return [];
+          return te.calls.map((call: any) => ({
+            type: "tool_call" as const,
+            toolCallId: call?.id ?? "",
+            name: call?.name ?? "",
+            args: call?.args ?? {},
+          }));
         }
         case "ToolExec": {
-          const results = Array.isArray(te.result) ? te.result : te.result?.results ?? [];
-          if (!results.length) return null;
-          const r = results[0];
-          return {
-            type: "tool_result",
+          // MEDIUM fix: emit ALL tool results in batch, not just first
+          const results: any[] = Array.isArray(te.result) ? te.result : te.result?.results ?? [];
+          return results.map((r: any) => ({
+            type: "tool_result" as const,
             toolCallId: r?.callId ?? "",
             output: typeof r?.output === "string" ? r.output : JSON.stringify(r?.output ?? ""),
             error: r ? !r.ok : false,
-          };
+          }));
+        }
+        case "AwaitingApproval": {
+          // MEDIUM fix: surface approval requests as error events (UI can display)
+          const call = te.call;
+          return [{ type: "tool_call", toolCallId: call?.id ?? "", name: call?.name ?? "awaiting_approval", args: call?.args ?? {} }];
         }
         default:
-          return null;
+          return [];
       }
     default:
-      return null;
+      return [];
   }
 }
 
@@ -119,15 +131,15 @@ export class MyaNativeSession implements RuntimeSession {
     try {
       const { createAgent } = await import("@my-agent/agent");
       const agent = await createAgent({} as any);
-      const state = { tokensIn: 0, tokensOut: 0 };
+      const state = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
       await agent.run(text, (event: RuntimeEvent) => {
         const mapped = mapMyaEvent(event, state);
-        if (mapped) {
-          if (mapped.type === "text") { this.textBuffer += mapped.delta; }
-          this.emit(mapped);
+        for (const m of mapped) {
+          if (m.type === "text") { this.textBuffer += m.delta; }
+          this.emit(m);
         }
       });
-      this.emit({ type: "turn_end", tokensIn: state.tokensIn, tokensOut: state.tokensOut });
+      this.emit({ type: "turn_end", tokensIn: state.tokensIn, tokensOut: state.tokensOut, ...(state.costUsd > 0 ? { costUsd: state.costUsd } : {}) });
     } catch (e) {
       this.emit({ type: "error", message: String(e), recoverable: false });
       this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
