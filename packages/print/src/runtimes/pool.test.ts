@@ -168,7 +168,7 @@ describe("[unit] RuntimePool — concurrent agentType mismatch", () => {
     // L12 fix: verify exactly one succeeds and one throws
     const errors = results.filter(r => r instanceof Error);
     const successes = results.filter(r => !(r instanceof Error));
-    expect(successes.length).toBeGreaterThanOrEqual(1);
+    expect(successes.length).toBe(1);
     expect(errors.some(e => e instanceof Error)).toBe(true);
     pool.dispose();
   });

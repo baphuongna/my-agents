@@ -134,7 +134,7 @@ export class ClaudeSession implements RuntimeSession {
     await this.doPrompt(text, _opts);
     while (this.promptQueue.length > 0) {
       const item = this.promptQueue.shift()!;
-      try { await item.fn(); } catch (e) { console.warn("[claude] queue drain error:", e); }
+      await item.fn();
     }
   }
 
@@ -188,7 +188,7 @@ export class ClaudeSession implements RuntimeSession {
         });
       });
     } finally {
-      this.disposed = true; this.busy = false;
+      this.busy = false;
     }
   }
 
