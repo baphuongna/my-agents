@@ -59,3 +59,12 @@ describe("[unit] MemoryEnricher", () => {
     expect(brain._facts).toHaveLength(0);
   });
 });
+
+describe("[unit] MemoryEnricher async recall", () => {
+  it("handles async recall() correctly", async () => {
+    const asyncMemory = { recall: async (_q: string, _o?: any) => [{ domain: "test", hits: [{ id: "h1", content: "async fact", score: 0.9 }] }] };
+    const e = new MemoryEnricher(asyncMemory as any);
+    const result = await e.enrich("test", makeCtx());
+    expect(result).toContain("async fact");
+  });
+});

@@ -21,7 +21,7 @@ function makeMockRuntime(name: string, available = true): AgentRuntime {
         setThinking() {},
         async compact() { return { tokensBefore: 0, tokensAfter: 0, strategy: "none" as const }; },
         getState() {
-          return { model: "test", thinking: "medium", status: "idle" as const, tokensIn: 0, tokensOut: 0, contextPct: 0, contextWindow: 200000, costUsd: 0, startedAt: Date.now(), lastActivity: Date.now() };
+          return { model: "test", thinking: "medium", status: "idle" as const, tokensIn: 0, tokensOut: 0, contextPct: 0, contextWindow: 200000, costUsd: 0, startedAt: 1234567890, lastActivity: 1234567890 };
         },
         isIdle: () => true,
         async dispose() {},
@@ -123,7 +123,7 @@ describe("[unit] RuntimePool", () => {
   it("sweepIdle evicts idle sessions past TTL", async () => {
     await pool.acquire("s1");
     const entry = pool.get("s1")!;
-    entry.idleSince = Date.now() - 3_600_001;
+    entry.idleSince = 1234567890 - 3_600_001;
     pool.sweepIdle();
     expect(pool.size).toBe(0);
   });
@@ -132,7 +132,7 @@ describe("[unit] RuntimePool", () => {
     await pool.acquire("s1");
     const entry = pool.get("s1")!;
     entry.busy = true;
-    entry.idleSince = Date.now() - 3_600_001;
+    entry.idleSince = 1234567890 - 3_600_001;
     pool.sweepIdle();
     expect(pool.size).toBe(1);
   });

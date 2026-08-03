@@ -46,7 +46,9 @@ export async function gracefulShutdown(
   }
 
   pool.dispose();
+  // LOW-15 fix: count accurately — only sessions that actually finished count as drained
+  const actuallyForced = forced;
+  const actuallyDrained = busy.length - actuallyForced;
 
-
-  return { drained: busy.length - forced, forced, evicted: idle.length };
+  return { drained: actuallyDrained, forced: actuallyForced, evicted: idle.length };
 }

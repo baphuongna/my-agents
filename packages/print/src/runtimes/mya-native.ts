@@ -123,15 +123,23 @@ export class MyaNativeSession implements RuntimeSession {
   private textBuffer = "";
   private readonly createdAt = nowWallclock();
   private model = "mya-default";
+  private agentInstance: any = null;
 
   constructor(private opts: StartOpts) {}
+
+  private async getAgent(): Promise<any> {
+    if (!this.agentInstance) {
+      const { createAgent } = await import("@my-agent/agent");
+      this.agentInstance = await createAgent({ memoryDir: join(this.opts.agentDir, "memory") } as any);
+    }
+    return this.agentInstance;
+  }
 
   async prompt(text: string, _opts?: PromptOpts): Promise<void> {
     this.textBuffer = "";
     this.emit({ type: "turn_start", model: this.model, sessionId: this.opts.sessionId });
     try {
-      const { createAgent } = await import("@my-agent/agent");
-      const agent = await createAgent({ memoryDir: join(this.opts.agentDir, "memory") } as any);
+      const agent = await this.getAgent();
       const state = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
       await agent.run(text, (event: RuntimeEvent) => {
         const mapped = mapMyaEvent(event, state);
@@ -155,7 +163,7 @@ export class MyaNativeSession implements RuntimeSession {
     return { model: this.model, thinking: "off", status: "idle", tokensIn: 0, tokensOut: 0, contextPct: 0, contextWindow: 200_000, costUsd: 0, startedAt: this.createdAt, lastActivity: nowWallclock() };
   }
   isIdle(): boolean { return true; }
-  async dispose(): Promise<void> {}
+  async dispose(): Promise<void> { this.agentInstance = null; }
   onEvent(handler: (e: AgentEvent) => void): () => void { this.listeners.add(handler); return () => this.listeners.delete(handler); }
   getTextBuffer(): string { return this.textBuffer; }
   private emit(event: AgentEvent): void { this.listeners.forEach(l => l(event)); }

@@ -3,10 +3,6 @@ import type { AgentEvent } from "@my-agent/core";
 
 // R9-1 fix: normalizer is PURE — no nowWallclock needed
 
-interface PiSessionLike {
-  readonly model?: { id: string };
-  readonly thinkingLevel?: string;
-}
 
 interface AccumulatedUsage {
   tokensIn: number;

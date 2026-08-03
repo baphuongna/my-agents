@@ -10,6 +10,7 @@ export class RuntimeSessionAdapter implements AgentSession {
   private listeners = new Set<(e: unknown) => void>();
   private textBuffer = "";
   private turnLock = Promise.resolve();
+  private unsubscribeSession?: () => void;
 
   constructor(
     private session: RuntimeSession,
@@ -18,7 +19,12 @@ export class RuntimeSessionAdapter implements AgentSession {
     private onBusyChange?: (busy: boolean) => void,
     private onMessage?: () => void,
   ) {
-    this.session.onEvent((event) => {
+    // MED-1 fix: set runtime type for correct per-runtime cost rates
+    if ('setRuntimeType' in costTracker) {
+      (costTracker as any).setRuntimeType(session.sessionId, session.runtimeType);
+    }
+    // MED-2 fix: save unsubscribe for cleanup
+    this.unsubscribeSession = this.session.onEvent((event) => {
       if (event.type === "text") this.textBuffer += event.delta;
       this.costTracker.record(this.session.sessionId, event);
       this.listeners.forEach(l => l(event));
@@ -81,6 +87,7 @@ export class RuntimeSessionAdapter implements AgentSession {
   }
 
   abort(): void {
+    this.unsubscribeSession?.();
     void this.session.dispose().catch(() => {});
   }
 

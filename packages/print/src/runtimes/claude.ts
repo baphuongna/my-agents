@@ -158,7 +158,7 @@ export class ClaudeSession implements RuntimeSession {
           if ((event as any)._type === "usage") {
             this.lastUsage.tokensIn = (event as any).tokensIn;
             this.lastUsage.tokensOut = (event as any).tokensOut;
-            if ((event as any).costUsd) this.lastUsage.costUsd = (event as any).costUsd;
+            if ((event as any).costUsd !== undefined && (event as any).costUsd !== null) this.lastUsage.costUsd = (event as any).costUsd;
             return;
           }
           this.emit(event);
