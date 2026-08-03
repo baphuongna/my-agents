@@ -1,5 +1,6 @@
 // packages/print/src/runtimes/enricher.ts
 import type { PromptEnricher, EnrichContext } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";
 
 const MAX_INJECTION_HITS = 5;
 const MAX_INJECTION_CHARS = 2000;
@@ -25,8 +26,9 @@ export class MemoryEnricher implements PromptEnricher {
       const hits = results?.flatMap((r: any) => r?.hits ?? []) ?? [];
       const filtered = hits
         .filter((h: any) => (h?.score ?? 0) >= MIN_SCORE && h?.content)
-        // MEDIUM-2 fix: skip facts captured by THIS session (prevents echo)
-        .filter((h: any) => !(h?.id ?? "").includes(`session:${ctx.sessionId}`))
+        // MEDIUM-2 fix: skip facts captured by THIS session (prevents echo).
+        // capture() sets fact id = `capture:${sessionId}:...` so we can match.
+        .filter((h: any) => !(h?.id ?? "").startsWith(`capture:${ctx.sessionId}`))
         .sort((a: any, b: any) => (b?.score ?? 0) - (a?.score ?? 0))
         .slice(0, MAX_INJECTION_HITS);
       if (filtered.length === 0) return prompt;
@@ -48,6 +50,7 @@ export class MemoryEnricher implements PromptEnricher {
     if (ctx.sessionId.startsWith("_cron:")) return;
     try {
       await this.brain.recordFact({
+        id: `capture:${ctx.sessionId}:${nowWallclock()}`, // MEDIUM-2: id carries session marker for echo filter
         kind: "event",
         entity: `session:${ctx.sessionId}`,
         content: output.slice(0, MAX_CAPTURE_CHARS),

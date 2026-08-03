@@ -68,3 +68,44 @@ describe("[unit] MemoryEnricher async recall", () => {
     expect(result).toContain("async fact");
   });
 });
+
+describe("[unit] MemoryEnricher — R2 regression tests", () => {
+  it("MEDIUM-1: caps flattened hits across multiple domains to 5", async () => {
+    // 3 domains × 3 hits each = 9 total → should cap to 5
+    const domains = ["d1", "d2", "d3"].map(name => ({
+      domain: name,
+      hits: Array.from({ length: 3 }, (_, i) => ({ id: `${name}-${i}`, content: `fact ${name}-${i}`, score: 0.9 })),
+    }));
+    const e = new MemoryEnricher({ recall: () => domains } as any);
+    const result = await e.enrich("test", makeCtx());
+    const lines = result.split("\n").filter(l => /^\d+\./.test(l));
+    expect(lines.length).toBe(5); // was 9 before fix
+  });
+
+  it("MEDIUM-2: skips facts captured by same session (echo filter)", async () => {
+    const ctx = makeCtx(); // sessionId = "s1"
+    const hits = [
+      { id: `capture:${ctx.sessionId}:123`, content: "my own output", score: 0.9 },
+      { id: "other-fact", content: "external fact", score: 0.8 },
+    ];
+    const e = new MemoryEnricher({ recall: () => [{ domain: "test", hits }] } as any);
+    const result = await e.enrich("test", ctx);
+    expect(result).not.toContain("my own output");
+    expect(result).toContain("external fact");
+  });
+
+  it("MEDIUM-3: skips capture for _cron: sessions", async () => {
+    const brain = mockBrain();
+    const e = new MemoryEnricher(undefined, brain as any);
+    const cronCtx = { sessionId: "_cron:daily-report", runtimeType: "pi", executionModel: "in-process" as const };
+    await e.capture("cron job output", cronCtx);
+    expect(brain._facts).toHaveLength(0);
+  });
+
+  it("MEDIUM-2: capture stores session-tagged fact id", async () => {
+    const brain = mockBrain();
+    const e = new MemoryEnricher(undefined, brain as any);
+    await e.capture("output", makeCtx());
+    expect(brain._facts[0]?.id).toContain("capture:s1:");
+  });
+});
