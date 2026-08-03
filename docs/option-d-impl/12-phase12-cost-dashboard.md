@@ -18,6 +18,7 @@ Replace the Phase 5 `stubCostTracker` with a real implementation that:
 |---|---|
 | `packages/print/src/runtimes/cost-tracker.ts` | CostTracker implementation |
 | `packages/print/src/runtimes/snapshot.ts` | GET /sessions/:id/snapshot handler (F-9 fix: moved to print to avoid circular gateway↔print dep) |
+| `packages/gateway/src/index.ts` (MODIFY) | Add `poolSnapshot` callback to GatewayOptions + route in handleHttp |
 | `packages/gateway/src/gateway-snapshot.test.ts` | [unit] snapshot tests |
 | `packages/print/src/main.ts` (MODIFY) | Replace stubCostTracker with real CostTracker |
 
@@ -122,47 +123,55 @@ export class CostTrackerImpl implements CostTracker {
 
 ### Step 2: Add snapshot gateway route
 
+### Step 2: Add snapshot callback to GatewayOptions
+
+> **R3-1 fix:** Gateway uses raw `http.createServer`, NOT Express.
+> No `app.get()`, no middleware. Routes are added as callbacks in `GatewayOptions`.
+
 ```typescript
-// packages/print/src/runtimes/snapshot.ts (F-9 fix: in print, not gateway)
+// packages/gateway/src/index.ts — add to GatewayOptions interface:
 
-import type express from "express";
-import type { RuntimePool } from "./pool.js";
-import type { CostTrackerImpl } from "./cost-tracker.js";
+/** Phase 12: snapshot a session's state + text + cost.
+ * Returns undefined if session not found (gateway sends 404). */
+poolSnapshot?: (sessionId: string) => unknown;
 
-export function registerSnapshotRoute(
-  app: express.Express,        // R2-5 fix: express.Express (not bare Express)
-  pool: RuntimePool,
-  costTracker: CostTrackerImpl,
-): void {
-  // GET /sessions/:id/snapshot
-  app.get("/sessions/:id/snapshot", (req, res) => {
-    const sessionId = req.params.id;
-    const entry = pool.get(sessionId);
+// Then in handleHttp(), add route matching:
+// GET /pool/sessions/:id/snapshot
+const snapshotMatch = url.pathname.match(/^\/pool\/sessions\/(.+)$/);
+if (snapshotMatch && url.pathname.includes("/snapshot") && req.method === "GET" && this.poolSnapshot) {
+  const sessionId = snapshotMatch[1].replace("/snapshot", "");
+  const result = this.poolSnapshot(sessionId);
+  if (!result) return send(404, { error: "Session not found" });
+  return send(200, result);
+}
+```
 
-    if (!entry) {
-      return res.status(404).json({ error: "Session not found" });
-    }
+```typescript
+// packages/print/src/runtimes/cost-tracker.ts — add getSnapshot method
 
-    const cost = costTracker.getFullCost(sessionId);
-    const state = (entry.session as any).getState?.();  // R2-6 fix: cast — AgentSession has no getState()
-    const text = (entry.session as any).getTextBuffer?.() ?? "";
+getSnapshot(sessionId: string, pool: RuntimePool): unknown | undefined {
+  const entry = pool.get(sessionId);
+  if (!entry) return undefined;
 
-    return res.json({
-      sessionId,
-      runtimeType: entry.runtimeType,
-      busy: entry.busy,
-      messageCount: entry.messageCount,
-      createdAt: entry.createdAt,
-      lastActivity: entry.lastActivity,
-      state,
-      text,
-      cost: cost ?? {
-        totalUsd: 0, turns: 0, tokensIn: 0,
-        tokensOut: 0, events: 0,
-        startedAt: entry.createdAt, lastActivity: entry.lastActivity,
-      },
-    });
-  });
+  const cost = this.sessions.get(sessionId);
+  const state = (entry.session as any).getState?.();
+  const text = (entry.session as any).getTextBuffer?.() ?? "";
+
+  return {
+    sessionId,
+    runtimeType: entry.runtimeType,
+    busy: entry.busy,
+    messageCount: entry.messageCount,
+    createdAt: entry.createdAt,
+    lastActivity: entry.lastActivity,
+    state,
+    text,
+    cost: cost ?? {
+      totalUsd: 0, turns: 0, tokensIn: 0,
+      tokensOut: 0, events: 0,
+      startedAt: entry.createdAt, lastActivity: entry.lastActivity,
+    },
+  };
 }
 ```
 
@@ -173,6 +182,16 @@ export function registerSnapshotRoute(
 // BEFORE (Phase 5): const costTracker = stubCostTracker;
 // AFTER (Phase 12):
 import { CostTrackerImpl } from "./runtimes/cost-tracker.js";
+
+const costTracker = new CostTrackerImpl();
+const pool = new RuntimePool(router, runtimes, enricher, costTracker);
+
+// R3-1 fix: add snapshot callback to gateway options (NOT Express route)
+const gateway = createGateway({
+  // ... existing callbacks ...
+  poolSnapshot: (sessionId: string) => costTracker.getSnapshot(sessionId, pool),
+});
+```
 
 const costTracker = new CostTrackerImpl();
 const pool = new RuntimePool(router, runtimes, enricher, costTracker);

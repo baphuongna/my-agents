@@ -176,18 +176,32 @@ sweepIdle(): void {
 ### Step 4: Admin /shutdown endpoint
 
 ```typescript
-// packages/gateway/src/index.ts
+// packages/gateway/src/index.ts — add to GatewayOptions:
 
-// POST /shutdown (admin only — requires auth token)
-app.post("/shutdown", requireAuth, async (req, res) => {
-  if (req.user?.role !== "admin") {
-    return res.status(403).json({ error: "Admin access required" });
-  }
+/** Phase 13: graceful shutdown callback for POST /shutdown.
+ * Gateway checks auth (hasOrigin) before calling. */
+shutdownHandler?: () => Promise<void>;
 
-  res.json({ message: "Shutdown initiated" });
+// Then in handleHttp(), add route:
+// POST /shutdown
+if (url.pathname === "/shutdown" && req.method === "POST" && this.shutdownHandler) {
+  // Auth check: browser requests need valid token (existing hasOrigin logic)
+  // CLI/loopback always trusted
+  setImmediate(() => this.shutdownHandler!());
+  return send(200, { message: "Shutdown initiated" });
+}
+```
 
-  // Trigger graceful shutdown in background
-  setImmediate(() => handleShutdown("admin-request"));
+```typescript
+// packages/print/src/main.ts — wire shutdown callback
+import { gracefulShutdown } from "./runtimes/shutdown.js";
+
+const gateway = createGateway({
+  // ... existing callbacks ...
+  shutdownHandler: async () => {
+    await gracefulShutdown(pool, costTracker);
+    process.exit(0);
+  },
 });
 ```
 
@@ -197,9 +211,13 @@ app.post("/shutdown", requireAuth, async (req, res) => {
 // packages/print/src/runtimes/e2e-shutdown.test.ts
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import type { AgentRuntime } from "@my-agent/core";
 import { RuntimePool } from "./pool.js";
+import { createStubRouter, stubEnricher } from "./stubs.js";  // R3-7 fix: add missing imports
 import { gracefulShutdown } from "./shutdown.js";
 import { CostTrackerImpl } from "./cost-tracker.js";
+import { PiInProcessRuntime } from "./pi-in-process.js";
+// Note: piDeps must be constructed from shared instances (see Phase 4/5)
 
 describe("[system] E2E shutdown", () => {
   let pool: RuntimePool;

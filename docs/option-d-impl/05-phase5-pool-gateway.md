@@ -445,16 +445,18 @@ const gateway = createGateway({
     sessionId: e.sessionId,
     runtimeType: e.runtimeType,  // NEW: multi-runtime info
     busy: e.busy,
-    messageCount: e.messageCount,
+    messages: e.messageCount,   // R3-8 fix: gateway expects 'messages' not 'messageCount'
     lastActivity: e.lastActivity,
   })),
   poolKill: (id) => pool.release(id, { force: true }),  // admin force
+  // R3-2 fix: poolAcquire returns sessionId (string), NOT session object.
+  // PoolAcquireInput has cwd + role/task/model/parentSessionId (no sessionId/agentType).
   poolAcquire: async (input) => {
-    const { session } = await pool.acquireWithRuntime(input.sessionId, {
-      agentType: input.agentType,
-      cwd: input.cwd,
-    });
-    return session;
+    const cwd = typeof input === "string" ? input : input.cwd;
+    const sessionId = `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const agentType = typeof input === "object" ? (input as any).model?.includes("claude") ? "claude" : "pi" : "pi";
+    await pool.acquireWithRuntime(sessionId, { agentType, cwd });
+    return sessionId;  // R3-2 fix: return string, not session
   },
   poolPrompt: (sessionId, text) => { /* same as before */ },
 });

@@ -348,11 +348,11 @@ describe("[unit] MemoryEnricher", () => {
         "test",
         expect.objectContaining({ topK: 5 }),  // R2-3 fix: no sessionId field
       );
-      );
     });
 
     it("limits hits to maxInjectionHits", async () => {
       const hits: MemoryHit[] = Array.from({ length: 10 }, (_, i) => ({
+        id: `hit-${i}`,  // R3-5 fix: required field
         role: "archivist",
         content: `fact ${i}`,
         score: 0.5 + i * 0.01,

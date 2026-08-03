@@ -56,8 +56,13 @@ Create 2 sessions via RuntimePool, verify they can communicate:
 ```typescript
 // packages/print/src/runtimes/broker-messaging.test.ts
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import type { AgentRuntime } from "@my-agent/core";
 import { RuntimePool } from "./pool.js";
 import { createStubRouter, stubEnricher, stubCostTracker } from "./stubs.js";
+import { PiInProcessRuntime } from "./pi-in-process.js";
+import { RuntimeSessionAdapter } from "./adapter.js";
+// R3-6 fix: add missing imports
+// Note: piDeps must be constructed from shared instances (see Phase 4/5)
 
 describe("[smoke] broker inter-agent messaging", () => {
   let pool: RuntimePool;
