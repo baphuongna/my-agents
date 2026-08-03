@@ -45,300 +45,25 @@ import { detectProviderSummary, initProviderRegistry } from "./provider-registry
 import { InMemoryCredentialStore, type AuthPrompt } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
+import { frame, type WireEnvelope } from "./wire-envelope.js";
+import { ReadinessRegistry } from "./readiness.js";
+import { getHermesStub, hasHermesStub } from "./hermes-stubs.js";
+import type { GatewayOptions, PoolAcquireInput, PoolSubagentEntry, PoolTreeNode } from "./gateway-types.js";
 // Register OAuth flow loaders statically (esbuild can't resolve variable-specifier
 // dynamic imports — bun-oauth imports them eagerly and registers at module load).
 registerBunOAuthFlows();
 
-// ─── §25.6 UI ↔ Runtime wire envelope ─────────────────────────────────────────
-
-export interface WireEnvelope {
-  version: 1;
-  sessionId: string;
-  runId?: string;
-  laneId?: string;
-  seq: number;
-  event: unknown; // a RuntimeEvent (§13) — opaque here to avoid a core import cycle
-  ts: number;
-}
-
-/** Frame a RuntimeEvent into the wire envelope. */
+// ─── §25.6 UI ↔ Runtime wire envelope (see ./wire-envelope.ts) ──────────────
 
 /** Phase C: CSP for PWA — widened for service workers + push subscriptions. */
 const GATEWAY_CSP =
   "frame-ancestors 'none'; default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self';";
 
-export function frame(opts: {
-  sessionId: string;
-  seq: number;
-  event: unknown;
-  runId?: string;
-  laneId?: string;
-  ts?: number;
-}): WireEnvelope {
-  return { version: 1, sessionId: opts.sessionId, runId: opts.runId, laneId: opts.laneId, seq: opts.seq, event: opts.event, ts: opts.ts ?? nowWallclock() };
-}
+// ─── §13 R31 readiness probes (see ./readiness.ts) ───────────────────────────
 
-// ─── §13 R31 readiness probes ─────────────────────────────────────────────────
-
-/** 3-phase readiness: liveness (alive) vs readiness (can serve) vs functional
- * (deps healthy). MyAgents readiness-state. */
-export type ReadinessState = "live" | "ready" | "functional";
-
-export interface ProbeResult {
-  state: ReadinessState;
-  ok: boolean;
-  /** 503 + Retry-After when not ready (§13). */
-  retryAfterS?: number;
-  detail?: string;
-}
-
-/** A readiness registry: components register health; the probe aggregates. */
-export class ReadinessRegistry {
-  private readonly checks = new Map<string, () => boolean>();
-  private booted = false;
-
-  register(name: string, check: () => boolean): void {
-    this.checks.set(name, check);
-  }
-  markBooted(): void {
-    this.booted = true;
-  }
-
-  /** /health/live — process is alive (always 200 once the server is up). */
-  liveness(): ProbeResult {
-    return { state: "live", ok: true };
-  }
-  /** /ready — booted + all registered checks pass (503 + Retry-After otherwise). */
-  readiness(): ProbeResult {
-    if (!this.booted) return { state: "ready", ok: false, retryAfterS: 2, detail: "booting" };
-    const failed: string[] = [];
-    for (const [name, check] of this.checks) {
-      try {
-        if (!check()) failed.push(name);
-      } catch {
-        failed.push(name);
-      }
-    }
-    if (failed.length > 0) {
-      return { state: "ready", ok: false, retryAfterS: 2, detail: `failed: ${failed.join(",")}` };
-    }
-    return { state: "ready", ok: true };
-  }
-  /** /functional — ready + the loop has produced at least one healthy turn. */
-  functional(healthyTurns: number): ProbeResult {
-    const r = this.readiness();
-    if (!r.ok) return { ...r, state: "functional" };
-    if (healthyTurns < 1) return { state: "functional", ok: false, retryAfterS: 5, detail: "no healthy turn yet" };
-    return { state: "functional", ok: true };
-  }
-}
+// ─── Shared types (see ./gateway-types.ts) ───────────────────────────────────
 
 // ─── HTTP/WS gateway ──────────────────────────────────────────────────────────
-
-/** Per-session role-subagent metadata, tracked by the host (e.g. main.ts) in an
- * in-memory Map and surfaced through poolSubagents + GET /pool/tree. This is
- * the "SessionMeta" shape shared between the gateway surface and the host.
- *
- * `parentSessionId` links a role-subagent to its spawning session so /pool/tree
- * nests it: `main ▸ role-subagent`. */
-export interface SessionMeta {
-  /** Role name (e.g. "coder") for a role-subagent spawn. */
-  role?: string;
-  /** The task prompt the spawned mya should auto-run. */
-  task?: string;
-  /** Preferred model for the role-subagent. */
-  model?: string;
-  /** Parent session id — when set, the new session is registered as a child. */
-  parentSessionId?: string;
-  /** Phase 2: task-status reported by the spawned mya
-   * ('working'|'done'|'failed'|'idle'|'acquired'). */
-  status?: string;
-  /** Phase 3: structured result summary (parsed from <DONE> output). */
-  summary?: string;
-  /** Phase 3: structured result key outputs (parsed from <DONE> output). */
-  keyOutputs?: string[];
-}
-
-/** Input to poolAcquire: cwd plus optional role-subagent metadata + parent link.
- * A bare string is also accepted for backward compatibility (treated as cwd). */
-export interface PoolAcquireInput extends SessionMeta {
-  cwd: string;
-}
-
-/** A single subagent entry returned by poolSubagents and nested in /pool/tree. */
-export interface PoolSubagentEntry {
-  id: string;
-  goal: string;
-  status: string;
-  depth: number;
-  output?: string;
-  /** Role-subagent metadata (present when this is a role-subagent). */
-  role?: string;
-  task?: string;
-  model?: string;
-  parentSessionId?: string;
-  /** Phase 3: structured result summary. */
-  summary?: string;
-  /** Phase 3: structured result key outputs. */
-  keyOutputs?: string[];
-}
-
-/** A node in the GET /pool/tree response. */
-export interface PoolTreeNode {
-  sessionId: string;
-  busy: boolean;
-  messages: number;
-  lastActivity: number;
-  /** Role-subagent metadata (present when this session is a role-subagent). */
-  role?: string;
-  task?: string;
-  model?: string;
-  parentSessionId?: string;
-  /** Phase 2: explicit task-status (richer than busy). Mirrors SessionMeta.status. */
-  status?: string;
-  /** Phase 3: structured result summary. */
-  summary?: string;
-  /** Phase 3: structured result key outputs. */
-  keyOutputs?: string[];
-  subagents: PoolSubagentEntry[];
-}
-
-export interface GatewayOptions {
-  host?: string;
-  port?: number;
-  readiness?: ReadinessRegistry;
-  /** HTML served at `/` (the dashboard SPA). The host wires @my-agent/web's
-   * dashboardHtml() here — gateway stays UI-independent (layering). */
-  rootHtml?: string;
-  /** Optional: directory to serve static files from (e.g., dist/web/).
-   * Files are served with appropriate MIME types. Falls back to rootHtml
-   * for `/` if no index.html exists in staticDir. */
-  staticDir?: string;
-  /** M8 fix: allow binding to a non-loopback host. The default loopback bind is
-   * safe; setting this to true is required (with a logged warning) for any
-   * network-facing bind, since the gateway's WS/HTTP surface is unauthenticated. */
-  allowExternalBind?: boolean;
-  /** Optional: handle incoming WS messages (e.g. a dashboard sending a prompt). */
-  onWsMessage?: (session: string, data: unknown) => void;
-  /** Called when thinking level changes via POST /thinking. */
-  onThinkingChange?: (level: string | undefined) => void;
-  /** Phase 15 M2: optional local-only WS auth token (blocks other local processes). */
-  wsToken?: string;
-  /** §12 control-plane (sessions/cron/config/tools + handle LRU). Defaults to a
-   * fresh ControlPlane. */
-  control?: ControlPlane;
-  /** §12 extension-lifecycle hook registry (session_start, pre_tool, ...).
-   * Default: a fresh HookRegistry. The Agent wiring (Phase 2) should pass the
-   * SAME instance here so hooks registered on the gateway also fire when the
-   * agent calls tool hooks. */
-  hooks?: HookRegistry;
-  /** §12.3 cron scheduler. If provided, start() spins up a sweep interval that
-   * claims due jobs and forwards them to onWsMessage (one-way fire-and-forget
-   * until a richer Protocol lands Tier-2). */
-  cron?: CronScheduler;
-  /** Optional sweep interval in ms. Defaults to 30_000. */
-  cronIntervalMs?: number;
-  /** Phase 0B: reconcile the scheduler from cron.json at the top of each sweep
-   * (picks up external/CLI file edits). Called once at start() too so jobs load
-   * before the first sweep tick. */
-  cronReload?: () => void;
-  /** Phase 1A: run a cron-fired prompt on a pooled session and return its text.
-   * The sweep awaits this before recording the run's outcome (D2 fix). */
-  onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
-  /** Phase 3A stopgap: max due jobs fired per sweep (bounds concurrent full-cred
-   * turns / cost amplification until the full scheduler.max_concurrent lands). */
-  cronMaxConcurrent?: number;
-  /** Phase 2C: persist the scheduler state (advanced nextRunAt) to cron.json.
-   * Called before firing (at-most-once across crashes) + after complete (re-anchor). */
-  cronPersist?: () => void;
-  /** Phase 4A: mirror a run to durable history (SQLite) on claim. */
-  cronRunStart?: (rec: { runId: string; jobId: string; startedAt: number; status: string; claimedBy?: string }) => void;
-  /** Phase 4A: update durable history on completion. */
-  cronRunEnd?: (runId: string, status: string, error: string | null, endedAt: number, output?: string) => void;
-  /** Phase 4A: read a job's durable run history for GET /cron/jobs/:id/runs. */
-  cronRuns?: (jobId: string) => unknown[];
-  /** Phase 4C: heartbeat (alive each sweep; success on a clean sweep). */
-  cronHeartbeat?: (success: boolean) => void;
-  /** Phase 3C/G8: runtime-flip the cron approval mode (deny/approve). */
-  cronSetApprovalMode?: (mode: "deny" | "approve") => void;
-  /** Phase 5: run a shell/script cron job (no LLM). */
-  onRunShell?: (job: { command?: string; script?: string; workdir?: string }) => Promise<{ ok: boolean; output: string; error?: string }>;
-  /** Phase 5: the current global default provider/model (for snapshot drift check). */
-  cronCurrentDefault?: () => { provider?: string; model?: string };
-  /** Phase 5: fetch a prior job's latest output (context_from chaining). */
-  cronJobOutput?: (jobId: string) => string | undefined;
-  /** Phase 5: load + assemble per-job skill bodies (returns the assembled skill text). */
-  cronLoadSkills?: (names: string[]) => string;
-  /** §12 sync server (CRDT + HLC). Endpoints active: /sync/pull, /sync/push. */
-  sync?: SyncServer;
-  /** §12 collaboration relay (rooms). Endpoint active: /collab/rooms. */
-  collab?: CollabRelay;
-  /** Channel session router (inbound messages → sessions). */
-  channelRouter?: ChannelSessionRouter;
-  /** Channel registry (messaging adapters). */
-  channels?: ChannelRegistry;
-  /** Item 17: @my-agent/channels config — when provided, WhatsApp/Matrix adapters
-   * from the channels package are instantiated (via transport injection) and
-   * registered into the local ChannelRegistry as bridges. */
-  channelsConfig?: ChannelsPackageConfig;
-  /** Item 17: injectable transport factories for @my-agent/channels adapters.
-   * When absent, placeholder transports are used (adapter appears in /status
-   * but cannot connect). */
-  channelTransports?: ChannelTransportFactories;
-  /** Optional: returns AgentPool status for GET /pool/sessions. */
-  poolStatus?: () => unknown;
-  /** Optional: kill a pool session for POST /pool/kill/:id. */
-  poolKill?: (sessionId: string) => boolean;
-  /** Optional: acquire a new pool session for POST /pool/acquire. Accepts the
-   * extended input (cwd + role/task/model/parentSessionId) for role-subagent
-   * spawns, or a bare cwd string for backward compatibility. */
-  poolAcquire?: (input: PoolAcquireInput | string) => string | Promise<string>;
-  /** Optional: send a prompt to a pool session for POST /pool/prompt/:id. */
-  poolPrompt?: (sessionId: string, text: string) => void;
-  /** Optional: list subagents for a session (returns PoolSubagentEntry[]). */
-  poolSubagents?: (sessionId: string) => PoolSubagentEntry[];
-  /** Phase 2: set task-status for POST /pool/session/:id/status. */
-  poolSessionStatus?: (sessionId: string, status: string, summary?: string, keyOutputs?: string[]) => void;
-  /** Optional: MCP server management callbacks. */
-  mcpList?: () => Array<{ id: string; command: string; args: string[]; phase: string; health: string; tools: string[]; lastError?: string }>;
-  mcpAdd?: (cfg: { id: string; command: string; args?: string[]; env?: Record<string, string> }) => void;
-  mcpRemove?: (id: string) => boolean;
-  mcpConnect?: (id: string) => Promise<void>;
-  mcpDiscover?: (id: string) => Promise<string[]>;
-  /** Skills list. */
-  skillsList?: () => Array<{ name: string; description: string; triggers: string[] }>;
-  /** Skills create (H7: POST /skills/create). */
-  skillCreate?: (skill: { name: string; description: string; body: string }) => { ok: boolean; error?: string };
-  /** Roles list (from ~/.mya/roles/*.json). */
-  rolesList?: () => Array<{ name: string; description: string; promptAppend?: string; toolsAllowed?: string[]; toolsDenied?: string[]; modelPrefer?: string; memoryScope?: string }>;
-  /** Memory/brain stats. */
-  memoryStats?: () => { facts: number; workingMemory?: number; episodic?: number; takes: number; tombstones: number; dreamRunning: boolean; lastDream?: string };
-  /** Trigger a dream cycle manually. */
-  dreamTrigger?: () => Promise<{ memoriesConsolidated: number; skillsReviewed: number; summary: string; durationMs: number }>;
-  /** J2: Achievements list (GET /achievements). */
-  achievementsList?: () => { unlocked: Array<{ id: string; name: string; description: string; unlockedAt: number }>; locked: Array<{ id: string; name: string; description: string }>; stats: Record<string, number> };
-  /** H9: Webhooks list (GET /webhooks). */
-  webhooksList?: () => Array<{ id: string; url: string; events: string[]; createdAt: number }>;
-  /** H9: Webhook add (POST /webhooks). */
-  webhookAdd?: (webhook: { url: string; events: string[] }) => { id: string };
-  /** Optional: trigger an immediate run of a cron job. */
-  cronRunNow?: (jobId: string) => void | Promise<void>;
-  /** Optional: remove a job from the underlying cron scheduler. */
-  cronRemove?: (jobId: string) => boolean;
-  cronAdd?: (job: ControlCronJob) => void;
-  /** Optional: returns current queue depth for a session. */
-  poolQueueDepth?: (sessionId: string) => number;
-  /** Optional: returns WS connection info (token) for GET /ws-info. */
-  wsInfo?: () => unknown;
-  /** Phase G: device pairing manager (optional). */
-  devicePairing?: DevicePairing;
-  approvalRelay?: ApprovalRelay;
-  lifecycleGuard?: LifecycleGuard;
-  /** Phase 3-7: WebAuthn/FaceID biometric auth service (optional). */
-  webAuthn?: WebAuthnService;
-  /** C-5 fix: optional voice call channel for Twilio integration. */
-  voiceCall?: VoiceCallChannel;
-}
 
 /** A minimal HTTP + WS gateway. HTTP serves readiness probes + a control stub;
  * WS subscribes clients to the RuntimeEvent bus with replay-from-cursor. */
@@ -449,23 +174,8 @@ export class Gateway {
   /** Static file directory (optional — Phase 25.2 build pipeline). */
   private readonly staticDir?: string;
 
-  /** mya fork: stub responses for Hermes SPA endpoints that don't exist in mya. */
-  private readonly HERMES_STUBS: Record<string, unknown> = {
-    "/auth/me": { authenticated: true, user: "local", provider: "loopback" },
-    "/profiles": { profiles: [{ name: "default", description: "Default profile", is_default: true }] },
-    "/dashboard/plugins": { plugins: [], manifests: [] },
-    "/dashboard/themes": { themes: [], current: "default" },
-    "/dashboard/font": { font: "theme" },
-    "/dashboard/plugin-providers": { providers: [] },
-    "/dashboard/plugins/hub": { plugins: [] },
-    "/dashboard/plugins/rescan": { ok: true },
-    "/dashboard/theme": { ok: true },
-    "/api/auth/me": { authenticated: true, user: "local" },
-    "/api/profiles": { profiles: [{ name: "default", description: "Default", is_default: true }] },
-    "/api/dashboard/plugins": { plugins: [] },
-    "/api/dashboard/themes": { themes: [], current: "default" },
-    "/api/dashboard/font": { font: "theme" },
-  };
+  /** mya fork: stub responses for Hermes SPA endpoints that don't exist in mya.
+   * Map lives in ./hermes-stubs.ts (extracted module). */
 
   /** MIME type map for common static file extensions. */
   private readonly mimeTypes: Record<string, string> = {
@@ -953,7 +663,7 @@ export class Gateway {
     }
     // mya fork: Hermes SPA stub endpoints — allowlisted so the SPA can fetch
     // them without auth (they return static defaults, no sensitive data)
-    if (this.HERMES_STUBS && p in this.HERMES_STUBS) return true;
+    if (hasHermesStub(p)) return true;
     if (p === "/sessions/stats" || p === "/sessions/empty/count" || p === "/profiles/active") return true;
     return false;
   }
@@ -1961,16 +1671,12 @@ export class Gateway {
         // Hermes-specific APIs that don't exist in mya's gateway.
         // Without these, the SPA gets 404s on mount and crashes.
         if (req.method === "GET" || req.method === "PUT" || req.method === "POST") {
-          const stub = this.HERMES_STUBS[url.pathname];
+          const stub = getHermesStub(url.pathname);
           if (stub) {
             // Drain body for PUT/POST to prevent connection hang
             if (req.method !== "GET") req.on("data", () => {});
             return send(200, stub);
           }
-          // Pattern-based stubs
-          if (url.pathname === "/sessions/stats") return send(200, { total: 0, active: 0, today: 0 });
-          if (url.pathname === "/sessions/empty/count") return send(200, { count: 0 });
-          if (url.pathname === "/profiles/active") return send(200, { name: "default" });
         }
         // Serve static files from dist/web/ if available
         if (this.staticDir && req.method === "GET") {
@@ -2393,6 +2099,16 @@ export class Gateway {
     });
   }
 }
+export { frame, type WireEnvelope } from "./wire-envelope.js";
+export { ReadinessRegistry, type ReadinessState, type ProbeResult } from "./readiness.js";
+export { HERMES_STUBS, hasHermesStub, getHermesStub } from "./hermes-stubs.js";
+export type {
+  SessionMeta,
+  PoolAcquireInput,
+  PoolSubagentEntry,
+  PoolTreeNode,
+  GatewayOptions,
+} from "./gateway-types.js";
 export * from "./hooks.js";
 export { ApprovalRelay } from "./approval-relay.js";
 export type { ApprovalRequestPayload, ApprovalDecisionPayload } from "./approval-relay.js";
