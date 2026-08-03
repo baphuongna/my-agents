@@ -231,7 +231,7 @@ The code follows spec §2.2 exactly, including all fixes:
 
 import type { Model, Api } from "@earendil-works/pi-ai";
 import type { AgentEvent, AgentRuntime, RuntimeSession, StartOpts, SessionState, ThinkingLevel, ModelInfo, AgentCapabilities, CompactionResult, PromptOpts } from "@my-agent/core";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -252,9 +252,9 @@ export class ClaudeRuntime implements AgentRuntime {
 
   isAvailable(): boolean {
     // Check if the `claude` binary is on PATH.
-    // Uses spawnSync to avoid async in a sync interface method.
+    // F-5/R2-2 fix: spawnSync is imported at top of file (line 234).
+    // No require() or await import() — isAvailable() must stay sync per interface.
     try {
-      const { spawnSync } = await import("node:child_process");  // F-5 fix: no require() in ESM
       const result = spawnSync("claude", ["--version"], {
         stdio: "pipe",
         timeout: 5000,

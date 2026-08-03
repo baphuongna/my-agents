@@ -146,8 +146,8 @@ export function mapMyaEvent(
         if (chunk.kind === "error") {
           return {
             type: "error",
-            message: te.chunk.error.context?.reason ?? "stream error",
-            recoverable: te.chunk.error.recoverable,
+            message: chunk.error.context?.reason ?? "stream error",  // R2-8 fix: use narrowed 'chunk', not 'te.chunk'
+            recoverable: chunk.error.recoverable,
           };
         }
         return null;

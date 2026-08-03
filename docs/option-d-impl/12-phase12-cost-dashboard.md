@@ -130,7 +130,7 @@ import type { RuntimePool } from "./pool.js";
 import type { CostTrackerImpl } from "./cost-tracker.js";
 
 export function registerSnapshotRoute(
-  app: Express,
+  app: express.Express,        // R2-5 fix: express.Express (not bare Express)
   pool: RuntimePool,
   costTracker: CostTrackerImpl,
 ): void {
@@ -144,7 +144,7 @@ export function registerSnapshotRoute(
     }
 
     const cost = costTracker.getFullCost(sessionId);
-    const state = entry.session.getState();
+    const state = (entry.session as any).getState?.();  // R2-6 fix: cast — AgentSession has no getState()
     const text = (entry.session as any).getTextBuffer?.() ?? "";
 
     return res.json({

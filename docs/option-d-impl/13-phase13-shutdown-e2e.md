@@ -158,7 +158,8 @@ For Phase 13, ensure cost tracker is cleaned up too:
 ```typescript
 // packages/print/src/runtimes/pool.ts — modify sweepIdle()
 
-private sweepIdle(): void {
+// R2-7 fix: keep public per F-3 fix. Do NOT add 'private'.
+sweepIdle(): void {
   const now = Date.now();
   for (const [id, entry] of this.entries) {
     if (entry.busy) continue;

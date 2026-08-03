@@ -278,9 +278,10 @@ Full code from spec §7.2 (with R8-2 fix):
 // packages/print/src/runtimes/adapter.ts
 
 import type {
-  AgentSession, RuntimeSession, PromptEnricher, CostTracker,
+  RuntimeSession, PromptEnricher, CostTracker,
   SessionState, EnrichContext,
 } from "@my-agent/core";
+import type { AgentSession } from "@my-agent/agent";  // F-1 fix: from agent, not core
 
 export class RuntimeSessionAdapter implements AgentSession {
   private listeners = new Set<(e: unknown) => void>();

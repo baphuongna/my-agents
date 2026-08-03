@@ -299,8 +299,8 @@ describe("[unit] MemoryEnricher", () => {
   describe("enrich — memory injection", () => {
     it("prepends memory context when recall returns hits", async () => {
       const hits: MemoryHit[] = [
-        { role: "archivist", content: "User prefers TypeScript", score: 0.9 },
-        { role: "archivist", content: "Project uses tabs not spaces", score: 0.8 },
+        { id: "hit", role: "archivist", content: "User prefers TypeScript", score: 0.9 },
+        { id: "hit", role: "archivist", content: "Project uses tabs not spaces", score: 0.8 },
       ];
       const memory = mockMemoryFacade(hits);
       const brain = mockBrain();
@@ -334,11 +334,11 @@ describe("[unit] MemoryEnricher", () => {
       await enricher.enrich("how to deploy", makeCtx());
       expect(memory.recall).toHaveBeenCalledWith(
         "how to deploy",
-        expect.objectContaining({ topK: 5, sessionAware: true }),
+        expect.objectContaining({ topK: 5 }),  // R2-3 fix: removed sessionAware
       );
     });
 
-    it("passes sessionId to recall for session-scoped queries", async () => {
+    it("recall options do not include sessionAware or sessionId (F-7 fix)", async () => {
       const memory = mockMemoryFacade([]);
       const brain = mockBrain();
       const enricher = new MemoryEnricher({ memory: memory as never, brain: brain as never });
@@ -346,7 +346,8 @@ describe("[unit] MemoryEnricher", () => {
       await enricher.enrich("test", makeCtx({ sessionId: "my-session" }));
       expect(memory.recall).toHaveBeenCalledWith(
         "test",
-        expect.objectContaining({ sessionId: "my-session" }),
+        expect.objectContaining({ topK: 5 }),  // R2-3 fix: no sessionId field
+      );
       );
     });
 
@@ -372,9 +373,9 @@ describe("[unit] MemoryEnricher", () => {
 
     it("sorts hits by score descending", async () => {
       const hits: MemoryHit[] = [
-        { role: "archivist", content: "low", score: 0.3 },
-        { role: "archivist", content: "high", score: 0.9 },
-        { role: "archivist", content: "mid", score: 0.6 },
+        { id: "hit", role: "archivist", content: "low", score: 0.3 },
+        { id: "hit", role: "archivist", content: "high", score: 0.9 },
+        { id: "hit", role: "archivist", content: "mid", score: 0.6 },
       ];
       const memory = mockMemoryFacade(hits);
       const brain = mockBrain();
@@ -389,8 +390,8 @@ describe("[unit] MemoryEnricher", () => {
 
     it("filters hits below minScore threshold", async () => {
       const hits: MemoryHit[] = [
-        { role: "archivist", content: "relevant", score: 0.8 },
-        { role: "archivist", content: "irrelevant", score: 0.1 },
+        { id: "hit", role: "archivist", content: "relevant", score: 0.8 },
+        { id: "hit", role: "archivist", content: "irrelevant", score: 0.1 },
       ];
       const memory = mockMemoryFacade(hits);
       const brain = mockBrain();
@@ -407,9 +408,9 @@ describe("[unit] MemoryEnricher", () => {
 
     it("truncates memory block when exceeding maxInjectionChars", async () => {
       const hits: MemoryHit[] = [
-        { role: "archivist", content: "x".repeat(500), score: 0.9 },
-        { role: "archivist", content: "y".repeat(500), score: 0.8 },
-        { role: "archivist", content: "z".repeat(500), score: 0.7 },
+        { id: "hit", role: "archivist", content: "x".repeat(500), score: 0.9 },
+        { id: "hit", role: "archivist", content: "y".repeat(500), score: 0.8 },
+        { id: "hit", role: "archivist", content: "z".repeat(500), score: 0.7 },
       ];
       const memory = mockMemoryFacade(hits);
       const brain = mockBrain();
@@ -547,7 +548,7 @@ describe("[unit] MemoryEnricher", () => {
   describe("EnrichContext fields", () => {
     it("uses ctx.role in memory block header when provided", async () => {
       const hits: MemoryHit[] = [
-        { role: "archivist", content: "test fact", score: 0.9 },
+        { id: "hit", role: "archivist", content: "test fact", score: 0.9 },
       ];
       const memory = mockMemoryFacade(hits);
       const brain = mockBrain();
@@ -559,7 +560,7 @@ describe("[unit] MemoryEnricher", () => {
 
     it("omits role from header when ctx.role is undefined", async () => {
       const hits: MemoryHit[] = [
-        { role: "archivist", content: "test fact", score: 0.9 },
+        { id: "hit", role: "archivist", content: "test fact", score: 0.9 },
       ];
       const memory = mockMemoryFacade(hits);
       const brain = mockBrain();
