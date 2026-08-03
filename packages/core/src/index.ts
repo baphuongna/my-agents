@@ -24,3 +24,6 @@ export * from "./exit.js";
 export * from "./session-branch.js";
 export * from "./durable-ack.js";
 export * from "./supervised.js";
+
+// AgentRuntime SPI (types only — no runtime deps)
+export * from "./runtime-spi.js";

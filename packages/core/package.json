@@ -14,5 +14,8 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*"
   }
 }
