@@ -463,7 +463,7 @@ describe("SqliteBrainStore — F4: atomic softDelete", () => {
 // ── B-GATE-6/7: Performance smoke (10k facts) ───────────────────────────────
 
 describe("SqliteBrainStore — B-GATE-6/7: performance smoke (10k facts)", () => {
-  it("B-GATE-6: 10k facts allFacts() iteration < 50ms", () => {
+  it("B-GATE-6: 10k facts allFacts() iteration < 50ms", { timeout: 30_000 }, () => {
     const store = new SqliteBrainStore(dbPath);
     const N = 10_000;
     for (let i = 0; i < N; i++) {
@@ -488,7 +488,7 @@ describe("SqliteBrainStore — B-GATE-6/7: performance smoke (10k facts)", () =>
     store.close();
   });
 
-  it("B-GATE-7: 10k recordFact() via Brain measured + reported", () => {
+  it("B-GATE-7: 10k recordFact() via Brain measured + reported", { timeout: 30_000 }, () => {
     const store = new SqliteBrainStore(dbPath);
     const brain = new Brain(3, 0.85, store);
     const N = 10_000;

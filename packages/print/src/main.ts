@@ -18,6 +18,8 @@ import { createAgent } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
 import { RuntimePool } from "./runtimes/pool.js";
 import { PiInProcessRuntime, type PiRuntimeDeps } from "./runtimes/pi-in-process.js";
+import { MyaNativeRuntime } from "./runtimes/mya-native.js";
+import { ClaudeRuntime } from "./runtimes/claude.js";
 import { SmartRouterImpl } from "./runtimes/router.js";
 import { MemoryEnricher } from "./runtimes/enricher.js";
 import { CostTrackerImpl } from "./runtimes/cost-tracker.js";
@@ -400,7 +402,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     channels, roleRegistry, achievements,
   };
   runtimes.set("pi", new PiInProcessRuntime(piDeps));
-  // Phase 6/10: mya-native + claude runtimes registered here when wired.
+  runtimes.set("mya-native", new MyaNativeRuntime());
+  runtimes.set("claude", new ClaudeRuntime());
 
   // Phase 5/7/8/12: wire real implementations (replace stubs).
   const router = new SmartRouterImpl(runtimes);
