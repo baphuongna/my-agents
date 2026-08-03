@@ -50,10 +50,8 @@ testable without a real agent.
 ```typescript
 // packages/print/src/runtimes/mya-native-event-normalizer.ts
 
-import type { RuntimeEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
-import type { AgentEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
+import type { RuntimeEvent, AgentEvent } from "@my-agent/core";
+// R7-2a fix: normalizer is PURE — no nowWallclock needed
 
 export interface MyaNormalizerState {
   /** Accumulated token usage across the current turn. */
@@ -768,7 +766,6 @@ import { describe, it, expect, vi } from "vitest";
 import type { RuntimeEvent } from "@my-agent/core";
 import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 import type { AgentEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 // Mock @my-agent/agent to avoid requiring a real provider
 vi.mock("@my-agent/agent", () => ({

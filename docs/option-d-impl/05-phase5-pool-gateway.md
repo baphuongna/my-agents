@@ -104,6 +104,7 @@ import type {
   StartOpts, SessionState,
 } from "@my-agent/core";
 import type { AgentSession } from "@my-agent/agent";  // F-1 fix: AgentSession is in @my-agent/agent, not core
+import { nowWallclock } from "@my-agent/core";  // R7-2c fix: value import for pool timestamps
 import { RuntimeSessionAdapter } from "./adapter.js";
 import { buildAgentEnv } from "./build-env.js";
 

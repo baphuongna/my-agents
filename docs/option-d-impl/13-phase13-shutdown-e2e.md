@@ -31,6 +31,7 @@ This is the final phase before declaring Option D complete.
 
 import type { RuntimePool } from "./pool.js";
 import type { CostTrackerImpl } from "./cost-tracker.js";
+import { nowWallclock } from "@my-agent/core";  // R7-2e fix: value import for timestamps
 
 export interface ShutdownOptions {
   /** Max time to wait for busy sessions (ms). Default: 30_000 */
