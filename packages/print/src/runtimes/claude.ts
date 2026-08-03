@@ -140,7 +140,7 @@ export class ClaudeSession implements RuntimeSession {
     this.lastUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 }; // M2 fix: reset per prompt
     this.emit({ type: "turn_start", model: this.modelId, sessionId: this.opts.sessionId });
 
-    const args = ["-p", "--output-format", "stream-json", "--model", this.modelId, "--continue", "--session-dir", this.sessionDir, text];
+    const args = ["-p", "--output-format", "stream-json", "--model", this.modelId, "--continue", "--session-dir", this.sessionDir, "--", text];
     this.child = spawn("claude", args, {
       env: { ...process.env, ...this.opts.env }, cwd: this.opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -172,7 +172,7 @@ export class ClaudeSession implements RuntimeSession {
         this.child!.on("close", () => {
           if (settled) return; settled = true;
           if ((exitCode !== null && exitCode !== 0) || exitSignal) {
-            this.emit({ type: "error", message: `Claude exited with code ${exitCode}`, recoverable: false });
+            this.emit({ type: "error", message: `Claude exited with code ${exitCode}${exitSignal ? ` (signal ${exitSignal})` : ""}`, recoverable: false });
           }
           this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd > 0 ? { costUsd: this.lastUsage.costUsd } : {}) });
           resolve();
@@ -191,7 +191,7 @@ export class ClaudeSession implements RuntimeSession {
 
   async setModel(model: any): Promise<void> { this.modelId = model.id; this.emit({ type: "model_changed", model: model.id }); }
   setThinking(_level: ThinkingLevel): void {}
-  async compact(): Promise<CompactionResult> { return { tokensBefore: 0, tokensAfter: 0, strategy: "continue-session" }; }
+  async compact(): Promise<CompactionResult> { return { tokensBefore: 0, tokensAfter: 0, strategy: "none" }; }
   getState(): SessionState {
     return { model: this.modelId, thinking: "off", status: this.busy ? "thinking" : "idle", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, contextPct: 0, contextWindow: 200_000, costUsd: this.lastUsage.costUsd, startedAt: this.createdAt, lastActivity: nowWallclock() };
   }

@@ -25,6 +25,7 @@ export interface RuntimePoolEntry {
 export class RuntimePool {
   private entries = new Map<string, RuntimePoolEntry>();
   private pending = new Map<string, Promise<{ session: AgentSession; runtimeType: string }>>(); // M1 fix: per-sessionId lock
+  private creationLock: Promise<void> = Promise.resolve(); // M3 fix: global creation lock for maxSessions
   private maxSessions = (() => { const n = parseInt(process.env.MYA_MAX_SESSIONS ?? "16", 10); return Number.isFinite(n) && n > 0 ? n : 16; })();
   private idleTtlMs = 3_600_000;
   private sweepTimer: NodeJS.Timeout | null = null;
@@ -79,13 +80,29 @@ export class RuntimePool {
       return pendingCreate;
     }
 
-    const createPromise = this._doAcquireWithRuntime(sessionId, opts);
+    const createPromise = this._doAcquireLocked(sessionId, opts);
     this.pending.set(sessionId, createPromise);
     try {
       const result = await createPromise;
       return result;
     } finally {
       this.pending.delete(sessionId);
+    }
+  }
+
+  private async _doAcquireLocked(
+    sessionId: string,
+    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string },
+  ): Promise<{ session: AgentSession; runtimeType: string }> {
+    // M3 fix: serialize creation to prevent maxSessions race
+    const prev = this.creationLock;
+    let release!: () => void;
+    this.creationLock = new Promise<void>(r => { release = r; });
+    try {
+      await prev;
+      return await this._doAcquireWithRuntime(sessionId, opts);
+    } finally {
+      release();
     }
   }
 

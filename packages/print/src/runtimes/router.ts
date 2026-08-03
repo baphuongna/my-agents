@@ -20,6 +20,7 @@ export class SmartRouterImpl implements SmartRouter {
   private costWeight: number;
   private defaultRuntime: string;
   private customKeywords: Map<string, string[]>;
+  private compiledRegexes: Map<string, RegExp[]> = new Map(); // L13 fix: pre-compiled
 
   constructor(
     private runtimes: Map<string, AgentRuntime>,
@@ -29,6 +30,14 @@ export class SmartRouterImpl implements SmartRouter {
     this.costWeight = config.costWeight ?? 0.3;
     this.defaultRuntime = config.defaultRuntime ?? "pi";
     this.customKeywords = config.customKeywords ?? new Map();
+    // L13 fix: pre-compile keyword regexes
+    for (const [name, _] of [...this.runtimes]) {
+      const keywords = [...(DEFAULT_KEYWORDS[name] ?? []), ...(this.customKeywords.get(name) ?? [])];
+      this.compiledRegexes.set(name, keywords.map(kw => {
+        const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`\\b${escaped}\\b`, "i");
+      }));
+    }
   }
 
   async select(input: {
@@ -46,10 +55,8 @@ export class SmartRouterImpl implements SmartRouter {
     const scores: Array<{ name: string; runtime: AgentRuntime; keywordScore: number; costScore: number }> = [];
     for (const [name, rt] of this.runtimes) {
       if (!rt.isAvailable()) continue;
-      const keywords = [...(DEFAULT_KEYWORDS[name] ?? []), ...(this.customKeywords.get(name) ?? [])];
-      const keywordScore = keywords.reduce((score, kw) => {
-        const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`\\b${escaped}\\b`, "i");
+      const regexes = this.compiledRegexes.get(name) ?? [];
+      const keywordScore = regexes.reduce((score, regex) => {
         return score + (regex.test(input.prompt) ? 1 : 0);
       }, 0);
       const cost = rt.costPerMTokens?.() ?? { input: 0, output: 0 };

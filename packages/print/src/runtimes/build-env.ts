@@ -35,7 +35,7 @@ export function buildAgentEnv(): Record<string, string> {
   for (const [providerId, credential] of Object.entries(auth.credentials)) {
     if (credential && typeof credential === "object" && credential.type === "api_key" && credential.key) {
       const envKey = `${providerId.toUpperCase().replace(/-/g, "_")}_API_KEY`;
-      env[envKey] = credential.key;
+      env[envKey] = String(credential.key);
     }
   }
 
