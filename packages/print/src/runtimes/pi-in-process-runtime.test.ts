@@ -72,7 +72,7 @@ describe("[unit] PiInProcessRuntime.start", () => {
     await rt.start({ cwd: "/tmp", agentDir: "/tmp/agent", sessionId: "s1", env: {} });
 
     expect(mockBindExtensions).toHaveBeenCalledTimes(1);
-    expect(mockBindExtensions.mock.calls[0]![0]).toEqual({ mode: "print" });
+    expect((mockBindExtensions.mock.calls[0] as unknown[])[0]).toEqual({ mode: "print" });
   });
 
   it("passes toolsAllowList into createAgentSession tools", async () => {

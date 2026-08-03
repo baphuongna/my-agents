@@ -99,6 +99,7 @@ export async function runPiInteractive(opts?: RunPiInteractiveOpts): Promise<voi
     retrievalEngine: shared.retrievalEngine,
     lifecycleManager: shared.lifecycleManager,
     sqliteMemory: shared.sqliteMemory,
+    dreamCycle: shared.dreamCycle, // R2 fix: single DreamCycle (shared-instances hoist)
     wallet: shared.wallet,
     acp: shared.acp,
     sync: shared.sync,
