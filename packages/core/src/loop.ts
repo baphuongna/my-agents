@@ -22,6 +22,7 @@ import type {
 } from "./types.js";
 import { computeCost } from "./cost.js";
 import { NoopExporter, type TelemetryExporter } from "./telemetry.js";
+import type { IterationBudget } from "./iteration-budget.js";
 
 export interface TurnHandle {
   /** Subscribe to RuntimeEvents. */
@@ -80,6 +81,10 @@ export interface RunTurnOptions {
   model?: string;
   /** Max tool-exec rounds before forcing completion (safety against infinite loops). */
   maxToolRounds?: number;
+  /** Port Plan 2 Tier 2: explicit iteration budget. When set, overrides
+   *  maxToolRounds as the iteration cap. consume() is called per round;
+   *  refund() can be called for rounds that shouldn't count. */
+  iterationBudget?: IterationBudget;
   signal?: AbortSignal;
   /** §7 Pre/Post tool hook sink (Phase 2/6 wiring). Optional; tools package
    *  falls back to identity when absent. */
@@ -213,6 +218,19 @@ export function runTurn(opts: RunTurnOptions): TurnHandle {
     // §4 runTurn: while-loop until a turn produces no tool calls (R27-1/D4).
     for (let round = 0; round <= maxRounds; round++) {
       if (cancelled) return;
+      // Port Plan 2 Tier 2: iteration budget gate (overrides maxRounds when set)
+      if (opts.iterationBudget && round > 0 && !opts.iterationBudget.consume()) {
+        const ibErr: LifecycleError = {
+          phase: "tool",
+          recoverable: false,
+          retries: round,
+          context: { reason: `iteration budget exhausted (${opts.iterationBudget.used}/${opts.iterationBudget.max})` },
+        };
+        emitTurn({ state: "Failed", error: ibErr });
+        emit({ kind: "turn", stage: "end" });
+        finish({ state: "Failed", error: ibErr });
+        return;
+      }
       // §4: budget gate — abort BEFORE spending.
       if (opts.budget.exhausted()) {
         const err: LifecycleError = {

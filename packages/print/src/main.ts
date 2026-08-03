@@ -313,6 +313,8 @@ async function main(): Promise<void> {
       ...(config.maxToolRounds ? { maxToolRounds: config.maxToolRounds } : {}),
       // A2: forward maxSpawnDepth from central config.
       ...(config.maxSpawnDepth ? { maxSpawnDepth: config.maxSpawnDepth } : {}),
+      // Port Plan 2: forward per-subagent iteration cap (Hermes delegation.max_iterations).
+      ...(config.maxSubagentToolRounds ? { maxSubagentToolRounds: config.maxSubagentToolRounds } : {}),
       ...(council ? { hindsight: { reviewer: council.makeReviewer() } } : {}),
       ...(debug ? { dapConnect: { connect: { command: "node", args: ["--inspect"] } } } : {}),
       // Item 16: idle-compaction trigger predicate (fires at turn start).

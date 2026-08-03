@@ -59,6 +59,7 @@ export interface MyaConfig {
   activeProfile?: string; // H1 profile system
   maxSpawnDepth?: number; // A2 subagent depth
   maxToolRounds?: number; // A1 iteration budget
+  maxSubagentToolRounds?: number; // Port Plan 2: per-subagent cap
   channels?: ChannelsPackageConfig; // Item 17: @my-agent/channels config
 }
 function loadConfig(): MyaConfig {
@@ -73,6 +74,7 @@ function loadConfig(): MyaConfig {
     activeProfile: fileConfig.activeProfile ?? process.env["MYA_PROFILE"] ?? "default",
     maxSpawnDepth: fileConfig.maxSpawnDepth ?? (process.env["MYA_MAX_SPAWN_DEPTH"] ? Number(process.env["MYA_MAX_SPAWN_DEPTH"]) : undefined),
     maxToolRounds: fileConfig.maxToolRounds ?? (process.env["MYA_MAX_TOOL_ROUNDS"] ? Number(process.env["MYA_MAX_TOOL_ROUNDS"]) : undefined),
+    maxSubagentToolRounds: fileConfig.maxSubagentToolRounds ?? (process.env["MYA_MAX_SUBAGENT_TOOL_ROUNDS"] ? Number(process.env["MYA_MAX_SUBAGENT_TOOL_ROUNDS"]) : undefined),
     channels: fileConfig.channels,
   };
 }

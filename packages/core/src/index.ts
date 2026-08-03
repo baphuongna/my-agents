@@ -7,6 +7,7 @@
 export * from "./types.js";
 export * from "./time.js";
 export * from "./budget.js";
+export * from "./iteration-budget.js";
 export * from "./laneboard.js";
 export * from "./session.js";
 export * from "./loop.js";

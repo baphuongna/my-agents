@@ -116,6 +116,10 @@ export interface AgentConfig {
   /** A2: max subagent spawn depth (default 2). Prevents infinite recursion.
    * Depth 1 = subagents can't spawn their own subagents. */
   maxSpawnDepth?: number;
+  /** Port Plan 2: per-subagent max tool rounds. Defaults to maxToolRounds
+   *  when absent (identical to prior behavior). Ported from Hermes
+   *  delegation.max_iterations (default 50). */
+  maxSubagentToolRounds?: number;
   /** Item 16: idle-compaction trigger predicate. Runs once at the start of each
    * turn (before the first stream); when it returns true the loop runs the
    * `compressHistory` pass. Optional — default (absent) means no idle check
@@ -612,7 +616,8 @@ export function createAgent(config: AgentConfig = {}): Agent {
       audit,
       hooks: config.hooks,
       // A1: forward maxToolRounds to subagent path too (cold-verify finding).
-      maxToolRounds: config.maxToolRounds,
+      // Port Plan 2: subagent gets its own cap when configured (Hermes delegation.max_iterations).
+      maxToolRounds: config.maxSubagentToolRounds ?? config.maxToolRounds,
       // P3-20: forward compressHistory to subagent path (was missing → subagent
       // turns on context-full would retry without compression and eventually fail).
       compressHistory: (history) => {
