@@ -913,6 +913,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   const shutdown = (): void => {
     try { sync.stop(); } catch { /* best-effort */ }
     try { collab.stop(); } catch { /* best-effort */ }
+    try { pool.dispose(); } catch { /* best-effort */ }
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
