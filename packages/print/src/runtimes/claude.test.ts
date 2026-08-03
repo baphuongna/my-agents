@@ -54,3 +54,10 @@ describe("[unit] ClaudeRuntime", () => {
     expect(session.executionModel).toBe("subprocess");
   });
 });
+
+describe("[unit] ClaudeRuntime — additional coverage", () => {
+  it("costPerMTokens returns rates", () => {
+    const rt = new ClaudeRuntime();
+    expect(rt.costPerMTokens()).toEqual({ input: 3, output: 15 });
+  });
+});

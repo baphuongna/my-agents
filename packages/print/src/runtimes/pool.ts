@@ -165,7 +165,7 @@ export class RuntimePool {
     const entry = this.entries.get(sessionId);
     if (!entry) return false;
     if (entry.busy && !opts?.force) return false;
-    this.costTracker.forget?.(sessionId); void Promise.resolve(entry.session.abort()).catch(() => {});
+    this.costTracker.forget?.(sessionId); try { void Promise.resolve(entry.session.abort()).catch(() => {}); } catch {}
     this.entries.delete(sessionId);
     return true;
   }
@@ -183,7 +183,7 @@ export class RuntimePool {
       if (entry.busy) continue;
       if (now - entry.idleSince > this.idleTtlMs) {
         this.costTracker.forget?.(id);
-        void Promise.resolve(entry.session.abort()).catch(() => {});
+        try { void Promise.resolve(entry.session.abort()).catch(() => {}); } catch {}
         this.entries.delete(id);
       }
     }
@@ -193,7 +193,7 @@ export class RuntimePool {
     if (this.sweepTimer) { clearInterval(this.sweepTimer); this.sweepTimer = null; }
     for (const entry of this.entries.values()) {
       this.costTracker.forget?.(entry.sessionId);
-      void Promise.resolve(entry.session.abort()).catch(() => {});
+      try { void Promise.resolve(entry.session.abort()).catch(() => {}); } catch {}
     }
     this.entries.clear();
   }

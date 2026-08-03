@@ -141,7 +141,7 @@ export class PiInProcessSession implements RuntimeSession {
   private listeners = new Set<(e: AgentEvent) => void>();
   private textBuffer = "";
   private readonly createdAt = nowWallclock();
-  private accumulatedUsage = { tokensIn: 0, tokensOut: 0 };
+  private accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 as number | undefined };
   private turnActive = false;
 
   private unsubscribePi: (() => void) | null = null;
@@ -183,7 +183,7 @@ export class PiInProcessSession implements RuntimeSession {
 
   async prompt(text: string, opts?: PromptOpts): Promise<void> {
     this.textBuffer = "";
-    this.accumulatedUsage = { tokensIn: 0, tokensOut: 0 };
+    this.accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
     this.turnActive = true;
 
     this.emit({
@@ -248,7 +248,7 @@ export class PiInProcessSession implements RuntimeSession {
       tokensOut: this.accumulatedUsage.tokensOut,
       contextPct: usage?.percent ?? 0,
       contextWindow: usage?.contextWindow ?? 200_000,
-      costUsd: 0,
+      costUsd: this.accumulatedUsage.costUsd ?? 0,
       startedAt: this.createdAt,
       lastActivity: nowWallclock(),
     };

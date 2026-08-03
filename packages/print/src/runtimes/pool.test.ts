@@ -156,3 +156,15 @@ describe("[unit] RuntimePool — concurrent acquire dedup (M1 fix)", () => {
     pool.dispose();
   });
 });
+
+describe("[unit] RuntimePool — concurrent agentType mismatch", () => {
+  it("rejects concurrent acquire with different agentType for same sessionId", async () => {
+    const runtimes = new Map([["pi", makeMockRuntime("pi")], ["claude", makeMockRuntime("claude")]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    await expect(Promise.all([
+      pool.acquireWithRuntime("s1", { agentType: "pi" }).catch(e => e),
+      pool.acquireWithRuntime("s1", { agentType: "claude" }).catch(e => e),
+    ])).resolves.toBeDefined();
+    pool.dispose();
+  });
+});

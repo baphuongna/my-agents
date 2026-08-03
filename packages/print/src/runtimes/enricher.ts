@@ -40,7 +40,7 @@ export class MemoryEnricher implements PromptEnricher {
     try {
       await this.brain.recordFact({
         kind: "event",
-        entity: "session",
+        entity: `session:${_ctx.sessionId}`,
         content: output.slice(0, MAX_CAPTURE_CHARS),
         visibility: "private",
         notability: DEFAULT_NOTABILITY,
