@@ -2,10 +2,9 @@
 
 import type {
   AgentEvent, AgentRuntime, AgentCapabilities, CompactionResult,
-  ModelInfo, RuntimeSession, SessionState, StartOpts, ThinkingLevel, PromptOpts,
+  ModelInfo, RuntimeSession, SessionState, StartOpts, ThinkingLevel, PromptOpts, RuntimeEvent
 } from "@my-agent/core";
 import { nowWallclock } from "@my-agent/core";
-import type { RuntimeEvent } from "@my-agent/core";
 import { join } from "node:path";
 
 // ─── Event Normalizer (pure function) ─────────────────────────────────────────

@@ -6,7 +6,6 @@ import type { AgentSession } from "@my-agent/agent";
 import type { RuntimeSession } from "@my-agent/core";
 
 function makeMockRuntime(name: string, available = true): AgentRuntime {
-  const sessions = new Map<string, RuntimeSession>();
   return {
     runtimeType: name,
     displayName: name,
@@ -27,7 +26,6 @@ function makeMockRuntime(name: string, available = true): AgentRuntime {
         async dispose() {},
         onEvent: () => () => {},
       };
-      sessions.set(opts.sessionId, mock);
       return mock;
     },
     async listModels() { return []; },
@@ -79,7 +77,6 @@ describe("[unit] RuntimePool", () => {
   });
 
   it("release busy returns false without force", async () => {
-    const entry = pool.get("s1") ?? await pool.acquire("s1").then(() => pool.get("s1"));
     await pool.acquire("s1");
     const e = pool.get("s1")!;
     e.busy = true;

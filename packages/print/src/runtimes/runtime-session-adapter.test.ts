@@ -121,3 +121,30 @@ describe("[unit] RuntimeSessionAdapter", () => {
     expect(captureFn).toHaveBeenCalledWith("response text", expect.objectContaining({ sessionId: "test-1" }));
   });
 });
+
+describe("[unit] RuntimeSessionAdapter — additional coverage", () => {
+  it("getState delegates to session.getState", () => {
+    const session = makeMockSession();
+    const adapter = new RuntimeSessionAdapter(session, stubEnricher, stubCostTracker);
+    const state = adapter.getState();
+    expect(state.model).toBe("test");
+  });
+
+  it("subscribe returns working unsubscribe", () => {
+    const session = makeMockSession();
+    const adapter = new RuntimeSessionAdapter(session, stubEnricher, stubCostTracker);
+    const events: unknown[] = [];
+    const unsub = adapter.subscribe(e => events.push(e));
+    (session as any)._emit({ type: "text", delta: "test" });
+    expect(events).toHaveLength(1);
+    unsub();
+    (session as any)._emit({ type: "text", delta: "second" });
+    expect(events).toHaveLength(1); // no new event after unsubscribe
+  });
+
+  it("sessionFile returns undefined", () => {
+    const session = makeMockSession();
+    const adapter = new RuntimeSessionAdapter(session, stubEnricher, stubCostTracker);
+    expect(adapter.sessionFile).toBeUndefined();
+  });
+});

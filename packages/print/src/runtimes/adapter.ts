@@ -40,13 +40,14 @@ export class RuntimeSessionAdapter implements AgentSession {
     try {
       await prev;
 
+      const ctx: EnrichContext = {
+        sessionId: this.session.sessionId,
+        runtimeType: this.session.runtimeType,
+        executionModel: this.session.executionModel,
+      };
+
       let enriched = text;
       try {
-        const ctx: EnrichContext = {
-          sessionId: this.session.sessionId,
-          runtimeType: this.session.runtimeType,
-          executionModel: this.session.executionModel,
-        };
         enriched = await this.enricher.enrich(text, ctx);
       } catch (e) {
         console.warn(`[adapter] enrich failed: ${e}`);
@@ -65,11 +66,6 @@ export class RuntimeSessionAdapter implements AgentSession {
 
       if (this.textBuffer) {
         try {
-          const ctx: EnrichContext = {
-            sessionId: this.session.sessionId,
-            runtimeType: this.session.runtimeType,
-            executionModel: this.session.executionModel,
-          };
           await this.enricher.capture(this.textBuffer, ctx);
         } catch (e) {
           console.warn(`[adapter] capture failed: ${e}`);

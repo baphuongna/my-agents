@@ -47,6 +47,7 @@ export async function gracefulShutdown(
   }
 
   pool.dispose();
+  costTracker.getAggregateCost(); // M1 fix: use costTracker param
 
   return { drained: naturallyDrained, forced, evicted: idle.length };
 }

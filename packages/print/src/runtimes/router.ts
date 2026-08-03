@@ -13,6 +13,7 @@ const DEFAULT_KEYWORDS: Record<string, string[]> = {
   "mya-native": ["mya", "local", "offline"],
 };
 
+const COST_SCALE = 10; const NEUTRAL_COST_SCORE = 0.5;
 export class SmartRouterImpl implements SmartRouter {
   private keywordWeight: number;
   private costWeight: number;
@@ -53,8 +54,6 @@ export class SmartRouterImpl implements SmartRouter {
       const cost = rt.costPerMTokens?.() ?? { input: 0, output: 0 };
       const totalCost = cost.input + cost.output;
       // LOW-9 fix: missing costPerMTokens → neutral 0.5, not optimal 1.0
-      const COST_SCALE = 10; // scaling constant for cost score formula
-      const NEUTRAL_COST_SCORE = 0.5; // score for runtimes without costPerMTokens
       const costScore = totalCost > 0 ? 1 / (1 + totalCost / COST_SCALE) : NEUTRAL_COST_SCORE;
       scores.push({ name, runtime: rt, keywordScore, costScore });
     }

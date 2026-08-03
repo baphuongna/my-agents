@@ -3,6 +3,7 @@ import type { PromptEnricher, EnrichContext } from "@my-agent/core";
 
 const MAX_INJECTION_HITS = 5;
 const MAX_INJECTION_CHARS = 2000;
+const MAX_CAPTURE_CHARS = 4096;
 const DEFAULT_NOTABILITY = 0.5;
 const MIN_SCORE = 0.3;
 
@@ -40,7 +41,7 @@ export class MemoryEnricher implements PromptEnricher {
       await this.brain.recordFact({
         kind: "event",
         entity: "session",
-        content: output.slice(0, 4096),
+        content: output.slice(0, MAX_CAPTURE_CHARS),
         visibility: "private",
         notability: DEFAULT_NOTABILITY,
         source: "runtime-capture",

@@ -256,6 +256,7 @@ export class PiInProcessSession implements RuntimeSession {
 
   async dispose(): Promise<void> {
     this.unsubscribePi?.();
+    this.listeners.clear();
     try { this.piSession.dispose(); } catch (e) { console.warn("[pi] dispose failed:", e); }
   }
 

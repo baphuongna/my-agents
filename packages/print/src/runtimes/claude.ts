@@ -52,7 +52,7 @@ export class ClaudeRuntime implements AgentRuntime {
   readonly displayName = "Claude CLI (subprocess)";
   private availableCache: boolean | null = null;
   private availableCacheTime = 0;
-  private static AVAILABLE_TTL_MS = 60_000;
+  private static readonly AVAILABLE_TTL_MS = 60_000;
 
   isAvailable(): boolean {
     // HIGH-2 fix: cache result for 60s to avoid blocking event loop on every router call

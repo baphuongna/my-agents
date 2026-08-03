@@ -48,3 +48,32 @@ describe("[unit] CostTrackerImpl", () => {
     expect(agg.totalUsd).toBeGreaterThan(0);
   });
 });
+
+describe("[unit] CostTrackerImpl — additional coverage", () => {
+  it("unknown runtime type falls back to pi rates", () => {
+    const ct = new CostTrackerImpl();
+    ct.setRuntimeType("s1", "unknown-runtime");
+    ct.record("s1", { type: "turn_end", tokensIn: 1_000_000, tokensOut: 0 });
+    const cost = ct.getSessionCost("s1")!;
+    // Should use pi rates ($3/M input) since "unknown-runtime" not in COST_RATES
+    expect(cost.totalUsd).toBeCloseTo(3, 1);
+  });
+
+  it("getFullCost returns detailed record", () => {
+    const ct = new CostTrackerImpl();
+    ct.setRuntimeType("s1", "pi");
+    ct.record("s1", { type: "turn_end", tokensIn: 500, tokensOut: 200 });
+    const full = ct.getFullCost("s1")!;
+    expect(full.tokensIn).toBe(500);
+    expect(full.tokensOut).toBe(200);
+    expect(full.events).toBe(1);
+    expect(full.turns).toBe(1);
+  });
+
+  it("claude runtime uses claude rates", () => {
+    const ct = new CostTrackerImpl();
+    ct.setRuntimeType("s1", "claude");
+    ct.record("s1", { type: "turn_end", tokensIn: 1_000_000, tokensOut: 0 });
+    expect(ct.getSessionCost("s1")!.totalUsd).toBeCloseTo(3, 1);
+  });
+});

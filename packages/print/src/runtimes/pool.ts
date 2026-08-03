@@ -72,9 +72,10 @@ export class RuntimePool {
 
     let runtime: AgentRuntime;
     if (opts?.agentType) {
-      runtime = this.runtimes.get(opts.agentType)!;
-      if (!runtime) throw new Error(`Agent type "${opts.agentType}" not found`);
-      if (!runtime.isAvailable()) throw new Error(`Agent "${opts.agentType}" not available`);
+      const rt = this.runtimes.get(opts.agentType);
+      if (!rt) throw new Error(`Agent type "${opts.agentType}" not found`);
+      if (!rt.isAvailable()) throw new Error(`Agent "${opts.agentType}" not available`);
+      runtime = rt;
     } else {
       const result = await this.router.select({
         prompt: opts?.prompt ?? "",
