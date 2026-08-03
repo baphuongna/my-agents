@@ -21,6 +21,12 @@ export default defineConfig({
       "packages/*/src/**/*.test.{ts,tsx}",
       "test/features/**/*.test.{ts,tsx}",
     ],
+    // Exclude intercom node:test files (moved verbatim from pi-intercom, use node:test not vitest)
+    exclude: [
+      "packages/intercom/src/**/*.test.ts",
+      "packages/intercom/src/test/**/*.ts",
+      "node_modules/**",
+    ],
     environment: "node",
     globals: false,
     reporter: "default",
