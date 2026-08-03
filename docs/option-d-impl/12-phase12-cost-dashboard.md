@@ -17,7 +17,7 @@ Replace the Phase 5 `stubCostTracker` with a real implementation that:
 | File | Purpose |
 |---|---|
 | `packages/print/src/runtimes/cost-tracker.ts` | CostTracker implementation |
-| `packages/print/src/runtimes/snapshot.ts` | GET /sessions/:id/snapshot handler (F-9 fix: moved to print to avoid circular gateway↔print dep) |
+| (No separate snapshot.ts file needed — route via poolSnapshot callback) | — |
 | `packages/gateway/src/index.ts` (MODIFY) | Add `poolSnapshot` callback to GatewayOptions + route in handleHttp |
 | `packages/gateway/src/gateway-snapshot.test.ts` | [unit] snapshot tests |
 | `packages/print/src/main.ts` (MODIFY) | Replace stubCostTracker with real CostTracker |
@@ -187,7 +187,7 @@ const costTracker = new CostTrackerImpl();
 const pool = new RuntimePool(router, runtimes, enricher, costTracker);
 
 // R3-1 fix: add snapshot callback to gateway options (NOT Express route)
-const gateway = createGateway({
+const gateway = new Gateway({
   // ... existing callbacks ...
   poolSnapshot: (sessionId: string) => costTracker.getSnapshot(sessionId, pool),
 });

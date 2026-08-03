@@ -61,8 +61,8 @@ import { RuntimePool } from "./pool.js";
 import { createStubRouter, stubEnricher, stubCostTracker } from "./stubs.js";
 import { PiInProcessRuntime } from "./pi-in-process.js";
 import { RuntimeSessionAdapter } from "./adapter.js";
-// R3-6 fix: add missing imports
-// Note: piDeps must be constructed from shared instances (see Phase 4/5)
+// R3-6/R4-5 fix: provide minimal piDeps mock for test
+const piDeps = { agentDir: "/tmp/test-agent" } as any;  // Real deps constructed in Phase 4/5 from shared instances
 
 describe("[smoke] broker inter-agent messaging", () => {
   let pool: RuntimePool;

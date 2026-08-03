@@ -421,7 +421,7 @@ const pool = new RuntimePool(router, runtimes, enricher, costTracker);
 
 // BEFORE (existing code):
 // const pool = new AgentPool({ createSession: sessionFactory });
-// const gateway = createGateway({
+// const gateway = new Gateway({
 //   poolStatus: () => pool.list().map(e => ({...})),
 //   poolKill: (id) => pool.release(id),
 //   poolAcquire: async (input) => { ... },
@@ -440,7 +440,7 @@ const pool = new RuntimePool(
 );
 
 // Gateway callbacks now delegate to RuntimePool:
-const gateway = createGateway({
+const gateway = new Gateway({
   poolStatus: () => pool.list().map(e => ({
     sessionId: e.sessionId,
     runtimeType: e.runtimeType,  // NEW: multi-runtime info

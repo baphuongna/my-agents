@@ -196,7 +196,7 @@ if (url.pathname === "/shutdown" && req.method === "POST" && this.shutdownHandle
 // packages/print/src/main.ts — wire shutdown callback
 import { gracefulShutdown } from "./runtimes/shutdown.js";
 
-const gateway = createGateway({
+const gateway = new Gateway({
   // ... existing callbacks ...
   shutdownHandler: async () => {
     await gracefulShutdown(pool, costTracker);
@@ -217,7 +217,8 @@ import { createStubRouter, stubEnricher } from "./stubs.js";  // R3-7 fix: add m
 import { gracefulShutdown } from "./shutdown.js";
 import { CostTrackerImpl } from "./cost-tracker.js";
 import { PiInProcessRuntime } from "./pi-in-process.js";
-// Note: piDeps must be constructed from shared instances (see Phase 4/5)
+// R3-7/R4-5 fix: provide minimal piDeps mock for test
+const piDeps = { agentDir: "/tmp/test-agent" } as any;  // Real deps constructed in Phase 4/5 from shared instances
 
 describe("[system] E2E shutdown", () => {
   let pool: RuntimePool;
