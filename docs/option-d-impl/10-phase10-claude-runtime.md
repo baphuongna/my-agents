@@ -74,7 +74,6 @@ This is a **pure function** that parses a single `stream-json` line into an
 // packages/print/src/runtimes/claude-event-normalizer.ts
 
 import type { AgentEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 /**
  * Translates a single stream-json line from `claude -p --output-format stream-json`
@@ -726,7 +725,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentEvent, StartOpts } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 // ── Check if claude binary is available ──
 function claudeAvailable(): boolean {

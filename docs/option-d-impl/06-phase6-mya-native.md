@@ -285,6 +285,7 @@ import type {
 } from "@my-agent/core";
 import type { Model, Api } from "@earendil-works/pi-ai";
 import { mapMyaEvent, type MyaNormalizerState } from "./mya-native-event-normalizer.js";
+import { nowWallclock } from "@my-agent/core";  // R8-1 fix: value import for session timestamps
 
 class MyaNativeSession implements RuntimeSession {
   readonly executionModel = "in-process" as const;
@@ -497,7 +498,6 @@ runtimes.set("mya-native", new MyaNativeRuntime());
 import { describe, it, expect } from "vitest";
 import { mapMyaEvent, type MyaNormalizerState } from "./mya-native-event-normalizer.js";
 import type { RuntimeEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 
 function makeState(): MyaNormalizerState {
   return { tokensIn: 0, tokensOut: 0 };
@@ -764,7 +764,6 @@ describe("[unit] mya-native event normalizer", () => {
 
 import { describe, it, expect, vi } from "vitest";
 import type { RuntimeEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
 import type { AgentEvent } from "@my-agent/core";
 
 // Mock @my-agent/agent to avoid requiring a real provider
