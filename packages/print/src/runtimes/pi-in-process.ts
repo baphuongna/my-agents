@@ -160,6 +160,7 @@ export class PiInProcessSession implements RuntimeSession {
 
       // BC fix: detect agent_settled from broker injection (no prior turn_start)
       if (e.type === "agent_settled" && !this.turnActive) {
+        this.turnActive = true; // L14 fix: mark active so agent_settled pairs correctly
         this.emit({
           type: "turn_start",
           model: this.piSession.model?.id ?? "unknown",

@@ -137,6 +137,7 @@ export class ClaudeSession implements RuntimeSession {
 
   private async doPrompt(text: string, _opts?: PromptOpts): Promise<void> {
     this.busy = true;
+    this.lastUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 }; // M2 fix: reset per prompt
     this.emit({ type: "turn_start", model: this.modelId, sessionId: this.opts.sessionId });
 
     const args = ["-p", "--output-format", "stream-json", "--model", this.modelId, "--continue", "--session-dir", this.sessionDir, text];

@@ -35,10 +35,9 @@ export class RuntimeSessionAdapter implements AgentSession {
     const prev = this.turnLock;
     let release!: () => void;
     this.turnLock = new Promise<void>((r) => { release = r; });
-    this.onBusyChange?.(true);
-
     try {
       await prev;
+      this.onBusyChange?.(true); // M1 fix: set busy AFTER acquiring lock
 
       const ctx: EnrichContext = {
         sessionId: this.session.sessionId,

@@ -62,7 +62,7 @@ export class CostTrackerImpl implements CostTracker {
   }
 
   getFullCost(sessionId: string): SessionCost | undefined {
-    return this.sessions.get(sessionId);
+    return this.sessions.get(sessionId) ? { ...this.sessions.get(sessionId)! } : undefined;
   }
 
   forget(sessionId: string): void {

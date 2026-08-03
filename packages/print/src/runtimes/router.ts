@@ -13,7 +13,8 @@ const DEFAULT_KEYWORDS: Record<string, string[]> = {
   "mya-native": ["mya", "local", "offline"],
 };
 
-const COST_SCALE = 10; const NEUTRAL_COST_SCORE = 0.5;
+const COST_SCALE = 10;
+const NEUTRAL_COST_SCORE = 0.5;
 export class SmartRouterImpl implements SmartRouter {
   private keywordWeight: number;
   private costWeight: number;

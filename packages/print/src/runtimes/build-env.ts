@@ -19,7 +19,8 @@ function loadAuthConfig(): AuthConfig {
     const raw = readFileSync(authPath, "utf-8");
     const parsed = JSON.parse(raw);
     // auth.json may have mixed shape — extract credentials and env separately
-    if (typeof parsed !== "object" || parsed === null) return { credentials: {} }; const { env, ...rest } = parsed;
+    if (typeof parsed !== "object" || parsed === null) return { credentials: {} };
+    const { env, ...rest } = parsed;
     return { credentials: rest, env };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('[build-env] auth.json read error:', e);

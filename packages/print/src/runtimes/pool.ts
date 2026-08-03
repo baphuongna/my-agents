@@ -162,7 +162,7 @@ export class RuntimePool {
   }
 
   dispose(): void {
-    if (this.sweepTimer) clearInterval(this.sweepTimer);
+    if (this.sweepTimer) { clearInterval(this.sweepTimer); this.sweepTimer = null; }
     for (const entry of this.entries.values()) {
       void Promise.resolve(entry.session.abort()).catch(() => {});
     }

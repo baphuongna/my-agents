@@ -168,7 +168,7 @@ export class MyaNativeSession implements RuntimeSession {
     return { model: this.model, thinking: "off", status: this.busy ? "thinking" : "idle", tokensIn: this.lastState.tokensIn, tokensOut: this.lastState.tokensOut, contextPct: 0, contextWindow: 200_000, costUsd: this.lastState.costUsd, startedAt: this.createdAt, lastActivity: nowWallclock() };
   }
   isIdle(): boolean { return !this.busy; }
-  async dispose(): Promise<void> { this.agentInstance = null; this.listeners.clear(); }
+  async dispose(): Promise<void> { this.agentInstance?.killAllSubagents?.(); this.agentInstance = null; this.listeners.clear(); this.textBuffer = ""; }
   onEvent(handler: (e: AgentEvent) => void): () => void { this.listeners.add(handler); return () => this.listeners.delete(handler); }
   getTextBuffer(): string { return this.textBuffer; }
   private emit(event: AgentEvent): void { this.listeners.forEach(l => l(event)); }
