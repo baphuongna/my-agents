@@ -127,7 +127,7 @@ export class ClaudeSession implements RuntimeSession {
     this.busy = true;
     this.emit({ type: "turn_start", model: this.modelId, sessionId: this.opts.sessionId });
 
-    const args = ["-p", "--output-format", "stream-json", "--model", this.modelId, "--continue", text];
+    const args = ["-p", "--output-format", "stream-json", "--model", this.modelId, "--continue", "--session-dir", this.sessionDir, text];
     this.child = spawn("claude", args, {
       env: { ...process.env, ...this.opts.env }, cwd: this.opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],

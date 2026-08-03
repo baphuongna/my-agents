@@ -21,20 +21,37 @@ export function mapMyaEvent(
   const e = event as any;
   switch (e.kind) {
     case "turn":
-      if (e.state === "started") return null; // turn_start emitted by prompt()
-      if (e.state === "completed" || e.state === "failed") {
-        return { type: "turn_end", tokensIn: state.tokensIn, tokensOut: state.tokensOut };
+      if (e.stage === "start") return null; // turn_start emitted by prompt()
+      if (e.stage === "end") {
+        if (e.turnEvent?.state === "Completed") {
+          state.tokensIn += e.turnEvent.usage?.input ?? 0;
+          state.tokensOut += e.turnEvent.usage?.output ?? 0;
+          return null; // turn_end emitted by prompt()
+        }
+        if (e.turnEvent?.state === "Failed") {
+          return { type: "error", message: e.turnEvent.error?.message ?? "turn failed", recoverable: false };
+        }
+        return null;
+      }
+      if (e.stage === "event" && e.turnEvent?.state === "Streaming") {
+        const chunk = e.turnEvent.chunk;
+        if (chunk?.kind === "text") return { type: "text", delta: chunk.text ?? "" };
+        if (chunk?.kind === "error") return { type: "error", message: chunk.error?.message ?? "stream error", recoverable: false };
+        return null;
       }
       return null;
     case "tool":
-      if (e.state === "started") return { type: "tool_call", toolCallId: e.id ?? "", name: e.name ?? "", args: e.args ?? {} };
-      if (e.state === "completed") return { type: "tool_result", toolCallId: e.id ?? "", output: typeof e.result === "string" ? e.result : JSON.stringify(e.result ?? ""), error: e.error ?? false };
-      return null;
-    case "streaming":
-      if (!e.chunk) return null;
-      if (e.chunk.kind === "text") return { type: "text", delta: e.chunk.text ?? "" };
-      if (e.chunk.kind === "thinking") return { type: "thinking", delta: e.chunk.text ?? "" };
-      if (e.chunk.kind === "error") return { type: "error", message: e.chunk.error?.context?.reason ?? "stream error", recoverable: e.chunk.error?.recoverable ?? false };
+      if (e.stage === "request" && e.call) {
+        return { type: "tool_call", toolCallId: e.call.id ?? "", name: e.call.name ?? "", args: e.call.args ?? {} };
+      }
+      if (e.stage === "result" && e.result) {
+        return {
+          type: "tool_result",
+          toolCallId: e.result.callId ?? "",
+          output: typeof e.result.output === "string" ? e.result.output : JSON.stringify(e.result.output ?? ""),
+          error: !e.result.ok,
+        };
+      }
       return null;
     default:
       return null;
