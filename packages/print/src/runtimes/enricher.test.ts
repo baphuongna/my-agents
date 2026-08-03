@@ -150,4 +150,46 @@ describe("[unit] MemoryEnricher — R2 regression tests", () => {
     expect(facts).toHaveLength(1);
     expect(brain._facts).toHaveLength(0); // brain NOT called when memory.record exists
   });
+
+  it("R6: round-trip — capture then enrich filters same-session facts", async () => {
+    // Capture stores fact with capture:<sid>: prefix in memory.
+    // Recall returns it. Enrich filters it out (echo prevention).
+    const stored: any[] = [];
+    const mem = {
+      recall: (_q: string) => [{ domain: "test", hits: stored }],
+      record: async (f: any) => { stored.push({ id: f.id, content: f.content, score: 0.9 }); },
+    };
+    const e = new MemoryEnricher(mem as any);
+    // First prompt: no captured facts → raw prompt
+    expect(await e.enrich("hello", makeCtx())).toBe("hello");
+    // Capture the output
+    await e.capture("my response", makeCtx());
+    // Second prompt: recall returns the captured fact → filtered (echo)
+    const result = await e.enrich("follow up", makeCtx());
+    expect(result).not.toContain("my response");
+    expect(result).toBe("follow up");
+  });
+
+  it("R6: two captures same session produce unique ids", async () => {
+    const facts: any[] = [];
+    const mem = { recall: () => [], record: async (f: any) => { facts.push(f); } };
+    const e = new MemoryEnricher(mem as any);
+    await e.capture("output1", makeCtx());
+    await e.capture("output2", makeCtx());
+    expect(facts).toHaveLength(2);
+    expect(facts[0].id).not.toBe(facts[1].id);
+  });
+
+  it("R6: operational noise hits (queue-depth, sync-pending) excluded", async () => {
+    const mem = mockMemory([
+      { id: "queue-depth", content: "3 queued", score: 1.0 },
+      { id: "sync-pending", content: "2 pending", score: 1.0 },
+      { id: "real-fact", content: "real memory", score: 0.9 },
+    ]);
+    const e = new MemoryEnricher(mem as any);
+    const result = await e.enrich("test", makeCtx());
+    expect(result).not.toContain("queued");
+    expect(result).not.toContain("pending");
+    expect(result).toContain("real memory");
+  });
 });

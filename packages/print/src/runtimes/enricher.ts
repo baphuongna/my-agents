@@ -1,6 +1,7 @@
 // packages/print/src/runtimes/enricher.ts
 import type { PromptEnricher, EnrichContext } from "@my-agent/core";
 import { nowWallclock } from "@my-agent/core";
+import { randomBytes } from "node:crypto";
 
 const MAX_INJECTION_HITS = 5;
 const MAX_INJECTION_CHARS = 2000;
@@ -11,6 +12,8 @@ const DEFAULT_NOTABILITY = 0.5;
 // below that. 0.01 lets single-arm rank-1 (1/61=0.016) through; quality is
 // ensured by MAX_INJECTION_HITS=5 cap with score sorting.
 const MIN_SCORE = 0.01;
+// R6-LOW: operational status hits with hardcoded score:1, no query relevance
+const OPERATIONAL_IDS = new Set(["queue-depth", "sync-pending"]);
 const PER_HIT_BUDGET = Math.floor(MAX_INJECTION_CHARS / MAX_INJECTION_HITS); // 400
 
 export class MemoryEnricher implements PromptEnricher {
@@ -34,6 +37,9 @@ export class MemoryEnricher implements PromptEnricher {
         // capture() sets fact id = `capture:${sessionId}:...` so we can match.
         // R3-LOW: trailing colon prevents prefix collision (s1 vs s10).
         .filter((h: any) => !(h?.id ?? "").startsWith(`capture:${ctx.sessionId}:`))
+        // R6-LOW: exclude operational status hits (queue-depth, sync-pending)
+        // — score:1 hardcoded, no query relevance, waste injection slots.
+        .filter((h: any) => !OPERATIONAL_IDS.has(h?.id ?? ""))
         .sort((a: any, b: any) => (b?.score ?? 0) - (a?.score ?? 0))
         .slice(0, MAX_INJECTION_HITS);
       if (filtered.length === 0) return prompt;
@@ -55,7 +61,7 @@ export class MemoryEnricher implements PromptEnricher {
     // on every sweep and pollute the brain with repetitive job output.
     if (ctx.sessionId.startsWith("_cron:")) return;
     const fact = {
-      id: `capture:${ctx.sessionId}:${nowWallclock()}-${Math.random().toString(36).slice(2, 8)}`, // R5: random suffix prevents same-ms collision
+      id: `capture:${ctx.sessionId}:${nowWallclock()}-${randomBytes(3).toString("hex")}`, // R5: random suffix prevents same-ms collision
       kind: "event" as const,
       entity: `session:${ctx.sessionId}`,
       content: output.slice(0, MAX_CAPTURE_CHARS),
