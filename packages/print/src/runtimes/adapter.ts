@@ -19,10 +19,8 @@ export class RuntimeSessionAdapter implements AgentSession {
     private onBusyChange?: (busy: boolean) => void,
     private onMessage?: () => void,
   ) {
-    // MED-1 fix: set runtime type for correct per-runtime cost rates
-    if ('setRuntimeType' in costTracker) {
-      (costTracker as any).setRuntimeType(session.sessionId, session.runtimeType);
-    }
+    // LOW-1 fix: setRuntimeType is called by pool._doAcquireWithRuntime
+    // (single source of truth) — removed duplicate here.
     // MED-2 fix: save unsubscribe for cleanup
     this.unsubscribeSession = this.session.onEvent((event) => {
       if (event.type === "text") this.textBuffer += event.delta;
