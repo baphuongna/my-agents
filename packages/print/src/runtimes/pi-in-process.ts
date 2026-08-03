@@ -141,7 +141,7 @@ export class PiInProcessSession implements RuntimeSession {
   private listeners = new Set<(e: AgentEvent) => void>();
   private textBuffer = "";
   private readonly createdAt = nowWallclock();
-  private accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 as number | undefined };
+  private accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
   private turnActive = false;
   private disposed = false;
 
@@ -184,6 +184,7 @@ export class PiInProcessSession implements RuntimeSession {
   }
 
   async prompt(text: string, opts?: PromptOpts): Promise<void> {
+    if (this.disposed) throw new Error("Session disposed");
     this.textBuffer = "";
     this.accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
     this.turnActive = true;
@@ -205,7 +206,7 @@ export class PiInProcessSession implements RuntimeSession {
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
           tokensOut: this.accumulatedUsage.tokensOut,
-          ...((this.accumulatedUsage.costUsd ?? 0) !== undefined ? { costUsd: this.accumulatedUsage.costUsd } : {}),
+          ...((this.accumulatedUsage.costUsd ?? 0) > 0 ? { costUsd: this.accumulatedUsage.costUsd } : {}),
         });
       }
     } catch (e) {
@@ -217,7 +218,7 @@ export class PiInProcessSession implements RuntimeSession {
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
           tokensOut: this.accumulatedUsage.tokensOut,
-          ...((this.accumulatedUsage.costUsd ?? 0) !== undefined ? { costUsd: this.accumulatedUsage.costUsd } : {}),
+          ...((this.accumulatedUsage.costUsd ?? 0) > 0 ? { costUsd: this.accumulatedUsage.costUsd } : {}),
         });
       }
       throw e;
@@ -261,7 +262,9 @@ export class PiInProcessSession implements RuntimeSession {
   isIdle(): boolean { return this.piSession.isIdle; }
 
   async dispose(): Promise<void> {
+    this.disposed = true;
     this.unsubscribePi?.();
+    this.unsubscribePi = null;
     this.listeners.clear();
     try { this.piSession.dispose(); } catch (e) { console.warn("[pi] dispose failed:", e); }
   }

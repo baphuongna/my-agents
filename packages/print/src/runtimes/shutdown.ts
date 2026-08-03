@@ -47,8 +47,8 @@ export async function gracefulShutdown(
     await drainPromise;
   }
 
+  const agg = costTracker.getAggregateCost(); // M2 fix: capture BEFORE dispose
   pool.dispose();
-  const agg = costTracker.getAggregateCost();
   console.log(`[shutdown] Cost: $${agg.totalUsd.toFixed(4)}, ${agg.totalTurns} turns`);
 
   return { drained: naturallyDrained, forced, evicted: idle.length };

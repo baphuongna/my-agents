@@ -132,9 +132,16 @@ export class ClaudeSession implements RuntimeSession {
       return;
     }
     await this.doPrompt(text, _opts);
-    while (this.promptQueue.length > 0) {
-      const item = this.promptQueue.shift()!;
-      await item.fn();
+    try {
+      while (this.promptQueue.length > 0) {
+        const item = this.promptQueue.shift()!;
+        await item.fn();
+      }
+    } catch (e) {
+      // M3 fix: drain remaining queued items on error
+      const err = e as Error;
+      while (this.promptQueue.length > 0) { this.promptQueue.shift()!.reject(err); }
+      throw e;
     }
   }
 
