@@ -3,6 +3,7 @@ import type { PromptEnricher, EnrichContext } from "@my-agent/core";
 
 const MAX_INJECTION_HITS = 5;
 const MAX_INJECTION_CHARS = 2000;
+const DEFAULT_NOTABILITY = 0.5;
 const MIN_SCORE = 0.3;
 
 export class MemoryEnricher implements PromptEnricher {
@@ -18,7 +19,7 @@ export class MemoryEnricher implements PromptEnricher {
       const results = await this.memory.recall(prompt, { topK: MAX_INJECTION_HITS });
       const hits = results?.flatMap((r: any) => r?.hits ?? []) ?? [];
       const filtered = hits
-        .filter((h: any) => (h?.score ?? 0) >= MIN_SCORE)
+        .filter((h: any) => (h?.score ?? 0) >= MIN_SCORE && h?.content)
         .sort((a: any, b: any) => (b?.score ?? 0) - (a?.score ?? 0))
         .slice(0, MAX_INJECTION_HITS);
       if (filtered.length === 0) return prompt;
@@ -41,7 +42,7 @@ export class MemoryEnricher implements PromptEnricher {
         entity: "session",
         content: output.slice(0, 4096),
         visibility: "private",
-        notability: 0.5,
+        notability: DEFAULT_NOTABILITY,
         source: "runtime-capture",
       });
     } catch {

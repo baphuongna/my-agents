@@ -21,7 +21,8 @@ function loadAuthConfig(): AuthConfig {
     // auth.json may have mixed shape — extract credentials and env separately
     const { env, ...rest } = parsed;
     return { credentials: rest, env };
-  } catch {
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('[build-env] auth.json read error:', e);
     return { credentials: {} };
   }
 }

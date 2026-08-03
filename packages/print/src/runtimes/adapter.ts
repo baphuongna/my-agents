@@ -31,7 +31,7 @@ export class RuntimeSessionAdapter implements AgentSession {
     });
   }
 
-  async prompt(text: string, _options?: unknown): Promise<void> {
+  async prompt(text: string, options?: unknown): Promise<void> {
     const prev = this.turnLock;
     let release!: () => void;
     this.turnLock = new Promise<void>((r) => { release = r; });
@@ -56,7 +56,7 @@ export class RuntimeSessionAdapter implements AgentSession {
 
       try {
         // MED-11 fix: forward PromptOpts to underlying session
-        await this.session.prompt(enriched, _options as PromptOpts);
+        await this.session.prompt(enriched, options as PromptOpts);
         this.onMessage?.();
       } catch (e) {
         console.warn(`[adapter] session.prompt failed: ${e}`);
@@ -88,6 +88,7 @@ export class RuntimeSessionAdapter implements AgentSession {
 
   abort(): void {
     this.unsubscribeSession?.();
+    this.listeners.clear();
     void this.session.dispose().catch(() => {});
   }
 

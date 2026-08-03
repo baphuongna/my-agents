@@ -22,6 +22,7 @@ export async function gracefulShutdown(
   const idle = entries.filter(e => !e.busy);
 
   let forced = 0;
+  let naturallyDrained = 0;
 
   for (const entry of idle) {
     pool.release(entry.sessionId, { force: true });
@@ -33,7 +34,7 @@ export async function gracefulShutdown(
         const deadline = startTime + timeout;
         while (nowWallclock() < deadline) {
           const current = pool.get(entry.sessionId);
-          if (!current || !current.busy) return;
+          if (!current || !current.busy) { naturallyDrained++; return; }
           await new Promise<void>(r => setTimeout(r, 500));
         }
         if (force) {
@@ -46,9 +47,6 @@ export async function gracefulShutdown(
   }
 
   pool.dispose();
-  // LOW-15 fix: count accurately — only sessions that actually finished count as drained
-  const actuallyForced = forced;
-  const actuallyDrained = busy.length - actuallyForced;
 
-  return { drained: actuallyDrained, forced: actuallyForced, evicted: idle.length };
+  return { drained: naturallyDrained, forced, evicted: idle.length };
 }

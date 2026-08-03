@@ -124,6 +124,8 @@ export class MyaNativeSession implements RuntimeSession {
   private readonly createdAt = nowWallclock();
   private model = "mya-default";
   private agentInstance: any = null;
+  private busy = false;
+  private lastState = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
 
   constructor(private opts: StartOpts) {}
 
@@ -137,6 +139,7 @@ export class MyaNativeSession implements RuntimeSession {
 
   async prompt(text: string, _opts?: PromptOpts): Promise<void> {
     this.textBuffer = "";
+    this.busy = true;
     this.emit({ type: "turn_start", model: this.model, sessionId: this.opts.sessionId });
     try {
       const agent = await this.getAgent();
@@ -148,11 +151,14 @@ export class MyaNativeSession implements RuntimeSession {
           this.emit(m);
         }
       });
+      this.lastState = state;
       this.emit({ type: "turn_end", tokensIn: state.tokensIn, tokensOut: state.tokensOut, ...(state.costUsd > 0 ? { costUsd: state.costUsd } : {}) });
     } catch (e) {
       this.emit({ type: "error", message: String(e), recoverable: false });
       this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
       throw e;
+    } finally {
+      this.busy = false;
     }
   }
 
@@ -160,10 +166,10 @@ export class MyaNativeSession implements RuntimeSession {
   setThinking(_level: ThinkingLevel): void {}
   async compact(): Promise<CompactionResult> { return { tokensBefore: 0, tokensAfter: 0, strategy: "none" }; }
   getState(): SessionState {
-    return { model: this.model, thinking: "off", status: "idle", tokensIn: 0, tokensOut: 0, contextPct: 0, contextWindow: 200_000, costUsd: 0, startedAt: this.createdAt, lastActivity: nowWallclock() };
+    return { model: this.model, thinking: "off", status: this.busy ? "thinking" : "idle", tokensIn: this.lastState.tokensIn, tokensOut: this.lastState.tokensOut, contextPct: 0, contextWindow: 200_000, costUsd: this.lastState.costUsd, startedAt: this.createdAt, lastActivity: nowWallclock() };
   }
-  isIdle(): boolean { return true; }
-  async dispose(): Promise<void> { this.agentInstance = null; }
+  isIdle(): boolean { return !this.busy; }
+  async dispose(): Promise<void> { this.agentInstance = null; this.listeners.clear(); }
   onEvent(handler: (e: AgentEvent) => void): () => void { this.listeners.add(handler); return () => this.listeners.delete(handler); }
   getTextBuffer(): string { return this.textBuffer; }
   private emit(event: AgentEvent): void { this.listeners.forEach(l => l(event)); }
