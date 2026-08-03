@@ -22,32 +22,34 @@ Replace the existing `AgentPool` with `RuntimePool` — a multi-runtime session 
 | `packages/print/src/runtimes/pool.ts` | RuntimePool |
 | `packages/print/src/runtimes/adapter.ts` | RuntimeSessionAdapter |
 | `packages/print/src/runtimes/stubs.ts` | Stub router, enricher, cost tracker |
-| `packages/print/src/runtimes/pool.test.ts` | [unit] RuntimePool tests |
-| `packages/print/src/runtimes/adapter.test.ts` | [unit] RuntimeSessionAdapter tests |
+| `packages/print/src/runtimes/runtime-pool.test.ts` | [unit] RuntimePool tests |
+| `packages/print/src/runtimes/runtime-session-adapter.test.ts` | [unit] RuntimeSessionAdapter tests |
 | `packages/cron/src/cron-agent-type.test.ts` | [unit] Cron agentType tests |
 | `packages/print/src/main.ts` (MODIFY) | Construction wiring |
-| `packages/gateway/src/index.ts` (MODIFY) | Switch from AgentPool to RuntimePool |
+| `packages/print/src/main.ts` (MODIFY) | Replace `new AgentPool()` with `new RuntimePool()` + callback wiring |
+| Gateway itself needs NO import changes (uses callback injection, not direct pool import) |
 
 ## Implementation Steps
 
 ### Step 1: IC1 — Audit ALL AgentPool methods gateway uses
 
-Before writing RuntimePool, map every AgentPool method the gateway currently calls:
+Before writing RuntimePool, map every AgentPool method used by `main.ts` callbacks
+(F-12 fix: gateway does NOT call pool directly — it receives callbacks):
 
 ```bash
-# Find all AgentPool method calls in gateway
-grep -rn "pool\.\|agentPool\.\|AgentPool" packages/gateway/src/
+# Find all pool method calls in main.ts (where pool is used)
+grep -n "pool\." packages/print/src/main.ts
 ```
 
-| AgentPool method | Gateway usage | RuntimePool equivalent |
+| AgentPool method | main.ts callback | RuntimePool equivalent |
 |---|---|---|
-| `acquire(sessionId)` | WS message handler | `acquire(sessionId)` — delegates to acquireWithRuntime |
-| `acquire(sessionId, agentName)` | Named agent support | `acquireWithRuntime(sessionId, {agentType})` |
-| `get(sessionId)` | Session info endpoint | `get(sessionId)` — returns RuntimePoolEntry |
-| `list()` | Sessions list endpoint | `list()` — returns RuntimePoolEntry[] |
-| `release(sessionId)` | Delete session endpoint | `release(sessionId)` — new: checks busy |
-| `createForCwd(sessionId, cwd)` | Launcher integration | `createForCwd(sessionId, cwd)` or `acquireWithRuntime(sessionId, {cwd})` |
-| `sweepIdle()` | Periodic cleanup | `sweepIdle()` — internal timer |
+| `acquire(sessionId)` | `poolAcquire` callback | `acquire(sessionId)` — delegates to acquireWithRuntime |
+| `acquire(sessionId, agentName)` | `poolAcquire` callback (agentType) | `acquireWithRuntime(sessionId, {agentType})` |
+| `get(sessionId)` | Session info | `get(sessionId)` — returns RuntimePoolEntry |
+| `list()` | `poolStatus` callback | `list()` — returns RuntimePoolEntry[] |
+| `release(sessionId)` | `poolKill` callback | `release(sessionId, {force:true})` — admin force |
+| `createForCwd(sessionId, cwd)` | `poolAcquire` callback (with cwd) | `createForCwd(sessionId, cwd)` |
+| `sweepIdle()` | Periodic cleanup | `sweepIdle()` — public (F-3 fix), internal timer |
 | `size` | Status | `size` getter |
 
 **RuntimePool must implement ALL of these.** Key differences:
@@ -98,9 +100,10 @@ Full code from spec §7.1:
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
-  AgentRuntime, AgentSession, SmartRouter, PromptEnricher, CostTracker,
+  AgentRuntime, SmartRouter, PromptEnricher, CostTracker,
   StartOpts, SessionState,
 } from "@my-agent/core";
+import type { AgentSession } from "@my-agent/agent";  // F-1 fix: AgentSession is in @my-agent/agent, not core
 import { RuntimeSessionAdapter } from "./adapter.js";
 import { buildAgentEnv } from "./build-env.js";
 
@@ -245,7 +248,8 @@ export class RuntimePool {
 
   get size(): number { return this.entries.size; }
 
-  private sweepIdle(): void {
+  // F-3 fix: public for test access (Phase 13 E2E tests call this directly)
+  sweepIdle(): void {
     const now = Date.now();
     for (const [id, entry] of this.entries) {
       if (entry.busy) continue;
@@ -405,26 +409,57 @@ const pool = new RuntimePool(router, runtimes, enricher, costTracker);
 // gateway now receives RuntimePool (implements AgentSession-compatible interface)
 ```
 
-### Step 6: Gateway migration
+### Step 6: Gateway migration (F-12 fix: accurate description)
+
+> **F-12 fix:** The gateway does NOT import AgentPool or any pool class directly.
+> It receives pool methods as **callback options** passed to the `Gateway` constructor.
+> The migration is in `main.ts`, not in gateway code.
 
 ```typescript
-// packages/gateway/src/index.ts
-// BEFORE: import { AgentPool } from "@my-agent/agent";
-// AFTER:  import { RuntimePool } from "../print/src/runtimes/pool.js";
+// packages/print/src/main.ts
 
-// Gateway already duck-types pool — it calls:
-//   pool.acquire(sessionId) → AgentSession
-//   pool.get(sessionId) → entry
-//   pool.list() → entries
-//   pool.release(sessionId) → boolean
-//   pool.createForCwd(sessionId, cwd) → AgentSession
-//   pool.size → number
+// BEFORE (existing code):
+// const pool = new AgentPool({ createSession: sessionFactory });
+// const gateway = createGateway({
+//   poolStatus: () => pool.list().map(e => ({...})),
+//   poolKill: (id) => pool.release(id),
+//   poolAcquire: async (input) => { ... },
+//   poolPrompt: (sessionId, text) => { ... },
+// });
 
-// RuntimePool implements ALL of these, so gateway code needs minimal changes:
-// 1. Replace AgentPool import with RuntimePool
-// 2. Replace pool construction call
-// 3. Update entry type references (AgentSessionEntry → RuntimePoolEntry)
-// 4. release() now returns false for busy sessions — add {force:true} for admin endpoints
+// AFTER (Phase 5 migration):
+import { RuntimePool } from "./runtimes/pool.js";
+import { createStubRouter, stubEnricher, stubCostTracker } from "./runtimes/stubs.js";
+
+const runtimes = new Map<string, AgentRuntime>();
+runtimes.set("pi", new PiInProcessRuntime(piDeps));
+
+const pool = new RuntimePool(
+  createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker
+);
+
+// Gateway callbacks now delegate to RuntimePool:
+const gateway = createGateway({
+  poolStatus: () => pool.list().map(e => ({
+    sessionId: e.sessionId,
+    runtimeType: e.runtimeType,  // NEW: multi-runtime info
+    busy: e.busy,
+    messageCount: e.messageCount,
+    lastActivity: e.lastActivity,
+  })),
+  poolKill: (id) => pool.release(id, { force: true }),  // admin force
+  poolAcquire: async (input) => {
+    const { session } = await pool.acquireWithRuntime(input.sessionId, {
+      agentType: input.agentType,
+      cwd: input.cwd,
+    });
+    return session;
+  },
+  poolPrompt: (sessionId, text) => { /* same as before */ },
+});
+
+// Gateway class itself: NO CHANGES NEEDED.
+// It uses duck-typed callbacks, never imports a pool type.
 ```
 
 ### Step 7: IC2 — Cron rewire
@@ -454,7 +489,7 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 
 ## Test Plan
 
-### `pool.test.ts` [unit]
+### `runtime-pool.test.ts` [unit]
 
 | Case | Setup | Expected |
 |---|---|---|
@@ -469,7 +504,7 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 | createForCwd | createForCwd(id, cwd) | Session with correct cwd |
 | size getter | Add/remove entries | Correct count |
 
-### `adapter.test.ts` [unit]
+### `runtime-session-adapter.test.ts` [unit]
 
 | Case | Setup | Expected |
 |---|---|---|
@@ -506,6 +541,9 @@ async function executeCronJob(pool: RuntimePool, job: CronJob, sessionId: string
 - [ ] Gateway compiles with RuntimePool replacing AgentPool
 - [ ] Cron jobs use agentType field (default "pi")
 - [ ] IC6: no SessionMetaStore — state comes from RuntimeSession.getState()
+- [ ] PiRuntimeDeps shared instances via constructor (incl. dreamCycle hoisted) — spec §11
+- [ ] CronJob.workdir field present — spec §11
+- [ ] sweepIdle() is public for E2E test access (F-3 fix)
 
 ## Risks & Mitigations
 

@@ -113,10 +113,10 @@ export class MemoryEnricher implements PromptEnricher {
     try {
       // recall() is synchronous — returns MemoryDomainEntry[] immediately.
       // Each entry has { domain, hits: MemoryHit[] }.
+      // F-7 fix: MemoryDomainOpts does not have sessionAware/sessionId fields.
+      // Session-scoped recall requires extending MemoryDomainOpts in @my-agent/memory (IMPL).
       const results = this.memory.recall(prompt, {
         topK: this.maxHits,
-        sessionAware: true,
-        sessionId: ctx.sessionId,
       });
 
       // Flatten hits across all domains, filter by score, and take top N.
@@ -261,7 +261,8 @@ replacement target; the Phase 7 `MemoryEnricher` implements the same interface.
 
 import { describe, it, expect, vi } from "vitest";
 import { MemoryEnricher } from "./enricher.js";
-import type { EnrichContext, MemoryDomainEntry, MemoryHit } from "@my-agent/core";
+import type { EnrichContext, MemoryHit } from "@my-agent/core";
+import type { MemoryDomainEntry } from "@my-agent/memory";  // F-7 fix: from memory, not core
 
 // ── Mock factories ──
 

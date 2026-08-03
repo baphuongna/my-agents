@@ -22,6 +22,27 @@ Create the primary agent runtime that wraps pi's `createAgentSession` in the uni
 
 ## Implementation Steps
 
+### Step 0: Hoist dreamCycle to shared-instances.ts (F-8 fix)
+
+> **PREREQUISITE** — must be done before PiInProcessRuntime is constructed.
+
+`dreamCycle` is currently created inside `runWebServer()` scope in `main.ts:609-610`.
+It must be hoisted to `shared-instances.ts` so `PiRuntimeDeps` can receive it.
+
+```typescript
+// packages/print/src/shared-instances.ts
+import { DreamCycle } from "@my-agent/memory";
+
+// ... existing shared instances ...
+
+export const dreamCycle = new DreamCycle({ brain });
+```
+
+Then update all 3 consumption sites to import from shared-instances:
+1. `main.ts:610` → `import { dreamCycle } from "./shared-instances.js"`
+2. `agent/src/index.ts:302` → use shared instance
+3. `mya-bridge.ts:348` fallback → use shared instance
+
 ### Step 1: Create buildAgentEnv (`build-env.ts`)
 
 Reads auth config and maps provider credentials to environment variables that pi and subprocess runtimes need.
@@ -525,7 +546,7 @@ export class PiInProcessSession implements RuntimeSession {
 - [ ] compact() returns CompactionResult with tokensBefore ?? 0
 - [ ] dispose() doesn't throw
 - [ ] buildAgentEnv() includes PI_CODING_AGENT_DIR
-- [ ] IC10: AbortSignal passed through (if opts.signal provided)
+- [ ] IC10: AbortSignal forwarded to piSession.prompt() (if opts.signal provided — requires pi API support, verify in Phase 3 spike)
 - [ ] PiAgentSession type imported (F1 fix)
 
 ## Risks & Mitigations

@@ -45,7 +45,7 @@ packages/
 | Phase | Exports | Consumed By |
 |---|---|---|
 | 1 | `@my-agent/intercom` package (default export: ExtensionFactory) | 4, 5, 11 |
-| 2 | `AgentRuntime`, `RuntimeSession`, `AgentEvent`, `StartOpts`, `CompactionResult`, `ModelInfo`, `ThinkingLevel`, `AgentCapabilities`, `SessionState`, `PromptOpts` from `@my-agent/core` | ALL |
+| 2 | `AgentRuntime`, `RuntimeSession`, `AgentEvent`, `StartOpts`, `CompactionResult`, `ModelInfo`, `ThinkingLevel`, `AgentCapabilities`, `SessionState`, `PromptOpts`, **SmartRouter**, **EnrichContext**, **PromptEnricher**, **CostTracker** from `@my-agent/core` | ALL |
 | 3 | `pi-event-map.md` (spike document: verified event types + payloads) | 4 |
 | 4 | `PiInProcessRuntime`, `PiInProcessSession`, `PiEventNormalizer`, `buildAgentEnv` | 5 |
 | 5 | `RuntimePool`, `RuntimeSessionAdapter`, `RuntimePoolEntry`, stubs | 6, 7, 8, 12, 13, gateway |
@@ -119,7 +119,7 @@ packages/
 | `gateway-snapshot.test.ts` | 12 | `packages/gateway/src/` | [unit] |
 | `e2e-shutdown.test.ts` | 13 | `packages/print/src/runtimes/` | [system] |
 
-**Total: 14 test files.** Runner: `npx vitest run --testTimeout=5000`.
+**Total: 14 spec-required test files + 1 optional (mya-native-event-normalizer.test.ts).** Runner: `npx vitest run --testTimeout=5000`.
 
 ## 7. Risk Register
 

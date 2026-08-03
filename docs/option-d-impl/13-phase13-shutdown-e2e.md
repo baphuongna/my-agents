@@ -240,10 +240,11 @@ describe("[system] E2E shutdown", () => {
     expect(pool.size).toBe(1);
 
     // Mock time advancement or use short TTL
-    // (in practice, set pool.idleTtlMs = 100 for test)
+    // F-3 fix: use test-friendly accessor (Phase 5 makes sweepIdle public for testing)
+    (pool as any).idleTtlMs = 100;  // Set short TTL for test
     await sleep(200);
 
-    // Trigger sweep
+    // sweepIdle is public for test access (F-3 fix)
     pool.sweepIdle();
 
     expect(pool.size).toBe(0);

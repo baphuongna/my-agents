@@ -309,6 +309,8 @@ export interface CostTracker {
   getSessionCost(
     sessionId: string,
   ): { totalUsd: number; turns: number } | undefined;
+  // F-2 fix: forget() called by idle sweep (Phase 13) to clean up evicted sessions
+  forget?(sessionId: string): void;
 }
 ```
 

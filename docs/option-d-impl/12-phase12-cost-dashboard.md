@@ -17,8 +17,8 @@ Replace the Phase 5 `stubCostTracker` with a real implementation that:
 | File | Purpose |
 |---|---|
 | `packages/print/src/runtimes/cost-tracker.ts` | CostTracker implementation |
-| `packages/gateway/src/snapshot.ts` | GET /sessions/:id/snapshot handler |
-| `packages/gateway/src/snapshot.test.ts` | [unit] snapshot tests |
+| `packages/print/src/runtimes/snapshot.ts` | GET /sessions/:id/snapshot handler (F-9 fix: moved to print to avoid circular gateway↔print dep) |
+| `packages/gateway/src/gateway-snapshot.test.ts` | [unit] snapshot tests |
 | `packages/print/src/main.ts` (MODIFY) | Replace stubCostTracker with real CostTracker |
 
 ## Implementation Steps
@@ -123,10 +123,11 @@ export class CostTrackerImpl implements CostTracker {
 ### Step 2: Add snapshot gateway route
 
 ```typescript
-// packages/gateway/src/snapshot.ts
+// packages/print/src/runtimes/snapshot.ts (F-9 fix: in print, not gateway)
 
-import type { RuntimePool } from "../../print/src/runtimes/pool.js";
-import type { CostTrackerImpl } from "../../print/src/runtimes/cost-tracker.js";
+import type express from "express";
+import type { RuntimePool } from "./pool.js";
+import type { CostTrackerImpl } from "./cost-tracker.js";
 
 export function registerSnapshotRoute(
   app: Express,
@@ -177,7 +178,9 @@ const costTracker = new CostTrackerImpl();
 const pool = new RuntimePool(router, runtimes, enricher, costTracker);
 
 // Register snapshot route
-import { registerSnapshotRoute } from "../../gateway/src/snapshot.js";
+// packages/print/src/main.ts — register snapshot route on existing gateway app
+// F-9 fix: no cross-package import. registerSnapshotRoute is called locally.
+import { registerSnapshotRoute } from "./runtimes/snapshot.js";
 registerSnapshotRoute(app, pool, costTracker);
 ```
 
@@ -202,7 +205,7 @@ function CostSummary({ sessionId }: { sessionId: string }) {
 
 ## Test Plan
 
-### `snapshot.test.ts` [unit]
+### `gateway-snapshot.test.ts` [unit]
 
 | Case | Setup | Expected |
 |---|---|---|
@@ -237,5 +240,5 @@ function CostSummary({ sessionId }: { sessionId: string }) {
 ## Rollback
 
 - Revert main.ts: change `new CostTrackerImpl()` back to `stubCostTracker`
-- Delete: cost-tracker.ts, snapshot.ts, snapshot.test.ts
+- Delete: cost-tracker.ts, snapshot.ts, gateway-snapshot.test.ts
 - Gateway works fine without snapshot route (just returns 404)

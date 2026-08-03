@@ -50,7 +50,7 @@ testable without a real agent.
 ```typescript
 // packages/print/src/runtimes/mya-native-event-normalizer.ts
 
-import type { RuntimeEvent, TokenUsage } from "@my-agent/core";
+import type { RuntimeEvent } from "@my-agent/core";
 import type { AgentEvent } from "@my-agent/core";
 
 export interface MyaNormalizerState {
@@ -281,6 +281,7 @@ import type {
   SessionState,
   StartOpts,
   ThinkingLevel,
+  PromptOpts,
 } from "@my-agent/core";
 import type { Model, Api } from "@earendil-works/pi-ai";
 import { mapMyaEvent, type MyaNormalizerState } from "./mya-native-event-normalizer.js";
