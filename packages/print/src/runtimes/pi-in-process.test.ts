@@ -99,6 +99,46 @@ describe("[smoke] PiInProcessSession", () => {
     expect(events.some(e => e.type === "turn_end")).toBe(true);
   });
 
+  it("M1: late agent_settled after error does NOT duplicate turn_end", async () => {
+    const mock = makeMockPiSession({
+      prompt: vi.fn(async () => { throw new Error("LLM failed"); }),
+    });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+    const events: AgentEvent[] = [];
+    session.onEvent(e => events.push(e));
+
+    await expect(session.prompt("test")).rejects.toThrow("LLM failed");
+    // Late agent_settled arrives AFTER the catch already closed the turn
+    mock._emit({ type: "agent_settled" });
+
+    const turnEnds = events.filter(e => e.type === "turn_end");
+    expect(turnEnds).toHaveLength(1);
+  });
+
+  it("M2: message_end after agent_settled does not accumulate stale usage", async () => {
+    const mock = makeMockPiSession({
+      prompt: vi.fn(async () => {
+        // Unusual order: agent_settled BEFORE message_end
+        mock._emit({ type: "agent_settled" });
+        mock._emit({
+          type: "message_end",
+          message: { role: "assistant", usage: { input: 50, output: 25, cost: { total: 0.01 } } },
+        });
+      }),
+    });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+    const events: AgentEvent[] = [];
+    session.onEvent(e => events.push(e));
+
+    await session.prompt("test");
+    const turnEnd = events.find(e => e.type === "turn_end") as any;
+    expect(turnEnd).toBeDefined();
+    // Usage from late message_end must NOT leak into the closed turn
+    expect(turnEnd.tokensIn).toBe(0);
+    expect(turnEnd.tokensOut).toBe(0);
+    expect(turnEnd.costUsd).toBeUndefined();
+  });
+
   it("setModel emits model_changed", async () => {
     const mock = makeMockPiSession();
     const session = new PiInProcessSession(mock as any, makeOpts());

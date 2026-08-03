@@ -143,6 +143,7 @@ export class PiInProcessSession implements RuntimeSession {
   private readonly createdAt = nowWallclock();
   private accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
   private turnActive = false;
+  private turnClosed = false; // M1 fix: guards late agent_settled after our turn already closed
   private disposed = false;
 
   private unsubscribePi: (() => void) | null = null;
@@ -151,30 +152,39 @@ export class PiInProcessSession implements RuntimeSession {
     this.unsubscribePi = this.piSession.subscribe((event: unknown) => {
       const e = event as { type: string };
 
+      if (e.type === "agent_settled") {
+        // M1 fix: late/duplicate agent_settled after our turn closed (success/error) must not re-emit
+        if (this.turnClosed) return;
+        if (!this.turnActive) {
+          // BC fix: broker-injected turn (no prior prompt()) — synthesize start
+          this.emit({
+            type: "turn_start",
+            model: this.piSession.model?.id ?? "unknown",
+            sessionId: this.opts.sessionId,
+          });
+        }
+        this.turnActive = false;
+        this.turnClosed = true;
+        this.emit({
+          type: "turn_end",
+          tokensIn: this.accumulatedUsage.tokensIn,
+          tokensOut: this.accumulatedUsage.tokensOut,
+          ...((this.accumulatedUsage.costUsd ?? 0) > 0 ? { costUsd: this.accumulatedUsage.costUsd } : {}),
+        });
+        return;
+      }
+
       if (e.type === "message_end") {
+        // M2 fix: only accumulate usage while a turn is active (agent_settled closes the turn)
         const msg = (event as any).message;
-        if (msg?.role === "assistant" && msg?.usage) {
+        if (this.turnActive && msg?.role === "assistant" && msg?.usage) {
           this.accumulatedUsage.tokensIn += msg.usage.input ?? 0;
           this.accumulatedUsage.tokensOut += msg.usage.output ?? 0;
           this.accumulatedUsage.costUsd = (this.accumulatedUsage.costUsd ?? 0) + ((msg.usage as any)?.cost?.total ?? 0);
         }
       }
 
-      // BC fix: detect agent_settled from broker injection (no prior turn_start)
-      if (e.type === "agent_settled" && !this.turnActive) {
-        this.turnActive = true; // L14 fix: mark active so agent_settled pairs correctly
-        this.emit({
-          type: "turn_start",
-          model: this.piSession.model?.id ?? "unknown",
-          sessionId: this.opts.sessionId,
-        });
-      }
-
       const agentEvent = PiEventNormalizer.toAgentEvent(event, this.accumulatedUsage);
-
-      if (agentEvent?.type === "turn_end") {
-        this.turnActive = false;
-      }
 
       if (agentEvent) {
         if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
@@ -188,6 +198,7 @@ export class PiInProcessSession implements RuntimeSession {
     this.textBuffer = "";
     this.accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
     this.turnActive = true;
+    this.turnClosed = false;
 
     this.emit({
       type: "turn_start",
@@ -202,6 +213,7 @@ export class PiInProcessSession implements RuntimeSession {
 
       if (this.turnActive) {
         this.turnActive = false;
+        this.turnClosed = true; // M1 fix: late agent_settled must not re-emit turn_end
         this.emit({
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
@@ -214,6 +226,7 @@ export class PiInProcessSession implements RuntimeSession {
       this.emit({ type: "error", message: String(e), recoverable: false });
       if (this.turnActive) {
         this.turnActive = false;
+        this.turnClosed = true; // M1 fix: late agent_settled must not re-emit turn_end
         this.emit({
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
