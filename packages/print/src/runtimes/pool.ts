@@ -177,6 +177,9 @@ export class RuntimePool {
       idleSince: nowWallclock(),
     });
 
+    // Wire runtime type for cost tracking (rate fallback when costUsd absent)
+    this.costTracker.setRuntimeType?.(sessionId, runtime.runtimeType);
+
     return { session: adapter, runtimeType: runtime.runtimeType };
   }
 

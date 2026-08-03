@@ -18,7 +18,9 @@ import { createAgent } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
 import { RuntimePool } from "./runtimes/pool.js";
 import { PiInProcessRuntime, type PiRuntimeDeps } from "./runtimes/pi-in-process.js";
-import { createStubRouter, stubEnricher, stubCostTracker } from "./runtimes/stubs.js";
+import { SmartRouterImpl } from "./runtimes/router.js";
+import { MemoryEnricher } from "./runtimes/enricher.js";
+import { CostTrackerImpl } from "./runtimes/cost-tracker.js";
 import { toPiWebShape } from "./pi-web-shape.js";
 import {
   checkIdleTrigger,
@@ -400,13 +402,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   runtimes.set("pi", new PiInProcessRuntime(piDeps));
   // Phase 6/10: mya-native + claude runtimes registered here when wired.
 
-  const pool = new RuntimePool(
-    createStubRouter(runtimes),
-    runtimes,
-    stubEnricher,
-    stubCostTracker,
-    { maxSessions: 1000 }, // R4-MEDIUM fix: match old AgentPool cap (personal use)
-  );
+  // Phase 5/7/8/12: wire real implementations (replace stubs).
+  const router = new SmartRouterImpl(runtimes);
+  const enricher = new MemoryEnricher(memory, brain);
+  const costTracker = new CostTrackerImpl();
+  const pool = new RuntimePool(router, runtimes, enricher, costTracker, { maxSessions: 1000 });
 
   /** Per-session prompt queue: serializes prompts to the same session. */
   /** Run a prompt on a pi session. Concurrency delegated to pi's own

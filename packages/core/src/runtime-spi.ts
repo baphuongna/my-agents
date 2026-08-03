@@ -160,4 +160,5 @@ export interface CostTracker {
   record(sessionId: string, event: AgentEvent): void;
   getSessionCost(sessionId: string): { totalUsd: number; turns: number } | undefined;
   forget?(sessionId: string): void;
+  setRuntimeType?(sessionId: string, type: string): void;
 }

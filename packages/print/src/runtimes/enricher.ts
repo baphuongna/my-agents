@@ -10,7 +10,7 @@ const MIN_SCORE = 0.3;
 export class MemoryEnricher implements PromptEnricher {
   constructor(
     private memory?: { recall(query: string, opts?: { topK?: number }): any[] | Promise<any[]> },
-    private brain?: { recordFact(fact: any): Promise<void> },
+    private brain?: { recordFact(fact: any): any },
   ) {}
 
   async enrich(prompt: string, _ctx: EnrichContext): Promise<string> {
