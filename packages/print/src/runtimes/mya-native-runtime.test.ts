@@ -2,57 +2,80 @@ import { describe, it, expect } from "vitest";
 import { mapMyaEvent, MyaNativeRuntime } from "./mya-native.js";
 import type { RuntimeEvent } from "@my-agent/core";
 
+// These shapes match the ACTUAL event emission from packages/core/src/loop.ts:
+// - emitTurn(te) → { kind: "turn", stage: "event", turnEvent: te }
+// - emit({ kind: "turn", stage: "start" }) — bare envelope
+// - emit({ kind: "turn", stage: "end" }) — bare envelope (no turnEvent)
+
 describe("[unit] mapMyaEvent", () => {
-  const state = { tokensIn: 0, tokensOut: 0 };
-
-  it("turn start → null", () => {
-    const e: RuntimeEvent = { kind: "turn", stage: "start" };
-    expect(mapMyaEvent(e, state)).toBeNull();
+  it("turn start (bare envelope) → null", () => {
+    const e = { kind: "turn", stage: "start" };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toBeNull();
   });
 
-  it("turn end with Completed → null (tokens accumulated)", () => {
-    const s = { tokensIn: 0, tokensOut: 0 };
-    const e: RuntimeEvent = { kind: "turn", stage: "end", turnEvent: { state: "Completed", usage: { input: 100, output: 50 } as any, cost: 0.01 } } as any;
-    expect(mapMyaEvent(e, s)).toBeNull();
-    expect(s.tokensIn).toBe(100);
-    expect(s.tokensOut).toBe(50);
+  it("turn end (bare envelope, no turnEvent) → null", () => {
+    const e = { kind: "turn", stage: "end" };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toBeNull();
   });
 
-  it("turn end with Failed → error", () => {
-    const e: RuntimeEvent = { kind: "turn", stage: "end", turnEvent: { state: "Failed", error: { message: "crashed" } as any } } as any;
-    expect(mapMyaEvent(e, state)).toEqual({ type: "error", message: "crashed", recoverable: false });
+  it("Streaming text → text delta", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "Streaming", chunk: { kind: "text", text: "hello" } } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "text", delta: "hello" });
   });
 
-  it("streaming text → text delta", () => {
-    const e: RuntimeEvent = { kind: "turn", stage: "event", turnEvent: { state: "Streaming", chunk: { kind: "text", text: "hello" } } } as any;
-    expect(mapMyaEvent(e, state)).toEqual({ type: "text", delta: "hello" });
+  it("Streaming error → error event with context.reason", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "Streaming", chunk: { kind: "error", error: { context: { reason: "provider timeout" }, recoverable: true } } } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "error", message: "provider timeout", recoverable: true });
   });
 
-  it("streaming error → error event", () => {
-    const e: RuntimeEvent = { kind: "turn", stage: "event", turnEvent: { state: "Streaming", chunk: { kind: "error", error: { message: "stream broke" } as any } } } as any;
-    expect(mapMyaEvent(e, state)).toEqual({ type: "error", message: "stream broke", recoverable: false });
+  it("Completed → accumulates tokens, returns null", () => {
+    const state = { tokensIn: 0, tokensOut: 0 };
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "Completed", usage: { input: 100, output: 50 }, cost: 0.01 } };
+    expect(mapMyaEvent(e as any, state)).toBeNull();
+    expect(state.tokensIn).toBe(100);
+    expect(state.tokensOut).toBe(50);
   });
 
-  it("tool request → tool_call", () => {
-    const e: RuntimeEvent = { kind: "tool", stage: "request", call: { id: "tc1", name: "bash", args: { cmd: "ls" } } } as any;
-    expect(mapMyaEvent(e, state)).toEqual({ type: "tool_call", toolCallId: "tc1", name: "bash", args: { cmd: "ls" } });
+  it("Failed → error with context.reason", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "Failed", error: { context: { reason: "budget exhausted" }, recoverable: false } } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "error", message: "budget exhausted", recoverable: false });
   });
 
-  it("tool result → tool_result", () => {
-    const e: RuntimeEvent = { kind: "tool", stage: "result", result: { callId: "tc1", ok: true, output: "done" } } as any;
-    expect(mapMyaEvent(e, state)).toEqual({ type: "tool_result", toolCallId: "tc1", output: "done", error: false });
+  it("Recoverable → error with recoverable: true", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "Recoverable", error: { context: { reason: "rate limited" }, recoverable: true } } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "error", message: "rate limited", recoverable: true });
   });
 
-  it("tool result with error", () => {
-    const e: RuntimeEvent = { kind: "tool", stage: "result", result: { callId: "tc1", ok: false, output: "fail", error: "broken" } } as any;
-    const result = mapMyaEvent(e, state);
+  it("Cancelled → error with reason", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "Cancelled", reason: "user aborted" } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "error", message: "user aborted", recoverable: false });
+  });
+
+  it("ToolCalls → tool_call event", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "ToolCalls", calls: [{ id: "tc1", name: "bash", args: { cmd: "ls" } }] } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "tool_call", toolCallId: "tc1", name: "bash", args: { cmd: "ls" } });
+  });
+
+  it("ToolExec → tool_result event", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "ToolExec", result: [{ callId: "tc1", ok: true, output: "done" }] } };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toEqual({ type: "tool_result", toolCallId: "tc1", output: "done", error: false });
+  });
+
+  it("ToolExec with failed result", () => {
+    const e = { kind: "turn", stage: "event", turnEvent: { state: "ToolExec", result: [{ callId: "tc1", ok: false, output: "error" }] } };
+    const result = mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 });
     expect(result?.type).toBe("tool_result");
     expect((result as any).error).toBe(true);
   });
 
   it("health event → null", () => {
-    const e: RuntimeEvent = { kind: "health", component: "provider", status: "ok" } as any;
-    expect(mapMyaEvent(e, state)).toBeNull();
+    const e = { kind: "health", component: "provider", status: "ok" };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toBeNull();
+  });
+
+  it("budget event → null", () => {
+    const e = { kind: "budget", spentUsd: 0.5, remainingUsd: 9.5, exhausted: false };
+    expect(mapMyaEvent(e as any, { tokensIn: 0, tokensOut: 0 })).toBeNull();
   });
 });
 

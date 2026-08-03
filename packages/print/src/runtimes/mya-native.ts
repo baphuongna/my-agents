@@ -21,38 +21,51 @@ export function mapMyaEvent(
   const e = event as any;
   switch (e.kind) {
     case "turn":
-      if (e.stage === "start") return null; // turn_start emitted by prompt()
-      if (e.stage === "end") {
-        if (e.turnEvent?.state === "Completed") {
-          state.tokensIn += e.turnEvent.usage?.input ?? 0;
-          state.tokensOut += e.turnEvent.usage?.output ?? 0;
+      // stage: "start" and stage: "end" are bare envelopes — no turnEvent
+      if (e.stage !== "event") return null;
+      const te = e.turnEvent;
+      if (!te) return null;
+      switch (te.state) {
+        case "Streaming": {
+          const chunk = te.chunk;
+          if (!chunk) return null;
+          if (chunk.kind === "text") return { type: "text", delta: chunk.text ?? "" };
+          if (chunk.kind === "error") {
+            const err = chunk.error;
+            return { type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "stream error", recoverable: err?.recoverable ?? false };
+          }
+          return null;
+        }
+        case "Completed":
+          state.tokensIn += te.usage?.input ?? 0;
+          state.tokensOut += te.usage?.output ?? 0;
           return null; // turn_end emitted by prompt()
+        case "Failed":
+        case "Recoverable": {
+          const err = te.error;
+          return { type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "turn failed", recoverable: te.state === "Recoverable" };
         }
-        if (e.turnEvent?.state === "Failed") {
-          return { type: "error", message: e.turnEvent.error?.message ?? "turn failed", recoverable: false };
+        case "Cancelled":
+          return { type: "error", message: te.reason ?? "cancelled", recoverable: false };
+        case "ToolCalls": {
+          if (!te.calls?.length) return null;
+          const call = te.calls[0];
+          return { type: "tool_call", toolCallId: call?.id ?? "", name: call?.name ?? "", args: call?.args ?? {} };
         }
-        return null;
+        case "ToolExec": {
+          const results = Array.isArray(te.result) ? te.result : te.result?.results ?? [];
+          if (!results.length) return null;
+          const r = results[0];
+          return {
+            type: "tool_result",
+            toolCallId: r?.callId ?? "",
+            output: typeof r?.output === "string" ? r.output : JSON.stringify(r?.output ?? ""),
+            error: r ? !r.ok : false,
+          };
+        }
+        default:
+          return null;
       }
-      if (e.stage === "event" && e.turnEvent?.state === "Streaming") {
-        const chunk = e.turnEvent.chunk;
-        if (chunk?.kind === "text") return { type: "text", delta: chunk.text ?? "" };
-        if (chunk?.kind === "error") return { type: "error", message: chunk.error?.message ?? "stream error", recoverable: false };
-        return null;
-      }
-      return null;
-    case "tool":
-      if (e.stage === "request" && e.call) {
-        return { type: "tool_call", toolCallId: e.call.id ?? "", name: e.call.name ?? "", args: e.call.args ?? {} };
-      }
-      if (e.stage === "result" && e.result) {
-        return {
-          type: "tool_result",
-          toolCallId: e.result.callId ?? "",
-          output: typeof e.result.output === "string" ? e.result.output : JSON.stringify(e.result.output ?? ""),
-          error: !e.result.ok,
-        };
-      }
-      return null;
     default:
       return null;
   }
