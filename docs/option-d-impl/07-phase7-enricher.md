@@ -279,7 +279,7 @@ function mockMemoryFacade(hits: MemoryHit[] = []) {
 
 function mockBrain() {
   return {
-    recordFact: vi.fn(() => ({ id: "fact-1", createdAt: Date.now() })),
+    recordFact: vi.fn(() => ({ id: "fact-1", createdAt: nowWallclock() })),
     consolidate: vi.fn(() => ({ takesPromoted: 0, factsConsumed: 0 })),
     allFacts: new Map(),
     backlinks: vi.fn(() => []),

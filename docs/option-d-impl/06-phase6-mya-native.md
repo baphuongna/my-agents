@@ -293,7 +293,7 @@ class MyaNativeSession implements RuntimeSession {
 
   private listeners = new Set<(e: AgentEvent) => void>();
   private textBuffer = "";
-  private readonly createdAt = Date.now();
+  private readonly createdAt = nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18);
   private turnState: MyaNormalizerState = { tokensIn: 0, tokensOut: 0 };
   private turnActive = false;
   private modelId: string;
@@ -382,7 +382,7 @@ class MyaNativeSession implements RuntimeSession {
       contextWindow: 128_000, // conservative default
       costUsd: 0,
       startedAt: this.createdAt,
-      lastActivity: Date.now(),
+      lastActivity: nowWallclock(),
     };
   }
 

@@ -79,7 +79,7 @@ import type { AgentEvent } from "@my-agent/core";
  * Translates a single stream-json line from `claude -p --output-format stream-json`
  * into the uniform AgentEvent union.
  *
- * PURE FUNCTION: no side effects, no Date.now(), no I/O.
+ * PURE FUNCTION: no side effects, no nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18), no I/O.
  * Returns null for non-JSON lines and unknown line types.
  *
  * Spec reference: option-d-spec-v8.md §2.2, §3 (Event Normalization)
@@ -185,10 +185,13 @@ export const ClaudeEventNormalizer = {
         const tokensIn = typeof usage?.input_tokens === "number" ? usage.input_tokens : 0;
         const tokensOut = typeof usage?.output_tokens === "number" ? usage.output_tokens : 0;
         const costUsd = typeof obj.cost === "number" ? obj.cost : undefined;
-        // Note: turn_end is emitted by ClaudeSession on close, not here.
-        // But we can extract usage for the close handler to use.
-        // For now, return null — usage extraction is handled by the session.
-        void tokensIn; void tokensOut; void costUsd;
+        // R5-4 fix: update session's lastUsage instead of discarding.
+        // The normalizer receives a callback to update the session's usage.
+        // Since normalizer is stateless, we return a special internal event
+        // that ClaudeSession catches to update lastUsage.
+        if (tokensIn > 0 || tokensOut > 0) {
+          return { type: "_usage_update", tokensIn, tokensOut, costUsd } as any;
+        }
         return null;
       }
 
@@ -326,7 +329,7 @@ class ClaudeSession implements RuntimeSession {
 
   private child: ChildProcess | null = null;
   private listeners = new Set<(e: AgentEvent) => void>();
-  private readonly createdAt = Date.now();
+  private readonly createdAt = nowWallclock();
   private modelId: string;
   private busy = false;
 
@@ -595,7 +598,7 @@ class ClaudeSession implements RuntimeSession {
       contextWindow: 200_000,
       costUsd: this.lastUsage.costUsd,
       startedAt: this.createdAt,
-      lastActivity: Date.now(),
+      lastActivity: nowWallclock(),
     };
   }
 
@@ -831,8 +834,9 @@ describeOrSkip("[real] ClaudeSession", () => {
     // Dispose while p1 is running
     await session.dispose();
 
-    // Both should reject
-    await expect(p1).rejects.toThrow();
+    // R5-5 fix: p1 (in-flight) resolves (child killed → close event fires → resolve).
+    // Only p2 (queued) rejects via explicit item.reject(err).
+    await expect(p1).resolves.toBeUndefined();
     await expect(p2).rejects.toThrow();
   });
 

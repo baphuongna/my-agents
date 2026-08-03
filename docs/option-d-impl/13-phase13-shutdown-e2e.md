@@ -46,7 +46,7 @@ export async function gracefulShutdown(
 ): Promise<{ drained: number; forced: number; evicted: number }> {
   const timeout = opts?.drainTimeoutMs ?? 30_000;
   const force = opts?.forceKill ?? true;
-  const startTime = Date.now();
+  const startTime = nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18);
 
   const entries = pool.list();
   const busy = entries.filter(e => e.busy);
@@ -67,7 +67,7 @@ export async function gracefulShutdown(
       busy.map(async (entry) => {
         // Wait for busy flag to clear
         const deadline = startTime + timeout;
-        while (Date.now() < deadline) {
+        while (nowWallclock() < deadline) {
           const current = pool.get(entry.sessionId);
           if (!current || !current.busy) return;
           await sleep(500);
@@ -151,7 +151,7 @@ this.sweepTimer = setInterval(() => this.sweepIdle(), 60_000);
 this.sweepTimer.unref?.();  // Doesn't keep process alive
 ```
 
-The sweep evicts sessions where `Date.now() - idleSince > idleTtlMs` (default 1 hour).
+The sweep evicts sessions where `nowWallclock() - idleSince > idleTtlMs` (default 1 hour).
 
 For Phase 13, ensure cost tracker is cleaned up too:
 
@@ -160,7 +160,7 @@ For Phase 13, ensure cost tracker is cleaned up too:
 
 // R2-7 fix: keep public per F-3 fix. Do NOT add 'private'.
 sweepIdle(): void {
-  const now = Date.now();
+  const now = nowWallclock();
   for (const [id, entry] of this.entries) {
     if (entry.busy) continue;
     if (now - entry.idleSince > this.idleTtlMs) {
@@ -262,7 +262,7 @@ describe("[system] E2E shutdown", () => {
     // Mock time advancement or use short TTL
     // F-3 fix: use test-friendly accessor (Phase 5 makes sweepIdle public for testing)
     (pool as any).idleTtlMs = 100;  // Set short TTL for test
-    await sleep(200);
+    await new Promise(r => setTimeout(r, 200));  // R5-6 fix: inline sleep
 
     // sweepIdle is public for test access (F-3 fix)
     pool.sweepIdle();

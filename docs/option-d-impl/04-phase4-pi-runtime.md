@@ -364,7 +364,7 @@ export class PiInProcessSession implements RuntimeSession {
 
   private listeners = new Set<(e: AgentEvent) => void>();
   private textBuffer = "";
-  private readonly createdAt = Date.now();
+  private readonly createdAt = nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18);
   private accumulatedUsage = { tokensIn: 0, tokensOut: 0 };
   private turnActive = false;  // C1 fix
 
@@ -479,7 +479,7 @@ export class PiInProcessSession implements RuntimeSession {
       contextWindow: usage?.contextWindow ?? 200_000,
       costUsd: 0,
       startedAt: this.createdAt,
-      lastActivity: Date.now(),
+      lastActivity: nowWallclock(),
     };
   }
 

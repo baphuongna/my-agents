@@ -56,13 +56,13 @@ export class CostTrackerImpl implements CostTracker {
     if (!cost) {
       cost = {
         totalUsd: 0, turns: 0, tokensIn: 0, tokensOut: 0,
-        events: 0, startedAt: Date.now(), lastActivity: Date.now(),
+        events: 0, startedAt: nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18), lastActivity: nowWallclock(),
       };
       this.sessions.set(sessionId, cost);
     }
 
     cost.events++;
-    cost.lastActivity = Date.now();
+    cost.lastActivity = nowWallclock();
 
     if (event.type === "turn_end") {
       cost.turns++;
@@ -71,7 +71,11 @@ export class CostTrackerImpl implements CostTracker {
 
       // Calculate cost using default rate
       // (Phase 12 enhancement: lookup runtime-specific rate)
-      const rate = COST_RATES["pi"];  // TODO: get from runtime
+      // R5-3 fix: use event.costUsd if provided, otherwise look up by runtime type
+      const rate = COST_RATES[(event as any).runtimeType] ?? COST_RATES["pi"];
+      if (event.costUsd !== undefined && event.costUsd > 0) {
+        cost.totalUsd += event.costUsd;
+      } else {
       cost.totalUsd +=
         (event.tokensIn / 1_000_000) * rate.input +
         (event.tokensOut / 1_000_000) * rate.output;
@@ -104,24 +108,10 @@ export class CostTrackerImpl implements CostTracker {
     this.sessions.delete(sessionId);
   }
 
-  // Snapshot for REST API
-  snapshot(sessionId: string): {
-    cost: SessionCost | undefined;
-    state: unknown;
-    text: string;
-  } | undefined {
-    const cost = this.sessions.get(sessionId);
-    if (!cost) return undefined;
-    return {
-      cost,
-      state: undefined,  // filled by gateway from RuntimeSession.getState()
-      text: "",          // filled by gateway from RuntimeSessionAdapter.getTextBuffer()
-    };
-  }
+  // R5-11 fix: dead snapshot() method removed. Use getSnapshot() instead.
+  // Snapshot assembly for REST API — called from main.ts via poolSnapshot callback
 }
 ```
-
-### Step 2: Add snapshot gateway route
 
 ### Step 2: Add snapshot callback to GatewayOptions
 
@@ -137,9 +127,9 @@ poolSnapshot?: (sessionId: string) => unknown;
 
 // Then in handleHttp(), add route matching:
 // GET /pool/sessions/:id/snapshot
-const snapshotMatch = url.pathname.match(/^\/pool\/sessions\/(.+)$/);
-if (snapshotMatch && url.pathname.includes("/snapshot") && req.method === "GET" && this.poolSnapshot) {
-  const sessionId = snapshotMatch[1].replace("/snapshot", "");
+const snapshotMatch = url.pathname.match(/^\/pool\/sessions\/([^/]+)\/snapshot$/);
+if (snapshotMatch && req.method === "GET" && this.poolSnapshot) {
+  const sessionId = snapshotMatch[1]!;
   const result = this.poolSnapshot(sessionId);
   if (!result) return send(404, { error: "Session not found" });
   return send(200, result);
@@ -193,16 +183,6 @@ const gateway = new Gateway({
 });
 ```
 
-const costTracker = new CostTrackerImpl();
-const pool = new RuntimePool(router, runtimes, enricher, costTracker);
-
-// Register snapshot route
-// packages/print/src/main.ts — register snapshot route on existing gateway app
-// F-9 fix: no cross-package import. registerSnapshotRoute is called locally.
-import { registerSnapshotRoute } from "./runtimes/snapshot.js";
-registerSnapshotRoute(app, pool, costTracker);
-```
-
 ### Step 4: Dashboard cost widget
 
 The web dashboard already renders session events. Add a cost summary component:
@@ -210,7 +190,7 @@ The web dashboard already renders session events. Add a cost summary component:
 ```tsx
 // packages/web/src/components/CostSummary.tsx
 function CostSummary({ sessionId }: { sessionId: string }) {
-  const snapshot = useSnapshot(sessionId);  // GET /sessions/:id/snapshot
+  const snapshot = useSnapshot(sessionId);  // GET /pool/sessions/:id/snapshot
 
   return (
     <div className="cost-summary">
@@ -229,7 +209,7 @@ function CostSummary({ sessionId }: { sessionId: string }) {
 | Case | Setup | Expected |
 |---|---|---|
 | snapshot returns session data | Create session, send prompt | 200 with cost + state + text |
-| snapshot 404 for unknown session | GET /sessions/nonexistent/snapshot | 404 |
+| snapshot 404 for unknown session | GET /pool/sessions/nonexistent/snapshot | 404 |
 | snapshot includes cost | Send 2 prompts | cost.turns === 2, totalUsd > 0 |
 | snapshot includes text buffer | Send prompt with text events | text field non-empty |
 | snapshot includes runtimeType | Create pi session | runtimeType === "pi" |
@@ -240,8 +220,8 @@ function CostSummary({ sessionId }: { sessionId: string }) {
 - [ ] CostTrackerImpl.record() accumulates tokens from turn_end events
 - [ ] CostTrackerImpl.getSessionCost() returns {totalUsd, turns}
 - [ ] CostTrackerImpl.getFullCost() returns detailed cost breakdown
-- [ ] GET /sessions/:id/snapshot returns 200 with cost + state + text
-- [ ] GET /sessions/:id/snapshot returns 404 for unknown session
+- [ ] GET /pool/sessions/:id/snapshot returns 200 with cost + state + text
+- [ ] GET /pool/sessions/:id/snapshot returns 404 for unknown session
 - [ ] Cost rates configurable per runtime (COST_RATES map)
 - [ ] Dashboard renders cost summary
 - [ ] Aggregate cost endpoint (if added) sums across all sessions

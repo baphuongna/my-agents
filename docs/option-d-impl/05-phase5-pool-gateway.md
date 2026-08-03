@@ -139,8 +139,8 @@ export class RuntimePool {
   async acquire(sessionId: string): Promise<AgentSession> {
     const existing = this.entries.get(sessionId);
     if (existing) {
-      existing.lastActivity = Date.now();
-      existing.idleSince = Date.now();
+      existing.lastActivity = nowWallclock()  // R5-7 fix: use core.time helper (AGENTS.md §18);
+      existing.idleSince = nowWallclock();
       return existing.session;
     }
     const { session } = await this.acquireWithRuntime(sessionId, { agentType: "pi" });
@@ -158,8 +158,8 @@ export class RuntimePool {
           `Session ${sessionId} exists as ${existing.runtimeType}, cannot reassign to ${opts.agentType}`
         );
       }
-      existing.lastActivity = Date.now();
-      existing.idleSince = Date.now();
+      existing.lastActivity = nowWallclock();
+      existing.idleSince = nowWallclock();
       return { session: existing.session, runtimeType: existing.runtimeType };
     }
 
@@ -198,8 +198,8 @@ export class RuntimePool {
         const entry = this.entries.get(sessionId);
         if (entry) {
           entry.busy = busy;
-          entry.lastActivity = Date.now();
-          if (!busy) entry.idleSince = Date.now();
+          entry.lastActivity = nowWallclock();
+          if (!busy) entry.idleSince = nowWallclock();
         }
       },
       // onMessage callback
@@ -215,9 +215,9 @@ export class RuntimePool {
       runtimeType: runtime.runtimeType,
       busy: false,
       messageCount: 0,
-      lastActivity: Date.now(),
-      createdAt: Date.now(),
-      idleSince: Date.now(),
+      lastActivity: nowWallclock(),
+      createdAt: nowWallclock(),
+      idleSince: nowWallclock(),
     });
 
     return { session: adapter, runtimeType: runtime.runtimeType };
@@ -250,7 +250,7 @@ export class RuntimePool {
 
   // F-3 fix: public for test access (Phase 13 E2E tests call this directly)
   sweepIdle(): void {
-    const now = Date.now();
+    const now = nowWallclock();
     for (const [id, entry] of this.entries) {
       if (entry.busy) continue;
       if (now - entry.idleSince > this.idleTtlMs) {
@@ -453,7 +453,7 @@ const gateway = new Gateway({
   // PoolAcquireInput has cwd + role/task/model/parentSessionId (no sessionId/agentType).
   poolAcquire: async (input) => {
     const cwd = typeof input === "string" ? input : input.cwd;
-    const sessionId = `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = `s-${nowWallclock()}-${Math.random().toString(36).slice(2, 8)}`;
     const agentType = typeof input === "object" ? (input as any).model?.includes("claude") ? "claude" : "pi" : "pi";
     await pool.acquireWithRuntime(sessionId, { agentType, cwd });
     return sessionId;  // R3-2 fix: return string, not session
