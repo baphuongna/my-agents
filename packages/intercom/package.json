@@ -24,7 +24,7 @@
     }
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "npx tsx --test src/config.test.ts src/cwd.test.ts src/reply-tracker.test.ts src/format-context.test.ts src/broker/framing.test.ts src/broker/paths.test.ts src/broker/spawn.test.ts src/broker/runtime-claim.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {},
