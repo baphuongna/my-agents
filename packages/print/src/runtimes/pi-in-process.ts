@@ -103,7 +103,18 @@ export class PiInProcessRuntime implements AgentRuntime {
       resourceLoader,
       modelRuntime: await this.getModelRuntime(),
       ...(model ? { model } : {}),
+      // Phase 5 wiring: cron sessions get a restricted tool allowlist
+      // (cronSessionToolConfig) — previously dropped when AgentPool was replaced.
+      ...(opts.toolsAllowList ? { tools: opts.toolsAllowList } : {}),
     });
+
+    // Phase 5 wiring (matches previous AgentPool.createSession): emit
+    // session_start + bind extension mode so mya-bridge hooks capture the
+    // session ID and role-subagent reporting works. Without this, bridge
+    // session-scoped hooks never activate.
+    try {
+      await (session as unknown as { bindExtensions: (opts?: unknown) => Promise<void> }).bindExtensions({ mode: "print" });
+    } catch { /* best-effort — extension bind is non-fatal */ }
 
     return new PiInProcessSession(session, opts);
   }

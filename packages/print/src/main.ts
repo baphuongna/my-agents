@@ -14,8 +14,11 @@
  *
  * Auto-config: reads ~/.mya/agent/auth.json (minimax/openai keys) → env vars.
  */
-import { createAgent, AgentPool, type AgentSession } from "@my-agent/agent";
+import { createAgent } from "@my-agent/agent";
 import { nowWallclock } from "@my-agent/core";
+import { RuntimePool } from "./runtimes/pool.js";
+import { PiInProcessRuntime, type PiRuntimeDeps } from "./runtimes/pi-in-process.js";
+import { createStubRouter, stubEnricher, stubCostTracker } from "./runtimes/stubs.js";
 import {
   checkIdleTrigger,
   CompressionState,
@@ -35,7 +38,7 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { makeSink } from "./index.js";
 import { SessionMetaStore } from "./session-meta.js";
-import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config, achievements, memory, retrievalEngine, lifecycleManager, sqliteMemory } from "./shared-instances.js";
+import { secretStore, auditLog, skillStore, wallet, cron, sync, collab, hooks, toolHooks, channelRouter, channels, packageHost, council, mcp, mcpConfigs, brain, roleRegistry, config, achievements, memory, retrievalEngine, lifecycleManager, sqliteMemory, dreamCycle } from "./shared-instances.js";
 import { loadRoles as loadRolesRegistry } from "@my-agent/core";
 
 
@@ -380,51 +383,28 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   // rootHtml is a minimal fallback when staticDir isn't available.
   const rootHtml = `<!doctype html><html><head><meta charset="utf-8"><title>mya</title></head><body style="background:#041c1c;color:#ffe6cb;font:14px monospace;padding:2rem"><h2>mya gateway</h2><p>Dashboard SPA not found. Run <code>npm run build:web</code> first.</p></body></html>`;
 
-  // AgentPool: each session uses pi's FULL AgentSession (same as TUI).
-  // Phase 2 wired: multi-agent via MYA_AGENTS env (JSON array of {name, agentDir, maxSessions}).
-  const agents = parseAgentsEnv();
-  const pool = new AgentPool({
-    maxSessions: 1000, // effectively no cap (personal use); override via MYA_MAX_SESSIONS env
-    idleTtlMs: 3_600_000,
-    agents: agents.length > 0 ? agents : undefined,
-    createSession: async (sessionId, _cwd, agentDir) => {
-      // Create pi AgentSession — same code as InteractiveMode uses.
-      // CRITICAL: load mya-bridge into gateway sessions so web dashboard users
-      // get all mya tools (osv_check, image_generate, kanban, etc.), achievements,
-      // cron tools, brain recall, and all other bridge features.
-      // @ts-expect-error — resolved by esbuild from project source
-      const { createAgentSession, DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
-      const cronOpts = cronSessionToolConfig(sessionId);
+  // Phase 5 (Option D): multi-runtime pool — sessions created via registered
+  // AgentRuntime instances (pi in-process + mya-bridge extension, same as TUI).
+  // Replaces AgentPool (pi-only, createSession factory).
+  const runtimes = new Map<string, import("@my-agent/core").AgentRuntime>();
+  const agentDir = join(homedir(), ".mya", "agent");
+  const piDeps: PiRuntimeDeps = {
+    agentDir,
+    auditLog, secretStore, hooks, skillStore, cron,
+    brain, memory, retrievalEngine, lifecycleManager, sqliteMemory,
+    dreamCycle, // D1: hoisted to shared-instances (single instance)
+    wallet, sync, collab, packageHost, council, mcp, mcpConfigs,
+    channels, roleRegistry, achievements,
+  };
+  runtimes.set("pi", new PiInProcessRuntime(piDeps));
+  // Phase 6/10: mya-native + claude runtimes registered here when wired.
 
-      // Build the mya-bridge factory for this session
-      const { createMyaBridge } = await import("./mya-bridge.js");
-      const myaBridgeFactory = createMyaBridge({
-        auditLog, secretStore, hooks, skillStore, cron,
-        brain, memory, retrievalEngine, lifecycleManager, sqliteMemory,
-        dreamCycle,  // F3: prevent dual DreamCycle (pass the one from runWebServer scope)
-        wallet, sync, collab, packageHost, council, mcp, mcpConfigs,
-        channels, roleRegistry, achievements,
-      });
-
-      // pi 0.83.0 createAgentSession has no extensionFactories option; the
-      // mya-bridge extension is wired through a DefaultResourceLoader instead.
-      const resourceLoader = new DefaultResourceLoader({
-        cwd: _cwd ?? process.cwd(),
-        agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
-        extensionFactories: [{ name: "mya-bridge", factory: myaBridgeFactory }],
-      });
-      await resourceLoader.reload();
-      const result = await createAgentSession({
-        cwd: _cwd ?? process.cwd(),
-        agentDir: agentDir ?? join(homedir(), ".mya", "agent"),
-        ...cronOpts,
-        resourceLoader,
-      });
-      // Emit session_start so bridge hooks capture the session ID.
-      try { await (result.session as unknown as { bindExtensions: (opts?: unknown) => Promise<void> }).bindExtensions({ mode: "print" }); } catch { /* best-effort */ }
-      return result.session as unknown as AgentSession;
-    },
-  });
+  const pool = new RuntimePool(
+    createStubRouter(runtimes),
+    runtimes,
+    stubEnricher,
+    stubCostTracker,
+  );
 
   /** Per-session prompt queue: serializes prompts to the same session. */
   /** Run a prompt on a pi session. Concurrency delegated to pi's own
@@ -434,43 +414,39 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   }
 
   async function doRunOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
-    const session = await pool.acquire(sessionId);
+    // Cron sessions (_cron:<jobId>) get a restricted tool allowlist via
+    // cronSessionToolConfig, applied at session CREATION time (first acquire).
+    // Existing pool entries keep their tools (tool set immutable per session).
+    const cronTools = sessionId.startsWith("_cron:") ? cronSessionToolConfig(sessionId).tools : undefined;
+    const session = await pool.acquireWithRuntime(sessionId, {
+      agentType: "pi",
+      ...(cronTools ? { toolsAllowList: cronTools } : {}),
+    }).then(r => r.session);
     const entry = pool.get(sessionId);
     if (!entry) return "";
-    entry.busy = true;
 
     let responseText = "";
     const unsub = session.subscribe((event: unknown) => {
-      const ev = event as { type?: string; message?: { content?: Array<{ type?: string; text?: string }> } };
+      const ev = event as { type?: string; delta?: string };
       if (onEvent) onEvent(event);
-      if (ev?.type === "message_update" || ev?.type === "message_end") {
-        const content = ev.message?.content;
-        if (Array.isArray(content)) {
-          for (const c of content) {
-            if (c?.type === "text" && c.text) responseText += c.text;
-          }
-        }
-      }
+      // RuntimePool adapter emits uniform AgentEvent (text/delta), not pi's
+      // message_update/message.content shape.
+      if (ev?.type === "text" && typeof ev.delta === "string") responseText += ev.delta;
     });
 
     try {
       await session.prompt(prompt, { streamingBehavior: "followUp" });
     } catch (e) {
-      // AgentSession throws if a prompt is already running. With our per-session
-      // queue this should be impossible, but guard so a single bad call can't
-      // crash the gateway.
+      // Adapter serializes prompts; a single bad call can't crash the gateway.
       console.warn(`[gateway] session.prompt failed for ${sessionId}: ${(e as Error).message}`);
       return responseText || `[error: ${(e as Error).message}]`;
     } finally {
       unsub();
-      entry.busy = false;
-      entry.messageCount++;
-      entry.lastActivity = nowWallclock();
     }
     return responseText;
   }
 
-  // Wire channel router → AgentPool: channel messages use pi AgentSession.
+  // Wire channel router → RuntimePool: channel messages use pi AgentSession.
   channelRouter.onPrompt(async (session, prompt) => {
     return runOnSession(session.sessionId, prompt);
   });
@@ -603,14 +579,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       } catch (e2) { console.warn("[gateway] could not write gw.token:", (e2 as Error).message); }
     }
   }
-  // Persistent DreamCycle: tracks whether the periodic memory consolidation
-  // timer is armed. memoryStats() reflects its real running state instead of
-  // a hardcoded false.
-  const { DreamCycle } = await import("@my-agent/memory");
-  const dreamCycle = new DreamCycle({ brain });
-  // MEDIUM-2 fix: actually start the periodic consolidation timer
-  dreamCycle.start();
-
+  // D1 fix (Phase 5): dreamCycle hoisted to shared-instances (single instance
+  // shared by gateway, interactive mode, agent package, mya-bridge).
   // R3-3 fix: instantiate DevicePairing + WebAuthn (were never wired → 404).
   const devicePairing = new DevicePairing();
   const webAuthn = new WebAuthnService({ origin: `http://127.0.0.1:${port}`, rpId: "127.0.0.1" });
@@ -733,7 +703,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       const meta = sessionMeta.get(e.sessionId);
       return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status, summary: meta?.summary, keyOutputs: meta?.keyOutputs };
     }),
-    poolKill: (id: string) => { sessionMeta.delete(id); return pool.release(id); },
+    poolKill: (id: string) => { sessionMeta.delete(id); return pool.release(id, { force: true }); },
     poolAcquire: async (input: PoolAcquireInput | string) => {
       const { cwd, role, task, model, parentSessionId } = typeof input === "string" ? ({ cwd: input } as PoolAcquireInput) : input;
       const sessionId = `s-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -942,7 +912,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 
-  process.stderr.write(`mya gateway: http://localhost:${actualPort} (AgentPool: ${pool.size} sessions)\n`);
+  process.stderr.write(`mya gateway: http://localhost:${actualPort} (RuntimePool: ${pool.size} sessions)\n`);
 }
 
 main().catch((e) => {
@@ -1013,48 +983,3 @@ function cryptoRandomToken(): string {
   return randomBytes(16).toString("hex");
 }
 
-/**
- * Parse MYA_AGENTS env var to register named agents with AgentPool.
- *
- * Format: JSON array of {name, agentDir?, maxSessions?, idleTtlMs?}
- * Example:
- *   MYA_AGENTS='[
- *     {"name":"alice","agentDir":"~/.mya/agents/alice","maxSessions":4},
- *     {"name":"bob","agentDir":"~/.mya/agents/bob","maxSessions":2}
- *   ]'
- *
- * If unset/empty, returns [] (default single-agent pool, all sessions share one namespace).
- * Invalid JSON → logs warning + returns [] (fail-soft).
- */
-function parseAgentsEnv(): Array<{ name: string; agentDir?: string; maxSessions?: number; idleTtlMs?: number }> {
-  const raw = process.env["MYA_AGENTS"];
-  if (!raw || !raw.trim()) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      console.warn("[gateway] MYA_AGENTS must be a JSON array, ignoring");
-      return [];
-    }
-    const out: Array<{ name: string; agentDir?: string; maxSessions?: number; idleTtlMs?: number }> = [];
-    for (const item of parsed) {
-      if (typeof item !== "object" || item === null) continue;
-      const obj = item as Record<string, unknown>;
-      if (typeof obj["name"] !== "string" || !obj["name"]) continue;
-      out.push({
-        name: obj["name"],
-        agentDir: typeof obj["agentDir"] === "string" ? obj["agentDir"] : undefined,
-        maxSessions: typeof obj["maxSessions"] === "number" ? obj["maxSessions"] : undefined,
-        idleTtlMs: typeof obj["idleTtlMs"] === "number" ? obj["idleTtlMs"] : undefined,
-      });
-    }
-    if (out.length === 0) {
-      console.warn("[gateway] MYA_AGENTS parsed but no valid agents found");
-    } else {
-      console.warn(`[gateway] registered ${out.length} agent(s) from MYA_AGENTS: ${out.map((a) => a.name).join(", ")}`);
-    }
-    return out;
-  } catch (e) {
-    console.warn(`[gateway] MYA_AGENTS invalid JSON, ignoring: ${(e as Error).message}`);
-    return [];
-  }
-}

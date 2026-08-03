@@ -53,7 +53,7 @@ export class RuntimePool {
 
   async acquireWithRuntime(
     sessionId: string,
-    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string },
+    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string; toolsAllowList?: string[] },
   ): Promise<{ session: AgentSession; runtimeType: string }> {
     const existing = this.entries.get(sessionId);
     if (existing) {
@@ -92,7 +92,7 @@ export class RuntimePool {
 
   private async _doAcquireLocked(
     sessionId: string,
-    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string },
+    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string; toolsAllowList?: string[] },
   ): Promise<{ session: AgentSession; runtimeType: string }> {
     // M3 fix: serialize creation to prevent maxSessions race
     const prev = this.creationLock;
@@ -108,7 +108,7 @@ export class RuntimePool {
 
   private async _doAcquireWithRuntime(
     sessionId: string,
-    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string },
+    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string; toolsAllowList?: string[] },
   ): Promise<{ session: AgentSession; runtimeType: string }> {
     if (this.entries.size >= this.maxSessions) {
       this.sweepIdle();
@@ -135,6 +135,7 @@ export class RuntimePool {
       agentDir: join(homedir(), ".mya", "agent"),
       sessionId,
       modelId: opts?.model,
+      toolsAllowList: opts?.toolsAllowList,
       env,
     });
 

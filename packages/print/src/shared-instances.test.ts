@@ -88,6 +88,14 @@ describe("[smoke] shared-instances singletons", () => {
 		if (m) expect(m.channelRouter).toBeDefined();
 	});
 
+	it("exports dreamCycle (D1 hoisted single instance)", async () => {
+		const m = await import("./shared-instances.js").catch(() => null as any);
+		if (m) {
+			expect(m.dreamCycle).toBeDefined();
+			expect(m.dreamCycle).toHaveProperty("dream");
+		}
+	});
+
 	it("exports getLastOutput function or value", async () => {
 		// getLastOutput may be in cron-observability, not shared-instances
 		const m = await import("./cron-observability.js").catch(() => null as any);

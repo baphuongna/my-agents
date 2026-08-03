@@ -158,6 +158,53 @@ describe("[unit] RuntimePool — concurrent acquire dedup (M1 fix)", () => {
   });
 });
 
+describe("[unit] RuntimePool — toolsAllowList passthrough", () => {
+  it("passes toolsAllowList to runtime.start at creation", async () => {
+    const started: Array<{ toolsAllowList?: string[] }> = [];
+    const rt: AgentRuntime = {
+      runtimeType: "pi",
+      displayName: "pi",
+      isAvailable: () => true,
+      async start(opts) {
+        started.push({ toolsAllowList: opts.toolsAllowList });
+        return makeMockRuntime("pi").start(opts);
+      },
+      async listModels() { return []; },
+      capabilities() {
+        return { hasInteractive: true, hasHeadless: true, supportsTools: true, supportsResume: true, supportsCompaction: true, supportsImages: true, supportsThinking: true, execution: "in-process" as const, maxContextWindow: 200000, injectionMethod: "extension" as const };
+      },
+    };
+    const runtimes = new Map([["pi", rt]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    await pool.acquireWithRuntime("cron-1", { agentType: "pi", toolsAllowList: ["read", "bash"] });
+    expect(started).toHaveLength(1);
+    expect(started[0]!.toolsAllowList).toEqual(["read", "bash"]);
+    pool.dispose();
+  });
+
+  it("omits toolsAllowList when not provided", async () => {
+    const started: Array<{ toolsAllowList?: string[] }> = [];
+    const rt: AgentRuntime = {
+      runtimeType: "pi",
+      displayName: "pi",
+      isAvailable: () => true,
+      async start(opts) {
+        started.push({ toolsAllowList: opts.toolsAllowList });
+        return makeMockRuntime("pi").start(opts);
+      },
+      async listModels() { return []; },
+      capabilities() {
+        return { hasInteractive: true, hasHeadless: true, supportsTools: true, supportsResume: true, supportsCompaction: true, supportsImages: true, supportsThinking: true, execution: "in-process" as const, maxContextWindow: 200000, injectionMethod: "extension" as const };
+      },
+    };
+    const runtimes = new Map([["pi", rt]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    await pool.acquireWithRuntime("s1", { agentType: "pi" });
+    expect(started[0]!.toolsAllowList).toBeUndefined();
+    pool.dispose();
+  });
+});
+
 describe("[unit] RuntimePool — concurrent agentType mismatch", () => {
   it("rejects concurrent acquire with different agentType for same sessionId", async () => {
     const runtimes = new Map([["pi", makeMockRuntime("pi")], ["claude", makeMockRuntime("claude")]]);

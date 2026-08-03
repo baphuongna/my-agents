@@ -21,6 +21,7 @@ import {
   LifecycleManager,
   MemoryTree,
   FileBackend,
+  DreamCycle,
   archivistDomain,
   treeDomain,
   diffDomain,
@@ -190,6 +191,15 @@ export const mcp = new McpManager();
 export const channels = new ChannelRegistry();
 registerBuiltinChannels(channels);
 export const channelRouter = new ChannelSessionRouter();
+
+// ── D1 fix (Phase 5): DreamCycle hoisted to shared-instances ──
+// Created once, shared by ALL modes (gateway, interactive, agent package,
+// mya-bridge). Prevents dual DreamCycle instances (main.ts:610 previously
+// created its own + mya-bridge created a fallback).
+// Persisted DreamCycle: tracks whether the periodic memory consolidation
+// timer is armed. memoryStats() reflects its real running state.
+export const dreamCycle = new DreamCycle({ brain });
+dreamCycle.start();
 
 // ── J2: Achievement tracker (persisted, stat-driven unlock) ──
 import { AchievementTracker } from "@my-agent/audit";
