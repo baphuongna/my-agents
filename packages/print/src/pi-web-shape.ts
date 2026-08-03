@@ -27,14 +27,10 @@ export function toPiWebShape(event: unknown): unknown {
         type: "message_update",
         assistantMessageEvent: { type: "thinking_delta", delta: (e as { delta?: string }).delta ?? "" },
       };
-    case "tool_call": {
-      const tc = e as { toolCallId?: string; name?: string; args?: unknown };
-      return { type: "tool_execution_start", toolCallId: tc.toolCallId ?? "", toolName: tc.name ?? "", args: tc.args ?? {} };
-    }
-    case "tool_result": {
-      const tr = e as { toolCallId?: string; output?: unknown; error?: boolean };
-      return { type: "tool_execution_end", toolCallId: tr.toolCallId ?? "", result: tr.output ?? "", isError: tr.error ?? false };
-    }
+    // R5 fix: tool_call/tool_result pass through unchanged — ChatPage renders
+    // these AgentEvent names directly (ChatPage.tsx:110 matches tool_call/tool_start
+    // + tool_result/tool_end). Mapping to pi's tool_execution_* types would
+    // break the tool chip rendering + leave the spinner hanging.
     case "model_changed":
       return { type: "model_select", model: { id: (e as { model?: string }).model ?? "unknown" } };
     case "thinking_changed":

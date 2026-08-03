@@ -37,10 +37,10 @@ export class RuntimePool {
     private costTracker: CostTracker,
     opts?: { maxSessions?: number },
   ) {
-    // R4-MEDIUM fix: session cap configurable (old AgentPool gateway used 1000;
-    // default 16 was a silent regression). Env var remains as override.
+    // R5 fix: env MYA_MAX_SESSIONS takes precedence (operator override).
+    // Ctor default is fallback; only use 16 when neither is set.
     const envCap = parseInt(process.env.MYA_MAX_SESSIONS ?? "", 10);
-    const cap = opts?.maxSessions ?? (Number.isFinite(envCap) && envCap > 0 ? envCap : 16);
+    const cap = (Number.isFinite(envCap) && envCap > 0) ? envCap : (opts?.maxSessions ?? 16);
     this.maxSessions = Number.isFinite(cap) && cap > 0 ? cap : 16;
     this.sweepTimer = setInterval(() => this.sweepIdle(), 60_000);
     this.sweepTimer.unref?.();

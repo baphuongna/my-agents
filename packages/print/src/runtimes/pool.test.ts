@@ -167,7 +167,7 @@ describe("[unit] RuntimePool — maxSessions configurable", () => {
     pool.dispose();
   });
 
-  it("honors constructor maxSessions (R4 fix: old AgentPool gateway used 1000)", async () => {
+  it("ctor opts used when no env", async () => {
     delete process.env.MYA_MAX_SESSIONS;
     const runtimes = new Map([["pi", makeMockRuntime("pi")]]);
     const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker, { maxSessions: 1000 });
@@ -175,20 +175,11 @@ describe("[unit] RuntimePool — maxSessions configurable", () => {
     pool.dispose();
   });
 
-  it("env MYA_MAX_SESSIONS still overrides when no ctor opts", async () => {
+  it("env MYA_MAX_SESSIONS takes precedence over ctor opts (R5 fix)", async () => {
     process.env.MYA_MAX_SESSIONS = "7";
     const runtimes = new Map([["pi", makeMockRuntime("pi")]]);
-    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker, { maxSessions: 1000 });
     expect((pool as any).maxSessions).toBe(7);
-    pool.dispose();
-    delete process.env.MYA_MAX_SESSIONS;
-  });
-
-  it("ctor opts take precedence over env", async () => {
-    process.env.MYA_MAX_SESSIONS = "7";
-    const runtimes = new Map([["pi", makeMockRuntime("pi")]]);
-    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker, { maxSessions: 1000 });
-    expect((pool as any).maxSessions).toBe(1000);
     pool.dispose();
     delete process.env.MYA_MAX_SESSIONS;
   });

@@ -15,19 +15,14 @@ describe("[unit] toPiWebShape", () => {
     expect(out.assistantMessageEvent).toEqual({ type: "thinking_delta", delta: "hmm" });
   });
 
-  it("maps tool_call → tool_execution_start with toolName", () => {
-    const out = toPiWebShape({ type: "tool_call", toolCallId: "t1", name: "bash", args: { cmd: "ls" } }) as any;
-    expect(out.type).toBe("tool_execution_start");
-    expect(out.toolCallId).toBe("t1");
-    expect(out.toolName).toBe("bash");
-    expect(out.args).toEqual({ cmd: "ls" });
+  it("passes tool_call through unchanged (R5 fix — ChatPage native)", () => {
+    const ev = { type: "tool_call", toolCallId: "t1", name: "bash", args: { cmd: "ls" } };
+    expect(toPiWebShape(ev)).toEqual(ev);
   });
 
-  it("maps tool_result → tool_execution_end with result/isError", () => {
-    const out = toPiWebShape({ type: "tool_result", toolCallId: "t1", output: "ok", error: false }) as any;
-    expect(out.type).toBe("tool_execution_end");
-    expect(out.result).toBe("ok");
-    expect(out.isError).toBe(false);
+  it("passes tool_result through unchanged (R5 fix)", () => {
+    const ev = { type: "tool_result", toolCallId: "t1", output: "ok", error: false };
+    expect(toPiWebShape(ev)).toEqual(ev);
   });
 
   it("maps model_changed → model_select with model object", () => {
