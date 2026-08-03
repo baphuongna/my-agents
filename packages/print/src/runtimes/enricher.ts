@@ -27,11 +27,13 @@ export class MemoryEnricher implements PromptEnricher {
     try {
       // MED-6 fix: await recall() (may be async in real MemoryManager)
       const results = await this.memory.recall(prompt, { topK: MAX_INJECTION_HITS });
-      // MEDIUM-1 fix: recall returns one entry PER DOMAIN (up to 13).
-      // Flatten ALL hits, then cap to MAX_INJECTION_HITS AFTER flattening
-      // (was capped per-domain → could inject 13×5 = 65 hits = 26K chars).
-      const hits = results?.flatMap((r: any) => r?.hits ?? []) ?? [];
-      const filtered = hits
+      // R7-LOW: guard against flat-array return (some managers return MemoryHit[]
+      // directly instead of MemoryDomainEntry[]).
+      const rawHits = Array.isArray(results) && results.length > 0 && Array.isArray((results[0] as any)?.hits)
+        ? results.flatMap((r: any) => r?.hits ?? [])
+        : (results as any[] ?? []);
+      // MEDIUM-1 fix: flatten ALL domains, cap AFTER flattening.
+      const filtered = rawHits
         .filter((h: any) => (h?.score ?? 0) >= MIN_SCORE && h?.content)
         // MEDIUM-2 fix: skip facts captured by THIS session (prevents echo).
         // capture() sets fact id = `capture:${sessionId}:...` so we can match.
@@ -40,12 +42,16 @@ export class MemoryEnricher implements PromptEnricher {
         // R6-LOW: exclude operational status hits (queue-depth, sync-pending)
         // — score:1 hardcoded, no query relevance, waste injection slots.
         .filter((h: any) => !OPERATIONAL_IDS.has(h?.id ?? ""))
+        // R7-MEDIUM: dedupe by id (multiple domains can return the same fact)
+        .filter((h: any, i: number, arr: any[]) => arr.findIndex((x: any) => x?.id === h?.id) === i)
         .sort((a: any, b: any) => (b?.score ?? 0) - (a?.score ?? 0))
         .slice(0, MAX_INJECTION_HITS);
       if (filtered.length === 0) return prompt;
 
+      // R7-LOW: normalize newlines so multi-line content doesn't break the
+      // numbered list format inside <memory>.
       const memoryBlock = filtered
-        .map((h: any, i: number) => `${i + 1}. ${h?.content ?? ""}`.slice(0, PER_HIT_BUDGET))
+        .map((h: any, i: number) => `${i + 1}. ${String(h?.content ?? "").replace(/[\r\n]+/g, " ").slice(0, PER_HIT_BUDGET)}`)
         .join("\n")
         .slice(0, MAX_INJECTION_CHARS); // R3-LOW: hard cap total injection size
 

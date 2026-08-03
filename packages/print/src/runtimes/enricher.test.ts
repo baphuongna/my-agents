@@ -192,4 +192,32 @@ describe("[unit] MemoryEnricher — R2 regression tests", () => {
     expect(result).not.toContain("pending");
     expect(result).toContain("real memory");
   });
+
+  it("R7: dedupes identical ids across domains", async () => {
+    // Same fact returned by 3 domains (tree, archivist, conversations)
+    const domains = ["d1", "d2", "d3"].map(() => ({
+      domain: "x",
+      hits: [{ id: "shared-fact", content: "dup fact", score: 1.0 }],
+    }));
+    const e = new MemoryEnricher({ recall: () => domains } as any);
+    const result = await e.enrich("test", makeCtx());
+    const lines = result.split("\n").filter(l => /^\d+\./.test(l));
+    expect(lines.length).toBe(1); // deduped, not 3
+  });
+
+  it("R7: handles flat-array recall return (not MemoryDomainEntry[])", async () => {
+    const flatHits = [{ id: "h1", content: "flat", score: 0.9 }];
+    const e = new MemoryEnricher({ recall: () => flatHits } as any);
+    const result = await e.enrich("test", makeCtx());
+    expect(result).toContain("flat");
+  });
+
+  it("R7: multi-line content normalized to single line", async () => {
+    const mem = mockMemory([{ id: "h1", content: "line1\nline2\nline3", score: 0.9 }]);
+    const e = new MemoryEnricher(mem as any);
+    const result = await e.enrich("test", makeCtx());
+    const memBlock = result.match(/<memory>\n([\s\S]*?)\n<\/memory>/)?.[1] ?? "";
+    // No bare continuation lines (all on one line after numbering)
+    expect(memBlock).not.toContain("\nline2");
+  });
 });
