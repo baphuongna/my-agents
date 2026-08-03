@@ -137,7 +137,7 @@ async function handleShutdown(signal: string): Promise<void> {
 
 process.on("SIGTERM", () => handleShutdown("SIGTERM"));
 process.on("SIGINT", () => handleShutdown("SIGINT"));
-process.on("beforeExit", () => handleShutdown("beforeExit"));
+// R9-6 fix: removed beforeExit handler — fires on idle, not shutdown. SIGTERM/SIGINT only.
 ```
 
 ### Step 3: Idle sweep integration

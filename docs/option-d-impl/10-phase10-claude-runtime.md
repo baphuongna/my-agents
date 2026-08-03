@@ -1079,7 +1079,7 @@ describe("[unit] ClaudeEventNormalizer", () => {
 | Overlapping `prompt()` calls produce interleaved events | `promptQueue` serializes calls — each subprocess runs to completion before the next spawns |
 | `--continue` flag fails on first prompt (no existing session) | Claude CLI handles this gracefully (creates new session). Verified in Phase 9 spike |
 | Session dir grows unbounded over time | Future cleanup task can prune old session dirs. Not a Phase 10 concern |
-| `isAvailable()` uses dynamic `import()` | Already fixed — uses `await import("node:child_process")` instead of `require()` |
+| `isAvailable()` sync check | R9-8 fix: uses top-level `import { spawnSync }` — no require/dynamic import |
 | Claude CLI rate-limits test suite | Tests use simple prompts. Test timeout is 5000ms — if Claude is slow, increase per-test timeout via `vitest` config |
 | Token usage not reported by CLI in stream-json | `lastUsage` stays at 0. `turn_end` reports 0 tokens. CostTracker (Phase 12) handles this gracefully |
 

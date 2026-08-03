@@ -103,7 +103,7 @@ Maps pi's event types to the uniform `AgentEvent` union.
 ```typescript
 // packages/print/src/runtimes/pi-event-normalizer.ts
 import type { AgentEvent } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
+// R9-1 fix: normalizer is PURE — no nowWallclock needed
 
 interface PiSessionLike {
   readonly model?: { id: string };
@@ -144,7 +144,9 @@ export class PiEventNormalizer {
         return null; // no AgentEvent equivalent
 
       case "message_update": {
-        const delta = (e as any).delta ?? (e as any).assistantMessageEvent?.delta;
+        // R9-5 fix: coerce delta to string (may be object from pi)
+        const rawDelta = (e as any).delta ?? (e as any).assistantMessageEvent?.delta;
+        const delta = typeof rawDelta === "string" ? rawDelta : (rawDelta?.text ?? rawDelta?.thinking ?? "");
         if (!delta) return null;
 
         // Check if this is thinking or text
@@ -231,6 +233,7 @@ import type {
   ModelInfo, ThinkingLevel, AgentCapabilities, CompactionResult,
   SessionState, PromptOpts,
 } from "@my-agent/core";
+import { nowWallclock } from "@my-agent/core";  // R9-1 fix: value import for session timestamps
 
 // G1 fix: shared instances passed via constructor
 export interface PiRuntimeDeps {

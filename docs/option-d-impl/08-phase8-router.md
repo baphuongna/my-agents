@@ -225,8 +225,9 @@ export class SmartRouterImpl implements SmartRouter {
     candidates.sort((a, b) => b.total - a.total);
     const best = candidates[0]!;
 
-    // ── Step 6: If no keyword matched (best.keywordScore === 0), use default ──
-    if (best.keywordScore === 0 && best.total <= this.costWeight) {
+    // R9-2 fix: when keywordScore === 0, total = costScore * costWeight which is always <= costWeight.
+    // Drop the total <= costWeight condition — it was always true (dead code).
+    if (best.keywordScore === 0) {
       const defaultRt = this.runtimes.get(this.defaultRuntime);
       if (defaultRt?.isAvailable()) {
         return { runtime: defaultRt, reason: `default:${this.defaultRuntime}` };

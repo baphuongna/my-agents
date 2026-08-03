@@ -30,7 +30,8 @@ Replace the Phase 5 `stubCostTracker` with a real implementation that:
 // packages/print/src/runtimes/cost-tracker.ts
 
 import type { AgentEvent, CostTracker } from "@my-agent/core";
-import { nowWallclock } from "@my-agent/core";  // R6-3 fix: value import (not type-only)
+import { nowWallclock } from "@my-agent/core";
+import type { RuntimePool } from "./pool.js";  // R9-3 fix: for getSnapshot()  // R6-3 fix: value import (not type-only)
 
 interface SessionCost {
   totalUsd: number;
