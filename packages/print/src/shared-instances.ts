@@ -198,7 +198,7 @@ export const channelRouter = new ChannelSessionRouter();
 // created its own + mya-bridge created a fallback).
 // Persisted DreamCycle: tracks whether the periodic memory consolidation
 // timer is armed. memoryStats() reflects its real running state.
-export const dreamCycle = new DreamCycle({ brain });
+export const dreamCycle = new DreamCycle({ brain, sqliteMemory });
 dreamCycle.start();
 
 // ── J2: Achievement tracker (persisted, stat-driven unlock) ──

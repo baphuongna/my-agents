@@ -26,7 +26,7 @@ export class RuntimePool {
   private entries = new Map<string, RuntimePoolEntry>();
   private pending = new Map<string, Promise<{ session: AgentSession; runtimeType: string }>>(); // M1 fix: per-sessionId lock
   private creationLock: Promise<void> = Promise.resolve(); // M3 fix: global creation lock for maxSessions
-  private maxSessions = (() => { const n = parseInt(process.env.MYA_MAX_SESSIONS ?? "16", 10); return Number.isFinite(n) && n > 0 ? n : 16; })();
+  private maxSessions: number;
   private idleTtlMs = 3_600_000;
   private sweepTimer: NodeJS.Timeout | null = null;
 
@@ -35,7 +35,13 @@ export class RuntimePool {
     private runtimes: Map<string, AgentRuntime>,
     private enricher: PromptEnricher,
     private costTracker: CostTracker,
+    opts?: { maxSessions?: number },
   ) {
+    // R4-MEDIUM fix: session cap configurable (old AgentPool gateway used 1000;
+    // default 16 was a silent regression). Env var remains as override.
+    const envCap = parseInt(process.env.MYA_MAX_SESSIONS ?? "", 10);
+    const cap = opts?.maxSessions ?? (Number.isFinite(envCap) && envCap > 0 ? envCap : 16);
+    this.maxSessions = Number.isFinite(cap) && cap > 0 ? cap : 16;
     this.sweepTimer = setInterval(() => this.sweepIdle(), 60_000);
     this.sweepTimer.unref?.();
   }
@@ -144,8 +150,11 @@ export class RuntimePool {
       this.enricher,
       this.costTracker,
       (busy: boolean) => {
+        // R4-LOW fix: key by entry object, not sessionId — a force-killed
+        // session's stale onBusyChange(false) must not touch a RE-ACQUIRED
+        // entry with the same sessionId.
         const entry = this.entries.get(sessionId);
-        if (entry) {
+        if (entry && entry.session === adapter) {
           entry.busy = busy;
           entry.lastActivity = nowWallclock();
           if (!busy) entry.idleSince = nowWallclock();
@@ -153,7 +162,7 @@ export class RuntimePool {
       },
       () => {
         const entry = this.entries.get(sessionId);
-        if (entry) entry.messageCount++;
+        if (entry && entry.session === adapter) entry.messageCount++;
       },
     );
 

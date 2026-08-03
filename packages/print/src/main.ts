@@ -19,6 +19,7 @@ import { nowWallclock } from "@my-agent/core";
 import { RuntimePool } from "./runtimes/pool.js";
 import { PiInProcessRuntime, type PiRuntimeDeps } from "./runtimes/pi-in-process.js";
 import { createStubRouter, stubEnricher, stubCostTracker } from "./runtimes/stubs.js";
+import { toPiWebShape } from "./pi-web-shape.js";
 import {
   checkIdleTrigger,
   CompressionState,
@@ -404,6 +405,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     runtimes,
     stubEnricher,
     stubCostTracker,
+    { maxSessions: 1000 }, // R4-MEDIUM fix: match old AgentPool cap (personal use)
   );
 
   /** Per-session prompt queue: serializes prompts to the same session. */
@@ -428,7 +430,10 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     let responseText = "";
     const unsub = session.subscribe((event: unknown) => {
       const ev = event as { type?: string; delta?: string };
-      if (onEvent) onEvent(event);
+      // R4-HIGH fix: gateway broadcast must stay in pi's raw shape (web
+      // ChatPage renders message_update/assistantMessageEvent.text_delta).
+      // Internal consumers (responseText, cron) use AgentEvent directly.
+      if (onEvent) onEvent(toPiWebShape(event));
       // RuntimePool adapter emits uniform AgentEvent (text/delta), not pi's
       // message_update/message.content shape.
       if (ev?.type === "text" && typeof ev.delta === "string") responseText += ev.delta;
