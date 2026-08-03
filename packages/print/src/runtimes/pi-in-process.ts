@@ -143,6 +143,7 @@ export class PiInProcessSession implements RuntimeSession {
   private readonly createdAt = nowWallclock();
   private accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 as number | undefined };
   private turnActive = false;
+  private disposed = false;
 
   private unsubscribePi: (() => void) | null = null;
 
@@ -204,7 +205,7 @@ export class PiInProcessSession implements RuntimeSession {
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
           tokensOut: this.accumulatedUsage.tokensOut,
-          ...((this.accumulatedUsage.costUsd ?? 0) > 0 ? { costUsd: this.accumulatedUsage.costUsd } : {}),
+          ...((this.accumulatedUsage.costUsd ?? 0) !== undefined ? { costUsd: this.accumulatedUsage.costUsd } : {}),
         });
       }
     } catch (e) {
@@ -216,7 +217,7 @@ export class PiInProcessSession implements RuntimeSession {
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
           tokensOut: this.accumulatedUsage.tokensOut,
-          ...((this.accumulatedUsage.costUsd ?? 0) > 0 ? { costUsd: this.accumulatedUsage.costUsd } : {}),
+          ...((this.accumulatedUsage.costUsd ?? 0) !== undefined ? { costUsd: this.accumulatedUsage.costUsd } : {}),
         });
       }
       throw e;

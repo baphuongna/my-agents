@@ -109,12 +109,13 @@ describe("[unit] RuntimePool", () => {
 
   it("maxSessions throws when full", async () => {
     process.env.MYA_MAX_SESSIONS = "2";
-    const smallPool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
-    await smallPool.acquire("s1");
-    await smallPool.acquire("s2");
-    await expect(smallPool.acquire("s3")).rejects.toThrow("Max sessions");
-    delete process.env.MYA_MAX_SESSIONS;
-    smallPool.dispose();
+    try {
+      const smallPool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+      await smallPool.acquire("s1");
+      await smallPool.acquire("s2");
+      await expect(smallPool.acquire("s3")).rejects.toThrow("Max sessions");
+      smallPool.dispose();
+    } finally { delete process.env.MYA_MAX_SESSIONS; }
   });
 
   it("sweepIdle evicts idle sessions past TTL", async () => {

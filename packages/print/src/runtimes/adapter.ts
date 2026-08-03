@@ -26,7 +26,7 @@ export class RuntimeSessionAdapter implements AgentSession {
     // MED-2 fix: save unsubscribe for cleanup
     this.unsubscribeSession = this.session.onEvent((event) => {
       if (event.type === "text") this.textBuffer += event.delta;
-      this.costTracker.record(this.session.sessionId, event);
+      try { this.costTracker.record(this.session.sessionId, event); } catch {}
       this.listeners.forEach(l => { try { l(event); } catch (e) { console.warn("[runtime] listener error:", e); } });
     });
   }

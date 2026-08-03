@@ -139,7 +139,8 @@ export class ClaudeSession implements RuntimeSession {
   }
 
   private async doPrompt(text: string, _opts?: PromptOpts): Promise<void> {
-    if (this.disposed) throw new Error("Session disposed"); this.busy = true;
+    if (this.disposed) throw new Error("Session disposed");
+    this.busy = true;
     this.lastUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 }; // M2 fix: reset per prompt
     this.emit({ type: "turn_start", model: this.modelId, sessionId: this.opts.sessionId });
 
@@ -177,13 +178,13 @@ export class ClaudeSession implements RuntimeSession {
           if ((exitCode !== null && exitCode !== 0) || exitSignal) {
             this.emit({ type: "error", message: `Claude exited with code ${exitCode}${exitSignal ? ` (signal ${exitSignal})` : ""}`, recoverable: false });
           }
-          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd > 0 ? { costUsd: this.lastUsage.costUsd } : {}) });
+          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd !== undefined ? { costUsd: this.lastUsage.costUsd } : {}) });
           resolve();
         });
         this.child!.on("error", (err) => {
           if (settled) return; settled = true;
           this.emit({ type: "error", message: err.message, recoverable: false });
-          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd > 0 ? { costUsd: this.lastUsage.costUsd } : {}) });
+          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut, ...(this.lastUsage.costUsd !== undefined ? { costUsd: this.lastUsage.costUsd } : {}) });
           resolve();
         });
       });
@@ -206,7 +207,8 @@ export class ClaudeSession implements RuntimeSession {
     for (const item of this.promptQueue) { item.reject(err); }
     this.promptQueue = [];
     this.listeners.clear();
-    this.disposed = true; this.busy = false;
+    this.disposed = true;
+    this.busy = false;
   }
 
   onEvent(handler: (e: AgentEvent) => void): () => void {

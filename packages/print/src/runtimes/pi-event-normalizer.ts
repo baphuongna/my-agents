@@ -98,7 +98,7 @@ export class PiEventNormalizer {
       case "error":
         return {
           type: "error",
-          message: (e as any).message ?? String(e),
+          message: (e as any).message ?? (e as any).type ?? String(e),
           recoverable: (e as any).recoverable ?? false,
         };
 
