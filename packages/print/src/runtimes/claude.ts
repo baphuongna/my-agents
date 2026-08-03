@@ -210,5 +210,5 @@ export class ClaudeSession implements RuntimeSession {
     return () => this.listeners.delete(handler);
   }
 
-  private emit(event: AgentEvent): void { this.listeners.forEach(l => l(event)); }
+  private emit(event: AgentEvent): void { this.listeners.forEach(l => { try { l(event); } catch (e) { console.warn("[runtime] listener error:", e); } }); }
 }

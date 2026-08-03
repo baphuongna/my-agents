@@ -77,3 +77,16 @@ describe("[unit] CostTrackerImpl — additional coverage", () => {
     expect(ct.getSessionCost("s1")!.totalUsd).toBeCloseTo(3, 1);
   });
 });
+
+describe("[unit] CostTrackerImpl — copy independence", () => {
+  it("getFullCost returns independent copy", () => {
+    const ct = new CostTrackerImpl();
+    ct.setRuntimeType("s1", "pi");
+    ct.record("s1", { type: "turn_end", tokensIn: 100, tokensOut: 50 });
+    const full = ct.getFullCost("s1")!;
+    full.totalUsd = 999;
+    full.tokensIn = 999;
+    expect(ct.getSessionCost("s1")!.totalUsd).not.toBe(999);
+    expect(ct.getFullCost("s1")!.tokensIn).toBe(100);
+  });
+});

@@ -24,6 +24,7 @@ export interface RuntimePoolEntry {
 
 export class RuntimePool {
   private entries = new Map<string, RuntimePoolEntry>();
+  private pending = new Map<string, Promise<{ session: AgentSession; runtimeType: string }>>(); // M1 fix: per-sessionId lock
   private maxSessions = (() => { const n = parseInt(process.env.MYA_MAX_SESSIONS ?? "16", 10); return Number.isFinite(n) && n > 0 ? n : 16; })();
   private idleTtlMs = 3_600_000;
   private sweepTimer: NodeJS.Timeout | null = null;
@@ -65,6 +66,24 @@ export class RuntimePool {
       return { session: existing.session, runtimeType: existing.runtimeType };
     }
 
+    // M1 fix: check for pending creation to prevent race
+    const pendingCreate = this.pending.get(sessionId);
+    if (pendingCreate) return pendingCreate;
+
+    const createPromise = this._doAcquireWithRuntime(sessionId, opts);
+    this.pending.set(sessionId, createPromise);
+    try {
+      const result = await createPromise;
+      return result;
+    } finally {
+      this.pending.delete(sessionId);
+    }
+  }
+
+  private async _doAcquireWithRuntime(
+    sessionId: string,
+    opts?: { agentType?: string; model?: string; cwd?: string; prompt?: string },
+  ): Promise<{ session: AgentSession; runtimeType: string }> {
     if (this.entries.size >= this.maxSessions) {
       this.sweepIdle();
       if (this.entries.size >= this.maxSessions) throw new Error("Max sessions reached");

@@ -171,5 +171,5 @@ export class MyaNativeSession implements RuntimeSession {
   async dispose(): Promise<void> { this.agentInstance?.killAllSubagents?.(); this.agentInstance = null; this.listeners.clear(); this.textBuffer = ""; }
   onEvent(handler: (e: AgentEvent) => void): () => void { this.listeners.add(handler); return () => this.listeners.delete(handler); }
   getTextBuffer(): string { return this.textBuffer; }
-  private emit(event: AgentEvent): void { this.listeners.forEach(l => l(event)); }
+  private emit(event: AgentEvent): void { this.listeners.forEach(l => { try { l(event); } catch (e) { console.warn("[runtime] listener error:", e); } }); }
 }

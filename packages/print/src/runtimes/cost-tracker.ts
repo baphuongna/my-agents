@@ -44,8 +44,8 @@ export class CostTrackerImpl implements CostTracker {
       cost.tokensIn += event.tokensIn;
       cost.tokensOut += event.tokensOut;
 
-      if (event.costUsd !== undefined && event.costUsd > 0) {
-        cost.totalUsd += event.costUsd;
+      if (event.costUsd !== undefined) {
+        if (event.costUsd > 0) cost.totalUsd += event.costUsd;
       } else {
         const rt = this.runtimeTypes.get(sessionId) ?? "pi";
         const rate = COST_RATES[rt] ?? COST_RATES["pi"]!;
@@ -62,7 +62,7 @@ export class CostTrackerImpl implements CostTracker {
   }
 
   getFullCost(sessionId: string): SessionCost | undefined {
-    return this.sessions.get(sessionId) ? { ...this.sessions.get(sessionId)! } : undefined;
+    const c = this.sessions.get(sessionId); return c ? { ...c } : undefined;
   }
 
   forget(sessionId: string): void {

@@ -27,7 +27,7 @@ export class RuntimeSessionAdapter implements AgentSession {
     this.unsubscribeSession = this.session.onEvent((event) => {
       if (event.type === "text") this.textBuffer += event.delta;
       this.costTracker.record(this.session.sessionId, event);
-      this.listeners.forEach(l => l(event));
+      this.listeners.forEach(l => { try { l(event); } catch (e) { console.warn("[runtime] listener error:", e); } });
     });
   }
 
@@ -84,7 +84,7 @@ export class RuntimeSessionAdapter implements AgentSession {
   abort(): void {
     this.unsubscribeSession?.();
     this.listeners.clear();
-    void this.session.dispose().catch(() => {});
+    this.onBusyChange?.(false); void this.session.dispose().catch(() => {});
   }
 
   get sessionFile(): string | undefined { return undefined; }

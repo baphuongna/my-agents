@@ -206,9 +206,10 @@ export class PiInProcessSession implements RuntimeSession {
         });
       }
     } catch (e) {
+      // L15 fix: always emit error+turn_end, even if agent_settled already fired
+      this.emit({ type: "error", message: String(e), recoverable: false });
       if (this.turnActive) {
         this.turnActive = false;
-        this.emit({ type: "error", message: String(e), recoverable: false });
         this.emit({
           type: "turn_end",
           tokensIn: this.accumulatedUsage.tokensIn,
@@ -269,6 +270,6 @@ export class PiInProcessSession implements RuntimeSession {
   getTextBuffer(): string { return this.textBuffer; }
 
   private emit(event: AgentEvent): void {
-    this.listeners.forEach(l => l(event));
+    this.listeners.forEach(l => { try { l(event); } catch (e) { console.warn("[runtime] listener error:", e); } });
   }
 }

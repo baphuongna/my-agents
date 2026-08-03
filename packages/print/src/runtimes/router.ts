@@ -46,7 +46,7 @@ export class SmartRouterImpl implements SmartRouter {
     const scores: Array<{ name: string; runtime: AgentRuntime; keywordScore: number; costScore: number }> = [];
     for (const [name, rt] of this.runtimes) {
       if (!rt.isAvailable()) continue;
-      const keywords = this.customKeywords.get(name) ?? DEFAULT_KEYWORDS[name] ?? [];
+      const keywords = [...(DEFAULT_KEYWORDS[name] ?? []), ...(this.customKeywords.get(name) ?? [])];
       const keywordScore = keywords.reduce((score, kw) => {
         const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const regex = new RegExp(`\\b${escaped}\\b`, "i");

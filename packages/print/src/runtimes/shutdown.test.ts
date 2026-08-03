@@ -57,3 +57,29 @@ describe("[unit] gracefulShutdown", () => {
     expect(pool.size).toBe(0);
   });
 });
+
+describe("[unit] gracefulShutdown — busy drain", () => {
+  it("counts naturally drained sessions", async () => {
+    const runtimes = new Map([["pi", makeMockRuntime()]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    const ct = new CostTrackerImpl();
+    await pool.acquire("s1");
+    pool.get("s1")!.busy = true;
+    // Simulate session finishing quickly
+    setTimeout(() => { pool.get("s1")!.busy = false; }, 100);
+    const result = await gracefulShutdown(pool, ct, { drainTimeoutMs: 2000 });
+    expect(result.drained).toBe(1);
+    expect(result.forced).toBe(0);
+  });
+
+  it("force-kills sessions that exceed timeout", async () => {
+    const runtimes = new Map([["pi", makeMockRuntime()]]);
+    const pool = new RuntimePool(createStubRouter(runtimes), runtimes, stubEnricher, stubCostTracker);
+    const ct = new CostTrackerImpl();
+    await pool.acquire("s1");
+    pool.get("s1")!.busy = true;
+    // Never set busy=false — force timeout
+    const result = await gracefulShutdown(pool, ct, { drainTimeoutMs: 200, forceKill: true });
+    expect(result.forced).toBe(1);
+  });
+});
