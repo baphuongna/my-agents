@@ -55,7 +55,7 @@ export class MemoryEnricher implements PromptEnricher {
     // on every sweep and pollute the brain with repetitive job output.
     if (ctx.sessionId.startsWith("_cron:")) return;
     const fact = {
-      id: `capture:${ctx.sessionId}:${nowWallclock()}`, // MEDIUM-2: id carries session marker for echo filter
+      id: `capture:${ctx.sessionId}:${nowWallclock()}-${Math.random().toString(36).slice(2, 8)}`, // R5: random suffix prevents same-ms collision
       kind: "event" as const,
       entity: `session:${ctx.sessionId}`,
       content: output.slice(0, MAX_CAPTURE_CHARS),

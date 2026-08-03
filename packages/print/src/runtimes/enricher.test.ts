@@ -27,7 +27,7 @@ describe("[unit] MemoryEnricher", () => {
   });
 
   it("filters hits below minScore (RRF magnitude)", async () => {
-    // R3-MEDIUM: MIN_SCORE lowered to 0.05 so RRF fused scores (max ≈0.066) pass
+    // R3-MEDIUM: MIN_SCORE lowered to 0.01 so RRF fused scores pass
     const e = new MemoryEnricher(mockMemory([{ id: "h1", content: "rrf hit", score: 0.066 }]) as any);
     const result = await e.enrich("test", makeCtx());
     expect(result).toContain("rrf hit");
