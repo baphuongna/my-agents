@@ -179,7 +179,7 @@ export class ClaudeSession implements RuntimeSession {
         this.child!.on("error", (err) => {
           if (settled) return; settled = true;
           this.emit({ type: "error", message: err.message, recoverable: false });
-          this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
+          this.emit({ type: "turn_end", tokensIn: this.lastUsage.tokensIn, tokensOut: this.lastUsage.tokensOut });
           resolve();
         });
       });

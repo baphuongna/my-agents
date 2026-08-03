@@ -62,3 +62,20 @@ describe("[unit] SmartRouterImpl", () => {
     expect(runtime.runtimeType).toBe("custom");
   });
 });
+
+describe("[unit] SmartRouterImpl — cost tie-breaking", () => {
+  it("cheaper runtime wins when keyword scores are equal", async () => {
+    const expensive = { ...makeRuntime("expensive"), costPerMTokens: () => ({ input: 10, output: 50 }) };
+    const cheap = { ...makeRuntime("cheap"), costPerMTokens: () => ({ input: 1, output: 5 }) };
+    const runtimes = new Map([["expensive", expensive], ["cheap", cheap]]);
+    const router = new SmartRouterImpl(runtimes, { defaultRuntime: "expensive" });
+    // No keywords match either — keywordScore 0 for both, falls to default
+    // But with custom keywords that match both equally:
+    const router2 = new SmartRouterImpl(runtimes, {
+      defaultRuntime: "expensive",
+      customKeywords: new Map([["expensive", ["tool"]], ["cheap", ["tool"]]]),
+    });
+    const { runtime } = await router2.select({ prompt: "use tool" });
+    expect(runtime.runtimeType).toBe("cheap"); // cheaper wins on cost score
+  });
+});

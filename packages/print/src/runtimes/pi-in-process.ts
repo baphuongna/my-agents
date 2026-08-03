@@ -155,6 +155,7 @@ export class PiInProcessSession implements RuntimeSession {
         if (msg?.role === "assistant" && msg?.usage) {
           this.accumulatedUsage.tokensIn += msg.usage.input ?? 0;
           this.accumulatedUsage.tokensOut += msg.usage.output ?? 0;
+        this.accumulatedUsage.costUsd = (this.accumulatedUsage.costUsd ?? 0) + ((msg.usage as any)?.cost?.total ?? 0);
         }
       }
 

@@ -19,7 +19,7 @@ function loadAuthConfig(): AuthConfig {
     const raw = readFileSync(authPath, "utf-8");
     const parsed = JSON.parse(raw);
     // auth.json may have mixed shape — extract credentials and env separately
-    if (typeof parsed !== "object" || parsed === null) return { credentials: {} };
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { credentials: {} };
     const { env, ...rest } = parsed;
     return { credentials: rest, env: typeof env === "object" && env !== null ? env : undefined };
   } catch (e) {

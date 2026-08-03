@@ -148,3 +148,11 @@ describe("[unit] RuntimeSessionAdapter — additional coverage", () => {
     expect(adapter.sessionFile).toBeUndefined();
   });
 });
+
+describe("[unit] RuntimeSessionAdapter — error paths", () => {
+  it("session.prompt failure re-throws after warn", async () => {
+    const session = makeMockSession({ prompt: vi.fn(async () => { throw new Error("session failed"); }) });
+    const adapter = new RuntimeSessionAdapter(session, stubEnricher, stubCostTracker);
+    await expect(adapter.prompt("test")).rejects.toThrow("session failed");
+  });
+});

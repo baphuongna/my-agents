@@ -35,12 +35,12 @@ export class MemoryEnricher implements PromptEnricher {
     }
   }
 
-  async capture(output: string, _ctx: EnrichContext): Promise<void> {
+  async capture(output: string, ctx: EnrichContext): Promise<void> {
     if (!this.brain || !output.trim()) return;
     try {
       await this.brain.recordFact({
         kind: "event",
-        entity: `session:${_ctx.sessionId}`,
+        entity: `session:${ctx.sessionId}`,
         content: output.slice(0, MAX_CAPTURE_CHARS),
         visibility: "private",
         notability: DEFAULT_NOTABILITY,

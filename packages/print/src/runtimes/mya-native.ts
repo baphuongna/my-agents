@@ -46,7 +46,7 @@ export function mapMyaEvent(
         case "Failed":
         case "Recoverable": {
           const err = te.error;
-          return [{ type: "error", message: err?.context?.reason ?? err?.context?.cause ?? "turn failed", recoverable: te.state === "Recoverable" }];
+          return [{ type: "error", message: err?.context?.reason ?? String(err?.context?.cause ?? err?.context?.reason ?? "turn failed"), recoverable: te.state === "Recoverable" }];
         }
         case "Cancelled":
           return [{ type: "error", message: te.reason ?? "cancelled", recoverable: false }];
@@ -67,7 +67,7 @@ export function mapMyaEvent(
             type: "tool_result" as const,
             toolCallId: r?.callId ?? "",
             output: typeof r?.output === "string" ? r.output : JSON.stringify(r?.output ?? ""),
-            error: r ? !r.ok : false,
+            error: r?.ok === false,
           }));
         }
         case "AwaitingApproval": {
