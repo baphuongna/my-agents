@@ -6,7 +6,9 @@ const MAX_INJECTION_HITS = 5;
 const MAX_INJECTION_CHARS = 2000;
 const MAX_CAPTURE_CHARS = 4096;
 const DEFAULT_NOTABILITY = 0.5;
-const MIN_SCORE = 0.3;
+// R3-MEDIUM: RRF fused scores max ≈ 4/(60+1) = 0.066. Threshold must be
+// below that or the entire retrieval/search domain is silently dropped.
+const MIN_SCORE = 0.05;
 const PER_HIT_BUDGET = Math.floor(MAX_INJECTION_CHARS / MAX_INJECTION_HITS); // 400
 
 export class MemoryEnricher implements PromptEnricher {
@@ -28,14 +30,16 @@ export class MemoryEnricher implements PromptEnricher {
         .filter((h: any) => (h?.score ?? 0) >= MIN_SCORE && h?.content)
         // MEDIUM-2 fix: skip facts captured by THIS session (prevents echo).
         // capture() sets fact id = `capture:${sessionId}:...` so we can match.
-        .filter((h: any) => !(h?.id ?? "").startsWith(`capture:${ctx.sessionId}`))
+        // R3-LOW: trailing colon prevents prefix collision (s1 vs s10).
+        .filter((h: any) => !(h?.id ?? "").startsWith(`capture:${ctx.sessionId}:`))
         .sort((a: any, b: any) => (b?.score ?? 0) - (a?.score ?? 0))
         .slice(0, MAX_INJECTION_HITS);
       if (filtered.length === 0) return prompt;
 
       const memoryBlock = filtered
         .map((h: any, i: number) => `${i + 1}. ${h?.content ?? ""}`.slice(0, PER_HIT_BUDGET))
-        .join("\n");
+        .join("\n")
+        .slice(0, MAX_INJECTION_CHARS); // R3-LOW: hard cap total injection size
 
       return `<memory>\n${memoryBlock}\n</memory>\n\n${prompt}`;
     } catch {

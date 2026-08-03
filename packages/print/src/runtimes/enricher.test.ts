@@ -26,9 +26,14 @@ describe("[unit] MemoryEnricher", () => {
     expect(result.endsWith("write code")).toBe(true);
   });
 
-  it("filters hits below minScore", async () => {
-    const e = new MemoryEnricher(mockMemory([{ id: "h1", content: "low", score: 0.1 }]) as any);
-    expect(await e.enrich("test", makeCtx())).toBe("test");
+  it("filters hits below minScore (RRF magnitude)", async () => {
+    // R3-MEDIUM: MIN_SCORE lowered to 0.05 so RRF fused scores (max ≈0.066) pass
+    const e = new MemoryEnricher(mockMemory([{ id: "h1", content: "rrf hit", score: 0.066 }]) as any);
+    const result = await e.enrich("test", makeCtx());
+    expect(result).toContain("rrf hit");
+    // Truly garbage scores still filtered
+    const e2 = new MemoryEnricher(mockMemory([{ id: "h2", content: "garbage", score: 0.01 }]) as any);
+    expect(await e2.enrich("test", makeCtx())).toBe("test");
   });
 
   it("limits hits to maxInjectionHits", async () => {
