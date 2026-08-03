@@ -48,15 +48,16 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
-    "@earendil-works/pi-coding-agent": "0.83.0",
     "@earendil-works/pi-agent-core": "0.83.0",
     "@earendil-works/pi-ai": "0.83.0",
+    "@earendil-works/pi-coding-agent": "0.83.0",
     "@earendil-works/pi-tui": "0.83.0",
     "@google/genai": "^2.11.0",
     "@mistralai/mistralai": "^2.4.1",
     "@nous-research/ui": "^1.5.2",
     "@opentelemetry/api": "^1.9.1",
     "@sinclair/typebox": "^0.34.52",
+    "chrome-remote-interface": "^0.34.0",
     "cross-spawn": "^7.0.6",
     "diff": "^9.0.0",
     "highlight.js": "^11.11.1",
@@ -68,6 +69,8 @@
     "openai": "^6.46.0",
     "partial-json": "^0.1.7",
     "proper-lockfile": "^4.1.2",
+    "react-router": "^7.18.2",
+    "react-router-dom": "^7.18.2",
     "typebox": "^1.1.38",
     "undici": "^8.7.0",
     "ws": "^8.18.0",
@@ -79,18 +82,21 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.20.1",
-    "esbuild": "^0.21.5",
+    "esbuild": "^0.28.1",
     "happy-dom": "^20.11.1",
     "jsdom": "^25.0.1",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
-    "vitest": "^2.1.9"
+    "vitest": "^3.2.7"
   },
   "overrides": {
     "@earendil-works/pi-coding-agent": {
       "@earendil-works/pi-ai": "$@earendil-works/pi-ai",
       "@earendil-works/pi-agent-core": "$@earendil-works/pi-agent-core",
       "@earendil-works/pi-tui": "$@earendil-works/pi-tui"
-    }
+    },
+    "brace-expansion": "5.0.9",
+    "ws": "^8.18.0",
+    "tar": "^7.5.22"
   }
 }

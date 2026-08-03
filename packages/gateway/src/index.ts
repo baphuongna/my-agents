@@ -42,7 +42,7 @@ import { encodePairingQR, type DevicePairing, type PairingQR, type WebAuthnServi
 import type { VoiceCallChannel } from "./voice-call.js";
 export { detectProviderSummary, getProviderRegistry } from "./provider-registry.js";
 import { detectProviderSummary, initProviderRegistry } from "./provider-registry.js";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore, type AuthPrompt } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 // Register OAuth flow loaders statically (esbuild can't resolve variable-specifier
@@ -719,7 +719,7 @@ export class Gateway {
       }
       const credential = await models.login(providerId, "oauth", {
         signal: AbortSignal.timeout(180000), // 3 min timeout
-        prompt: async (p: { type: string; message?: string; options?: Array<{ id: string; label: string }> }) => {
+        prompt: async (p: AuthPrompt) => {
           // Log the prompt type for debugging, then throw — full interactive
           // prompt support requires a bidirectional launcher↔gateway channel.
           const state = this.oauthFlows.get(providerId);
