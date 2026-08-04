@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 9 (final confirmation, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #4) + 1 LOW + 4 INFO fixed (R9-LOW, R9-INFO-1..4). Clean streak: 4 (R6-R9). **Plan FINAL — user gate đạt: 4 consecutive rounds zero CRITICAL/HIGH + R9 zero mọi severity sau fixes (chờ Round 10 confirm fully clean).**
+> **Status**: **PLAN FINAL — user gate ĐẠT.** Round 10 (fully-clean confirmation, qwen3.7-max) — **ZERO FINDINGS — FULLY CLEAN ROUND.** Clean streak: 5 (R6-R10; R9+R10 zero mọi severity). 10 review rounds, ~45 findings fixed. Sẵn sàng implement.
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
