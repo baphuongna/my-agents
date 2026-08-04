@@ -1,7 +1,8 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: **PLAN FINAL — user gate ĐẠT.** Round 10 (fully-clean confirmation, qwen3.7-max) — **ZERO FINDINGS — FULLY CLEAN ROUND.** Clean streak: 5 (R6-R10; R9+R10 zero mọi severity). 10 review rounds, ~45 findings fixed. Sẵn sàng implement.
+> **Status**: **PLAN FINAL — user gate ĐẠT.** Round 10 (fully-clean confirmation, qwen3.7-max) — **ZERO FINDINGS — FULLY CLEAN ROUND.** Clean streak: 5 (R6-R10; R9+R10 zero mọi severity). 10 review rounds, ~45 findings fixed.
+> **IMPLEMENTED — commit afbd6f2ae** (7 files, 238+/20-). Impl review I1 (commit review): **ZERO CRITICAL/HIGH — CLEAN ROUND** + 3 LOW/1 INFO (marker chain E2E-only — plan-acknowledged). 33 tests pass (pi-in-process 20 + cron-sweep 13), drain-gate 9 pass, typecheck sạch, bundle OK.
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
