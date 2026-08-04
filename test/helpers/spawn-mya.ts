@@ -18,7 +18,7 @@ export function myaSpawnInfo(): { cmd: string; args: string[] } {
 	const bin = process.env["MYA_BIN"];
 	if (bin) {
 		// .js, .mjs, .cjs → must run via node (has shebang but needs interpreter)
-		if (/\.m?js$/.test(bin)) {
+		if (/\.[mc]?js$/.test(bin)) {
 			return { cmd: "node", args: [bin] };
 		}
 		return { cmd: bin, args: [] };
