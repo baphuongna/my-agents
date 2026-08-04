@@ -9,13 +9,16 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
+import { myaSpawnInfo } from "../../helpers/spawn-mya.ts";
 
-const BIN = process.env["MYA_BIN"] || "node";
-const BIN_ARGS = existsSync("dist/mya.js") ? ["dist/mya.js"] : [];
+// Compute at module scope — used for BIN/BIN_ARGS and skipIf.
+// Skip only when NO binary is available (no MYA_BIN AND no dist/mya.js).
+const _hasBinary = !!process.env["MYA_BIN"] || existsSync("dist/mya.js");
+const { cmd: BIN, args: BIN_ARGS } = _hasBinary ? myaSpawnInfo() : { cmd: "node", args: [] };
 
 const port = 3987 + Math.floor(Math.random() * 100);
 const base = `http://127.0.0.1:${port}`;
@@ -42,7 +45,7 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
 	try { return JSON.parse(text); } catch { return text; }
 }
 
-describe.skipIf(BIN_ARGS.length === 0)("[system] gateway E2E smoke", () => {
+describe.skipIf(!_hasBinary)("[system] gateway E2E smoke", () => {
 	beforeAll(async () => {
 		tmpHome = mkdtempSync(join(tmpdir(), "mya-e2e-"));
 		proc = spawn(BIN, [...BIN_ARGS, "serve", "--port", String(port)], {

@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnMya, myaSpawnInfo } from "../../helpers/spawn-mya.ts";
 
 // ══════════════════════════════════════════════════════════════
 // §10 Desktop App (Tauri)
@@ -573,10 +574,8 @@ describe("[smoke] all packages", () => {
 
 describe("[real] mya launcher", () => {
 	it("mya launcher starts without crash (CI mode)", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "launcher"],
+		const child = spawnMya(
+			["launcher"],
 			{ env: { ...process.env, MYA_MOCK: "1", CI: "1" } },
 		);
 		const code = await new Promise<number | null>((res) => {
@@ -600,9 +599,10 @@ describe("[real] mya launcher", () => {
 		// Kill any leftover process on port
 		try { execSync(`fuser -k ${port}/tcp 2>/dev/null || true`); } catch {}
 		await new Promise((r) => setTimeout(r, 500));
+		const { cmd, args } = myaSpawnInfo();
 		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "serve", "--port", String(port)],
+			cmd,
+			[...args, "serve", "--port", String(port)],
 			{ env: { ...process.env, HOME: tmpHome }, stdio: ["ignore", "pipe", "pipe"] },
 		);
 		for (let i = 0; i < 300; i++) {

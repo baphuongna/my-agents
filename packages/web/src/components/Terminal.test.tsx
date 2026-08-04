@@ -6,8 +6,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import { Terminal } from "@/components/Terminal";
 
+// Global polyfill — xterm's RenderDebouncer calls window.requestAnimationFrame
+// asynchronously via a WriteBuffer setTimeout.  If the jsdom window is torn
+// down before that timer fires, we get an uncaught exception.  Setting this
+// as a non-mock global ensures it survives vi.restoreAllMocks().
+const raf = (cb: FrameRequestCallback) =>
+  setTimeout(() => cb(performance.now()), 16) as unknown as number;
+const caf = (id: number) =>
+  clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+
 describe("[unit] Terminal — smoke", () => {
   beforeEach(() => {
+    // Install permanent polyfills (not vi.fn — survive restoreAllMocks).
+    (globalThis as any).requestAnimationFrame = raf;
+    (globalThis as any).cancelAnimationFrame = caf;
+    (window as any).requestAnimationFrame = raf;
+    (window as any).cancelAnimationFrame = caf;
+
     // jsdom layout stubs — xterm.fit() needs non-zero dimensions.
     Object.defineProperty(HTMLElement.prototype, "clientWidth", {
       configurable: true,
@@ -30,7 +45,9 @@ describe("[unit] Terminal — smoke", () => {
     })) as unknown as typeof window.matchMedia;
     // jsdom's HTMLCanvasElement.getContext throws "not implemented".
     // xterm's color module calls it during init; stub it to return null.
-    HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue(null) as never;
+    // Plain function (not vi.fn) — survives vi.restoreAllMocks() so late
+    // xterm render timers don't hit the real jsdom impl.
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
     // jsdom lacks ResizeObserver; xterm uses it for fit-on-resize.
     (globalThis as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver =
       class {
@@ -38,15 +55,17 @@ describe("[unit] Terminal — smoke", () => {
         unobserve() {}
         disconnect() {}
       } as unknown as typeof ResizeObserver;
-    // jsdom lacks requestAnimationFrame polyfill needed by xterm's fit.
-    if (!globalThis.requestAnimationFrame) {
-      globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) =>
-        setTimeout(() => cb(performance.now()), 16) as unknown as number) as typeof requestAnimationFrame;
-      globalThis.cancelAnimationFrame = ((id: number) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>)) as typeof cancelAnimationFrame;
-    }
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Flush any pending xterm WriteBuffer timers so they don't fire after
+    // the jsdom environment is torn down (causing uncaught exceptions).
+    await new Promise((r) => setTimeout(r, 50));
+    // Re-assert polyfills after mock restore.
+    (globalThis as any).requestAnimationFrame = raf;
+    (globalThis as any).cancelAnimationFrame = caf;
+    (window as any).requestAnimationFrame = raf;
+    (window as any).cancelAnimationFrame = caf;
     vi.restoreAllMocks();
   });
 
@@ -69,9 +88,11 @@ describe("[unit] Terminal — smoke", () => {
     expect(host?.getAttribute("data-testid")).toBe("terminal-host");
   });
 
-  it("unmounts cleanly (no console errors)", () => {
+  it("unmounts cleanly (no console errors)", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { unmount } = render(<Terminal wsUrl="ws://localhost:9999" />);
+    // Let xterm's async WriteBuffer settle before unmount.
+    await new Promise((r) => setTimeout(r, 50));
     unmount();
     expect(consoleError).not.toHaveBeenCalled();
   });

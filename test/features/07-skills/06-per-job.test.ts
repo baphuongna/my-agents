@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { spawnMya } from "../../helpers/spawn-mya.ts";
 
 // ──────────────────────────────────────────────────────────────
 // UNIT — Cron job skill injection
@@ -137,10 +138,8 @@ describe("[smoke] cron module", () => {
 
 describe("[real] mya cron with skills", () => {
 	it("cron add <job> with --skill flag", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "cron", "add", "--skill", "git-helper", "test-job", "*/1 * * * *", "echo", "test"],
+		const child = spawnMya(
+			["cron", "add", "--skill", "git-helper", "test-job", "*/1 * * * *", "echo", "test"],
 			{ env: { ...process.env, MYA_MOCK: "1" } },
 		);
 		let out = "";
@@ -150,10 +149,8 @@ describe("[real] mya cron with skills", () => {
 	});
 
 	it("cron list shows jobs with skills", async () => {
-		const { spawn } = await import("node:child_process");
-		const child = spawn(
-			process.env["MYA_BIN"] || "node",
-			["dist/mya.js", "cron", "list"],
+		const child = spawnMya(
+			["cron", "list"],
 			{ env: { ...process.env, MYA_MOCK: "1" } },
 		);
 		let out = "";
