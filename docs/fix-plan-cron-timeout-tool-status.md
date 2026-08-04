@@ -580,7 +580,9 @@ describe("tool status", () => {
 > **Design note (M3)**: Fix 1 core (AbortController → piSession.abort()) xử lý LLM hang (abort-respecting).
 > Tool hang (bash sleep 300 ignore abort) — abort() chờ waitForIdle() mãi → timeout không resolve.
 > Giải pháp thực tế: E2E verification phải dùng LLM-hang scenario (không phải bash hang).
-> Tool-hang escalation (force-release sau 2× timeout) là OUT OF SCOPE cho plan này — document, không implement.
+> Tool-hang escalation (force-release sau 2× timeout) — **ĐÃ IMPLEMENT (commit 16f9a5dad)**:
+> cronSessionForceKill callback + Promise.race escalation timer (2× timeoutMs).
+> cron-sweep.test.ts có test tool-hang → forceKill → failed.
 >
 > **R7-LOW-4 note (edge)**: mid-cron force-release (poolKill trong lúc run) — `pool.release({force})`
 > → adapter.abort() → dispose trong khi piSession.prompt pending; prompt có settle sau dispose hay không
