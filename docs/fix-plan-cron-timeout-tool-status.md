@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 8 (final fix verification, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #3) + 3 LOW fixed (R8-LOW-1..3). Clean streak: 3 (R6/R7/R8). **Plan FINAL — user gate đạt: 2+ consecutive rounds zero findings mọi severity (R7 còn LOW đã fix ở R7; R8 LOW đã fix; chờ Round 9 confirm zero findings toàn bộ).**
+> **Status**: Round 9 (final confirmation, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #4) + 1 LOW + 4 INFO fixed (R9-LOW, R9-INFO-1..4). Clean streak: 4 (R6-R9). **Plan FINAL — user gate đạt: 4 consecutive rounds zero CRITICAL/HIGH + R9 zero mọi severity sau fixes (chờ Round 10 confirm fully clean).**
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
@@ -249,6 +249,8 @@ private readonly onRunOnSession?: (
 
 ### Step 4 — `gateway/index.ts`: timeout trong cronSweep
 
+> **R9-LOW FIX (ordering)**: Step 4 đọc `opts.cronSessionTimeoutMs` (constructor) nhưng GatewayOptions field chỉ khai báo ở Step 5. Implement Step 4 + Step 5 trong CÙNG change-set (như R8-LOW-3) — typecheck sau Step 4 một mình sẽ fail `TS2339: Property 'cronSessionTimeoutMs' does not exist on type 'GatewayOptions'`.
+
 **R1-H2 FIX (HIGH — thêm field + constructor wiring trước khi dùng):**
 
 ```typescript
@@ -263,11 +265,13 @@ this.cronSessionTimeoutMs = opts.cronSessionTimeoutMs ?? 5 * 60_000;
 
 **R7-3 FIX (MEDIUM — env plumbing):** thêm vào Gateway construction (main.ts ~line 633):
 ```typescript
-// R8-LOW-1 FIX: env=0 phải disable (KHÔNG dùng `parseInt || undefined` — 0 → undefined → default 5 min)
-const cronSessionTimeoutMsEnv = Number(process.env.MYA_CRON_SESSION_TIMEOUT_MS);
-cronSessionTimeoutMs: Number.isFinite(cronSessionTimeoutMsEnv) && cronSessionTimeoutMsEnv >= 0 ? cronSessionTimeoutMsEnv : undefined,
+// R8-LOW-1 + R9-INFO-4 FIX: env=0 → disable; env empty/whitespace → undefined → default 5min
+// (KHÔNG dùng Number("") — empty string = 0 → disable sai semantics)
+const cronSessionTimeoutMsRaw = process.env.MYA_CRON_SESSION_TIMEOUT_MS;
+const cronSessionTimeoutMsNum = cronSessionTimeoutMsRaw !== undefined && cronSessionTimeoutMsRaw.trim() !== "" ? Number(cronSessionTimeoutMsRaw) : NaN;
+cronSessionTimeoutMs: Number.isFinite(cronSessionTimeoutMsNum) && cronSessionTimeoutMsNum >= 0 ? cronSessionTimeoutMsNum : undefined,
 ```
-Đồng bộ pattern `MYA_CRON_*` env khác (MYA_CRON_MAX_JOBS, MYA_CRON_APPROVAL_MODE). Không có env → undefined → default 5 phút qua constructor. `MYA_CRON_SESSION_TIMEOUT_MS=0` → disable. E2E dùng `MYA_CRON_SESSION_TIMEOUT_MS=10000`.
+Đồng bộ pattern `MYA_CRON_*` env khác (MYA_CRON_MAX_JOBS, MYA_CRON_APPROVAL_MODE). Không có env / empty → undefined → default 5 phút qua constructor. `MYA_CRON_SESSION_TIMEOUT_MS=0` → disable. E2E dùng `MYA_CRON_SESSION_TIMEOUT_MS=10000`.
 
 ```typescript
 // packages/gateway/src/index.ts — cronSweep, trong Promise.allSettled batch.map(async (job) => {
@@ -337,6 +341,13 @@ describe("prompt signal abort", () => {
     // controller.abort()
     // assert: mock.abortCalled === true
     // assert: prompt() resolve (V3 — vì abort() resolve deferred)
+  });
+  it("[unit] pre-aborted signal short-circuits (R9-INFO-3)", async () => {
+    // signal ĐÃ aborted trước khi prompt() chạy (queue sau turnLock / trong enrich)
+    // const controller = new AbortController(); controller.abort();
+    // await runtime.prompt("hi", { signal: controller.signal });
+    // assert: mock.promptCalled === false (KHÔNG gọi piSession.prompt)
+    // assert: turn_end emitted (turnActive false, turnClosed true)
   });
 });
 
@@ -463,7 +474,7 @@ if (agentEvent) {
 // packages/print/src/runtimes/pi-in-process.ts — getState() hiện tại (line ~271):
 getState(): SessionState {
     const usage = this.piSession.getContextUsage?.();
-    const pendingTools = [...this.pendingToolNames.values()];
+    const pendingTools = [...new Set(this.pendingToolNames.values())]; // R9-INFO-2: dedupe — parallel cùng tool → tránh "tool:bash,bash"
     return {
       model: this.piSession.model?.id ?? "unknown",
       thinking: this.piSession.thinkingLevel,
@@ -541,7 +552,6 @@ describe("tool status", () => {
 □ real E2E (timeout):
     - R2-3 FIX (HIGH): dùng LLM-hang scenario (abort-respecting), KHÔNG dùng bash sleep hang
       (tool hang abort-ignoring → waitForIdle() không resolve → timeout không fire — known limitation, M3)
-    - Setup: cron job prompt tới model endpoint stalled/blackholed (hoặc prompt loop vô hạn)
     - Setup: cron job prompt tới model endpoint stalled/blackholed (hoặc prompt loop vô hạn)
     - MYA_CRON_SESSION_TIMEOUT_MS=10000 (R7-3 env plumbing)
     - Verify: sau ~10s session aborted, sweep tiếp tục chạy (không block ALL cron),
