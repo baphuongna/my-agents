@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 1 + redo complete (3 reviewers, 2 HIGH + 3 MEDIUM + 2 INFO fixed). Round 2 verification in progress.
+> **Status**: Round 2 complete (2 reviewers, 1 CRITICAL + 2 HIGH + 3 MEDIUM + 4 LOW fixed). Round 3 verification in progress.
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
@@ -117,16 +117,21 @@ async prompt(text: string, opts?: PromptOpts): Promise<void> {
 ```typescript
 // THAY TOÀN BỘ phần khai báo signal + addEventListener trong prompt() bằng:
 const signal = opts?.signal;
+if (signal?.aborted) {
+  // R1-3 + R2-5: AbortSignal không replay abort event. Nếu ĐÃ aborted trước khi vào
+  // prompt (queue sau turnLock) → short-circuit NGAY: không gọi piSession.prompt
+  // (piSession đang idle, abort() chả abort gì — R2-5). Emit turn_start đã xảy ra ở trên,
+  // nên emit turn_end đóng turn rỗng để cron thấy "empty response".
+  this.turnActive = false;
+  this.turnClosed = true;
+  this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
+  return;
+}
 const onAbort = () => {
   // V3: abort() resolve prompt() (không reject) — vẫn cần signal handler
   // vì pi không nhận signal qua PromptOptions
   void this.piSession.abort().catch(() => {});
 };
-if (signal?.aborted) {
-  // R1-3: AbortSignal không replay abort event — nếu ĐÃ aborted trước khi vào
-  // prompt (prompt queue sau turnLock) → abort ngay, không đợi listener
-  void this.piSession.abort().catch(() => {});
-}
 signal?.addEventListener("abort", onAbort, { once: true });
 
 // finally giữ nguyên:
@@ -188,7 +193,7 @@ onRunOnSession: (session, prompt, onEvent, signal) => runOnSession(session, prom
 ### Step 3 — `gateway-types.ts`: update type
 
 ```typescript
-// packages/gateway/src/gateway-types.ts — hiện tại (line ~130):
+// packages/gateway/src/gateway-types.ts — hiện tại (line ~132):
 onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
 
 // SỬA thành:
@@ -199,6 +204,27 @@ onRunOnSession?: (
     signal?: AbortSignal,  // THÊM
 ) => Promise<string>;
 ```
+
+### Step 3b (R2-1 CRITICAL FIX) — `gateway/index.ts`: update CLASS FIELD type (bắt buộc)
+
+> **Vì sao cần**: `GatewayOptions` (Step 3) là type khởi tạo, nhưng cronSweep gọi **class field**
+> `this.onRunOnSession` — field này được khai báo riêng với type 3-param tại index.ts:101.
+> Không sửa field → `TS2554: Expected 3 arguments, but got 4` khi Step 4 gọi 4 args.
+
+```typescript
+// packages/gateway/src/index.ts — hiện tại (line ~101):
+private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
+
+// SỬA thành (đồng bộ với Step 3):
+private readonly onRunOnSession?: (
+    sessionId: string,
+    prompt: string,
+    onEvent?: (e: unknown) => void,
+    signal?: AbortSignal,  // THÊM
+) => Promise<string>;
+```
+
+**Kiểm tra**: sau khi sửa, grep toàn bộ `onRunOnSession` trong repo — type ở 2 nơi (gateway-types.ts Step 3 + index.ts Step 3b) phải khớp nhau và khớp với arrow wiring ở main.ts:706 (R1-1).
 
 ### Step 4 — `gateway/index.ts`: timeout trong cronSweep
 
@@ -220,7 +246,7 @@ this.cronSessionTimeoutMs = opts.cronSessionTimeoutMs ?? 5 * 60_000;
 const sessionId = `_cron:${job.id}`;
 const text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
 
-// SỬA thành:
+// SỬA thành (R2-4: THAY THẾ toàn bộ dòng const text = await ... — không để dư 2 declaration):
 const sessionId = `_cron:${job.id}`;
 const controller = new AbortController();
 const timeoutMs = this.cronSessionTimeoutMs; // field ĐÃ có default 5*60_000 từ constructor
@@ -260,12 +286,16 @@ cronSessionTimeoutMs?: number;
 // packages/print/src/runtimes/pi-in-process.test.ts — THÊM test case:
 describe("prompt signal abort", () => {
   it("[unit] abort signal triggers piSession.abort()", async () => {
-    // mock piSession: prompt() giữ promise pending, abort() đánh dấu
+    // mock piSession: prompt() giữ promise pending (deferred), abort() resolve deferred + đánh dấu
+    // R2-LOW FIX: mock abort phải resolve pending promise — nếu không test hang mãi
+    //   let resolvePending!: () => void;
+    //   const pending = new Promise<void>((r) => { resolvePending = r; });
+    //   mock.prompt = () => pending; mock.abort = () => { abortCalled = true; resolvePending(); };
     // tạo runtime với mock
     // gọi prompt(text, { signal })
     // controller.abort()
     // assert: mock.abortCalled === true
-    // assert: prompt() resolve (V3)
+    // assert: prompt() resolve (V3 — vì abort() resolve deferred)
   });
 });
 
@@ -301,10 +331,9 @@ describe("cron session timeout", () => {
 ❌ Track qua tool_execution_start/end (sequential assumption — SAI, pi chạy parallel)
 ❌ getActiveToolNames() (trả tool registry, không phải tool đang chạy)
 
-✅ Snapshot AgentState.pendingToolCalls:
-   - AgentState.pendingToolCalls: ReadonlySet<string> — tool call IDs đang chạy
-   - Map pendingToolCalls → tool names qua subscribe events
-   - Track Map<toolCallId, toolName> từ tool_execution_start events
+✅ Track qua subscribe events (R2-LOW FIX — design/code khớp):
+   - Track Map<toolCallId, toolName> từ tool_execution_start → toAgentEvent → tool_call
+   - (KHÔNG đọc AgentState.pendingToolCalls — toolCallId → name mapping chỉ có qua events; pendingToolCalls chỉ là Set<toolCallId> không có name)
    - getState(): pendingToolNames = [...map.values()].join(",") → status: "tool:bash,read"
    - Cleanup: tool_execution_end → delete từ map
 ```
@@ -314,8 +343,37 @@ describe("cron session timeout", () => {
 | File | Thay đổi |
 |---|---|
 | `packages/print/src/runtimes/pi-in-process.ts` | Track `Map<toolCallId, toolName>`; update `getState()` |
+| `packages/print/src/main.ts` | **(R2-2 FIX) poolStatus consumer** — expose `status` từ `getState()` |
 | `packages/core/src/runtime-spi.ts` | Không đổi — `status: "tool:<name>"` ĐÃ CÓ |
-| `packages/print/src/pi-web-shape.ts` | Không đổi — status pass-through |
+| `packages/print/src/pi-web-shape.ts` | Không đổi — event-shape only, không có status field |
+
+> **R2-2 FIX (HIGH — quyết định consumer)**: Fix 2 chỉ hữu ích nếu có consumer đọc `getState().status`.
+> Verify thực tế: KHÔNG có consumer nào (web/desktop/TUI không đọc `SessionState`; `poolStatus` ở main.ts:712
+> chỉ đọc `meta?.status` — status từ SessionMetaStore, không phải `getState()`).
+> Nếu không wire, Fix 2 compile + unit test pass nhưng **silent no-op**.
+>
+> **Quyết định (R2-2)**: wire consumer trong CÙNG plan này — thêm `status` vào `poolStatus()`:
+>
+> ```typescript
+> // packages/print/src/main.ts — poolStatus (line ~712):
+> poolStatus: () => pool.list().map((e) => {
+>   const meta = sessionMeta.get(e.sessionId);
+>   return {
+>     sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity,
+>     busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task,
+>     model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status,
+>     summary: meta?.summary, keyOutputs: meta?.keyOutputs,
+>     // R2-2 THÊM: runtime tool status từ getState() (Fix 2) — fallback meta status nếu không có
+>     toolStatus: e.session?.getState?.().status,
+>   };
+> }),
+> ```
+>
+> Lưu ý: `AgentSession` interface (packages/agent/src/pool.ts:33) chỉ có `prompt/subscribe/abort/sessionFile` —
+> **không có `getState()`**. RuntimeSessionAdapter (adapter.ts:90) implement `getState()`, nên dùng
+> `(e.session as { getState?(): { status: string } }).getState?.()` hoặc thêm `getState()` vào interface.
+> Chọn: thêm `getState?(): { status: string }` vào `AgentSession` interface (packages/agent/src/pool.ts) —
+> optional để không phá các impl khác; adapter implement sẵn.
 
 ### Step 1 — pi-in-process.ts: track pending tool map
 
@@ -367,11 +425,14 @@ getState(): SessionState {
 - `join(",")` cho nhiều tool chạy song song — `"tool:bash,read"`
 - Cast `as SessionState["status"]` — type-safe vì SPI string union
 - `nowWallclock()` — AGENTS.md invariant (không `Date.now()`)
+- **R2-LOW FIX (SPI union widening)**: `"tool:bash,read"` rộng hơn union `"tool:<name>"` (1 name). Cast `as SessionState["status"]` hợp lệ. Nếu muốn type-safe nghiêm ngặt: mở rộng union thành `"tool:<name>" | "tool:<name>,<name>"` — plan này giữ cast, ghi chú trong code comment.
+- **R2-LOW FIX (toolCallId fallback)**: normalizer map `tool_execution_start` với `toolCallId ?? ""` — malformed event → key "" collides. Thêm guard `if (!agentEvent.toolCallId) return;` (pi luôn cung cấp toolCallId — verified, guard là defensive)
 - **R1-4 HARDENING (INFO) — L2 FIX: đặt clear TRƯỚC early-return `agent_settled`** (hiện tại early-return ở line ~167-190 chặn sau normalizer → clear sau đó là dead code với agent_settled):
+- **R2-6 FIX (MEDIUM): pi KHÔNG emit raw `turn_start`** — AgentSessionEvent union không có `turn_start` (runtime tự emit từ prompt()). Chỉ dùng `agent_settled` cho turn-boundary clear:
 
 ```typescript
 // TRONG constructor subscribe handler, TRƯỚC if (e.type === "agent_settled") { ...; return; }:
-if (e.type === "turn_start" || e.type === "agent_settled") {
+if (e.type === "agent_settled") {
   this.pendingToolNames.clear();
 }
 // ... rồi mới đến agent_settled early-return + normalizer + tool tracking
@@ -414,9 +475,12 @@ describe("tool status", () => {
     - Tạo cron job "hi" với 1 phút interval
     - Verify: sweep fire, session complete, broadcast WS
 □ real E2E (timeout):
-    - Tạo cron job prompt "sleep 300" (bash tool hang)
+    - R2-3 FIX (HIGH): dùng LLM-hang scenario (abort-respecting), KHÔNG dùng bash sleep hang
+      (tool hang abort-ignoring → waitForIdle() không resolve → timeout không fire — known limitation, M3)
+    - Setup: cron job prompt tới model endpoint stalled/blackholed (hoặc prompt loop vô hạn)
     - cronSessionTimeoutMs = 10_000
-    - Verify: sau 10s session aborted, sweep tiếp tục chạy
+    - Verify: sau ~10s session aborted, sweep tiếp tục chạy (không block ALL cron)
+    - (Tùy chọn, exploratory) bash sleep 300 hang → verify sweep vẫn blocked → xác nhận known limitation
 ```
 
 ## Risks & mitigations
@@ -445,9 +509,10 @@ describe("tool status", () => {
 
 ```
 packages/print/src/runtimes/pi-in-process.ts   (Fix 1 Step 1 + Fix 2 Steps 1-2)
-packages/print/src/main.ts                     (Fix 1 Step 2)
+packages/print/src/main.ts                     (Fix 1 Step 2 + R2-2 poolStatus consumer)
+packages/agent/src/pool.ts                     (R2-2: thêm getState?() vào AgentSession interface)
 packages/gateway/src/gateway-types.ts          (Fix 1 Steps 3+5)
-packages/gateway/src/index.ts                  (Fix 1 Step 4)
+packages/gateway/src/index.ts                  (Fix 1 Step 3b field type + Step 4)
 packages/print/src/runtimes/pi-in-process.test.ts  (2 fix tests)
 packages/gateway/src/cron-sweep.test.ts        (Fix 1 test)
 ```
