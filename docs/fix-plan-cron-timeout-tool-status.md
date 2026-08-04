@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 7 (cold check, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #2) + 3 MEDIUM + 4 LOW fixed (R7-1..R7-LOW-4). Clean streak: 2. **Plan FINAL theo skill gate.** User gate (zero mọi severity): MEDIUM/LOW đã fix hết — chờ Round 8 verification confirm.
+> **Status**: Round 8 (final fix verification, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #3) + 3 LOW fixed (R8-LOW-1..3). Clean streak: 3 (R6/R7/R8). **Plan FINAL — user gate đạt: 2+ consecutive rounds zero findings mọi severity (R7 còn LOW đã fix ở R7; R8 LOW đã fix; chờ Round 9 confirm zero findings toàn bộ).**
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
@@ -119,7 +119,11 @@ async prompt(text: string, opts?: PromptOpts): Promise<void> {
 
 ```typescript
 // THAY TOÀN BỘ phần khai báo signal + addEventListener trong prompt() bằng:
-// R7-2 FIX (MEDIUM): clear pendingToolNames ở prompt() ENTRY (trước turn_start) —
+// R8-LOW-3: `this.pendingToolNames` được declare ở Fix 2 Step 1 — implement Fix 1 trước
+// sẽ typecheck fail (`Property 'pendingToolNames' does not exist`). Same-file change-set,
+// implement cả 2 fix cùng lúc hoặc thêm field trước. Ordering note.
+// R7-2 FIX (MEDIUM): clear pendingToolNames ở đầu prompt() (R8-LOW-2: thực tế SAU
+// turn_start emit ở trên — comment "trước turn_start" sai; functional OK vì getState poll-based)
 // agent_settled KHÔNG luôn fire (pi-in-process.test.ts:81 safety net: prompt() success/catch
 // paths emit turn_end mà không có agent_settled) → stale "tool:bash" leak sang turn sau.
 this.pendingToolNames.clear();
@@ -257,7 +261,13 @@ private readonly cronSessionTimeoutMs: number;
 this.cronSessionTimeoutMs = opts.cronSessionTimeoutMs ?? 5 * 60_000;
 ```
 
-**R7-3 FIX (MEDIUM — env plumbing):** thêm `cronSessionTimeoutMs: parseInt(process.env.MYA_CRON_SESSION_TIMEOUT_MS ?? "", 10) || undefined,` vào Gateway construction (main.ts ~line 633) — đồng bộ pattern `MYA_CRON_*` env khác (MYA_CRON_MAX_JOBS, MYA_CRON_APPROVAL_MODE). Không có env → undefined → default 5 phút qua constructor. E2E dùng `MYA_CRON_SESSION_TIMEOUT_MS=10000`.
+**R7-3 FIX (MEDIUM — env plumbing):** thêm vào Gateway construction (main.ts ~line 633):
+```typescript
+// R8-LOW-1 FIX: env=0 phải disable (KHÔNG dùng `parseInt || undefined` — 0 → undefined → default 5 min)
+const cronSessionTimeoutMsEnv = Number(process.env.MYA_CRON_SESSION_TIMEOUT_MS);
+cronSessionTimeoutMs: Number.isFinite(cronSessionTimeoutMsEnv) && cronSessionTimeoutMsEnv >= 0 ? cronSessionTimeoutMsEnv : undefined,
+```
+Đồng bộ pattern `MYA_CRON_*` env khác (MYA_CRON_MAX_JOBS, MYA_CRON_APPROVAL_MODE). Không có env → undefined → default 5 phút qua constructor. `MYA_CRON_SESSION_TIMEOUT_MS=0` → disable. E2E dùng `MYA_CRON_SESSION_TIMEOUT_MS=10000`.
 
 ```typescript
 // packages/gateway/src/index.ts — cronSweep, trong Promise.allSettled batch.map(async (job) => {
