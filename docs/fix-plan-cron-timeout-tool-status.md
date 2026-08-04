@@ -112,6 +112,15 @@ async prompt(text: string, opts?: PromptOpts): Promise<void> {
 - `addEventListener("abort", onAbort, { once: true })` + `removeEventListener` trong `finally` — tránh leak
 - KHÔNG pass signal vào `piSession.prompt()` (upstream không nhận — V1)
 - Nếu abort xảy ra, `piSession.abort()` resolve prompt (V3) → textBuffer có partial text → cron thấy "empty response" nếu rỗng
+- **R1-3 HARDENING (INFO):** AbortSignal không replay abort event — nếu signal ĐÃ aborted trước khi `prompt()` chạy (prompt bị queue sau turnLock), listener không fire → timeout inert. Thêm check sync:
+
+```typescript
+const signal = opts?.signal;
+if (signal?.aborted) {
+  void this.piSession.abort().catch(() => {}); // đã aborted trước khi vào — abort ngay
+}
+signal?.addEventListener("abort", onAbort, { once: true });
+```
 
 ### Step 2 — `main.ts`: onRunOnSession + signal param
 
@@ -149,6 +158,22 @@ async function doRunOnSession(
 }
 ```
 
+**R1-1 FIX (HIGH — QUAN TRỌNG): gateway wiring arrow cũng phải forward signal**
+
+```typescript
+// packages/print/src/main.ts — gateway wiring (hiện tại line ~706):
+onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),
+
+// SỬA thành (forward đủ 4 args):
+onRunOnSession: (session, prompt, onEvent, signal) => runOnSession(session, prompt, onEvent, signal),
+```
+
+> **Vì sao bắt buộc**: Gateway gọi `this.onRunOnSession(sessionId, prompt, onEvent, controller.signal)` (4 args).
+> Nếu arrow chỉ nhận 3 args, signal chết tại boundary → Fix 1 hoàn toàn vô hiệu trong production.
+> TypeScript CHO PHÉP assign 3-param function vào 4-param type → pass typecheck, không báo lỗi.
+> Đây là lỗi "tests green, prod broken" kinh điển — unit test với mock nhận 4 args vẫn pass,
+> nhưng production wiring drop signal. **Bắt buộc sửa cả arrow này.**
+
 ### Step 3 — `gateway-types.ts`: update type
 
 ```typescript
@@ -176,13 +201,17 @@ const text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.b
 const sessionId = `_cron:${job.id}`;
 const controller = new AbortController();
 const timeoutMs = this.cronSessionTimeoutMs ?? 5 * 60_000; // mặc định 5 phút
-const timer = setTimeout(() => controller.abort(), timeoutMs);
-timer.unref?.();
+let timer: NodeJS.Timeout | undefined;
+// R1-2 FIX (HIGH): 0 = disable timeout — KHÔNG setTimeout(fn, 0) (abort tức thì)
+if (timeoutMs > 0) {
+  timer = setTimeout(() => controller.abort(), timeoutMs);
+  timer.unref?.();
+}
 let text: string | undefined;
 try {
   text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e), controller.signal);
 } finally {
-  clearTimeout(timer);
+  if (timer) clearTimeout(timer);
 }
 // → phần còn lại (runOutput = text ?? undefined) giữ nguyên
 ```
@@ -197,7 +226,7 @@ try {
 ```typescript
 // packages/gateway/src/gateway-types.ts — thêm field:
 /** Timeout (ms) cho mỗi cron-fired session. Quá hạn → abort session turn.
- * Mặc định 5 phút. 0 = disable timeout. */
+ * Mặc định 5 phút. 0 hoặc undefined = disable timeout (không tạo timer). */
 cronSessionTimeoutMs?: number;
 ```
 
@@ -216,7 +245,7 @@ describe("prompt signal abort", () => {
   });
 });
 
-// packages/gateway/src/gateway.test.ts — THÊM test case:
+// packages/gateway/src/cron-sweep.test.ts — THÊM test case (KHÔNG dùng gateway.test.ts — file đó không tồn tại, R1-5):
 describe("cron session timeout", () => {
   it("[unit] cron sweep aborts session sau timeout", async () => {
     // mock onRunOnSession: giữ promise pending, track signal
@@ -225,6 +254,11 @@ describe("cron session timeout", () => {
     // await sleep(100)
     // assert: signal.aborted === true
     // assert: cron complete với "failed" (empty response)
+  });
+  it("[unit] cronSessionTimeoutMs=0 disables timer (không abort)", async () => {
+    // R1-2 regression test
+    // mock onRunOnSession resolve nhanh
+    // assert: controller.signal.aborted === false
   });
 });
 ```
@@ -309,6 +343,14 @@ getState(): SessionState {
 - `join(",")` cho nhiều tool chạy song song — `"tool:bash,read"`
 - Cast `as SessionState["status"]` — type-safe vì SPI string union
 - `nowWallclock()` — AGENTS.md invariant (không `Date.now()`)
+- **R1-4 HARDENING (INFO):** Clear map ở turn boundary — nếu tool bị abort-ignoring (known limitation), map có thể giữ stale `tool:bash` sang turn sau. Thêm cleanup:
+
+```typescript
+// TRONG constructor subscribe handler, trước normalizer:
+if (e.type === "turn_start" || e.type === "agent_settled") {
+  this.pendingToolNames.clear();
+}
+```
 
 ### Test plan (Fix 2)
 
@@ -339,7 +381,8 @@ describe("tool status", () => {
 □ typecheck: npx tsc --noEmit -p packages/print/tsconfig.json
 □ typecheck: npx tsc --noEmit -p packages/gateway/tsconfig.json
 □ test: npx vitest run packages/print/src/runtimes/pi-in-process.test.ts
-□ test: npx vitest run packages/gateway/src/gateway.test.ts
+□ test: npx vitest run packages/gateway/src/cron-sweep.test.ts
+□ test: npx vitest run packages/gateway/src/drain-gate.test.ts (cron sweep không bị regression)
 □ bundle: npm run bundle
 □ real E2E (cron): 
     - MYA_CRON_APPROVAL_MODE=deny (default)
