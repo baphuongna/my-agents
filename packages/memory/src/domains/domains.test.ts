@@ -18,7 +18,7 @@ function makeBrain(overrides: Partial<Brain> = {}): Brain {
 }
 
 function makeFact(id: string, content: string, source = "manual"): Fact {
-  return { id, kind: "fact", entity: "x", content, visibility: "session", notability: 1, source, createdAt: 0 } as Fact;
+  return { id, kind: "fact", entity: "x", content, visibility: "session", notability: 1, source, createdAt: 0 } as unknown as Fact;
 }
 
 describe("[unit] memory domains", () => {

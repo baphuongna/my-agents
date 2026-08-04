@@ -23,11 +23,11 @@ describe("[unit] core.session", () => {
 
   it("stubMemory query returns []", async () => {
     const mem = stubMemory();
-    expect(await mem.query("anything")).toEqual([]);
+    expect(await mem.query({ text: "anything" } as never)).toEqual([]);
   });
 
   it("createSession builds minimal Tier-0 session", () => {
-    const profiles: ProviderProfile[] = [{ id: "p1", provider: "test", model: "m1" }];
+    const profiles: ProviderProfile[] = [{ id: "p1", model: "m1" } as ProviderProfile];
     const s = createSession({ profiles, userMd: "# Hello" });
     expect(s.profiles).toBe(profiles);
     expect(s.stableTier).toBe("");

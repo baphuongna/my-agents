@@ -84,7 +84,7 @@ describe("[unit] GraphStore", () => {
   });
 
   it("fromJSON rejects unknown version", () => {
-    expect(() => GraphStore.fromJSON({ version: 99, symbols: [], refs: [] } as GraphSnapshot)).toThrow(/unsupported version/);
+    expect(() => GraphStore.fromJSON({ version: 99, symbols: [], refs: [] } as unknown as GraphSnapshot)).toThrow(/unsupported version/);
   });
 
   it("empty store toJSON/fromJSON", () => {

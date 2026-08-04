@@ -13,9 +13,9 @@ describe("[unit] HookRegistry", () => {
   it("higher priority runs first", async () => {
     const reg = new HookRegistry();
     const order: string[] = [];
-    reg.register({ name: "pre_tool", source: "low", priority: 0, handler: () => order.push("low") });
-    reg.register({ name: "pre_tool", source: "high", priority: 10, handler: () => order.push("high") });
-    reg.register({ name: "pre_tool", source: "mid", priority: 5, handler: () => order.push("mid") });
+    reg.register({ name: "pre_tool", source: "low", priority: 0, handler: () => { order.push("low"); } });
+    reg.register({ name: "pre_tool", source: "high", priority: 10, handler: () => { order.push("high"); } });
+    reg.register({ name: "pre_tool", source: "mid", priority: 5, handler: () => { order.push("mid"); } });
     await reg.fire("pre_tool", {});
     expect(order).toEqual(["high", "mid", "low"]);
   });

@@ -8,7 +8,7 @@ function makeBrain(overrides: Partial<Brain> = {}): Brain {
   return { unconsolidatedFacts: () => [], takes: [], allPages: [], consolidate: () => ({}) as never, ...overrides } as unknown as Brain;
 }
 function makeFact(id: string, content: string, source = "manual", createdAt = 0): Fact {
-  return { id, kind: "fact", entity: "x", content, visibility: "session", notability: 1, source, createdAt } as Fact;
+  return { id, kind: "fact", entity: "x", content, visibility: "session", notability: 1, source, createdAt } as unknown as Fact;
 }
 
 describe("[unit] memory domains batch 2", () => {
