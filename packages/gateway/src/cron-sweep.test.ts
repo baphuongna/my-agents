@@ -199,4 +199,23 @@ describe("cron session timeout (Fix 1)", () => {
     await gw.cronSweep("test-worker");
     expect(lastStatus(cron, "t3")).toBe("succeeded"); // NOT timeout-failed — text non-empty
   });
+
+  it("M3 escalation: tool-hang (abort-ignoring) → force-kill sau 2× timeout → failed", async () => {
+    const cron = new CronScheduler();
+    cron.register(dueJob("m3"));
+    let forceKilled = false;
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron,
+      cronSessionTimeoutMs: 10,
+      // M3: onRunOnSession KHÔNG resolve khi abort (tool-hang simulation)
+      onRunOnSession: ((_s: string, _p: string, _onEvent: unknown, _signal?: AbortSignal) => {
+        // Tool-hang: promise treo mãi (abort không resolve — abort-ignoring)
+        return new Promise<string>(() => {});
+      }) as never,
+      cronSessionForceKill: (_sid: string) => { forceKilled = true; },
+    });
+    await gw.cronSweep("test-worker");
+    expect(forceKilled).toBe(true); // escalation fired sau 2× timeout
+    expect(lastStatus(cron, "m3")).toBe("failed");
+  });
 });

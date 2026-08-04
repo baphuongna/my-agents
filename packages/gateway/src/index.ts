@@ -102,6 +102,8 @@ export class Gateway {
   private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void, signal?: AbortSignal) => Promise<string>;
   /** Fix 1: timeout (ms) per cron-fired session. 0 = disable (không tạo timer). Default 5 phút. */
   private readonly cronSessionTimeoutMs: number;
+  /** Fix M3: force-kill callback for tool-hang escalation (2× timeout). */
+  private readonly cronSessionForceKill?: (sessionId: string) => void;
   /** Phase 3A stopgap: max due jobs fired per sweep. */
   private readonly cronMaxConcurrent: number;
   /** Phase 2C: persist scheduler state (atomic cron.json write). */
@@ -223,6 +225,7 @@ export class Gateway {
     this.cronIntervalMs = opts.cronIntervalMs ?? 30_000;
     // Fix 1: cron session timeout (ms) — 0 = disable; default 5 phút (R1-H2: field + ctor wiring)
     this.cronSessionTimeoutMs = opts.cronSessionTimeoutMs ?? 5 * 60_000;
+    this.cronSessionForceKill = opts.cronSessionForceKill;
     this.sync = opts.sync;
     this.collab = opts.collab;
     this.channelRouter = opts.channelRouter;
@@ -587,11 +590,28 @@ export class Gateway {
               timer = setTimeout(() => controller.abort(), timeoutMs);
               timer.unref?.();
             }
+            // Fix M3: escalation timer (2× timeout) — tool-hang (abort-ignoring) →
+            // primary abort không resolve (waitForIdle treo mãi). Sau 2× timeout,
+            // force-kill session (dispose) + Promise.race resolve undefined → cron "failed".
+            let escTimer: NodeJS.Timeout | undefined;
+            const escKill = timeoutMs > 0 && this.cronSessionForceKill
+              ? new Promise<undefined>((resolve) => {
+                  escTimer = setTimeout(() => {
+                    this.cronSessionForceKill!(sessionId);
+                    resolve(undefined);
+                  }, timeoutMs * 2);
+                  escTimer.unref?.();
+                })
+              : new Promise<undefined>(() => {});
             let text: string | undefined;
             try {
-              text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e), controller.signal);
+              text = await Promise.race([
+                this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e), controller.signal),
+                escKill,
+              ]);
             } finally {
               if (timer) clearTimeout(timer);
+              if (escTimer) clearTimeout(escTimer);
             }
             // Fix 1 (R5-1/R6-1): doRunOnSession trả marker khi abort — detect TRƯỚC classify
             // (marker non-empty → classify hiện tại sẽ coi là SUCCESS). Exact-match, không startsWith

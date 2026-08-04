@@ -729,6 +729,8 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
       return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status, summary: meta?.summary, keyOutputs: meta?.keyOutputs, toolStatus: e.session?.getState?.().status };
     }),
     poolKill: (id: string) => { sessionMeta.delete(id); return pool.release(id, { force: true }); },
+    // Fix M3: cron tool-hang escalation — force-release session after 2× timeout
+    cronSessionForceKill: (sid: string) => { sessionMeta.delete(sid); pool.release(sid, { force: true }); },
     poolAcquire: async (input: PoolAcquireInput | string) => {
       const { cwd, role, task, model, parentSessionId } = typeof input === "string" ? ({ cwd: input } as PoolAcquireInput) : input;
       const sessionId = `s-${nowWallclock().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

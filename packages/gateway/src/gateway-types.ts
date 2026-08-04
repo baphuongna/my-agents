@@ -179,6 +179,10 @@ export interface GatewayOptions {
   poolStatus?: () => unknown;
   /** Optional: kill a pool session for POST /pool/kill/:id. */
   poolKill?: (sessionId: string) => boolean;
+  /** Fix M3: force-kill a cron session stuck on a tool-hang (abort-ignoring).
+   * Called after 2× cronSessionTimeoutMs when the primary abort didn't resolve.
+   * Wired to pool.release({force}) → session.abort() + entry delete. */
+  cronSessionForceKill?: (sessionId: string) => void;
   /** Optional: acquire a new pool session for POST /pool/acquire. Accepts the
    * extended input (cwd + role/task/model/parentSessionId) for role-subagent
    * spawns, or a bare cwd string for backward compatibility. */
