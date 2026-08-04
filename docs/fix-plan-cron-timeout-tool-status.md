@@ -428,7 +428,7 @@ getState(): SessionState {
 - **R2-LOW FIX (SPI union widening)**: `"tool:bash,read"` rộng hơn union `"tool:<name>"` (1 name). Cast `as SessionState["status"]` hợp lệ. Nếu muốn type-safe nghiêm ngặt: mở rộng union thành `"tool:<name>" | "tool:<name>,<name>"` — plan này giữ cast, ghi chú trong code comment.
 - **R2-LOW FIX (toolCallId fallback)**: normalizer map `tool_execution_start` với `toolCallId ?? ""` — malformed event → key "" collides. Thêm guard `if (!agentEvent.toolCallId) return;` (pi luôn cung cấp toolCallId — verified, guard là defensive)
 - **R1-4 HARDENING (INFO) — L2 FIX: đặt clear TRƯỚC early-return `agent_settled`** (hiện tại early-return ở line ~167-190 chặn sau normalizer → clear sau đó là dead code với agent_settled):
-- **R2-6 FIX (MEDIUM): pi KHÔNG emit raw `turn_start`** — AgentSessionEvent union không có `turn_start` (runtime tự emit từ prompt()). Chỉ dùng `agent_settled` cho turn-boundary clear:
+- **R2-6 FIX (MEDIUM — rationale sửa): `turn_start` LÀ event thật** — agent-loop.js:50/68/90 emit `turn_start`, user listeners NHẬN qua `_handleAgentEvent` → `_emit(event)`. Nhưng: normalizer KHÔNG map `turn_start` (default null), và pi-in-process.ts subscribe handler không có branch riêng cho nó. Nếu clear ở `turn_start` trong subscribe handler thì cần check `e.type === "turn_start"` TRƯỚC (raw event). Thực tế chỉ cần `agent_settled` — fire ở mọi turn end (bao gồm abort) — nên clear tại đó là đủ và đơn giản hơn. Quyết định giữ nguyên: chỉ clear ở `agent_settled`.
 
 ```typescript
 // TRONG constructor subscribe handler, TRƯỚC if (e.type === "agent_settled") { ...; return; }:
