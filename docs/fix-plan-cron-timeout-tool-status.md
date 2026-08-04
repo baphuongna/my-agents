@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 5 (fix verification, qwen3.7-max) — 1 HIGH + 2 LOW fixed (R5-1 marker detect, R5-LOW before/after, test signal capture). Clean streak: 0 (Round 4 was clean but Round 5 found HIGH). Round 6 verification in progress.
+> **Status**: Round 6 (fix verification, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #1) + 1 MEDIUM + 5 LOW fixed (R6-1..R6-LOW-5). Clean streak: 1. Round 7 verification in progress.
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
@@ -76,7 +76,8 @@ Cron sweep `await onRunOnSession(...)` không có timeout. Nếu session bị k�
 
 ```typescript
 // packages/print/src/runtimes/pi-in-process.ts
-// TRONG async prompt(text, opts?) — hiện tại (line ~207):
+// TRONG async prompt(text, opts?) — hình dung MỤC TIÊU (illustration — KHÔNG phải source hiện tại):
+// source hiện tại (line ~207) KHÔNG có signal handling nào. Đoạn này chỉ để hình dung target.
 async prompt(text: string, opts?: PromptOpts): Promise<void> {
     if (this.disposed) throw new Error("Session disposed");
     this.textBuffer = "";
@@ -170,7 +171,7 @@ async function doRunOnSession(
         streamingBehavior: "followUp",
         ...(signal ? { signal } : {}),  // THÊM
       });
-      // R4-2 FIX (MEDIUM): abort resolve với partial text → KHÔNG trả partial như success.
+      // R4-2/R5-1 FIX: abort resolve với partial text → KHÔNG trả partial như success.
       // Detect signal.aborted → trả error marker để cronSweep complete "failed" với lý do đúng
       // (tránh false success khi timeout giữa chừng — textBuffer có partial).
       if (signal?.aborted) return "[error: cron session timed out]";
@@ -275,7 +276,10 @@ try {
 // R5-1 FIX (HIGH): doRunOnSession trả "[error: cron session timed out]" khi abort —
 // marker NON-EMPTY → phần classify hiện tại (`text == null || trim()===""`) sẽ coi là SUCCESS
 // (false success!). Phải detect marker TRƯỚC phần classify:
-if (typeof text === "string" && text.startsWith("[error:")) {
+// R6-1 FIX (MEDIUM): exact-match marker — KHÔNG startsWith("[error:") vì đụng format
+// `[error: ${message}]` có sẵn (main.ts:455) → mất message thật của non-abort errors.
+const TIMEOUT_MARKER = "[error: cron session timed out]";
+if (text === TIMEOUT_MARKER) {
   this.cron!.complete(run.runId, "failed", "cron session timed out");
 } else {
 // → phần còn lại (runOutput = text ?? undefined + classify succeeded/failed) giữ nguyên, đóng else:
@@ -415,26 +419,11 @@ private pendingToolNames = new Map<string, string>(); // toolCallId → toolName
 
 // TRONG constructor subscribe handler — hiện tại (line ~162):
 // Sau phần PiEventNormalizer.toAgentEvent(event, ...):
-if (agentEvent) {
-    if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
-    // THÊM — track tool call names (parallel-safe: Map theo toolCallId):
-    // R5-LOW FIX: đoạn dưới là BEFORE (unguarded) — chỉ áp dụng R4-1 guarded version bên dưới:
-    if (agentEvent.type === "tool_call") {
-      this.pendingToolNames.set(agentEvent.toolCallId, agentEvent.name);
-    } else if (agentEvent.type === "tool_result") {
-      this.pendingToolNames.delete(agentEvent.toolCallId);
-    }
-    this.emit(agentEvent);
-}
-```
-
-**R4-1 FIX (MEDIUM — áp dụng version này, guard map-op KHÔNG return sớm):**
-
-```typescript
+// R6-LOW-2 FIX: chỉ 1 canonical version (R4-1 guarded) — xóa unguarded BEFORE:
 if (agentEvent) {
     if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
     // R4-1: guard CHỈ map-op — KHÔNG return sớm (drop tool events khỏi stream):
-    if (agentEvent.type === "tool_call" && agentEvent.toolCallId) {
+    if (agentEvent.type === "tool_call" && agentEvent.toolCallId && agentEvent.name) {
       this.pendingToolNames.set(agentEvent.toolCallId, agentEvent.name);
     } else if (agentEvent.type === "tool_result" && agentEvent.toolCallId) {
       this.pendingToolNames.delete(agentEvent.toolCallId);
@@ -442,6 +431,8 @@ if (agentEvent) {
     this.emit(agentEvent);
 }
 ```
+
+> **R6-LOW-5 FIX**: guard thêm `&& agentEvent.name` — normalizer emit `name: toolName ?? ""` (pi-event-normalizer.ts:59); valid id + missing name → status `"tool:"` (empty). Với `&& name` → bỏ qua, không tạo empty status.
 
 ### Step 2 — pi-in-process.ts: getState() trả tool names
 
@@ -474,22 +465,16 @@ getState(): SessionState {
 - Cast `as SessionState["status"]` — type-safe vì SPI string union
 - `nowWallclock()` — AGENTS.md invariant (không `Date.now()`)
 - **R2-LOW FIX (SPI union widening)**: `"tool:bash,read"` rộng hơn union `"tool:<name>"` (1 name). Cast `as SessionState["status"]` hợp lệ. Nếu muốn type-safe nghiêm ngặt: mở rộng union thành `"tool:<name>" | "tool:<name>,<name>"` — plan này giữ cast, ghi chú trong code comment.
-- **R2-LOW FIX (toolCallId fallback — R4-1 SỬA)**: normalizer map `tool_execution_start` với `toolCallId ?? ""` — malformed event → key "" collides. Guard CHỈ map-op, KHÔNG `return` (return sớm trong subscribe callback sẽ drop tool_call/tool_result khỏi AgentEvent stream → dashboard mất event):
-
-```typescript
-if (agentEvent.type === "tool_call" && agentEvent.toolCallId) {
-  this.pendingToolNames.set(agentEvent.toolCallId, agentEvent.name);
-} else if (agentEvent.type === "tool_result" && agentEvent.toolCallId) {
-  this.pendingToolNames.delete(agentEvent.toolCallId);
-}
-```
+- **R2-LOW FIX (toolCallId fallback — R4-1 SỬA)**: normalizer map `tool_execution_start` với `toolCallId ?? ""` — malformed event → key "" collides. Guard CHỈ map-op (canonical ở Step 1 trên), KHÔNG `return` — return sớm trong subscribe callback sẽ drop tool_call/tool_result khỏi AgentEvent stream → dashboard mất event.
 - **R1-4 HARDENING (INFO) — L2 FIX: đặt clear TRƯỚC early-return `agent_settled`** (hiện tại early-return ở line ~167-190 chặn sau normalizer → clear sau đó là dead code với agent_settled):
 - **R2-6 FIX (MEDIUM — rationale sửa): `turn_start` LÀ event thật** — agent-loop.js:50/68/90 emit `turn_start`, user listeners NHẬN qua `_handleAgentEvent` → `_emit(event)`. Nhưng: normalizer KHÔNG map `turn_start` (default null), và pi-in-process.ts subscribe handler không có branch riêng cho nó. Nếu clear ở `turn_start` trong subscribe handler thì cần check `e.type === "turn_start"` TRƯỚC (raw event). Thực tế chỉ cần `agent_settled` — fire ở mọi turn end (bao gồm abort) — nên clear tại đó là đủ và đơn giản hơn. Quyết định giữ nguyên: chỉ clear ở `agent_settled`.
 
 ```typescript
 // TRONG constructor subscribe handler, TRƯỚC if (e.type === "agent_settled") { ...; return; }:
+// R6-LOW-3: MERGE vào branch agent_settled hiện có (không tạo branch thứ 2 cùng condition):
 if (e.type === "agent_settled") {
-  this.pendingToolNames.clear();
+  this.pendingToolNames.clear();  // THÊM dòng này vào đầu branch agent_settled hiện có
+  // ... (giữ nguyên turnClosed/turnActive/emit turn_end logic)
 }
 // ... rồi mới đến agent_settled early-return + normalizer + tool tracking
 ```
@@ -544,7 +529,7 @@ describe("tool status", () => {
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| V3: abort resolve (không reject) | Cron thấy "empty response" thay vì "timeout" | **R4-2 FIX (MEDIUM — promote vào scope)**: detect `signal.aborted` trong main.ts doRunOnSession sau khi prompt resolve → trả error message riêng `"[error: cron session timed out]"` → cron thấy failed với lý do đúng. Xem Step 2 note bên dưới |
+| V3: abort resolve (không reject) | Cron thấy "empty response" thay vì "timeout" | **R5-1 FIX (HIGH — promoted từ R4-2)**: detect `signal.aborted` trong main.ts doRunOnSession sau khi prompt resolve → trả marker `"[error: cron session timed out]"` → cronSweep exact-match marker → complete "failed" với lý do đúng (R6-1: exact-match, không startsWith — tránh mất message thật của non-abort errors). Xem Step 2 + Step 4 |
 | `piSession.abort()` chờ `waitForIdle()` mãi nếu agent loop stuck | Timeout không bao giờ resolve → cronSweeping giữ true → ALL cron blocked | **M3 FIX: fix này chỉ cover abort-respecting hangs (LLM hang).** Với tool hang (abort-ignoring): thêm escalation 2× timeout → `pool.release({force})` (dispose session, ĐÃ gọi abort bên trong pool.ts:199). Xem Step 4b bên dưới. Document là known limitation |
 | Parallel tools → status nhiều tool | UX hơi noise | `join(",")` — dashboard có thể show tối đa 2 cái |
 | Gateway signature change | Typecheck fail nếu bỏ sót caller | Grep tất cả `onRunOnSession(` callers sau khi sửa |
