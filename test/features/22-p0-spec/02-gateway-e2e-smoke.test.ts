@@ -147,6 +147,7 @@ describe.skipIf(BIN_ARGS.length === 0)("[system] gateway E2E smoke", () => {
 	});
 
 	it("WS /events receives events after acquire + prompt", async () => {
+		// Flaky fix: WS message can take ~5s (mock mode) — default 5s timeout too tight
 		// Acquire a session
 		const acquired = await fetchJson("/pool/acquire", {
 			method: "POST",
@@ -177,7 +178,7 @@ describe.skipIf(BIN_ARGS.length === 0)("[system] gateway E2E smoke", () => {
 		// but the WS must not crash.
 		expect(ws.readyState).not.toBe(WebSocket.CLOSED);
 		ws.close();
-	});
+	}, 8_000);
 
 	// ── Cron ────────────────────────────────────────────────────────────────
 
