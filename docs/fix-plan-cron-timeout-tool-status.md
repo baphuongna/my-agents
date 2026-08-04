@@ -112,14 +112,25 @@ async prompt(text: string, opts?: PromptOpts): Promise<void> {
 - `addEventListener("abort", onAbort, { once: true })` + `removeEventListener` trong `finally` — tránh leak
 - KHÔNG pass signal vào `piSession.prompt()` (upstream không nhận — V1)
 - Nếu abort xảy ra, `piSession.abort()` resolve prompt (V3) → textBuffer có partial text → cron thấy "empty response" nếu rỗng
-- **R1-3 HARDENING (INFO):** AbortSignal không replay abort event — nếu signal ĐÃ aborted trước khi `prompt()` chạy (prompt bị queue sau turnLock), listener không fire → timeout inert. Thêm check sync:
+- **R1-3 HARDENING (INFO) — M2 FIX: đây là REPLACEMENT cho phần signal ở trên, không phải thêm mới** (tránh re-declare `const signal`). Đoạn Step 1 hoàn chỉnh:
 
 ```typescript
+// THAY TOÀN BỘ phần khai báo signal + addEventListener trong prompt() bằng:
 const signal = opts?.signal;
+const onAbort = () => {
+  // V3: abort() resolve prompt() (không reject) — vẫn cần signal handler
+  // vì pi không nhận signal qua PromptOptions
+  void this.piSession.abort().catch(() => {});
+};
 if (signal?.aborted) {
-  void this.piSession.abort().catch(() => {}); // đã aborted trước khi vào — abort ngay
+  // R1-3: AbortSignal không replay abort event — nếu ĐÃ aborted trước khi vào
+  // prompt (prompt queue sau turnLock) → abort ngay, không đợi listener
+  void this.piSession.abort().catch(() => {});
 }
 signal?.addEventListener("abort", onAbort, { once: true });
+
+// finally giữ nguyên:
+// signal?.removeEventListener("abort", onAbort);
 ```
 
 ### Step 2 — `main.ts`: onRunOnSession + signal param
@@ -191,6 +202,18 @@ onRunOnSession?: (
 
 ### Step 4 — `gateway/index.ts`: timeout trong cronSweep
 
+**R1-H2 FIX (HIGH — thêm field + constructor wiring trước khi dùng):**
+
+```typescript
+// packages/gateway/src/index.ts — thêm field (gần cronIntervalMs, ~line 117):
+/** Timeout (ms) cho mỗi cron-fired session. Quá hạn → abort session turn.
+ * 0 = disable (không tạo timer). Mặc định 5 phút. */
+private readonly cronSessionTimeoutMs: number;
+
+// packages/gateway/src/index.ts — constructor (gần this.cronIntervalMs = opts.cronIntervalMs ?? 30_000):
+this.cronSessionTimeoutMs = opts.cronSessionTimeoutMs ?? 5 * 60_000;
+```
+
 ```typescript
 // packages/gateway/src/index.ts — cronSweep, trong Promise.allSettled batch.map(async (job) => {
 // Hiện tại (line ~571):
@@ -200,7 +223,7 @@ const text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.b
 // SỬA thành:
 const sessionId = `_cron:${job.id}`;
 const controller = new AbortController();
-const timeoutMs = this.cronSessionTimeoutMs ?? 5 * 60_000; // mặc định 5 phút
+const timeoutMs = this.cronSessionTimeoutMs; // field ĐÃ có default 5*60_000 từ constructor
 let timer: NodeJS.Timeout | undefined;
 // R1-2 FIX (HIGH): 0 = disable timeout — KHÔNG setTimeout(fn, 0) (abort tức thì)
 if (timeoutMs > 0) {
@@ -217,7 +240,7 @@ try {
 ```
 
 **Chú ý**:
-- `cronSessionTimeoutMs` — thêm vào GatewayOptions với default `5 * 60_000` (config optional)
+- `cronSessionTimeoutMs` là **Gateway class field** (constructor default `5 * 60_000`), KHÔNG phải chỉ là GatewayOptions — thiếu field → `Property 'cronSessionTimeoutMs' does not exist on type 'Gateway'`
 - Nếu timeout: `controller.abort()` → piSession.abort() → prompt resolve với partial text (V3) → cron thấy "empty response" hoặc partial — **không throw, không crash sweep**
 - `timer.unref?.()` — không giữ process alive nếu gateway shutdown
 
@@ -226,7 +249,8 @@ try {
 ```typescript
 // packages/gateway/src/gateway-types.ts — thêm field:
 /** Timeout (ms) cho mỗi cron-fired session. Quá hạn → abort session turn.
- * Mặc định 5 phút. 0 hoặc undefined = disable timeout (không tạo timer). */
+ * Mặc định 5 phút. 0 = disable timeout (không tạo timer).
+ * R1-H1 FIX: undefined KHÔNG disable — default 5 phút qua constructor. */
 cronSessionTimeoutMs?: number;
 ```
 
@@ -343,13 +367,14 @@ getState(): SessionState {
 - `join(",")` cho nhiều tool chạy song song — `"tool:bash,read"`
 - Cast `as SessionState["status"]` — type-safe vì SPI string union
 - `nowWallclock()` — AGENTS.md invariant (không `Date.now()`)
-- **R1-4 HARDENING (INFO):** Clear map ở turn boundary — nếu tool bị abort-ignoring (known limitation), map có thể giữ stale `tool:bash` sang turn sau. Thêm cleanup:
+- **R1-4 HARDENING (INFO) — L2 FIX: đặt clear TRƯỚC early-return `agent_settled`** (hiện tại early-return ở line ~167-190 chặn sau normalizer → clear sau đó là dead code với agent_settled):
 
 ```typescript
-// TRONG constructor subscribe handler, trước normalizer:
+// TRONG constructor subscribe handler, TRƯỚC if (e.type === "agent_settled") { ...; return; }:
 if (e.type === "turn_start" || e.type === "agent_settled") {
   this.pendingToolNames.clear();
 }
+// ... rồi mới đến agent_settled early-return + normalizer + tool tracking
 ```
 
 ### Test plan (Fix 2)
@@ -399,9 +424,22 @@ describe("tool status", () => {
 | Risk | Impact | Mitigation |
 |---|---|---|
 | V3: abort resolve (không reject) | Cron thấy "empty response" thay vì "timeout" | Chấp nhận — functionally OK, message hơi sai. Improve sau: detect `signal.aborted` trong main.ts và trả error message riêng |
-| `piSession.abort()` chờ `waitForIdle()` mãi nếu agent loop stuck | Timeout không bao giờ resolve | Edge case hiếm (provider hang ignore abort). Backup: pool.release({force}) sau 2× timeout. Document là known limitation |
+| `piSession.abort()` chờ `waitForIdle()` mãi nếu agent loop stuck | Timeout không bao giờ resolve → cronSweeping giữ true → ALL cron blocked | **M3 FIX: fix này chỉ cover abort-respecting hangs (LLM hang).** Với tool hang (abort-ignoring): thêm escalation 2× timeout → `pool.release({force})` (dispose session, ĐÃ gọi abort bên trong pool.ts:199). Xem Step 4b bên dưới. Document là known limitation |
 | Parallel tools → status nhiều tool | UX hơi noise | `join(",")` — dashboard có thể show tối đa 2 cái |
 | Gateway signature change | Typecheck fail nếu bỏ sót caller | Grep tất cả `onRunOnSession(` callers sau khi sửa |
+
+### Step 4b (M3 FIX — escalation cho tool hang)
+
+```typescript
+// packages/print/src/main.ts — doRunOnSession, sau khi session.prompt() reject/abort:
+// Nếu abort không resolve trong X ms → force-release (dispose) session:
+// (escalation tầng 2 — pool.release({force}) gọi entry.session.abort() + delete entry)
+```
+
+> **Design note (M3)**: Fix 1 core (AbortController → piSession.abort()) xử lý LLM hang (abort-respecting).
+> Tool hang (bash sleep 300 ignore abort) — abort() chờ waitForIdle() mãi → timeout không resolve.
+> Giải pháp thực tế: E2E verification phải dùng LLM-hang scenario (không phải bash hang).
+> Tool-hang escalation (force-release sau 2× timeout) là OUT OF SCOPE cho plan này — document, không implement.
 
 ## Files touched summary
 
@@ -411,7 +449,7 @@ packages/print/src/main.ts                     (Fix 1 Step 2)
 packages/gateway/src/gateway-types.ts          (Fix 1 Steps 3+5)
 packages/gateway/src/index.ts                  (Fix 1 Step 4)
 packages/print/src/runtimes/pi-in-process.test.ts  (2 fix tests)
-packages/gateway/src/gateway.test.ts           (Fix 1 test)
+packages/gateway/src/cron-sweep.test.ts        (Fix 1 test)
 ```
 
 ## Out of scope (explicitly NOT doing)
