@@ -4,8 +4,11 @@
  * Reference: packages/cron/src/index.ts, packages/coding-agent/src/core/skills.ts
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { spawnMya } from "../../helpers/spawn-mya.ts";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // ──────────────────────────────────────────────────────────────
 // UNIT — Cron job skill injection
@@ -136,11 +139,21 @@ describe("[smoke] cron module", () => {
 // REAL — cron job with skills
 // ──────────────────────────────────────────────────────────────
 
-describe("[real] mya cron with skills", () => {
+describe.skipIf(!process.env["MYA_BIN"] && !existsSync("dist/mya.js"))("[real] mya cron with skills", () => {
+	let tmpHome: string;
+
+	beforeEach(() => {
+		tmpHome = mkdtempSync(join(tmpdir(), "mya-cron-test-"));
+	});
+
+	afterEach(() => {
+		rmSync(tmpHome, { recursive: true, force: true });
+	});
+
 	it("cron add <job> with --skill flag", async () => {
 		const child = spawnMya(
 			["cron", "add", "--skill", "git-helper", "test-job", "*/1 * * * *", "echo", "test"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
+			{ env: { ...process.env, MYA_MOCK: "1", HOME: tmpHome } },
 		);
 		let out = "";
 		child.stdout?.on("data", (d) => out += d.toString());
@@ -151,7 +164,7 @@ describe("[real] mya cron with skills", () => {
 	it("cron list shows jobs with skills", async () => {
 		const child = spawnMya(
 			["cron", "list"],
-			{ env: { ...process.env, MYA_MOCK: "1" } },
+			{ env: { ...process.env, MYA_MOCK: "1", HOME: tmpHome } },
 		);
 		let out = "";
 		child.stdout?.on("data", (d) => out += d.toString());

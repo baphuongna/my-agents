@@ -66,7 +66,31 @@ describe("[unit] Terminal — smoke", () => {
     (globalThis as any).cancelAnimationFrame = caf;
     (window as any).requestAnimationFrame = raf;
     (window as any).cancelAnimationFrame = caf;
+    // Re-assert matchMedia (xterm color contrast check needs it post-restore).
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    // Re-assert getContext (plain stub survives restore, but assert for safety).
+    HTMLCanvasElement.prototype.getContext = (() => null) as never;
     vi.restoreAllMocks();
+    // restoreAllMocks cleared matchMedia — re-install one more time.
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
   });
 
   it("mounts and renders the host element without crashing (no wsUrl)", () => {

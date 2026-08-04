@@ -11,6 +11,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnMya, myaSpawnInfo } from "../../helpers/spawn-mya.ts";
+import { existsSync } from "node:fs";
+
+const _hasBinary = !!process.env["MYA_BIN"] || existsSync("dist/mya.js");
 
 // ══════════════════════════════════════════════════════════════
 // §10 Desktop App (Tauri)
@@ -586,8 +589,8 @@ describe("[real] mya launcher", () => {
 	});
 });
 
-	describe("[real] mya serve full", () => {
-	const port = 4299;
+	describe.skipIf(!_hasBinary)("[real] mya serve full", () => {
+	const port = 4299 + Math.floor(Math.random() * 100);
 	// Use a temp HOME so no MCP servers are loaded (instant boot instead of ~25s)
 	const tmpHome = mkdtempSync(join(tmpdir(), "mya-test-home-"));
 	const base = `http://127.0.0.1:${port}`;

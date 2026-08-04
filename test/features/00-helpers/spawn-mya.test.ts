@@ -5,7 +5,8 @@
  * bug: when MYA_BIN was set to a .js path, they still prepended "dist/mya.js"
  * to argv, causing the binary to hang.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { myaSpawnInfo } from "../../../test/helpers/spawn-mya.ts";
 
 describe("[unit] myaSpawnInfo", () => {
 	const origBin = process.env["MYA_BIN"];
@@ -15,41 +16,36 @@ describe("[unit] myaSpawnInfo", () => {
 		else process.env["MYA_BIN"] = origBin;
 	});
 
-	it("MYA_BIN=<file>.js → spawn node with [MYA_BIN]", async () => {
+	it("MYA_BIN=<file>.js → spawn node with [MYA_BIN]", () => {
 		process.env["MYA_BIN"] = "/abs/path/to/mya.js";
-		const { myaSpawnInfo } = await import("../../../test/helpers/spawn-mya.ts");
 		const info = myaSpawnInfo();
 		expect(info.cmd).toBe("node");
 		expect(info.args).toEqual(["/abs/path/to/mya.js"]);
 	});
 
-	it("MYA_BIN=<file>.mjs → spawn node with [MYA_BIN]", async () => {
+	it("MYA_BIN=<file>.mjs → spawn node with [MYA_BIN]", () => {
 		process.env["MYA_BIN"] = "./build/mya.mjs";
-		const { myaSpawnInfo } = await import("../../../test/helpers/spawn-mya.ts");
 		const info = myaSpawnInfo();
 		expect(info.cmd).toBe("node");
 		expect(info.args).toEqual(["./build/mya.mjs"]);
 	});
 
-	it("MYA_BIN=<file>.cjs → spawn node with [MYA_BIN]", async () => {
+	it("MYA_BIN=<file>.cjs → spawn node with [MYA_BIN]", () => {
 		process.env["MYA_BIN"] = "./build/mya.cjs";
-		const { myaSpawnInfo } = await import("../../../test/helpers/spawn-mya.ts");
 		const info = myaSpawnInfo();
 		expect(info.cmd).toBe("node");
 		expect(info.args).toEqual(["./build/mya.cjs"]);
 	});
 
-	it("MYA_BIN=./mya (compiled binary) → spawn directly with no prefix", async () => {
+	it("MYA_BIN=./mya (compiled binary) → spawn directly with no prefix", () => {
 		process.env["MYA_BIN"] = "./mya";
-		const { myaSpawnInfo } = await import("../../../test/helpers/spawn-mya.ts");
 		const info = myaSpawnInfo();
 		expect(info.cmd).toBe("./mya");
 		expect(info.args).toEqual([]);
 	});
 
-	it("MYA_BIN unset + dist/mya.js exists → spawn node dist/mya.js", async () => {
+	it("MYA_BIN unset + dist/mya.js exists → spawn node dist/mya.js", () => {
 		delete process.env["MYA_BIN"];
-		const { myaSpawnInfo } = await import("../../../test/helpers/spawn-mya.ts");
 		// Test runs from project root where dist/mya.js exists (after npm run bundle).
 		// If dist/mya.js is missing, myaSpawnInfo throws — which is correct behavior.
 		try {
@@ -62,9 +58,8 @@ describe("[unit] myaSpawnInfo", () => {
 		}
 	});
 
-	it("MYA_BIN='' (empty) → treated as unset, falls through to dist/mya.js", async () => {
+	it("MYA_BIN='' (empty) → treated as unset, falls through to dist/mya.js", () => {
 		process.env["MYA_BIN"] = "";
-		const { myaSpawnInfo } = await import("../../../test/helpers/spawn-mya.ts");
 		try {
 			const info = myaSpawnInfo();
 			expect(info.cmd).toBe("node");
