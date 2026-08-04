@@ -186,4 +186,83 @@ describe("[smoke] PiInProcessSession", () => {
     await session.dispose();
     expect(mock.dispose).toHaveBeenCalled();
   });
+
+  // ── Fix 1: AbortSignal → piSession.abort() ────────────────────────────────
+  it("abort signal triggers piSession.abort()", async () => {
+    let resolvePending!: () => void;
+    const pending = new Promise<void>((r) => { resolvePending = r; });
+    let abortCalled = false;
+    const mock = makeMockPiSession({
+      prompt: vi.fn(() => pending),
+      abort: vi.fn(() => { abortCalled = true; resolvePending(); return Promise.resolve(); }),
+    });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+
+    const controller = new AbortController();
+    const p = session.prompt("hello", { signal: controller.signal });
+    controller.abort();
+    await p;
+
+    expect(abortCalled).toBe(true);
+  });
+
+  it("pre-aborted signal short-circuits without calling piSession.prompt", async () => {
+    const mock = makeMockPiSession();
+    const session = new PiInProcessSession(mock as any, makeOpts());
+    const events: AgentEvent[] = [];
+    session.onEvent(e => events.push(e));
+
+    const controller = new AbortController();
+    controller.abort();
+    await session.prompt("hello", { signal: controller.signal });
+
+    expect(mock.prompt).not.toHaveBeenCalled();
+    expect(events.some(e => e.type === "turn_end")).toBe(true);
+  });
+
+  // ── Fix 2: tool status ────────────────────────────────────────────────────
+  it("status là tool:name khi tool đang chạy", async () => {
+    const mock = makeMockPiSession({ isIdle: false });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash" });
+    expect(session.getState().status).toBe("tool:bash");
+  });
+
+  it("status về thinking khi tool xong", async () => {
+    const mock = makeMockPiSession({ isIdle: false });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash" });
+    mock._emit({ type: "tool_execution_end", toolCallId: "call-1" });
+    expect(session.getState().status).toBe("thinking");
+  });
+
+  it("parallel tools → status tool:bash,read", async () => {
+    const mock = makeMockPiSession({ isIdle: false });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash" });
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-2", toolName: "read" });
+    expect(session.getState().status).toBe("tool:bash,read");
+  });
+
+  it("same tool parallel calls dedupe → tool:bash (không bash,bash)", async () => {
+    const mock = makeMockPiSession({ isIdle: false });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash" });
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-2", toolName: "bash" });
+    expect(session.getState().status).toBe("tool:bash");
+  });
+
+  it("pendingToolNames cleared at agent_settled", async () => {
+    const mock = makeMockPiSession({ isIdle: false });
+    const session = new PiInProcessSession(mock as any, makeOpts());
+
+    mock._emit({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash" });
+    expect(session.getState().status).toBe("tool:bash");
+    mock._emit({ type: "agent_settled" });
+    expect(session.getState().status).toBe("thinking");
+  });
 });

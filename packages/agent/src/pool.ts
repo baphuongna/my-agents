@@ -35,6 +35,8 @@ export interface AgentSession {
   subscribe(listener: (event: unknown) => void): () => void;
   abort(): void;
   readonly sessionFile?: string;
+  /** Fix 2 (R2-2): runtime state (status/tool names) — optional, adapter implements. */
+  getState?(): { status: string };
 }
 
 export type SessionFactory = (sessionId: string, cwd?: string, agentDir?: string) => Promise<AgentSession>;

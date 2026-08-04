@@ -128,8 +128,13 @@ export interface GatewayOptions {
    * before the first sweep tick. */
   cronReload?: () => void;
   /** Phase 1A: run a cron-fired prompt on a pooled session and return its text.
-   * The sweep awaits this before recording the run's outcome (D2 fix). */
-  onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
+   * The sweep awaits this before recording the run's outcome (D2 fix).
+   * Fix 1: signal (AbortSignal) — timeout abort → piSession.abort(). */
+  onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void, signal?: AbortSignal) => Promise<string>;
+  /** Fix 1: timeout (ms) per cron-fired session. Quá hạn → abort session turn.
+   * Mặc định 5 phút. 0 = disable (không tạo timer).
+   * R1-H1: undefined KHÔNG disable — default 5 phút qua constructor. */
+  cronSessionTimeoutMs?: number;
   /** Phase 3A stopgap: max due jobs fired per sweep (bounds concurrent full-cred
    * turns / cost amplification until the full scheduler.max_concurrent lands). */
   cronMaxConcurrent?: number;

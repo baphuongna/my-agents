@@ -148,3 +148,55 @@ describe("gateway cron sweep — D2 real-outcome (Phase 1A)", () => {
     expect(lastStatus(cron, "injected")).toBe("succeeded"); // reload's job fired
   });
 });
+
+describe("cron session timeout (Fix 1)", () => {
+  it("aborts session sau timeout — records 'failed' với timeout reason", async () => {
+    const cron = new CronScheduler();
+    cron.register(dueJob("t1"));
+    let sig: AbortSignal | undefined;
+    let resolvePending!: (v: string) => void;
+    const pending = new Promise<string>((r) => { resolvePending = r; });
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron,
+      cronSessionTimeoutMs: 20,
+      onRunOnSession: ((_s: string, _p: string, _onEvent: unknown, signal?: AbortSignal) => {
+        sig = signal;
+        signal?.addEventListener("abort", () => resolvePending("[error: cron session timed out]"));
+        return pending;
+      }) as never,
+    });
+    await gw.cronSweep("test-worker");
+    expect(sig?.aborted).toBe(true);
+    expect(lastStatus(cron, "t1")).toBe("failed");
+    expect(cron.runsOf("t1").at(-1)?.error).toBe("cron session timed out");
+  });
+
+  it("cronSessionTimeoutMs=0 disables timer (không abort)", async () => {
+    const cron = new CronScheduler();
+    cron.register(dueJob("t2"));
+    let sig: AbortSignal | undefined;
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron,
+      cronSessionTimeoutMs: 0,
+      onRunOnSession: ((_s: string, _p: string, _onEvent: unknown, signal?: AbortSignal) => {
+        sig = signal;
+        return Promise.resolve("fast result");
+      }) as never,
+    });
+    await gw.cronSweep("test-worker");
+    expect(sig?.aborted).toBe(false);
+    expect(lastStatus(cron, "t2")).toBe("succeeded");
+  });
+
+  it("non-timeout [error: msg] không bị misclassify thành timeout", async () => {
+    // R6-1 regression: exact-match marker — format [error: msg] có sẵn phải giữ message thật
+    const cron = new CronScheduler();
+    cron.register(dueJob("t3"));
+    const gw = new Gateway({
+      host: "127.0.0.1", port: 0, cron,
+      onRunOnSession: (async () => "[error: session disposed]") as never,
+    });
+    await gw.cronSweep("test-worker");
+    expect(lastStatus(cron, "t3")).toBe("succeeded"); // NOT timeout-failed — text non-empty
+  });
+});

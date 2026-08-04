@@ -97,8 +97,11 @@ export class Gateway {
   private pollTimer?: SupervisedTaskHandle; // R6-4: channel inbound polling loop
   /** Phase 0B: reconcile scheduler from cron.json each sweep. */
   private readonly cronReload?: () => void;
-  /** Phase 1A: run a cron-fired prompt, returning the response text. */
-  private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void) => Promise<string>;
+  /** Phase 1A: run a cron-fired prompt, returning the response text.
+   * Fix 1: signal (AbortSignal) — timeout abort → piSession.abort(). */
+  private readonly onRunOnSession?: (sessionId: string, prompt: string, onEvent?: (e: unknown) => void, signal?: AbortSignal) => Promise<string>;
+  /** Fix 1: timeout (ms) per cron-fired session. 0 = disable (không tạo timer). Default 5 phút. */
+  private readonly cronSessionTimeoutMs: number;
   /** Phase 3A stopgap: max due jobs fired per sweep. */
   private readonly cronMaxConcurrent: number;
   /** Phase 2C: persist scheduler state (atomic cron.json write). */
@@ -218,6 +221,8 @@ export class Gateway {
     this.hooks = opts.hooks ?? new HookRegistry();
     this.cron = opts.cron;
     this.cronIntervalMs = opts.cronIntervalMs ?? 30_000;
+    // Fix 1: cron session timeout (ms) — 0 = disable; default 5 phút (R1-H2: field + ctor wiring)
+    this.cronSessionTimeoutMs = opts.cronSessionTimeoutMs ?? 5 * 60_000;
     this.sync = opts.sync;
     this.collab = opts.collab;
     this.channelRouter = opts.channelRouter;
@@ -573,16 +578,38 @@ export class Gateway {
             this.cron!.complete(run.runId, "failed", "no cron session runner wired");
           } else {
             const sessionId = `_cron:${job.id}`;
-            const text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e));
-            runOutput = text ?? undefined;
-            // Phase 5: [SILENT]/NO_REPLY — succeeded but suppresses delivery.
-            const { isSilenceResponse } = await import("@my-agent/cron");
-            if (text == null || text.trim() === "") {
-              this.cron!.complete(run.runId, "failed", "agent produced empty response");
-            } else if (isSilenceResponse(text)) {
-              this.cron!.complete(run.runId, "succeeded"); // silent — no broadcast of content
+            // Fix 1: cron session timeout — AbortController + timer → piSession.abort()
+            const controller = new AbortController();
+            const timeoutMs = this.cronSessionTimeoutMs;
+            let timer: NodeJS.Timeout | undefined;
+            // R1-2: 0 = disable timeout — KHÔNG setTimeout(fn, 0) (abort tức thì)
+            if (timeoutMs > 0) {
+              timer = setTimeout(() => controller.abort(), timeoutMs);
+              timer.unref?.();
+            }
+            let text: string | undefined;
+            try {
+              text = await this.onRunOnSession(sessionId, prompt, (e: unknown) => this.broadcast(`_cron:${job.id}`, e), controller.signal);
+            } finally {
+              if (timer) clearTimeout(timer);
+            }
+            // Fix 1 (R5-1/R6-1): doRunOnSession trả marker khi abort — detect TRƯỚC classify
+            // (marker non-empty → classify hiện tại sẽ coi là SUCCESS). Exact-match, không startsWith
+            // (tránh đụng format `[error: msg]` có sẵn → mất message thật).
+            const TIMEOUT_MARKER = "[error: cron session timed out]";
+            if (text === TIMEOUT_MARKER) {
+              this.cron!.complete(run.runId, "failed", "cron session timed out");
             } else {
-              this.cron!.complete(run.runId, "succeeded");
+              runOutput = text ?? undefined;
+              // Phase 5: [SILENT]/NO_REPLY — succeeded but suppresses delivery.
+              const { isSilenceResponse } = await import("@my-agent/cron");
+              if (text == null || text.trim() === "") {
+                this.cron!.complete(run.runId, "failed", "agent produced empty response");
+              } else if (isSilenceResponse(text)) {
+                this.cron!.complete(run.runId, "succeeded"); // silent — no broadcast of content
+              } else {
+                this.cron!.complete(run.runId, "succeeded");
+              }
             }
           }
         } catch (e) {

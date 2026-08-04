@@ -156,6 +156,8 @@ export class PiInProcessSession implements RuntimeSession {
   private turnActive = false;
   private turnClosed = false; // M1 fix: guards late agent_settled after our turn already closed
   private disposed = false;
+  // Fix 2: track pending tool names (parallel-safe — Map theo toolCallId)
+  private pendingToolNames = new Map<string, string>();
 
   private unsubscribePi: (() => void) | null = null;
 
@@ -164,6 +166,8 @@ export class PiInProcessSession implements RuntimeSession {
       const e = event as { type: string };
 
       if (e.type === "agent_settled") {
+        // Fix 2: clear pending tool map at turn boundary (agent_settled fires every turn end incl. abort)
+        this.pendingToolNames.clear();
         // M1 fix: late/duplicate agent_settled after our turn closed (success/error) must not re-emit
         if (this.turnClosed) return;
         if (!this.turnActive) {
@@ -199,6 +203,12 @@ export class PiInProcessSession implements RuntimeSession {
 
       if (agentEvent) {
         if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
+        // Fix 2: track tool call names (parallel-safe — Map theo toolCallId; guard CHỈ map-op, không return sớm)
+        if (agentEvent.type === "tool_call" && agentEvent.toolCallId && agentEvent.name) {
+          this.pendingToolNames.set(agentEvent.toolCallId, agentEvent.name);
+        } else if (agentEvent.type === "tool_result" && agentEvent.toolCallId) {
+          this.pendingToolNames.delete(agentEvent.toolCallId);
+        }
         this.emit(agentEvent);
       }
     });
@@ -210,12 +220,34 @@ export class PiInProcessSession implements RuntimeSession {
     this.accumulatedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
     this.turnActive = true;
     this.turnClosed = false;
+    // Fix 2 (R7-2): clear pending tool map at prompt entry — agent_settled may not fire
+    // on prompt() success/catch paths (safety-net test) → stale "tool:bash" leak otherwise
+    this.pendingToolNames.clear();
 
     this.emit({
       type: "turn_start",
       model: this.piSession.model?.id ?? "unknown",
       sessionId: this.opts.sessionId,
     });
+
+    // Fix 1: wire AbortSignal → piSession.abort() (upstream prompt() does NOT accept signal — V1)
+    const signal = opts?.signal;
+    if (signal?.aborted) {
+      // R1-3/R2-5: AbortSignal không replay abort event. Nếu ĐÃ aborted trước khi vào
+      // prompt (queue sau turnLock / trong enrich) → short-circuit NGAY: không gọi
+      // piSession.prompt (piSession đang idle, abort() chả abort gì).
+      // turn_start đã emit ở trên → đóng turn rỗng để caller thấy empty/aborted.
+      this.turnActive = false;
+      this.turnClosed = true;
+      this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
+      return;
+    }
+    const onAbort = () => {
+      // V3: abort() resolve prompt() (không reject) — vẫn cần signal handler
+      // vì pi không nhận signal qua PromptOptions
+      void this.piSession.abort().catch(() => {});
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     try {
       await this.piSession.prompt(text, {
@@ -246,6 +278,8 @@ export class PiInProcessSession implements RuntimeSession {
         });
       }
       throw e;
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
   }
 
@@ -269,10 +303,14 @@ export class PiInProcessSession implements RuntimeSession {
 
   getState(): SessionState {
     const usage = this.piSession.getContextUsage?.();
+    const pendingTools = [...new Set(this.pendingToolNames.values())];
     return {
       model: this.piSession.model?.id ?? "unknown",
       thinking: this.piSession.thinkingLevel,
-      status: this.piSession.isIdle ? "idle" : "thinking",
+      // Fix 2: status "tool:<names>" khi có tool đang chạy (parallel-safe, dedupe)
+      status: this.piSession.isIdle ? "idle"
+        : pendingTools.length > 0 ? `tool:${pendingTools.join(",")}` as SessionState["status"]
+        : "thinking",
       tokensIn: this.accumulatedUsage.tokensIn,
       tokensOut: this.accumulatedUsage.tokensOut,
       contextPct: usage?.percent ?? 0,

@@ -416,11 +416,11 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
   /** Per-session prompt queue: serializes prompts to the same session. */
   /** Run a prompt on a pi session. Concurrency delegated to pi's own
    * queue via streamingBehavior='followUp' (pi queues prompts internally). */
-  function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
-    return doRunOnSession(sessionId, prompt, onEvent);
+  function runOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void, signal?: AbortSignal): Promise<string> {
+    return doRunOnSession(sessionId, prompt, onEvent, signal);
   }
 
-  async function doRunOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void): Promise<string> {
+  async function doRunOnSession(sessionId: string, prompt: string, onEvent?: (e: unknown) => void, signal?: AbortSignal): Promise<string> {
     // Cron sessions (_cron:<jobId>) get a restricted tool allowlist via
     // cronSessionToolConfig, applied at session CREATION time (first acquire).
     // Existing pool entries keep their tools (tool set immutable per session).
@@ -445,10 +445,19 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     });
 
     try {
-      await session.prompt(prompt, { streamingBehavior: "followUp" });
+      await session.prompt(prompt, {
+        streamingBehavior: "followUp",
+        ...(signal ? { signal } : {}), // Fix 1: forward AbortSignal → piSession.abort()
+      });
+      // Fix 1 (R4-2/R5-1): abort resolve với partial text → KHÔNG trả partial như success.
+      // Detect signal.aborted → trả error marker để cronSweep complete "failed" với lý do đúng.
+      // Boundary race (timer fire ngay sau resolve full text) → false-fail — chấp nhận (deadline semantics).
+      if (signal?.aborted) return "[error: cron session timed out]";
     } catch (e) {
       // Adapter serializes prompts; a single bad call can't crash the gateway.
       console.warn(`[gateway] session.prompt failed for ${sessionId}: ${(e as Error).message}`);
+      // Fix 1 (R5-1): non-V3 edge — nếu pi THROW khi abort → marker thay vì partial-as-success
+      if (signal?.aborted) return "[error: cron session timed out]";
       return responseText || `[error: ${(e as Error).message}]`;
     } finally {
       unsub();
@@ -632,6 +641,12 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
 
   const gw = new Gateway({
     port,
+    // R7-3: cron session timeout (ms) — env=0 → disable; empty/absent → default 5min qua constructor
+    ...(() => {
+      const raw = process.env.MYA_CRON_SESSION_TIMEOUT_MS;
+      const num = raw !== undefined && raw.trim() !== "" ? Number(raw) : NaN;
+      return Number.isFinite(num) && num >= 0 ? { cronSessionTimeoutMs: num } : {};
+    })(),
     // Phase 0C: token-free rootHtml. The dashboard obtains the token via an
     // HttpOnly SameSite=Strict cookie set on GET / (localhost origin), not via
     // a token baked into the URL/HTML source.
@@ -703,7 +718,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     },
     cronHeartbeat: (success) => { recordHeartbeat(); if (success) recordHeartbeatSuccess(); },
     cronSetApprovalMode: (mode) => setCronApprovalMode(mode),
-    onRunOnSession: (session, prompt, onEvent) => runOnSession(session, prompt, onEvent),
+    onRunOnSession: (session, prompt, onEvent, signal) => runOnSession(session, prompt, onEvent, signal),
     sync,
     collab,
     channels,
@@ -711,7 +726,7 @@ async function runWebServer(extraArgs: string[]): Promise<void> {
     channelRouter,
     poolStatus: () => pool.list().map((e) => {
       const meta = sessionMeta.get(e.sessionId);
-      return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status, summary: meta?.summary, keyOutputs: meta?.keyOutputs };
+      return { sessionId: e.sessionId, messages: e.messageCount, lastActivity: e.lastActivity, busy: e.busy, sessionFile: e.sessionFile, role: meta?.role, task: meta?.task, model: meta?.model, parentSessionId: meta?.parentSessionId, status: meta?.status, summary: meta?.summary, keyOutputs: meta?.keyOutputs, toolStatus: e.session?.getState?.().status };
     }),
     poolKill: (id: string) => { sessionMeta.delete(id); return pool.release(id, { force: true }); },
     poolAcquire: async (input: PoolAcquireInput | string) => {
