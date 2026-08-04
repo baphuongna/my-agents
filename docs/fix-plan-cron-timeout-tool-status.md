@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 2 complete (2 reviewers, 1 CRITICAL + 2 HIGH + 3 MEDIUM + 4 LOW fixed). Round 3 verification in progress.
+> **Status**: Round 3 (fix verification) — reviewer OOM (runtime fallback deepseek, không phải finding); tự verify thay: V3 ✓, R2-6 rationale sửa ✓, R2-1/R2-2/R2-5 ✓. Clean streak: 0. Round 4 in progress.
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
