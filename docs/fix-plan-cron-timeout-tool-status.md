@@ -1,7 +1,7 @@
 # Fix Plan: Cron Session Timeout + Tool Status (2 fixes from Contrabass review)
 
 > **Source**: Contrabass analysis — `docs/contrabass-analysis.md` → "2 fixes thật sự đáng làm"
-> **Status**: Round 4 (cold check, qwen3.7-max) — **ZERO CRITICAL/HIGH** (CLEAN #1) + 3 MEDIUM + 2 LOW fixed (R4-1..R4-3, R4-LOW). Clean streak: 1. Round 5 verification in progress.
+> **Status**: Round 5 (fix verification, qwen3.7-max) — 1 HIGH + 2 LOW fixed (R5-1 marker detect, R5-LOW before/after, test signal capture). Clean streak: 0 (Round 4 was clean but Round 5 found HIGH). Round 6 verification in progress.
 > **Estimated**: 1.5h (Fix 1) + 0.5h (Fix 2) + 0.5h tests
 > **NO TEST = NO MERGE** — mỗi fix phải có test file matching.
 
@@ -30,7 +30,8 @@ FINDING V3: abort() khiến prompt() RESOLVE (không reject)
   agent.abort() → handleRunFailure(aborted=true) → agent_settled
   → _runAgentPrompt() resolves bình thường
   → onRunOnSession nhận text (có thể rỗng) thay vì throw
-  → Cron sweep thấy "empty response" — sai message nhưng functionally OK
+  → R5-1 FIX: doRunOnSession detect signal.aborted → trả marker "[error: cron session timed out]"
+    → cronSweep detect marker → complete "failed" (không false success, message đúng)
 
 FINDING V4: Tool events có trong PiEventNormalizer
   tool_execution_start → { type: "tool_call", name, toolCallId, args }
@@ -109,9 +110,10 @@ async prompt(text: string, opts?: PromptOpts): Promise<void> {
 ```
 
 **Chú ý**:
+- **BEFORE block trên (lines 92-110) chỉ để minh họa — KHÔNG áp dụng. Chỉ áp dụng đoạn THAY TOÀN BỘ bên dưới.** (R5-LOW: tránh implementer copy nhầm version cũ)
 - `addEventListener("abort", onAbort, { once: true })` + `removeEventListener` trong `finally` — tránh leak
 - KHÔNG pass signal vào `piSession.prompt()` (upstream không nhận — V1)
-- Nếu abort xảy ra, `piSession.abort()` resolve prompt (V3) → textBuffer có partial text → cron thấy "empty response" nếu rỗng
+- Nếu abort xảy ra, `piSession.abort()` resolve prompt (V3) → doRunOnSession detect `signal.aborted` → trả marker (R4-2/R5-1) → cron thấy "failed" với lý do timeout
 - **R1-3 HARDENING (INFO) — M2 FIX: đây là REPLACEMENT cho phần signal ở trên, không phải thêm mới** (tránh re-declare `const signal`). Đoạn Step 1 hoàn chỉnh:
 
 ```typescript
@@ -121,7 +123,7 @@ if (signal?.aborted) {
   // R1-3 + R2-5: AbortSignal không replay abort event. Nếu ĐÃ aborted trước khi vào
   // prompt (queue sau turnLock) → short-circuit NGAY: không gọi piSession.prompt
   // (piSession đang idle, abort() chả abort gì — R2-5). Emit turn_start đã xảy ra ở trên,
-  // nên emit turn_end đóng turn rỗng để cron thấy "empty response".
+  // nên emit turn_end đóng turn rỗng → doRunOnSession detect aborted → marker (R4-2/R5-1)
   this.turnActive = false;
   this.turnClosed = true;
   this.emit({ type: "turn_end", tokensIn: 0, tokensOut: 0 });
@@ -173,6 +175,10 @@ async function doRunOnSession(
       // (tránh false success khi timeout giữa chừng — textBuffer có partial).
       if (signal?.aborted) return "[error: cron session timed out]";
     } catch (e) {
+      // R5-1 note (HIGH): non-V3 edge — nếu pi THROW khi abort (không resolve như V3),
+      // partial responseText sẽ return như success. Guard: detect signal.aborted trong catch
+      // và trả marker thay vì partial:
+      if (signal?.aborted) return "[error: cron session timed out]";
       // (giữ nguyên error handling)
     }
 }
@@ -266,12 +272,19 @@ try {
 } finally {
   if (timer) clearTimeout(timer);
 }
-// → phần còn lại (runOutput = text ?? undefined) giữ nguyên
+// R5-1 FIX (HIGH): doRunOnSession trả "[error: cron session timed out]" khi abort —
+// marker NON-EMPTY → phần classify hiện tại (`text == null || trim()===""`) sẽ coi là SUCCESS
+// (false success!). Phải detect marker TRƯỚC phần classify:
+if (typeof text === "string" && text.startsWith("[error:")) {
+  this.cron!.complete(run.runId, "failed", "cron session timed out");
+} else {
+// → phần còn lại (runOutput = text ?? undefined + classify succeeded/failed) giữ nguyên, đóng else:
+}
 ```
 
 **Chú ý**:
 - `cronSessionTimeoutMs` là **Gateway class field** (constructor default `5 * 60_000`), KHÔNG phải chỉ là GatewayOptions — thiếu field → `Property 'cronSessionTimeoutMs' does not exist on type 'Gateway'`
-- Nếu timeout: `controller.abort()` → piSession.abort() → prompt resolve với partial text (V3) → cron thấy "empty response" hoặc partial — **không throw, không crash sweep**
+- Nếu timeout: `controller.abort()` → piSession.abort() → prompt resolve với partial text (V3) → doRunOnSession detect `signal.aborted` → trả marker `"[error: cron session timed out]"` → cronSweep detect marker → complete "failed" — **không throw, không crash sweep, không false success**
 - `timer.unref?.()` — không giữ process alive nếu gateway shutdown
 
 ### Step 5 — GatewayOptions: thêm cronSessionTimeoutMs
@@ -310,16 +323,19 @@ describe("cron session timeout", () => {
     // R4-LOW FIX: mock phải resolve pending promise khi signal abort — nếu không
     //   cronSweep await mãi → test hang. Mock mẫu:
     //   let resolvePending!: () => void;
+    //   let sig: AbortSignal | undefined;
     //   const pending = new Promise<string>((r) => { resolvePending = r; });
     //   mockOnRunOnSession = (sid, p, onEvent, signal) => {
+    //     sig = signal;
     //     signal?.addEventListener("abort", () => resolvePending("[error: cron session timed out]"));
     //     return pending;
     //   };
     // tạo gateway với cronSessionTimeoutMs = 50
     // trigger cronSweep
     // await sleep(100)
-    // assert: signal.aborted === true
-    // assert: cron complete với "failed" (empty response)
+    // R5-LOW FIX: controller là local trong cronSweep — phải capture qua mock param:
+    // assert: sig?.aborted === true
+    // assert: cron complete với "failed" (marker detect — R5-1)
   });
   it("[unit] cronSessionTimeoutMs=0 disables timer (không abort)", async () => {
     // R1-2 regression test
@@ -402,9 +418,25 @@ private pendingToolNames = new Map<string, string>(); // toolCallId → toolName
 if (agentEvent) {
     if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
     // THÊM — track tool call names (parallel-safe: Map theo toolCallId):
+    // R5-LOW FIX: đoạn dưới là BEFORE (unguarded) — chỉ áp dụng R4-1 guarded version bên dưới:
     if (agentEvent.type === "tool_call") {
       this.pendingToolNames.set(agentEvent.toolCallId, agentEvent.name);
     } else if (agentEvent.type === "tool_result") {
+      this.pendingToolNames.delete(agentEvent.toolCallId);
+    }
+    this.emit(agentEvent);
+}
+```
+
+**R4-1 FIX (MEDIUM — áp dụng version này, guard map-op KHÔNG return sớm):**
+
+```typescript
+if (agentEvent) {
+    if (agentEvent.type === "text") this.textBuffer += agentEvent.delta;
+    // R4-1: guard CHỈ map-op — KHÔNG return sớm (drop tool events khỏi stream):
+    if (agentEvent.type === "tool_call" && agentEvent.toolCallId) {
+      this.pendingToolNames.set(agentEvent.toolCallId, agentEvent.name);
+    } else if (agentEvent.type === "tool_result" && agentEvent.toolCallId) {
       this.pendingToolNames.delete(agentEvent.toolCallId);
     }
     this.emit(agentEvent);
@@ -503,7 +535,8 @@ describe("tool status", () => {
       (tool hang abort-ignoring → waitForIdle() không resolve → timeout không fire — known limitation, M3)
     - Setup: cron job prompt tới model endpoint stalled/blackholed (hoặc prompt loop vô hạn)
     - cronSessionTimeoutMs = 10_000
-    - Verify: sau ~10s session aborted, sweep tiếp tục chạy (không block ALL cron)
+    - Verify: sau ~10s session aborted, sweep tiếp tục chạy (không block ALL cron),
+      cron run status = "failed" với lý do timeout (R5-1 marker detect — KHÔNG false success)
     - (Tùy chọn, exploratory) bash sleep 300 hang → verify sweep vẫn blocked → xác nhận known limitation
 ```
 
