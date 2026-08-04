@@ -118,6 +118,25 @@ export interface SessionInfo {
   source?: string;
 }
 
+/** RuntimePool entry surfaced by GET /pool/sessions (Fix 2).
+ * `toolStatus` is the runtime tool status (e.g. "tool:bash,read") when the
+ * session is mid-turn; undefined when idle or the runtime lacks getState. */
+export interface PoolSessionEntry {
+  sessionId: string;
+  messages: number;
+  lastActivity: number;
+  busy: boolean;
+  sessionFile?: string;
+  role?: string;
+  task?: string;
+  model?: string;
+  parentSessionId?: string;
+  status?: string;
+  summary?: string;
+  keyOutputs?: string[];
+  toolStatus?: string;
+}
+
 export interface CronJob {
   id: string;
   name: string;
@@ -281,7 +300,7 @@ export const api = {
   skills: () => fetchJSON<SkillInfo[]>("/skills"),
 
   // Pool
-  poolSessions: () => fetchJSON<unknown[]>("/pool/sessions"),
+  poolSessions: () => fetchJSON<PoolSessionEntry[]>("/pool/sessions"),
 
   // Sync
   syncState: () => fetchJSON<unknown>("/sync/state"),

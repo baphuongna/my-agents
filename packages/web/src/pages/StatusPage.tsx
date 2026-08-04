@@ -3,7 +3,7 @@
  * Port of Hermes SystemPage pattern: multiple stat cards, provider list, raw JSON.
  */
 import { useState } from "react";
-import { api, type StatusResponse } from "@/lib/api";
+import { api, type StatusResponse, type PoolSessionEntry } from "@/lib/api";
 import { Card, CardContent, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader, LoadingSpinner, ErrorBox, RefreshButton } from "@/components/PageBits";
@@ -20,6 +20,7 @@ import {
   X,
   Database,
   Brain,
+  Layers,
 } from "lucide-react";
 import { formatDuration, formatBytes, formatTokenCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ interface RoleInfo {
 
 export function StatusPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [poolSessions, setPoolSessions] = useState<PoolSessionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +49,8 @@ export function StatusPage() {
       const data = await api.status();
       setStatus(data);
       setError(null);
+      // Fix 2 consumer: fetch pool sessions (toolStatus) — non-fatal if endpoint unavailable
+      api.poolSessions().then(setPoolSessions).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -167,6 +171,46 @@ export function StatusPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Pool Sessions (Fix 2 consumer — toolStatus) */}
+          <Card>
+            <CardTitle>
+              <span className="flex items-center gap-1.5">
+                <Layers size={14} /> Pool Sessions ({poolSessions.length})
+              </span>
+            </CardTitle>
+            <CardContent>
+              {poolSessions.length === 0 ? (
+                <p className="text-[11px] text-fg-muted">No active pool sessions.</p>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {poolSessions.map((s) => (
+                    <div
+                      key={s.sessionId}
+                      className="flex items-center gap-2 py-1 px-2 rounded hover:bg-bg-elevated/50 text-[12px]"
+                    >
+                      <span
+                        className={cn(
+                          "w-1.5 h-1.5 rounded-full shrink-0",
+                          s.busy ? "bg-success animate-pulse" : "bg-fg-subtle"
+                        )}
+                      />
+                      <span className="font-mono truncate min-w-0 text-fg">{s.sessionId}</span>
+                      {s.toolStatus && (
+                        <Badge color={s.toolStatus.startsWith("tool:") ? "yellow" : "blue"}>
+                          {s.toolStatus}
+                        </Badge>
+                      )}
+                      {s.status && <Badge color="gray">{s.status}</Badge>}
+                      {s.model && (
+                        <span className="text-fg-subtle text-[10px] truncate ml-auto">{s.model}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Raw JSON */}
           <Card>
