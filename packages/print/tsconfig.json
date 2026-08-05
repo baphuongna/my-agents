@@ -5,6 +5,85 @@
     "rootDir": "./src",
     "composite": true
   },
-  "include": ["src/**/*.ts"],
-  "references": [{ "path": "../core" }, { "path": "../agent" }]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../acp"
+    },
+    {
+      "path": "../agent"
+    },
+    {
+      "path": "../ai"
+    },
+    {
+      "path": "../audit"
+    },
+    {
+      "path": "../channels"
+    },
+    {
+      "path": "../collab"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../council"
+    },
+    {
+      "path": "../cron"
+    },
+    {
+      "path": "../dap"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../gateway"
+    },
+    {
+      "path": "../intercom"
+    },
+    {
+      "path": "../memory"
+    },
+    {
+      "path": "../pkg"
+    },
+    {
+      "path": "../prompts"
+    },
+    {
+      "path": "../rpc"
+    },
+    {
+      "path": "../secrets"
+    },
+    {
+      "path": "../signing"
+    },
+    {
+      "path": "../skills"
+    },
+    {
+      "path": "../sync"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../tts"
+    },
+    {
+      "path": "../workflows"
+    }
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

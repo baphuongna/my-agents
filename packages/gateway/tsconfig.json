@@ -1,2 +1,47 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "outDir": "./dist", "rootDir": "./src", "composite": true },
-  "include": ["src/**/*.ts"], "references": [{ "path": "../core" }] }
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../ai"
+    },
+    {
+      "path": "../channels"
+    },
+    {
+      "path": "../collab"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../cron"
+    },
+    {
+      "path": "../prompts"
+    },
+    {
+      "path": "../secrets"
+    },
+    {
+      "path": "../sync"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../web"
+    }
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
+}

@@ -1,12 +1,59 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "./dist", "rootDir": "./src", "composite": true },
-  "include": ["src/**/*.ts"],
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
-    { "path": "../core" },
-    { "path": "../ai" },
-    { "path": "../prompts" },
-    { "path": "../tools" },
-    { "path": "../memory" }
+    {
+      "path": "../ai"
+    },
+    {
+      "path": "../audit"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../council"
+    },
+    {
+      "path": "../cron"
+    },
+    {
+      "path": "../dap"
+    },
+    {
+      "path": "../memory"
+    },
+    {
+      "path": "../pkg"
+    },
+    {
+      "path": "../prompts"
+    },
+    {
+      "path": "../secrets"
+    },
+    {
+      "path": "../skills"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../tts"
+    },
+    {
+      "path": "../x402"
+    }
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
   ]
 }

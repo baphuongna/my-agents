@@ -15,7 +15,7 @@ function makePoolSession(overrides: Partial<PoolSessionEntry> = {}): PoolSession
   return {
     sessionId: "s-pool-1",
     messages: 3,
-    lastActivity: Date.now(),
+    lastActivity: 1700000000000,
     busy: true,
     toolStatus: "tool:bash,read",
     model: "MiniMax-M3",

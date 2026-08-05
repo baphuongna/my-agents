@@ -8,7 +8,7 @@
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": false,
-    "noEmit": true,
+    "emitDeclarationOnly": true,
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
