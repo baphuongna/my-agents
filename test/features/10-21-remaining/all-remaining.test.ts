@@ -648,7 +648,7 @@ describe("[smoke] all packages", () => {
 // REAL — mya launcher + serve probes
 // ══════════════════════════════════════════════════════════════
 
-describe("[real] mya launcher", () => {
+describe.skipIf(!_hasBinary)("[real] mya launcher", () => {
 	it("mya launcher starts without crash (CI mode)", async () => {
 		const child = spawnMya(
 			["launcher"],

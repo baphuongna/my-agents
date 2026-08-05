@@ -32,6 +32,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Bundle
+        run: npm run bundle
+
       # §18 invariant enforcement (TS-7-compatible grep guards — ESLint's
       # @typescript-eslint parser is incompatible with the native Go compiler).
       - name: Lint (invariant #10 — single time helper)
