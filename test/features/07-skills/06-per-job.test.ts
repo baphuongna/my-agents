@@ -15,9 +15,14 @@ import { join } from "node:path";
 // ──────────────────────────────────────────────────────────────
 
 describe("[unit] cron job skill injection", () => {
-	it("job defines skills via cronLoadSkills field", () => {
-		const job = mkCronJob({
-			id: "job1",
+	it("CronJob interface has skills field", async () => {
+		const { CronScheduler } = await import("../../../packages/cron/src/index.ts");
+		const sched = new CronScheduler();
+		const job = sched.register({
+			name: "test",
+			trigger: "cron",
+			schedule: "*/5 * * * *",
+			prompt: "test",
 			skills: ["git-helper", "docker-helper"],
 		});
 		expect(job.skills).toEqual(["git-helper", "docker-helper"]);
@@ -30,60 +35,59 @@ describe("[unit] cron job skill injection", () => {
 		expect(job.some((s) => s === "a")).toBe(false);
 	});
 
-	it("agent run uses only job skills (no leakage)", () => {
-		const jobSkills = ["git-helper"];
-		const ctxSkills = ctxifySkills(jobSkills);
-		expect(ctxSkills).toEqual(["git-helper"]);
+	it("CronScheduler register preserves skills", async () => {
+		const { CronScheduler } = await import("../../../packages/cron/src/index.ts");
+		const sched = new CronScheduler();
+		const job = sched.register({
+			name: "test2",
+			trigger: "cron",
+			schedule: "*/5 * * * *",
+			prompt: "test",
+			skills: ["git-helper"],
+		});
+		expect(job.skills).toEqual(["git-helper"]);
 	});
 
-	it("unknown skill in job config → log warning", () => {
-		const warn = checkSkills(["unknown-skill-xyz"]);
-		expect(warn).toContain("warning");
+	it("empty skills array → job with no skills", async () => {
+		const { CronScheduler } = await import("../../../packages/cron/src/index.ts");
+		const sched = new CronScheduler();
+		const job = sched.register({
+			name: "empty",
+			trigger: "cron",
+			schedule: "*/5 * * * *",
+			prompt: "test",
+			skills: [],
+		});
+		expect(job.skills).toEqual([]);
 	});
 
-	it("empty skills array → no skills injected", () => {
-		const ctx = ctxifySkills([]);
-		expect(ctx.length).toBe(0);
+	it("CronScheduler.updateJob can modify skills", async () => {
+		const { CronScheduler } = await import("../../../packages/cron/src/index.ts");
+		const sched = new CronScheduler();
+		const job = sched.register({
+			name: "upd",
+			trigger: "cron",
+			schedule: "*/5 * * * *",
+			prompt: "test",
+		});
+		const updated = sched.updateJob(job.id, { skills: ["new-skill"] });
+		expect(updated?.skills).toEqual(["new-skill"]);
 	});
 
-	it("deduplicates skills before injection", () => {
-		const ctx = ctxifySkills(["a", "a", "b", "b"]);
-		expect(ctx).toEqual(["a", "b"]);
-	});
-
-	it("preserves skills order", () => {
-		const ctx = ctxifySkills(["z", "a", "m"]);
-		expect(ctx).toEqual(["z", "a", "m"]);
+	it("skills array stored as-is (dedup is caller responsibility)", async () => {
+		const { CronScheduler } = await import("../../../packages/cron/src/index.ts");
+		const sched = new CronScheduler();
+		const job = sched.register({
+			name: "dedup",
+			trigger: "cron",
+			schedule: "*/5 * * * *",
+			prompt: "test",
+			skills: ["a", "a", "b"],
+		});
+		// Scheduler stores as-is — caller should deduplicate before registering
+		expect(job.skills).toEqual(["a", "a", "b"]);
 	});
 });
-
-function mkCronJob(opts: { id: string; skills?: string[] }): any {
-	return {
-		id: opts.id,
-		schedule: "*/5 * * * *",
-		skills: opts.skills ?? [],
-		action: { kind: "agent", prompt: "test" },
-	};
-}
-
-function ctxifySkills(skills: string[]): string[] {
-	const seen = new Set<string>();
-	const out: string[] = [];
-	for (const s of skills) {
-		if (typeof s !== "string" || !s) continue;
-		if (seen.has(s)) continue;
-		seen.add(s);
-		out.push(s);
-	}
-	return out;
-}
-
-function checkSkills(skills: string[]): string {
-	const known = ["git-helper", "docker-helper", "python-expert"];
-	const unknown = skills.filter((s) => !known.includes(s));
-	if (unknown.length > 0) return `warning: unknown skills [${unknown.join(", ")}]`;
-	return "ok";
-}
 
 // ──────────────────────────────────────────────────────────────
 // UNIT — Skill isolation per session (subagent)
