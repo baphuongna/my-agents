@@ -17,7 +17,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, existsSync, copyFileSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmuxBackend } from "./tmux.js";
 import { herdrBackend } from "./herdr.js";
 import { cmuxBackend } from "./cmux.js";
@@ -191,7 +191,7 @@ describe.skipIf(!MYA_BIN || !HERDR_AVAILABLE)(
         //    to override HOME, MYA_PORT, etc.). --approve skips the trust dialog
         //    that appears in TTY mode (herdr panes have a real TTY).
         const nodeBin = process.execPath;
-        const myaPath = MYA_BIN!;
+        const myaPath = resolve(MYA_BIN!); // absolute — script cd's to a temp dir
         const scriptPath = join(home, "run-sub.sh");
         writeFileSync(
           scriptPath,
@@ -219,8 +219,11 @@ describe.skipIf(!MYA_BIN || !HERDR_AVAILABLE)(
         expect(typeof ref).toBe("string");
 
         // 5. Poll /pool/tree until the child reaches terminal status.
+        //    Herdr pane startup adds latency (split + current + run sequence);
+        //    allow 150s for the full chain: pane spawn → pi boot → LLM turn →
+        //    agent_settled → status report.
         let terminal = "";
-        const pollDeadline = Date.now() + 120_000;
+        const pollDeadline = Date.now() + 150_000;
         while (Date.now() < pollDeadline) {
           try {
             const treeRes = await fetch(`http://127.0.0.1:${port}/pool/tree`);
@@ -247,17 +250,25 @@ describe.skipIf(!MYA_BIN || !HERDR_AVAILABLE)(
               if (terminal) break;
             }
           } catch { /* transient */ }
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 2000));
         }
 
         // 6. Assert terminal status (proves the subagent booted + bridge loaded +
         //    status reporting worked through the herdr pane).
+        //    If terminal is still "", the herdr pane didn't report in time —
+        //    log diagnostics before failing so CI output shows the tree state.
+        if (!terminal) {
+          try {
+            const dbgTree = await (await fetch(`http://127.0.0.1:${port}/pool/tree`)).json() as Array<Record<string, unknown>>;
+            console.error("[herdr-test] Timed out. Final tree:", JSON.stringify(dbgTree).slice(0, 500));
+          } catch { /* */ }
+        }
         expect(["done", "failed"]).toContain(terminal);
         expect(terminal).not.toBe("");
       } finally {
         try { serve?.kill("SIGKILL"); } catch { /* */ }
         rmSync(home, { recursive: true, force: true });
       }
-    }, 180_000);
+    }, 200_000);
   },
 );

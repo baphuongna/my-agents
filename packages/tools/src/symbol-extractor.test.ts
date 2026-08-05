@@ -139,7 +139,7 @@ describe("[unit] extractSymbolsForRoot", () => {
     const store = await extractSymbolsForRoot("packages/tools/src");
     expect(store).toBeDefined();
     expect(store.size).toBeGreaterThan(0);
-  });
+  }, 15_000); // tree-sitter scan is CPU-heavy under parallel load
 
   it("returns empty store for non-existent dir", async () => {
     const { extractSymbolsForRoot } = await import("./symbol-extractor.js");
