@@ -48,7 +48,7 @@ describe("[§10 unit] Desktop App (Tauri)", () => {
 
 	it("desktop package (TS) loads", async () => {
 		const m = await import("../../../packages/desktop/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("system tray integration", async () => {
@@ -67,7 +67,7 @@ describe("[§10 unit] Desktop App (Tauri)", () => {
 describe("[§11 unit] Launcher (TUI)", () => {
 	it("launcher.ts loads", async () => {
 		const m = await import("../../../packages/print/src/launcher.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("tab navigation (keys 1-5)", async () => {
@@ -102,7 +102,7 @@ describe("[§11 unit] Launcher (TUI)", () => {
 
 	it("inline wizards (add cron/channel)", async () => {
 		const m = await import("../../../packages/print/src/launcher.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 });
 
@@ -113,12 +113,12 @@ describe("[§11 unit] Launcher (TUI)", () => {
 describe("[§12 unit] Web Dashboard", () => {
 	it("web package loads", async () => {
 		const m = await import("../../../packages/web/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("dashboard.ts loads", async () => {
 		const m = await import("../../../packages/web/src/dashboard.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("PWA manifest + service worker (sw.js)", async () => {
@@ -129,57 +129,57 @@ describe("[§12 unit] Web Dashboard", () => {
 
 	it("push subscription module", async () => {
 		const m = await import("../../../packages/web/src/push-subscription.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("session list module", async () => {
 		const m = await import("../../../packages/web/src/components/session-list.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("API client", async () => {
 		const m = await import("../../../packages/web/src/lib/api.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("WebSocket client", async () => {
 		const m = await import("../../../packages/web/src/lib/ws.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("i18n (language toggle)", async () => {
 		const m = await import("../../../packages/web/src/lib/i18n.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("theme switcher", async () => {
 		const m = await import("../../../packages/web/src/lib/theme.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("toast notifications", async () => {
 		const m = await import("../../../packages/web/src/lib/toast.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("modal system", async () => {
 		const m = await import("../../../packages/web/src/lib/modal.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("error boundary", async () => {
 		const m = await import("../../../packages/web/src/components/ErrorBoundary.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("mobile navigation", async () => {
 		const m = await import("../../../packages/web/src/mobile-nav.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("PWA register", async () => {
 		const m = await import("../../../packages/web/src/pwa-register.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	const PAGES = [
@@ -197,22 +197,22 @@ describe("[§12 unit] Web Dashboard", () => {
 
 	it("markdown renderer", async () => {
 		const m = await import("../../../packages/web/src/components/Markdown.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("command palette", async () => {
 		const m = await import("../../../packages/web/src/components/CommandPalette.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("charts", async () => {
 		const m = await import("../../../packages/web/src/components/Charts.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("schedule builder", async () => {
 		const m = await import("../../../packages/web/src/components/ScheduleBuilder.tsx").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 });
 
@@ -223,12 +223,12 @@ describe("[§12 unit] Web Dashboard", () => {
 describe("[§13 unit] Sync & Collab", () => {
 	it("sync package loads", async () => {
 		const m = await import("../../../packages/sync/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("collab package loads", async () => {
 		const m = await import("../../../packages/collab/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("state sync (push/pull)", async () => {
@@ -252,7 +252,7 @@ describe("[§13 unit] Sync & Collab", () => {
 	it("A2A protocol (agent-to-agent)", async () => {
 		// A2A messaging via intercom package
 		const m = await import("../../../packages/intercom/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 });
 
@@ -263,32 +263,32 @@ describe("[§13 unit] Sync & Collab", () => {
 describe("[§14 unit] Eval & Observability", () => {
 	it("eval package loads", async () => {
 		const m = await import("../../../packages/eval/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("drift grader (compression drift)", async () => {
 		const m = await import("../../../packages/eval/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("tier eval (multi-tier harness)", async () => {
 		const m = await import("../../../packages/eval/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("telemetry module loads", async () => {
 		const m = await import("../../../packages/core/src/telemetry.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("audit module loads", async () => {
 		const m = await import("../../../packages/audit/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("egress filter", async () => {
 		const m = await import("../../../packages/eval/src/egress.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("Rust desktop-shell crate exists", async () => {
@@ -305,22 +305,22 @@ describe("[§14 unit] Eval & Observability", () => {
 describe("[§15 unit] MCP", () => {
 	it("mcp-client module loads", async () => {
 		const m = await import("../../../packages/gateway/src/mcp-client.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("mcp-lifecycle module loads", async () => {
 		const m = await import("../../../packages/gateway/src/mcp-lifecycle.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("mcp-oauth module loads", async () => {
 		const m = await import("../../../packages/gateway/src/mcp-oauth.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("mcp-oauth-store module loads", async () => {
 		const m = await import("../../../packages/gateway/src/mcp-oauth-store.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("MCP config ~/.mya/agent/mcp.json exists", async () => {
@@ -344,7 +344,7 @@ describe("[§15 unit] MCP", () => {
 
 	it("reconnect budget (proven/park/backoff)", async () => {
 		const m = await import("../../../packages/gateway/src/mcp-lifecycle.ts");
-		expect(m.McpPhase || m.transition).toBeDefined();
+		expect(m.transition).toBeDefined();
 	});
 
 	it("failure classification (permanent/transient)", async () => {
@@ -390,22 +390,22 @@ describe("[§15 unit] MCP", () => {
 describe("[§16 unit] TTS", () => {
 	it("tts package loads", async () => {
 		const m = await import("../../../packages/tts/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("MLX/Kokoro (Apple Silicon)", async () => {
 		const m = await import("../../../packages/tts/src/mlx.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("model manager (auto-download + cache)", async () => {
 		const m = await import("../../../packages/tts/src/model-manager.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("channel integration (voice messages)", async () => {
 		const m = await import("../../../packages/tts/src/index.ts");
-		expect(m.TtsEvent || m.speak).toBeDefined();
+		expect(m.speak).toBeDefined();
 	});
 });
 
@@ -416,12 +416,12 @@ describe("[§16 unit] TTS", () => {
 describe("[§17 unit] x402 / Wallet", () => {
 	it("x402 package loads", async () => {
 		const m = await import("../../../packages/x402/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("signing module loads", async () => {
 		const m = await import("../../../packages/signing/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("ECDSA secp256k1 keypair", async () => {
@@ -431,7 +431,7 @@ describe("[§17 unit] x402 / Wallet", () => {
 
 	it("x402 challenge/receipt protocol", async () => {
 		const m = await import("../../../packages/x402/src/index.ts");
-		expect(m.X402Challenge || m.verifyReceipt).toBeDefined();
+		expect(m.verifyReceipt).toBeDefined();
 	});
 
 	it("double-pay guard", async () => {
@@ -452,17 +452,17 @@ describe("[§17 unit] x402 / Wallet", () => {
 describe("[§18 unit] DAP", () => {
 	it("dap package loads", async () => {
 		const m = await import("../../../packages/dap/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("dap-server package loads", async () => {
 		const m = await import("../../../packages/dap-server/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("breakpoints on tool calls", async () => {
 		const m = await import("../../../packages/dap/src/index.ts");
-		expect(m.DapBreakpoint || m.makeDebugTool).toBeDefined();
+		expect(m.makeDebugTool).toBeDefined();
 	});
 
 	it("launch vs attach mode", async () => {
@@ -473,7 +473,7 @@ describe("[§18 unit] DAP", () => {
 
 	it("TCP socket leak fix (Phase 4)", async () => {
 		const m = await import("../../../packages/dap-server/src/index.ts");
-		expect(m.DapServerStub || m.readFrame).toBeDefined();
+		expect(m.readFrame).toBeDefined();
 	});
 });
 
@@ -484,12 +484,12 @@ describe("[§18 unit] DAP", () => {
 describe("[§19 unit] Voice", () => {
 	it("voice-ptt module loads", async () => {
 		const m = await import("../../../packages/gateway/src/voice-ptt.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("voice-call module loads", async () => {
 		const m = await import("../../../packages/gateway/src/voice-call.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("PTT state machine (idle→listening→transcribing→thinking→speaking)", () => {
@@ -529,12 +529,12 @@ describe("[§19 unit] Voice", () => {
 describe("[§20 unit] System / OS", () => {
 	it("systemd module loads", async () => {
 		const m = await import("../../../packages/gateway/src/systemd.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("gateway-supervisor module loads", async () => {
 		const m = await import("../../../packages/print/src/gateway-supervisor.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("sd_notify(READY=1/WATCHDOG=1/STOPPING=1)", async () => {
@@ -579,7 +579,7 @@ describe("[§20 unit] System / OS", () => {
 describe("[§21 unit] Gamification", () => {
 	it("achievements module loads", async () => {
 		const m = await import("../../../packages/audit/src/achievements.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 
 	it("10 achievements (first-prompt, tool-collector, delegator, etc.)", async () => {
@@ -638,7 +638,7 @@ describe("[smoke] all packages", () => {
 	];
 	it.each(packages)("package %s loads", async (name) => {
 		const m = await import(`../../../packages/${name}/src/index.ts`).catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 });
 

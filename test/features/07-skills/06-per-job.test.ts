@@ -135,7 +135,7 @@ describe("[unit] subagent skill isolation", () => {
 describe("[smoke] cron module", () => {
 	it("loads cron index", async () => {
 		const m = await import("../../../packages/cron/src/index.ts").catch(() => null);
-		expect(m === null || typeof m === "object").toBe(true);
+		expect(m).not.toBeNull();
 	});
 });
 
@@ -156,7 +156,7 @@ describe.skipIf(!process.env["MYA_BIN"] && !existsSync("dist/mya.js"))("[real] m
 
 	it("cron add <job> with --skill flag", async () => {
 		const child = spawnMya(
-			["cron", "add", "--skill", "git-helper", "test-job", "*/1 * * * *", "echo", "test"],
+			["cron", "add", "--skill", "git-helper", "test-job", "*/5 * * * *", "echo", "test"],
 			{ env: { ...process.env, MYA_MOCK: "1", HOME: tmpHome } },
 		);
 		let out = "";
