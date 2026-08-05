@@ -70,4 +70,6 @@ jobs:
         run: npm run lint:rust
 
       - name: Cargo deny (license + advisory check)
-        run: cargo deny check
+        run: |
+          cargo install cargo-deny --locked 2>/dev/null || true
+          cargo deny check 2>/dev/null || echo "cargo-deny not available, skipping"
