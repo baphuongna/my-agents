@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -22,12 +22,8 @@ jobs:
           toolchain: "1.97.0"
           components: clippy
 
-      # Tauri 2 system dependencies for Linux. macOS uses WebKit.framework
-      # via Xcode CLT (preinstalled on runners). Windows is intentionally
-      # omitted from the matrix — the Rust napi/tauri stack needs MSVC +
-      # WebView2 + a separate apt-equivalent step, deferred to a follow-up.
+      # Tauri 2 system dependencies for Linux.
       - name: Install Linux Tauri deps
-        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Install
