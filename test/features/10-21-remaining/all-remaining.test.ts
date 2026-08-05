@@ -599,13 +599,12 @@ describe("[§21 unit] Gamification", () => {
 		// it has moved into @earendil-works/pi-tui npm package internals.
 		// Smoke-test the pi-tui package itself loads cleanly.
 		const m = await import("@earendil-works/pi-tui");
-		expect(typeof m).toBe("object");
 		expect(m).not.toBeNull();
+		expect(m).not.toBeUndefined();
 	});
 
 	it("petdex (3 sprites: cat, dog, robot)", async () => {
 		const m = await import("@earendil-works/pi-tui");
-		expect(typeof m).toBe("object");
 		expect(m).not.toBeNull();
 	});
 
@@ -656,7 +655,7 @@ describe("[real] mya launcher", () => {
 			child.on("close", (c) => res(c));
 			setTimeout(() => child.kill("SIGTERM"), 3000);
 		});
-		expect(typeof code).toBe("number");
+		expect(code).toBe(0);
 	});
 });
 

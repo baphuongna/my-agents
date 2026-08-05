@@ -161,8 +161,9 @@ describe.skipIf(!process.env["MYA_BIN"] && !existsSync("dist/mya.js"))("[real] m
 		);
 		let out = "";
 		child.stdout?.on("data", (d) => out += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(typeof out).toBe("string");
+		const code = await new Promise<number | null>((r) => child.on("close", r));
+		expect(code).not.toBeNull();
+		expect(out.length).toBeGreaterThan(0);
 	});
 
 	it("cron list shows jobs with skills", async () => {
@@ -172,8 +173,9 @@ describe.skipIf(!process.env["MYA_BIN"] && !existsSync("dist/mya.js"))("[real] m
 		);
 		let out = "";
 		child.stdout?.on("data", (d) => out += d.toString());
-		await new Promise((r) => child.on("close", r));
-		expect(typeof out).toBe("string");
+		const code = await new Promise<number | null>((r) => child.on("close", r));
+		expect(code).not.toBeNull();
+		expect(out.length).toBeGreaterThan(0);
 	});
 });
 
