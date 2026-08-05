@@ -9,11 +9,10 @@
  *   - "live" (wsUrl provided): opens WebSocket, renders ConsoleFrame
  *     discriminated-union protocol (ready/output/error/complete/pong/clear).
  *
- * Out of scope for this distill (deferred to follow-up):
- *   - Persistent PTY child + channel id (hermes ChatPage persistent mount)
- *   - Gateway `/api/console` endpoint
- *   - Profile-keyed console scope
- *   - WebGL renderer + clipboard integration
+ * Gateway backend: The `/api/console` WebSocket endpoint in Gateway
+ * (handleConsoleWs) runs each input line as a shell command with a 30s
+ * timeout. It is per-command spawn (no persistent PTY) by design.
+ * Wire `wsUrl={`${wsBase}/api/console`}` to enable live mode.
  */
 import { useEffect, useRef } from "react";
 import { Terminal as XtermTerminal } from "@xterm/xterm";

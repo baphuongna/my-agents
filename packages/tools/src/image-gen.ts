@@ -8,6 +8,9 @@
  */
 import type { ToolImpl } from "./registry.js";
 import type { ToolResult } from "@my-agent/core";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { nowWallclock } from "@my-agent/core";
 
 interface ImageGenBackend {
   name: string;
@@ -112,10 +115,24 @@ export const imageGenTool: ToolImpl = {
     for (const backend of backends) {
       const result = await backend.generate(a.prompt, opts);
       if (result.b64) {
-        return {
-          callId: "image_generate", ok: true,
-          output: { backend: backend.name, format: "base64", data: result.b64.slice(0, 200) + "..." },
-        };
+        // Write full image to file so the agent/user can actually use it
+        const dir = resolve(process.env["MYA_OUTPUT_DIR"] ?? process.cwd() + "/.mya-output");
+        try { mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
+        const filename = `image-${nowWallclock()}.png`;
+        const filepath = join(dir, filename);
+        try {
+          writeFileSync(filepath, Buffer.from(result.b64, "base64"), { mode: 0o644 });
+          return {
+            callId: "image_generate", ok: true,
+            output: { backend: backend.name, format: "file", path: filepath, bytes: (result.b64.length * 0.75) | 0 },
+          };
+        } catch {
+          // Fallback: return full base64 inline (no truncation)
+          return {
+            callId: "image_generate", ok: true,
+            output: { backend: backend.name, format: "base64", data: result.b64 },
+          };
+        }
       }
       if (result.url) {
         return { callId: "image_generate", ok: true, output: { backend: backend.name, format: "url", url: result.url } };

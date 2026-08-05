@@ -35,7 +35,14 @@ export const videoGenTool: ToolImpl = {
     }
 
     try {
-      // Create prediction
+      // Create prediction — model version from env (user must configure)
+      const modelVersion = process.env.MYA_REPLICATE_VIDEO_MODEL;
+      if (!modelVersion) {
+        return {
+          callId: "video_generate", ok: false, output: null,
+          error: "MYA_REPLICATE_VIDEO_MODEL not set — provide a Replicate model version hash (e.g. 'kyutai/moshi:...')",
+        };
+      }
       const createRes = await fetch("https://api.replicate.com/v1/predictions", {
         method: "POST",
         headers: {
@@ -43,7 +50,7 @@ export const videoGenTool: ToolImpl = {
           authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          version: "another-sora-model", // placeholder — user should configure specific model
+          version: modelVersion,
           input: { prompt: a.prompt, video_length: a.duration ?? 5 },
         }),
         signal: AbortSignal.timeout(30_000),
