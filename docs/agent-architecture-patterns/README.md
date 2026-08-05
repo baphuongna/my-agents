@@ -70,6 +70,19 @@
 | [27-reactive-dataflow.md](27-reactive-dataflow.md) | AA: Reactive Dataflow | FRP (Elliott, 1997) |
 | [28-chemical-reaction.md](28-chemical-reaction.md) | CC: Chemical Reaction Network | Gamma calculus (1986) |
 
+### Nhóm 8: Infrastructure & ML-Inspired (NEW)
+
+| File | Hướng | Nguồn gốc |
+|---|---|---|
+| [29-declarative-reconcile.md](29-declarative-reconcile.md) | DD: Declarative Reconcile | Kubernetes (2014) |
+| [30-behavior-tree.md](30-behavior-tree.md) | EE: Behavior Tree | Game AI (Halo 2, 2005) |
+| [31-saga-pattern.md](31-saga-pattern.md) | FF: Saga Pattern | Distributed transactions (1987) |
+| [32-supervisor-tree.md](32-supervisor-tree.md) | GG: Supervisor Tree | Erlang OTP (1986) |
+| [33-sidecar.md](33-sidecar.md) | HH: Sidecar | K8s service mesh (Envoy) |
+| [34-cqrs.md](34-cqrs.md) | II: CQRS | Fowler, 2010 |
+| [35-gan-adversarial.md](35-gan-adversarial.md) | JJ: GAN-Style Adversarial | Goodfellow, 2014 |
+| [36-mapreduce.md](36-mapreduce.md) | KK: MapReduce | Google, 2004 |
+
 ## So sánh nhanh
 
 ```
@@ -88,3 +101,7 @@ Effort thấp:  B,F,R,T(3-5 ngày)  Others(1-3 tuần)
 | Elegant nhất | **U: Tuple Space** | Agent tự tìm việc, SQLite sẵn |
 | Lâu dài sạch nhất | **G: Proxy+Watcher** | Agent-agnostic + inject + observe |
 | Tham vọng nhất | **N: Agent OS** | mya = platform, agents = apps |
+| Self-healing | **DD: Reconcile** | K8s-proven, cron đã có reconcile |
+| Reliability | **GG: Supervisor** | Erlang OTP, crash isolation |
+| Quality | **JJ: GAN Adversarial** | council sẵn, thêm vòng lặp fix |
+| Scale | **KK: MapReduce** | Chia task song song, gộp kết quả |
