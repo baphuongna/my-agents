@@ -8,8 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { writeFileSync, rmSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, rmSync, readdirSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
 interface BgManifest {
@@ -28,6 +28,7 @@ const createdFiles = new Set<string>();
 
 function trackWrite(relPath: string, content: string) {
 	const fullPath = join(REAL_BG_DIR, relPath);
+	mkdirSync(dirname(fullPath), { recursive: true });
 	writeFileSync(fullPath, content);
 	createdFiles.add(fullPath);
 }
