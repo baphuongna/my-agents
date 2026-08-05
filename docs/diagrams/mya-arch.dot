@@ -1,0 +1,207 @@
+digraph mya {
+    rankdir=TB;
+    compound=true;
+    fontname="Helvetica";
+    fontsize=11;
+    bgcolor="#fafafa";
+    node [fontname="Helvetica", fontsize=10, style="filled,rounded", shape=box];
+    edge [fontname="Helvetica", fontsize=8, color="#666666"];
+
+    // ═══════════════════════════════════════════════════
+    // TRANSPORT LAYER
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_transport {
+        label="TRANSPORT LAYER";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        tui     [label="TUI\n(pi InteractiveMode)", fillcolor="#a8d8ea"];
+        cli     [label="CLI one-shot\n(--print / --json)", fillcolor="#a8d8ea"];
+        rpc     [label="JSON-RPC\n(--rpc)", fillcolor="#a8d8ea"];
+        web     [label="Web Dashboard\n(React 19 · 39 pages)", fillcolor="#a8d8ea"];
+        gateway [label="Gateway\nHTTP + WebSocket\n(2264 LOC · 62 routes)", fillcolor="#a8d8ea"];
+        bg      [label="Background\n(--bg · TCP RPC)", fillcolor="#a8d8ea"];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // ENTRY / DISPATCH
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_entry {
+        label="ENTRY & DISPATCH";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        main [label="main.ts\n(mya binary)", fillcolor="#cbf3d0"];
+        createAgent [label="createAgent()\n(packages/agent)", fillcolor="#cbf3d0"];
+        pool [label="RuntimePool\n+ PiInProcessRuntime\n(serve path only)", fillcolor="#cbf3d0"];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // CORE ENGINE
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_core {
+        label="CORE ENGINE";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        runTurn [label="runTurn() FSM\n• bounded retry (3x)\n• tool loop (25 rounds)\n• budget gate\n• idle-compaction", fillcolor="#ffcc99"];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // PROVIDERS
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_providers {
+        label="PROVIDERS (packages/ai)";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        registry [label="ProviderRegistry\n• taint system\n• cooldown expiry", fillcolor="#d4a8e8"];
+        fallback [label="streamWithFallback\n(ordered profiles)", fillcolor="#d4a8e8"];
+        smartRouter [label="SmartRouterImpl\n(keyword + cost scoring)", fillcolor="#d4a8e8"];
+        openai [label="OpenAIAdapter\n(fetch SSE streaming)", fillcolor="#d4a8e8"];
+
+        registry -> fallback -> smartRouter -> openai;
+    }
+
+    // ═══════════════════════════════════════════════════
+    // TOOLS
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_tools {
+        label="TOOLS (packages/tools · 16.4k LOC)";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        dispatch [label="dispatch.runTool()\n• permission gate\n• human approval\n• audit log", fillcolor="#f9c0ab"];
+
+        subgraph cluster_tool_groups {
+            label="26 Tool Implementations";
+            fontsize=10;
+            color="#e8e8e8";
+            style="filled,rounded";
+            fillcolor="#fef0ed";
+
+            t_fs    [label="FS (4)\nread · write · edit · replace", fillcolor="#fef0ed"];
+            t_shell [label="Shell (1)\nbash", fillcolor="#fef0ed"];
+            t_search [label="Search (4)\nglob · grep · ls · find", fillcolor="#fef0ed"];
+            t_code  [label="Code Intel (3)\ncodegraph · symbols · LSP", fillcolor="#fef0ed"];
+            t_web   [label="Web (15)\nfetch · browser(8) · search(6)", fillcolor="#fef0ed"];
+            t_sec   [label="Security (3)\nosv · url-safety · path-safety", fillcolor="#fef0ed"];
+            t_other [label="Other (6)\nscreen · kanban · media · disk", fillcolor="#fef0ed"];
+        }
+
+        dispatch -> t_fs [style=dashed, arrowhead=none];
+        dispatch -> t_shell [style=dashed, arrowhead=none];
+        dispatch -> t_search [style=dashed, arrowhead=none];
+        dispatch -> t_code [style=dashed, arrowhead=none];
+        dispatch -> t_web [style=dashed, arrowhead=none];
+        dispatch -> t_sec [style=dashed, arrowhead=none];
+        dispatch -> t_other [style=dashed, arrowhead=none];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // MEMORY
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_memory {
+        label="MEMORY (packages/memory · 9.2k LOC)";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        brain [label="Brain\nfacts · takes · pages\n• consolidate (≥0.85 cosine)\n• purge (72h recovery)\n• backlinks", fillcolor="#b8e0d2"];
+        rrf [label="RRF\n4-arm fusion\nBM25 + substring\n+ vector + graph", fillcolor="#b8e0d2"];
+        dream [label="DreamCycle\n(4h consolidation)\nfacts → takes", fillcolor="#b8e0d2"];
+        tree [label="MemoryTree\nL0 → L1 → L2\nevents → takes → pages", fillcolor="#b8e0d2"];
+        tgraph [label="TypedGraph\nentity graph\nBFS hop-distance", fillcolor="#b8e0d2"];
+        sqlite [label="SQLite Store\nWAL · FTS5\n0o600 perms", fillcolor="#b8e0d2"];
+        embed [label="Embeddings\nfastembed/ONNX\n(worker_thread)", fillcolor="#b8e0d2"];
+        domains [label="14 Domains\narchivist · tree · diff\ngoals · sync · graph\nconversations · search ...", fillcolor="#b8e0d2"];
+
+        brain -> rrf [style=dashed, arrowhead=none];
+        brain -> dream [style=dashed, arrowhead=none];
+        brain -> tree [style=dashed, arrowhead=none];
+        brain -> tgraph [style=dashed, arrowhead=none];
+        brain -> sqlite [dir=both, style=dashed];
+        brain -> embed [style=dashed, arrowhead=none];
+        brain -> domains [style=dashed, arrowhead=none];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // INFRASTRUCTURE
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_infra {
+        label="INFRASTRUCTURE";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        audit [label="Audit Log\nMerkle SHA-256\nhash-chain", fillcolor="#e8e8e8"];
+        prompts [label="Prompts\n3-tier cache\ncompressors", fillcolor="#e8e8e8"];
+        secrets [label="Secrets\nenv/file/exec\nkeyring · redactor", fillcolor="#e8e8e8"];
+        cron [label="Cron\nCAS claim · TTL\nsweep · catchup", fillcolor="#e8e8e8"];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // NATIVE (Rust)
+    // ═══════════════════════════════════════════════════
+    subgraph cluster_native {
+        label="RUST NATIVE (napi-rs)";
+        fontsize=13;
+        color="#e0e0e0";
+        style="filled,rounded";
+        fillcolor="#f5f5f5";
+
+        rust [label="my-agent-natives\nBLAKE3 · glob/grep\ntree-sitter AST · Rhai\nwallclock", fillcolor="#d4d4d4"];
+    }
+
+    // ═══════════════════════════════════════════════════
+    // CONNECTIONS
+    // ═══════════════════════════════════════════════════
+
+    // Transport → Entry
+    tui -> main;
+    cli -> main;
+    rpc -> main;
+    web -> gateway;
+    bg -> main;
+
+    // Entry → Agent
+    main -> createAgent [label="print\none-shot", fontsize=8];
+    main -> pool [label="serve\ngateway", fontsize=8];
+    gateway -> pool [label="HTTP/WS", fontsize=8];
+    pool -> createAgent [label="session.prompt()", fontsize=8];
+
+    // Agent → Core
+    createAgent -> runTurn [label="agent.run()", fontsize=8];
+
+    // Core → Subsystems
+    runTurn -> fallback [label="stream", fontsize=8, lhead=cluster_providers];
+    runTurn -> dispatch [label="tool exec", fontsize=8, lhead=cluster_tools];
+    runTurn -> brain [label="record/recall", fontsize=8, lhead=cluster_memory];
+    runTurn -> audit [label="log", fontsize=8];
+    runTurn -> prompts [label="assemble", fontsize=8];
+
+    // Tools → Native
+    t_search -> rust [style=dotted, label="nativeGlob\nnativeGrep", fontsize=7];
+    t_code -> rust [style=dotted, label="parse_ts_symbols", fontsize=7];
+
+    // Memory → Native
+    embed -> rust [style=invis];
+
+    // Secrets → all
+    secrets -> runTurn [style=dashed, color="#999999", label="redact", fontsize=7];
+
+    // Cron → Gateway
+    cron -> gateway [style=dashed, label="sweep", fontsize=7];
+}

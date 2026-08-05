@@ -1,0 +1,69 @@
+digraph memory_pipeline {
+    rankdir=LR;
+    compound=true;
+    fontname="Helvetica";
+    fontsize=11;
+    bgcolor="#fafafa";
+    node [fontname="Helvetica", fontsize=10, style="filled,rounded", shape=box];
+    edge [fontname="Helvetica", fontsize=8, color="#555555"];
+
+    subgraph cluster_ingest {
+        label="1. INGEST";
+        fontsize=12; color="#e0e0e0"; style="filled,rounded"; fillcolor="#f5f5f5";
+        autoCapture [label="autoCapture()\nextract facts from\nuser prompt +\nassistant response", fillcolor="#a8d8ea"];
+    }
+
+    subgraph cluster_store {
+        label="2. STORE";
+        fontsize=12; color="#e0e0e0"; style="filled,rounded"; fillcolor="#f5f5f5";
+        brain [label="Brain.recordFact()\n• 4096 char cap\n• 10k fact cap\n• soft-delete", fillcolor="#b8e0d2"];
+        sqlite_w [label="SQLite\n(WAL · FTS5)", fillcolor="#b8e0d2"];
+        brain -> sqlite_w [label="write-through", fontsize=8];
+    }
+
+    subgraph cluster_lifecycle {
+        label="3. LIFECYCLE";
+        fontsize=12; color="#e0e0e0"; style="filled,rounded"; fillcolor="#f5f5f5";
+
+        l0 [label="L0: Events\n(24h TTL)", fillcolor="#ffcc99"];
+        l1 [label="L1: Takes\n(≥3 facts, ≥0.85 cosine)", fillcolor="#ffcc99"];
+        l2 [label="L2: Pages\n(cosine clustering)", fillcolor="#ffcc99"];
+
+        l0 -> l1 [label="Brain.consolidate()", fontsize=8];
+        l1 -> l2 [label="MemoryTree.compile()", fontsize=8];
+    }
+
+    subgraph cluster_retrieve {
+        label="4. RETRIEVE";
+        fontsize=12; color="#e0e0e0"; style="filled,rounded"; fillcolor="#f5f5f5";
+
+        search [label="SearchDomain.recall()", fillcolor="#f9c0ab"];
+        
+        subgraph cluster_rrf {
+            label="RRF (k=60)";
+            fontsize=10; color="#e8e8e8"; style="filled"; fillcolor="#fef0ed";
+            bm25 [label="BM25\n(IDF + TF\nsaturation)", fillcolor="#fef0ed"];
+            substr [label="Substring\n(case-insensitive)", fillcolor="#fef0ed"];
+            vector [label="Vector\n(char-n-gram\nTF-IDF cosine)", fillcolor="#fef0ed"];
+            gph [label="Graph\n(BFS hop-\ndistance)", fillcolor="#fef0ed"];
+        }
+
+        domains [label="14 Domains\nfan-out", fillcolor="#f9c0ab"];
+        search -> bm25 [style=dashed, arrowhead=none];
+        search -> substr [style=dashed, arrowhead=none];
+        search -> vector [style=dashed, arrowhead=none];
+        search -> gph [style=dashed, arrowhead=none];
+        search -> domains [style=dashed, arrowhead=none];
+    }
+
+    subgraph cluster_bg {
+        label="BACKGROUND";
+        fontsize=12; color="#e0e0e0"; style="filled,rounded"; fillcolor="#f5f5f5";
+        dream [label="DreamCycle (4h)\nfacts → takes\n(LLM or zero-LLM digest)", fillcolor="#d4a8e8"];
+    }
+
+    autoCapture -> brain;
+    brain -> l0 [label="assignTier()", fontsize=8];
+    search -> brain [label="query", fontsize=8, style=dashed, constraint=false];
+    dream -> brain [label="consolidate", fontsize=8, style=dashed, constraint=false];
+}
