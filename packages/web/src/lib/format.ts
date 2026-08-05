@@ -24,11 +24,11 @@ export function formatDuration(s?: number): string {
   return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
 }
 
-export function timeAgo(iso?: string | null): string {
+export function timeAgo(iso?: string | null, now: number = Date.now()): string {
   if (!iso) return "never";
   const d = new Date(iso).getTime();
   if (Number.isNaN(d)) return "never";
-  const diff = Math.floor((Date.now() - d) / 1000);
+  const diff = Math.floor((now - d) / 1000);
   if (diff < 0) return "in the future";
   if (diff < 10) return "just now";
   if (diff < 60) return `${diff}s ago`;

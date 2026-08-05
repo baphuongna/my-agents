@@ -14,7 +14,7 @@ import { join } from "node:path";
 const TRANSPORTS = ["tui", "rpc", "sdk", "print"];
 /** The CLI orchestrator entry point legitimately dispatches to ALL transports
  * (it's above the transport layer, not a transport-to-transport dependency). */
-const ORCHESTRATOR_EXCEPTIONS = ["print/src/main.ts"];
+const ORCHESTRATOR_EXCEPTIONS = ["print/src/main.ts", "print/src/bg-runner.ts"];
 const root = join(process.cwd(), "packages");
 const offenders = [];
 

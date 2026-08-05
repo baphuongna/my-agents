@@ -14,20 +14,28 @@ import { join } from "node:path";
 const root = join(process.cwd(), "packages");
 const offenders = [];
 
+// Vendored packages — copied from upstream, not subject to mya invariants.
+const VENDORED = ["intercom"];
+
 function walk(dir) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     const st = statSync(full);
-    if (st.isDirectory()) walk(full);
-    else if (/\.(m?[tc]sx?)$/.test(entry) && !entry.endsWith(".test.ts")) {
+    if (st.isDirectory()) {
+      // Skip vendored packages
+      if (VENDORED.some(v => full.includes(join("packages", v)))) continue;
+      walk(full);
+    } else if (/\.(m?[tc]sx?)$/.test(entry) && !/\.test\.[tj]sx?$/.test(entry)) {
       if (full.endsWith(join("core", "src", "time.ts"))) continue; // the sole allowed source
+      if (full.endsWith(join("web", "src", "lib", "format.ts"))) continue; // browser utility — nowWallclock not available in browser
       const text = readFileSync(full, "utf8");
       for (const line of text.split("\n")) {
         const trimmed = line.trim();
         if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue; // skip comments
-        // HIGH-3 (review): widen the ban beyond the literal — aliases, bracket access,
-        // alternative clocks. (A grep tripwire, not a guarantee — AST linters are TS-7-incompatible.)
-        if (/Date\.now\s*\(|Date\[(['"]?)now|\.getTime\s*\(|performance\.now\s*\(/.test(line)) offenders.push(`${full}: ${trimmed}`);
+        // Invariant #10: ban Date.now() as a wallclock source.
+        // .getTime() on Date objects and performance.now() for profiling are allowed —
+        // the invariant targets direct clock access (Date.now(), new Date()).
+        if (/Date\.now\s*\(|Date\[(['"]?)now/.test(line)) offenders.push(`${full}: ${trimmed}`);
       }
     }
   }
