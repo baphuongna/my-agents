@@ -1388,6 +1388,722 @@
 |---|---|---|---|---|
 | [645-watchlist-heartbeat.md](645-watchlist-heartbeat.md) | XU: Watchlist Heartbeat | 🟢 | ⚠️ (có cron + channels notify — chưa | 1-2 tuần |
 
+### Nhóm — Phần E: Anthropic-Cybersecurity-Skills (658-662)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [658-multi-framework-mapping.md](658-multi-framework-mapping.md) | YH: Multi-Framework Mapping | 🟢 | ✅ (skill.ts đã có frontmatter + prov | 1-2 tuần |
+| [659-coverage-matrix-autogen.md](659-coverage-matrix-autogen.md) | YI: Coverage Matrix Autogen | 🟢 | ⚠️ (có skill index + curator — chưa c | 1-2 tuần |
+| [660-skill-anatomy-consistency.md](660-skill-anatomy-consistency.md) | YJ: Skill Anatomy Consistency | 🟢 | ⚠️ (có skill.ts progressive disclosur | 1-2 tuần |
+| [661-verified-framework-ids.md](661-verified-framework-ids.md) | YK: Verified Framework IDs | 🟢 | ⚠️ (có osv-check + skill parser — chư | 1-2 tuần |
+| [662-dual-use-safety-frontmatter.md](662-dual-use-safety-frontmatter.md) | YL: Dual-Use Safety Frontmatter | 🟢 | ⚠️ (có permission + approval + trust | 2-3 tuần |
+
+### Nhóm — Phần E: BMAD-METHOD (693-697)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [693-four-phase-lifecycle.md](693-four-phase-lifecycle.md) | ZQ: Four-Phase Lifecycle | 🟡 | ⚠️ (two-loops ZC nền + workflows runn | 2-3 tuần |
+| [694-adaptive-complexity-scaling.md](694-adaptive-complexity-scaling.md) | ZR: Adaptive Complexity Scaling | 🟢 | ⚠️ (ai/model-routing tier + eval tier | 1-2 tuần |
+| [695-party-mode-consensus.md](695-party-mode-consensus.md) | ZS: Party-Mode Consensus | 🟡 | ⚠️ (council.ts + workflows parallel — | 2 tuần |
+| [696-course-correction-gate.md](696-course-correction-gate.md) | ZT: Course-Correction Gate | 🟡 | ⚠️ (quality-convergence ZH nền + work | 2 tuần |
+| [697-adversarial-review-tasks.md](697-adversarial-review-tasks.md) | ZU: Adversarial Review Tasks | 🟢 | ✅ (council/adversarial.ts + hindsigh | 1 tuần |
+
+### Nhóm — Phần E: Hypa (797-798)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [797-command-rewrite-registry.md](797-command-rewrite-registry.md) | ADQ: Command Rewrite Registry | 🟡 | ⚠️ (sẵn tools render; thiếu registry | 2 tuần |
+| [798-filter-dsl-parser-tiers.md](798-filter-dsl-parser-tiers.md) | ADR: Filter DSL Parser Tiers | 🟡 | ⚠️ (sẵn tools filter; thiếu DSL parse | 1-2 tuần |
+
+### Nhóm — Phần E: OpenSpec (802-804)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [802-opsx-artifact-guided-workflow.md](802-opsx-artifact-guided-workflow.md) | ADV: OPSX Artifact-Guided Workflow | 🟢 | ⚠️ (sẵn workflows runner; thiếu OPSX | 2 tuần |
+| [803-change-stacking-metadata.md](803-change-stacking-metadata.md) | ADW: Change Stacking Metadata | 🟡 | ⚠️ (sẵn memory graph; thiếu change gr | 2 tuần |
+| [804-change-split-scaffolding.md](804-change-split-scaffolding.md) | ADX: Change Split Scaffolding | 🟢 | ⚠️ (sẵn workflows; thiếu split CLI) | | 1 tuần |
+
+### Nhóm — Phần E: agent-skills (646-650)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [646-assumption-surfacing-protocol.md](646-assumption-surfacing-protocol.md) | XV: Assumption Surfacing Protocol | 🟢 | ⚠️ (có session + budget + eval gate — | 1-2 tuần |
+| [647-vertical-slice-incremental.md](647-vertical-slice-incremental.md) | XW: Vertical Slice Incremental | 🟢 | ⚠️ (có session + exporters + eval — c | 1-2 tuần |
+| [648-five-axis-code-review.md](648-five-axis-code-review.md) | XX: Five-Axis Code Review | 🟢 | ⚠️ (có council + eval + audit — chưa | 1-2 tuần |
+| [649-measurement-first-optimization.md](649-measurement-first-optimization.md) | XY: Measurement-First Optimization | 🟢 | ⚠️ (có telemetry + eval + web — chưa | 1-2 tuần |
+| [650-deprecation-migration-framework.md](650-deprecation-migration-framework.md) | XZ: Deprecation Migration Framework | 🟢 | ⚠️ (có skills curator + audit — chưa | 1-2 tuần |
+
+### Nhóm — Phần E: agent-stuff (651-655)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [651-session-log-backstate.md](651-session-log-backstate.md) | YA: Session Log Backstate | 🟢 | ⚠️ (có session-branch + JSONL — chưa | 2-3 tuần |
+| [652-file-backed-todo-store.md](652-file-backed-todo-store.md) | YB: File-Backed Todo Store | 🟢 | ⚠️ (có kanban-sqlite + kanban.json — | 2-3 tuần |
+| [653-throttled-repo-cache.md](653-throttled-repo-cache.md) | YC: Throttled Repo Cache | 🟡 | ⚠️ (có fetch + path-safety — chưa có | 2-3 tuần |
+| [654-command-shim-interception.md](654-command-shim-interception.md) | YD: Command Shim Interception | 🟡 | ⚠️ (có codeexec + permission — chưa c | 2-3 tuần |
+| [655-tmux-scrape-control.md](655-tmux-scrape-control.md) | YE: Tmux Scrape Control | 🟡 | ⚠️ (có screen + codeexec — chưa có tm | 2-3 tuần |
+
+### Nhóm — Phần E: andrej-karpathy-skills (656-657)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [656-declarative-over-imperative.md](656-declarative-over-imperative.md) | YF: Declarative over Imperative | 🟢 | ⚠️ (có skill model + progressive disc | 1 tuần |
+| [657-minimal-complexity-gate.md](657-minimal-complexity-gate.md) | YG: Minimal Complexity Gate | 🟢 | ⚠️ (có council review + eval — chưa c | 1-2 tuần |
+
+### Nhóm — Phần E: awesome-agent-skills (663-666)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [663-badge-category-curation.md](663-badge-category-curation.md) | YM: Badge Category Curation | 🟢 | ⚠️ (có skill curator — chưa có curati | 1-2 tuần |
+| [664-vendor-grouped-skill-org.md](664-vendor-grouped-skill-org.md) | YN: Vendor-Grouped Skill Org | 🟢 | ⚠️ (có provenance + curator — chưa có | 1 tuần |
+| [665-companion-list-pattern.md](665-companion-list-pattern.md) | YO: Companion List Pattern | 🟢 | ⚠️ (có skill store — chưa có companio | 1 tuần |
+| [666-skill-onboarding-from-directory.md](666-skill-onboarding-from-directory.md) | YP: Skill Onboarding from Directory | 🟡 | ⚠️ (có skill store + curator + repo c | 2-3 tuần |
+
+### Nhóm — Phần E: awesome-human-distillation (667-674)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [667-issue-form-submission.md](667-issue-form-submission.md) | YQ: Issue Form Submission | 🟢 | ⚠️ (có curator pipeline — chưa có str | 1 tuần |
+| [668-llm-translate-i18n-curation.md](668-llm-translate-i18n-curation.md) | YR: LLM Translate i18n Curation | 🟢 | ⚠️ (có AI bridge + fallback — chưa có | 1-2 tuần |
+| [669-star-sort-live-metrics.md](669-star-sort-live-metrics.md) | YS: Star Sort Live Metrics | 🟢 | ⚠️ (có fetch + cron — chưa có live me | 1 tuần |
+| [670-cron-auto-curation.md](670-cron-auto-curation.md) | YT: Cron Auto Curation | 🟡 | ⚠️ (có cron runner + supervised — chư | 2-3 tuần |
+| [671-triple-verification-gate.md](671-triple-verification-gate.md) | YU: Triple Verification Gate | 🟢 | ⚠️ (có memory + governance — chưa có | 2-3 tuần |
+| [672-expression-dna-stylometry.md](672-expression-dna-stylometry.md) | YV: Expression DNA Stylometry | 🟢 | ⚠️ (có redact + canonical-json — chưa | 2-3 tuần |
+| [673-honest-limits-mandate.md](673-honest-limits-mandate.md) | YW: Honest Limits Mandate | 🟢 | ⚠️ (có skill validator + governance — | 1-2 tuần |
+| [674-contradiction-as-feature.md](674-contradiction-as-feature.md) | YX: Contradiction as Feature | 🟡 | ⚠️ (memory/conflict.ts detect mâu thu | 2 tuần |
+
+### Nhóm — Phần E: awesome-persona-distill-skills (675-678)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [675-label-gated-auto-pr.md](675-label-gated-auto-pr.md) | YY: Label-Gated Auto-PR | 🟡 | ⚠️ (workflows runner + audit approval | 2-3 tuần |
+| [676-bilingual-consistency-ci.md](676-bilingual-consistency-ci.md) | YZ: Bilingual Consistency CI | 🟢 | ⚠️ (scripts/ có lint.mjs, lint-deps.m | 1 tuần |
+| [677-workflow-dispatch-chaining.md](677-workflow-dispatch-chaining.md) | ZA: Workflow Dispatch Chaining | 🟡 | ⚠️ (workflows runner chạy tuần tự — c | 1-2 tuần |
+| [678-persona-category-taxonomy.md](678-persona-category-taxonomy.md) | ZB: Persona Category Taxonomy | 🟢 | ⚠️ (skills/curator.ts có phân loại sk | 1 tuần |
+
+### Nhóm — Phần E: babysitter (679-686)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [679-two-loops-control-plane.md](679-two-loops-control-plane.md) | ZC: Two-Loops Control Plane | 🟡 | ⚠️ (core/loop.ts runTurn + workflows | 2-3 tuần |
+| [680-mandatory-stop-enforcement.md](680-mandatory-stop-enforcement.md) | ZD: Mandatory Stop Enforcement | 🔴 | ⚠️ (core/loop.ts có turn hooks — chưa | 2-3 tuần |
+| [681-durable-breakpoint-adapter.md](681-durable-breakpoint-adapter.md) | ZE: Durable Breakpoint Adapter | 🟡 | ⚠️ (core/supervised + gateway approva | 2-3 tuần |
+| [682-evidence-driven-completion.md](682-evidence-driven-completion.md) | ZF: Evidence-Driven Completion | 🟡 | ⚠️ (eval harness + audit có — chưa có | 2 tuần |
+| [683-process-as-code.md](683-process-as-code.md) | ZG: Process-as-Code | 🟡 | ✅ (workflows/runner.ts chạy JS async | 1 tuần (mở rộng runner) |
+| [684-quality-convergence-loop.md](684-quality-convergence-loop.md) | ZH: Quality Convergence Loop | 🟡 | ⚠️ (eval tiers + lint — chưa có conve | 2-3 tuần |
+| [685-deterministic-parallel-map.md](685-deterministic-parallel-map.md) | ZI: Deterministic Parallel Map | 🟢 | ⚠️ (runner.ts có ctx.parallel — chưa | 1 tuần |
+| [686-process-library-composable.md](686-process-library-composable.md) | ZJ: Process Library Composable | 🟡 | ⚠️ (workflows runner + skills curator | 3 tuần |
+
+### Nhóm — Phần E: beads (687-692)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [687-graph-task-dependencies.md](687-graph-task-dependencies.md) | ZK: Graph Task Dependencies | 🟡 | ⚠️ (tools graph-store.ts + memory gra | 3 tuần |
+| [688-compaction-survival-notes.md](688-compaction-survival-notes.md) | ZL: Compaction Survival Notes | 🟡 | ⚠️ (prompts/compress + core/session-b | 1-2 tuần |
+| [689-molecule-wisp-templates.md](689-molecule-wisp-templates.md) | ZM: Molecule-Wisp Templates | 🟢 | ⚠️ (workflows runner + skills — chưa | 1-2 tuần |
+| [690-blocker-vs-deferrable-triage.md](690-blocker-vs-deferrable-triage.md) | ZN: Blocker-vs-Deferrable Triage | 🟢 | ⚠️ (agent loop + session-branch — chư | 1-2 tuần |
+| [691-dependency-ready-gate.md](691-dependency-ready-gate.md) | ZO: Dependency-Ready Gate | 🟡 | ⚠️ (task graph ZK nền — chưa có ready | 1-2 tuần |
+| [692-epic-graph-decomposition.md](692-epic-graph-decomposition.md) | ZP: Epic Graph Decomposition | 🟡 | ⚠️ (task graph ZK nền — chưa có decom | 2 tuần |
+
+### Nhóm — Phần E: caveman (698-702)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [698-caveman-output-compression.md](698-caveman-output-compression.md) | ZV: Caveman Output Compression | 🟢 | ⚠️ (tools/output-compress + prompts/c | 1-2 tuần |
+| [701-compressed-subagent-output.md](701-compressed-subagent-output.md) | ZY: Compressed Subagent Output | 🟢 | ⚠️ (agent subagent + output-compress | 1-2 tuần |
+| [702-auto-clarity-escape-hatch.md](702-auto-clarity-escape-hatch.md) | ZZ: Auto-Clarity Escape Hatch | 🟡 | ⚠️ (có compressors + DriftGrader — ch | 1-2 tuần |
+
+### Nhóm — Phần E: claude-code-best-practice (699-700)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [699-ancestor-vs-descendant-loading.md](699-ancestor-vs-descendant-loading.md) | ZW: Ancestor vs Descendant Loading | 🟢 | ⚠️ (prompts/assembler + memory — chưa | 1-2 tuần |
+| [700-hook-sound-notification-system.md](700-hook-sound-notification-system.md) | ZX: Hook Sound Notification System | 🟢 | ⚠️ (core/loop hooks + print notify — | 1-2 tuần |
+
+### Nhóm — Phần E: claude-mem (703-704)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [703-fire-and-forget-worker.md](703-fire-and-forget-worker.md) | AAA: Fire-and-Forget Worker | 🟢 | ⚠️ (có bg-runner + RPC TCP — chưa có | 1-2 tuần |
+| [704-private-tag-privacy-control.md](704-private-tag-privacy-control.md) | AAB: Private-Tag Privacy Control | 🟢 | ⚠️ (có auto-capture + redact — chưa c | 1 tuần |
+
+### Nhóm — Phần E: codebase-memory-mcp (705-708)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [705-cross-file-lsp-resolution.md](705-cross-file-lsp-resolution.md) | AAC: Cross-File LSP Resolution | 🟡 | ⚠️ (có lsp-client + codegraph — chưa | 2-3 tuần |
+| [706-infrastructure-as-code-indexing.md](706-infrastructure-as-code-indexing.md) | AAD: Infrastructure-as-Code Indexing | 🟢 | ⚠️ (có codegraph import graph — chưa | 2 tuần |
+| [707-ram-first-indexing-pipeline.md](707-ram-first-indexing-pipeline.md) | AAE: RAM-First Indexing Pipeline | 🟢 | ⚠️ (có code-index bounded — chưa có R | 2-3 tuần |
+| [708-mcp-cypher-query-surface.md](708-mcp-cypher-query-surface.md) | AAF: MCP Cypher Query Surface | 🟢 | ⚠️ (có codegraph + graph-store — chưa | 2 tuần |
+
+### Nhóm — Phần E: codeburn (709-713)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [709-dedup-cross-provider-set.md](709-dedup-cross-provider-set.md) | AAG: Dedup Cross-Provider Set | 🟢 | ⚠️ (có cost tracker + telemetry — chư | 1 tuần |
+| [710-waste-detector-composition.md](710-waste-detector-composition.md) | AAH: Waste Detector Composition | 🟢 | ⚠️ (có telemetry + budget — chưa có w | 2 tuần |
+| [711-actionable-waste-remediation.md](711-actionable-waste-remediation.md) | AAI: Actionable Waste Remediation | 🟢 | ⚠️ (có detectors nền — chưa có action | 1-2 tuần |
+| [712-cli-output-contract.md](712-cli-output-contract.md) | AAJ: CLI Output Contract | 🟢 | ⚠️ (có CLI + structured result — chưa | 1-2 tuần |
+| [713-yield-shipped-vs-reverted.md](713-yield-shipped-vs-reverted.md) | AAK: Yield Shipped-vs-Reverted | 🟢 | ⚠️ (có audit + cost — chưa có yield t | 1-2 tuần |
+
+### Nhóm — Phần E: compound-engineering-plugin (714-719)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [714-plan-review-compound-loop.md](714-plan-review-compound-loop.md) | AAL: Plan-Review Compound Loop | 🟡 | ⚠️ (có workflows + subagent — chưa có | 2-3 tuần |
+| [715-conditional-reviewer-persona.md](715-conditional-reviewer-persona.md) | AAM: Conditional Reviewer Persona | 🟢 | ⚠️ (có council + hindsight — chưa có | 2 tuần |
+| [716-worktree-based-execution.md](716-worktree-based-execution.md) | AAN: Worktree-Based Execution | 🟡 | ⚠️ (có subagent + workflows — chưa có | 2 tuần |
+| [717-strategy-anchor-document.md](717-strategy-anchor-document.md) | AAO: Strategy Anchor Document | 🟢 | ✅ (markdown + skill model sẵn) | **E | 1 tuần |
+| [718-cross-harness-blocking-ask.md](718-cross-harness-blocking-ask.md) | AAP: Cross-Harness Blocking Ask | 🟢 | ⚠️ (có approval channel — chưa có que | 1-2 tuần |
+| [719-platform-portability-rules.md](719-platform-portability-rules.md) | AAQ: Platform Portability Rules | 🟢 | ⚠️ (có path-safety — chưa có plan lin | 1 tuần |
+
+### Nhóm — Phần E: everything-claude-code (720-721)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [720-verification-loop-gates.md](720-verification-loop-gates.md) | AAR: Verification Loop Gates | 🟢 | ⚠️ (có typecheck/lint scripts — chưa | 1 tuần |
+| [721-guardrails-from-repo-history.md](721-guardrails-from-repo-history.md) | AAS: Guardrails from Repo History | 🟢 | ⚠️ (có audit/trust — chưa có history | 1-2 tuần |
+
+### Nhóm — Phần E: f2-experiment (722-726)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [722-blind-scorer-eval-design.md](722-blind-scorer-eval-design.md) | AAT: Blind Scorer Eval Design | 🟢 | ⚠️ (có eval harness — chưa có dual-sc | 1-2 tuần |
+| [723-novel-edge-question-test.md](723-novel-edge-question-test.md) | AAU: Novel Edge Question Test | 🟢 | ⚠️ (có eval harness — chưa có edge-qu | 1 tuần |
+| [724-design-time-confirmation-bias.md](724-design-time-confirmation-bias.md) | AAV: Design-Time Confirmation Bias | 🟢 | ⚠️ (có eval harness — chưa có bias ch | 1 tuần |
+| [725-anti-drift-rule-gap.md](725-anti-drift-rule-gap.md) | AAW: Anti-Drift Rule Gap | 🟢 | ⚠️ (có skill model + eval — chưa có t | 1 tuần |
+| [726-score-reproducibility-audit.md](726-score-reproducibility-audit.md) | AAX: Score Reproducibility Audit | 🟢 | ⚠️ (có eval harness + edge set — chưa | 1-2 tuần |
+
+### Nhóm — Phần E: fallow (727-734)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [727-deterministic-no-ai-analyzer.md](727-deterministic-no-ai-analyzer.md) | AAY: Deterministic No-AI Analyzer | 🟢 | ⚠️ (có native + canonical-json — chưa | 2 tuần |
+| [728-plugin-based-framework-detection.md](728-plugin-based-framework-detection.md) | AAZ: Plugin-Based Framework Detection | 🟢 | ⚠️ (có auto-discover + skill index — | 2 tuần |
+| [729-typed-output-contracts.md](729-typed-output-contracts.md) | ABA: Typed Output Contracts | 🟢 | ⚠️ (có canonical-json + structured-re | 2 tuần |
+| [730-suppression-directive-system.md](730-suppression-directive-system.md) | ABB: Suppression Directive System | 🟢 | ⚠️ (có threat-scan + cron scan — chưa | 1 tuần |
+| [731-team-assembly-consensus-matrix.md](731-team-assembly-consensus-matrix.md) | ABC: Team Assembly Consensus Matrix | 🟡 | ⚠️ (có council vote + subagent pool — | 2 tuần |
+| [732-offline-jwt-license-grace.md](732-offline-jwt-license-grace.md) | ABD: Offline JWT License Grace | 🟡 | ⚠️ (có signing + x402 crypto — chưa c | 1-2 tuần |
+| [733-deterministic-security-candidates.md](733-deterministic-security-candidates.md) | ABE: Deterministic Security Candidates | 🟡 | ⚠️ (có threat-scan + council — chưa c | 2 tuần |
+| [734-incremental-parallel-parsing.md](734-incremental-parallel-parsing.md) | ABF: Incremental Parallel Parsing | 🟡 | ⚠️ (có codegraph + native parse — chư | 2-3 tuần |
+
+### Nhóm — Phần E: fff (735-741)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [735-definition-first-hinting.md](735-definition-first-hinting.md) | ABG: Definition-First Hinting | 🟢 | ⚠️ (có search-index + native parse — | 1-2 tuần |
+| [736-fuzzy-fallback-zero-match.md](736-fuzzy-fallback-zero-match.md) | ABH: Fuzzy Fallback Zero-Match | 🟢 | ✅ (có FuzzyCache + trigram fuzzy tro | 1 tuần |
+| [737-git-aware-annotations.md](737-git-aware-annotations.md) | ABI: Git-Aware Annotations | 🟢 | ⚠️ (có search-index — chưa có git sta | 1 tuần |
+| [738-runtime-switchable-tool-modes.md](738-runtime-switchable-tool-modes.md) | ABJ: Runtime-Switchable Tool Modes | 🟢 | ⚠️ (có tool registry + dispatch — chư | 1 tuần |
+| [739-background-watcher-index.md](739-background-watcher-index.md) | ABK: Background Watcher Index | 🟡 | ⚠️ (có search-index + frecency — chưa | 2 tuần |
+| [740-weak-match-detector.md](740-weak-match-detector.md) | ABL: Weak-Match Detector | 🟢 | ⚠️ (có fuzzy + search — chưa có weak- | 1 tuần |
+| [741-cursor-pagination-grep.md](741-cursor-pagination-grep.md) | ABM: Cursor Pagination Grep | 🟢 | ⚠️ (có grep tool + native grep — chưa | 1-2 tuần |
+
+### Nhóm — Phần E: free-claude-code (742-746)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [742-protocol-stable-proxy-routing.md](742-protocol-stable-proxy-routing.md) | ABN: Protocol-Stable Proxy Routing | 🟡 | ⚠️ (có gateway + model-routing — chưa | 2-3 tuần |
+| [743-gateway-model-id-encoding.md](743-gateway-model-id-encoding.md) | ABO: Gateway Model-ID Encoding | 🟡 | ⚠️ (có model-routing + route-identity | 1-2 tuần |
+| [744-fast-path-request-detection.md](744-fast-path-request-detection.md) | ABP: Fast-Path Request Detection | 🟡 | ⚠️ (có gateway + fallback — chưa có f | 1-2 tuần |
+| [745-process-registry-safety-net.md](745-process-registry-safety-net.md) | ABQ: Process Registry Safety Net | 🟢 | ⚠️ (có bg-runner + exception-handler | 1 tuần |
+| [746-admin-ui-loopback-only.md](746-admin-ui-loopback-only.md) | ABR: Admin UI Loopback-Only | 🟢 | ⚠️ (có gateway loopback guard — chưa | 1 tuần |
+
+### Nhóm — Phần E: gajae-code (747-752)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [747-autonomous-memory-pipeline.md](747-autonomous-memory-pipeline.md) | ABS: Autonomous Memory Pipeline | 🟡 | ⚠️ (có dream-cycle + consolidate + le | 2 tuần |
+| [748-handoff-generation-pipeline.md](748-handoff-generation-pipeline.md) | ABT: Handoff Generation Pipeline | 🟡 | ⚠️ (có session JSONL + exporter — chư | 1-2 tuần |
+| [749-blob-artifact-externalization.md](749-blob-artifact-externalization.md) | ABU: Blob Artifact Externalization | 🟡 | ⚠️ (có spill — chưa có content-addres | 2 tuần |
+| [750-rulebook-normalization-pipeline.md](750-rulebook-normalization-pipeline.md) | ABV: Rulebook Normalization Pipeline | 🟡 | ⚠️ (có skill frontmatter + prompt ass | 2 tuần |
+| [751-notifications-sdk-loopback-ws.md](751-notifications-sdk-loopback-ws.md) | ABW: Notifications SDK Loopback WS | 🟡 | ⚠️ (có channels + push — chưa có loop | 2 tuần |
+| [752-fs-scan-cache-partitioning.md](752-fs-scan-cache-partitioning.md) | ABX: FS Scan Cache Partitioning | 🟡 | ⚠️ (có search-index — chưa có partiti | 2 tuần |
+
+### Nhóm — Phần E: get-shit-done (773-776)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [773-state-md-lifecycle-frontmatter.md](773-state-md-lifecycle-frontmatter.md) | ACS: State-MD Lifecycle Frontmatter | 🟡 | ⚠️ (có session-meta + goals — chưa có | 1-2 tuần |
+| [775-namespace-router-meta-skills.md](775-namespace-router-meta-skills.md) | ACU: Namespace Router Meta-Skills | 🟢 | ⚠️ (có SkillStore index — chưa có nam | 1-2 tuần |
+| [776-two-stage-hierarchical-routing.md](776-two-stage-hierarchical-routing.md) | ACV: Two-Stage Hierarchical Routing | 🟢 | ⚠️ (có namespace router — chưa có MCP | 1-2 tuần |
+
+### Nhóm — Phần E: gsd-2 (771-774)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [771-drift-driven-state-reconciliation.md](771-drift-driven-state-reconciliation.md) | ACQ: Drift-Driven State Reconciliation | 🟡 | ⚠️ (có durable-ack + conflict — chưa | 2 tuần |
+| [772-verification-retry-backoff.md](772-verification-retry-backoff.md) | ACR: Verification Retry Backoff | 🟢 | ⚠️ (có supervised backoff + durable-a | 1-2 tuần |
+| [774-state-reconciliation-drift-catalog.md](774-state-reconciliation-drift-catalog.md) | ACT: State Reconciliation Drift Catalog | 🟡 | ⚠️ (có reconcile pipeline — chưa có c | 2 tuần |
+
+### Nhóm — Phần E: gstack (805-808)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [805-gstack-browser-daemon.md](805-gstack-browser-daemon.md) | ADY: Gstack Browser Daemon | 🟡 | ⚠️ (sẵn browser runner + session; thi | 2 tuần |
+| [806-skill-preamble-runtime-env.md](806-skill-preamble-runtime-env.md) | ADZ: Skill Preamble Runtime Env | 🟢 | ⚠️ (sẵn skill parser; thiếu preamble | 1 tuần |
+| [807-context-save-restore.md](807-context-save-restore.md) | AEA: Context Save Restore | 🟡 | ⚠️ (sẵn memory + session-branch; thiế | 2 tuần |
+| [808-ship-release-workflow.md](808-ship-release-workflow.md) | AEB: Ship Release Workflow | 🟡 | ⚠️ (sẵn eval + audit; thiếu ship CLI) | 1-2 tuần |
+
+### Nhóm — Phần E: harness-experimental (789-794)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [789-feature-intake-risk-lanes.md](789-feature-intake-risk-lanes.md) | ADI: Feature Intake Risk Lanes | 🟢 | ⚠️ (sẵn audit/eval; thiếu intake clas | 1 tuần |
+| [790-harness-maturity-ladder.md](790-harness-maturity-ladder.md) | ADJ: Harness Maturity Ladder | 🟢 | ⚠️ (sẵn eval tiers; thiếu ladder chec | 1 tuần |
+| [791-trace-spec-quality-tiers.md](791-trace-spec-quality-tiers.md) | ADK: Trace Spec Quality Tiers | 🟡 | ⚠️ (sẵn audit + sqlite; thiếu trace s | 1-2 tuần |
+| [792-product-vs-harness-delta.md](792-product-vs-harness-delta.md) | ADL: Product vs Harness Delta | 🟢 | ⚠️ (sẵn audit + memory; thiếu delta t | 1 tuần |
+| [793-component-responsibility-taxonomy.md](793-component-responsibility-taxonomy.md) | ADM: Component Responsibility Taxonomy | 🟢 | ⚠️ (sẵn audit/eval/memory; thiếu taxo | 1 tuần |
+| [794-operational-cli-durable-state.md](794-operational-cli-durable-state.md) | ADN: Operational CLI Durable State | 🟡 | ⚠️ (sẵn sqlite + audit; thiếu story C | 2 tuần |
+
+### Nhóm — Phần E: headroom (795-796)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [795-headroom-learn-mines-failures.md](795-headroom-learn-mines-failures.md) | ADO: Headroom Learn Mines Failures | 🟡 | ⚠️ (sẵn memory + prompts; thiếu failu | 2 tuần |
+| [796-wrap-proxy-zero-change.md](796-wrap-proxy-zero-change.md) | ADP: Wrap Proxy Zero-Change | 🟡 | ⚠️ (sẵn ai bridge; thiếu proxy layer) | 2-3 tuần |
+
+### Nhóm — Phần E: mattpocock-skills (799-801)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [799-skill-invocation-axis.md](799-skill-invocation-axis.md) | ADS: Skill Invocation Axis | 🟢 | ⚠️ (sẵn skill store; thiếu invocation | 1 tuần |
+| [800-deep-module-design-vocabulary.md](800-deep-module-design-vocabulary.md) | ADT: Deep Module Design Vocabulary | 🟢 | ⚠️ (sẵn skills; thiếu vocabulary skil | 1 tuần |
+| [801-grilling-session-interview.md](801-grilling-session-interview.md) | ADU: Grilling Session Interview | 🟢 | ⚠️ (sẵn prompts; thiếu interview skil | 1 tuần |
+
+### Nhóm — Phần E: oh-my-claudecode (782-784)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [782-socratic-ambiguity-gating.md](782-socratic-ambiguity-gating.md) | ADB: Socratic Ambiguity Gating | 🟢 | ⚠️ (có adversarial + hindsight — chưa | 1-2 tuần |
+| [783-ralph-persistence-loop.md](783-ralph-persistence-loop.md) | ADC: Ralph Persistence Loop | 🟡 | ⚠️ (có runTurn loop + iteration-budge | 2 tuần |
+| [784-completion-evidence-verification.md](784-completion-evidence-verification.md) | ADD: Completion Evidence Verification | 🟢 | ⚠️ (có eval harness + lsp-cascade — c | 1-2 tuần |
+
+### Nhóm — Phần E: oh-my-codex (785-788)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [785-worker-mailbox-dispatch-log.md](785-worker-mailbox-dispatch-log.md) | ADE: Worker Mailbox Dispatch Log | 🟡 | ⚠️ (có intercom broker + durable-ack | 2 tuần |
+| [786-madmax-high-session-default.md](786-madmax-high-session-default.md) | ADF: Madmax High Session Default | 🟡 | ⚠️ (sẵn profile + workflow layer; thi | 1-2 tuần |
+| [787-tmux-durable-team-runtime.md](787-tmux-durable-team-runtime.md) | ADG: Tmux Durable Team Runtime | 🔴 | ⚠️ (sẵn skill team; thiếu backend tổn | 2-3 tuần |
+| [788-acceptance-criteria-before-execution.md](788-acceptance-criteria-before-execution.md) | ADH: Acceptance Criteria Before Execution | 🟢 | ⚠️ (sẵn convention + eval; thiếu gate | 1 tuần |
+
+### Nhóm — Phần E: oh-my-openagent (777-781)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [777-adversarial-team-hyperplan.md](777-adversarial-team-hyperplan.md) | ACW: Adversarial Team Hyperplan | 🟡 | ⚠️ (có council + adversarial — chưa c | 2 tuần |
+| [778-planning-execution-separation.md](778-planning-execution-separation.md) | ACX: Planning-Execution Separation | 🟡 | ⚠️ (có council + subagent + workflows | 2 tuần |
+| [779-wisdom-accumulation-notepad.md](779-wisdom-accumulation-notepad.md) | ACY: Wisdom Accumulation Notepad | 🟡 | ⚠️ (có memory + learning-graph — chưa | 2 tuần |
+| [780-skill-embedded-mcp.md](780-skill-embedded-mcp.md) | ACZ: Skill-Embedded MCP | 🟢 | ⚠️ (có MCP client + skills — chưa có | 2 tuần |
+| [781-model-working-style-match.md](781-model-working-style-match.md) | ADA: Model-Working-Style Match | 🟢 | ⚠️ (có model-routing + provider-disco | 1-2 tuần |
+
+### Nhóm — Phần E: pi-add-dir (762-765)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [762-external-dir-context-loading.md](762-external-dir-context-loading.md) | ACH: External Dir Context Loading | 🟢 | ⚠️ (có ctxFiles + skill store — chưa | 2 tuần |
+| [763-heuristic-directory-suggestion.md](763-heuristic-directory-suggestion.md) | ACI: Heuristic Directory Suggestion | 🟢 | ⚠️ (có auto-discover tools — chưa có | 1-2 tuần |
+| [764-relevance-scored-suggestion-ui.md](764-relevance-scored-suggestion-ui.md) | ACJ: Relevance-Scored Suggestion UI | 🟢 | ⚠️ (có command-registry + panel rende | 1 tuần |
+| [765-two-surface-extension.md](765-two-surface-extension.md) | ACK: Two-Surface Extension | 🟢 | ⚠️ (có command-registry + tool regist | 1-2 tuần |
+
+### Nhóm — Phần E: pi-btw (759-761)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [759-side-thread-parallel-thinking.md](759-side-thread-parallel-thinking.md) | ACE: Side-Thread Parallel Thinking | 🟢 | ⚠️ (có session-branch + intercom over | 1-2 tuần |
+| [760-thread-inject-or-summarize.md](760-thread-inject-or-summarize.md) | ACF: Thread Inject or Summarize | 🟢 | ⚠️ (có compress/summarize + session-u | 1-2 tuần |
+| [761-custom-message-type-persistence.md](761-custom-message-type-persistence.md) | ACG: Custom Message Type Persistence | 🟢 | ⚠️ (có EntryKind "custom" + JSONL tre | 1-2 tuần |
+
+### Nhóm — Phần E: pi-crew (753-758)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [753-nonblocking-subagent-steering.md](753-nonblocking-subagent-steering.md) | ABY: Nonblocking Subagent Steering | 🔴 | ⚠️ (có subagent + steer queue + bg-ru | 2-3 tuần |
+| [754-frontmatter-driven-subagent-discovery.md](754-frontmatter-driven-subagent-discovery.md) | ABZ: Frontmatter-Driven Subagent Discovery | 🟡 | ⚠️ (có skill frontmatter + role-subag | 2 tuần |
+| [755-live-status-widget-subagents.md](755-live-status-widget-subagents.md) | ACA: Live Status Widget Subagents | 🟡 | ⚠️ (có agents-panel — chưa có live wi | 2 tuần |
+| [756-delivery-coordinator-flush.md](756-delivery-coordinator-flush.md) | ACB: Delivery Coordinator Flush | 🟡 | ⚠️ (có broker delivery_failed + flush | 1 tuần |
+| [757-overflow-recovery-grace-period.md](757-overflow-recovery-grace-period.md) | ACC: Overflow Recovery Grace Period | 🟡 | ⚠️ (có runTurn + preflight — chưa có | 1 tuần |
+| [758-interactive-subagent-lifecycle.md](758-interactive-subagent-lifecycle.md) | ACD: Interactive Subagent Lifecycle | 🟡 | ⚠️ (có subagent pool + abort + `<DONE | 2 tuần |
+
+### Nhóm — Phần E: pi-crew-distill-v2 (766-767)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [766-error-message-consolidation-plan.md](766-error-message-consolidation-plan.md) | ACL: Error Message Consolidation Plan | 🟡 | ⚠️ (có audit + recovery — chưa có app | 2 tuần |
+| [767-exact-count-grep-evidence.md](767-exact-count-grep-evidence.md) | ACM: Exact-Count Grep Evidence | 🟢 | ✅ (grep + audit sẵn — cần discipline | 1 tuần |
+
+### Nhóm — Phần E: pi-crew-distill-v3 (768-770)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [768-category-partition-reject-evidence.md](768-category-partition-reject-evidence.md) | ACN: Category Partition Reject Evidence | 🟢 | ⚠️ (có eval parity — chưa có partitio | 1-2 tuần |
+| [769-adversarial-scrutinize-report.md](769-adversarial-scrutinize-report.md) | ACO: Adversarial Scrutinize Report | 🟢 | ⚠️ (có adversarial review — chưa có s | 1-2 tuần |
+| [770-size-not-filter-principle.md](770-size-not-filter-principle.md) | ACP: Size-Not-Filter Principle | 🟢 | ⚠️ (có batch plan — chưa có size-guar | 1 tuần |
+
+### Nhóm — Phần E: pi-crew-self-distill (809-811)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [809-apply-log-verification-table.md](809-apply-log-verification-table.md) | AEC: Apply Log Verification Table | 🟢 | ⚠️ (sẵn audit; thiếu APPLY-LOG genera | 1 tuần |
+| [810-verbatim-grounding-memory-ratio.md](810-verbatim-grounding-memory-ratio.md) | AED: Verbatim Grounding Memory Ratio | 🟢 | ⚠️ (sẵn grounding memory; thiếu ratio | 1 tuần |
+| [811-fidelity-scoring-rubric.md](811-fidelity-scoring-rubric.md) | AEE: Fidelity Scoring Rubric | 🟢 | ⚠️ (sẵn eval; thiếu rubric checker) | | 1 tuần |
+
+### Nhóm — Phần E: pi-diff (812-814)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [812-cascading-replace-strategies.md](812-cascading-replace-strategies.md) | AEF: Cascading Replace Strategies | 🟢 | ⚠️ (sẵn hashline-edit; thiếu cascade | 1-2 tuần |
+| [813-word-level-diff-emphasis.md](813-word-level-diff-emphasis.md) | AEG: Word-Level Diff Emphasis | 🟢 | ⚠️ (sẵn print render; thiếu diff 3 lớ | 1 tuần |
+| [814-line-ending-bom-preservation.md](814-line-ending-bom-preservation.md) | AEH: Line-Ending & BOM Preservation | 🟡 | ⚠️ (sẵn canon() strip CR; thiếu BOM + | 1 tuần |
+
+### Nhóm — Phần E: pi-diff-review (815-819)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [815-native-review-window-glimpse.md](815-native-review-window-glimpse.md) | AEI: Native Review Window (Glimpse) | 🟡 | ⚠️ (sẵn bg-runner + rpc + desktop; th | 2 tuần |
+| [816-lazy-file-content-loading.md](816-lazy-file-content-loading.md) | AEJ: Lazy File Content Loading | 🟢 | ✅ (sẵn memory lazy loading + RPC req | 1 tuần |
+| [817-comment-to-prompt-roundtrip.md](817-comment-to-prompt-roundtrip.md) | AEK: Comment-to-Prompt Roundtrip | 🟢 | ⚠️ (sẵn loop + history; thiếu comment | 1-2 tuần |
+| [818-diff-scope-switching.md](818-diff-scope-switching.md) | AEL: Diff Scope Switching | 🟢 | ⚠️ (sẵn git diff reducers; thiếu scop | 1 tuần |
+| [819-inline-data-escaping.md](819-inline-data-escaping.md) | AEM: Inline Data Escaping | 🟢 | ✅ (sẵn thực hành escape trong web/de | 0.5 tuần |
+
+### Nhóm — Phần E: pi-dynamic-workflows (820-822)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [820-runtime-discovered-phases.md](820-runtime-discovered-phases.md) | AEN: Runtime-Discovered Phases | 🟢 | ✅ (sẵn phase() emit trong workflow r | 1 tuần |
+| [821-parallel-pipeline-primitives.md](821-parallel-pipeline-primitives.md) | AEO: Parallel-Pipeline Primitives | 🟢 | ✅ (sẵn trong workflow runner sandbox | 0.5 tuần |
+| [822-workflow-abort-cancellation.md](822-workflow-abort-cancellation.md) | AEP: Workflow Abort Cancellation | 🟡 | ⚠️ (sẵn signal → worker.terminate; th | 1 tuần |
+
+### Nhóm — Phần E: pi-extension-settings (848-848)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [848-cycle-or-freeform-ui.md](848-cycle-or-freeform-ui.md) | AFP: Cycle-or-Freeform UI | 🟢 | ⚠️ (có intercom/ui overlay + config, | 1 tuần |
+
+### Nhóm — Phần E: pi-extensions (823-829)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [823-instinct-graduation-pipeline.md](823-instinct-graduation-pipeline.md) | AEQ: Instinct Graduation Pipeline | 🟢 | ⚠️ (sẵn AGENTS.md load + skills curat | 1-2 tuần |
+| [824-instinct-contradiction-detection.md](824-instinct-contradiction-detection.md) | AER: Instinct Contradiction Detection | 🟢 | ⚠️ (sẵn conflict.ts jaccard; thiếu ve | 1 tuần |
+| [825-passive-confidence-decay.md](825-passive-confidence-decay.md) | AES: Passive Confidence Decay | 🟢 | ⚠️ (sẵn weibull decay + trust feedbac | 1 tuần |
+| [826-test-run-parser-detector.md](826-test-run-parser-detector.md) | AET: Test-Run Parser Detector | 🟢 | ⚠️ (sẵn eval tiers; thiếu runner-spec | 1 tuần |
+| [827-blueprint-dependency-graph.md](827-blueprint-dependency-graph.md) | AEU: Blueprint Dependency Graph | 🟡 | ⚠️ (sẵn workflows primitives; thiếu D | 1-2 tuần |
+| [828-verification-gates-before-advance.md](828-verification-gates-before-advance.md) | AEV: Verification Gates Before Advance | 🟡 | ⚠️ (sẵn approval + recovery FSM; thiế | 1-2 tuần |
+| [829-edit-tracker-turn-batching.md](829-edit-tracker-turn-batching.md) | AEW: Edit-Tracker Turn Batching | 🟢 | ✅ (sẵn ToolHookSink preTool/postTool | 1 tuần |
+
+### Nhóm — Phần E: pi-extensions2 (830-834)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [830-terminal-focus-recap.md](830-terminal-focus-recap.md) | AEX: Terminal Focus Recap | 🟢 | ⚠️ (sẵn turn_end event; thiếu focus-a | 1 tuần |
+| [831-raw-paste-bracketed-mode.md](831-raw-paste-bracketed-mode.md) | AEY: Raw Paste Bracketed Mode | 🟢 | ⚠️ (sẵn strip-ANSI trong output-compr | 1 tuần |
+| [832-tab-status-timeout-watchdog.md](832-tab-status-timeout-watchdog.md) | AEZ: Tab Status Timeout Watchdog | 🟢 | ✅ (sẵn RuntimeEvent stream + event n | 1 tuần |
+| [833-filtered-package-subset-loading.md](833-filtered-package-subset-loading.md) | AFA: Filtered Package Subset Loading | 🟢 | ⚠️ (sẵn package-resolver; thiếu subse | 1 tuần |
+| [834-provider-specific-guidance.md](834-provider-specific-guidance.md) | AFB: Provider-Specific Guidance | 🟢 | ⚠️ (sẵn AGENTS.md load + assembler; t | 1 tuần |
+
+### Nhóm — Phần E: pi-hermes-memory (835-839)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [835-memory-content-injection-scanner.md](835-memory-content-injection-scanner.md) | AFC: Memory Content-Injection Scanner | 🟡 | ✅ (sẵn threat-scan + inject; thiếu m | 1 tuần |
+| [836-background-learning-loop.md](836-background-learning-loop.md) | AFD: Background Learning Loop | 🟡 | ⚠️ (sẵn auto-capture + dream-cycle; t | 1-2 tuần |
+| [837-correction-detector-two-pass.md](837-correction-detector-two-pass.md) | AFE: Correction Detector Two-Pass | 🟢 | ⚠️ (sẵn auto-capture + trust feedback | 1 tuần |
+| [838-auto-consolidation-subprocess.md](838-auto-consolidation-subprocess.md) | AFF: Auto-Consolidation Subprocess | 🟡 | ⚠️ (sẵn dream-cycle consolidation nền | 1-2 tuần |
+| [839-fts5-natural-language-search.md](839-fts5-natural-language-search.md) | AFG: FTS5 Natural-Language Search | 🟢 | ✅ (sẵn FTS5 recall + sanitizeQuery; | 1 tuần |
+
+### Nhóm — Phần E: pi-interactive-shell (840-844)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [840-pty-overlay-user-takeover.md](840-pty-overlay-user-takeover.md) | AFH: PTY Overlay User Takeover | 🟡 | ⚠️ (sẵn codeexec spawn; thiếu PTY ove | 2 tuần |
+| [841-hands-free-polling-mode.md](841-hands-free-polling-mode.md) | AFI: Hands-Free Polling Mode | 🟢 | ⚠️ (sẵn bg-runner session; thiếu poll | 1 tuần |
+| [842-dispatch-trigger-turn-notification.md](842-dispatch-trigger-turn-notification.md) | AFJ: Dispatch Trigger-Turn Notification | 🟡 | ⚠️ (có sendMessage + triggerTurn seam | 1 tuần |
+| [843-monitor-trigger-events.md](843-monitor-trigger-events.md) | AFK: Monitor Trigger-Events | 🟡 | ⚠️ (có cron on-interval/once + interc | 1-2 tuần |
+| [844-reattach-overlay-handoff.md](844-reattach-overlay-handoff.md) | AFL: Reattach Overlay Handoff | 🟡 | ⚠️ (có session-list/compose overlay + | 2 tuần |
+
+### Nhóm — Phần E: pi-interactive-subagents (845-847)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [845-multiplexer-pane-subagents.md](845-multiplexer-pane-subagents.md) | AFM: Multiplexer Pane-Subagents | 🔴 | ❌ (có subagent pool in-process, khôn | 2-3 tuần |
+| [846-async-result-steering.md](846-async-result-steering.md) | AFN: Async Result Steering | 🟡 | ⚠️ (có SubagentHandle await async, th | 1-2 tuần |
+| [847-role-specialized-agent-set.md](847-role-specialized-agent-set.md) | AFO: Role-Specialized Agent Set | 🟢 | ⚠️ (có skill model field + multi-prof | 1-2 tuần |
+
+### Nhóm — Phần E: pi-lens (849-856)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [849-module-report-read-symbol.md](849-module-report-read-symbol.md) | AFQ: Module-Report / Read-Symbol | 🟢 | ⚠️ (có symbol-extractor + lsp-cascade | 1-2 tuần |
+| [850-opportunistic-read-expansion.md](850-opportunistic-read-expansion.md) | AFR: Opportunistic Read-Expansion | 🟢 | ⚠️ (có symbol-extractor tree-sitter + | 1 tuần |
+| [851-actionable-warnings-autofix.md](851-actionable-warnings-autofix.md) | AFS: Actionable-Warnings Autofix | 🟡 | ⚠️ (có audit RuntimeEvent + repair to | 1-2 tuần |
+| [852-session-state-rehydrate.md](852-session-state-rehydrate.md) | AFT: Session-State Rehydrate | 🟡 | ⚠️ (có session-branch + brain persist | 1-2 tuần |
+| [853-event-loop-occupancy-monitor.md](853-event-loop-occupancy-monitor.md) | AFU: Event-Loop Occupancy Monitor | 🟢 | ❌ (chưa có event-loop monitor) | **E | 0.5-1 tuần |
+| [854-lsp-idle-warm-files.md](854-lsp-idle-warm-files.md) | AFV: LSP Idle-Warm Files | 🟡 | ⚠️ (có lsp-client/lsp-cascade, thiếu | 1 tuần |
+| [855-startup-scan-root-guard.md](855-startup-scan-root-guard.md) | AFW: Startup-Scan Root-Guard | 🟢 | ⚠️ (có find.ts file-walk + symbol pop | 0.5-1 tuần |
+| [856-auxiliary-lsp-scanner.md](856-auxiliary-lsp-scanner.md) | AFX: Auxiliary LSP Scanner | 🟡 | ⚠️ (có lsp-client + threat-scan, thiế | 2 tuần |
+
+### Nhóm — Phần E: pi-manage-todo-list (892-893)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [892-todo-state-validation.md](892-todo-state-validation.md) | AHH: Todo State Validation | 🟢 | ⚠️ (mya có kanban.ts task board, nhưn | 0.3 tuần |
+| [893-in-memory-todo-model.md](893-in-memory-todo-model.md) | AHI: In-Memory Todo Model | 🟢 | ⚠️ (mya có kanban file-backed, nhưng | 0.3 tuần |
+
+### Nhóm — Phần E: pi-mcp-adapter (857-862)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [857-mcp-proxy-tool.md](857-mcp-proxy-tool.md) | AFY: MCP Proxy-Tool | 🟢 | ⚠️ (có tool-search BM25 + registry, t | 1 tuần |
+| [858-lazy-server-lifecycle.md](858-lazy-server-lifecycle.md) | AFZ: Lazy Server Lifecycle | 🟡 | ⚠️ (có intercom ensureConnected/retry | 1 tuần |
+| [859-direct-tools-hybrid.md](859-direct-tools-hybrid.md) | AGA: Direct-Tools Hybrid | 🟢 | ⚠️ (có registry + tool-search, thiếu | 1 tuần |
+| [860-tool-approval-broker.md](860-tool-approval-broker.md) | AGB: Tool-Approval Broker | 🟡 | ⚠️ (có approval.ts token-ledger + per | 1-2 tuần |
+| [861-mcp-script-worker.md](861-mcp-script-worker.md) | AGC: MCP Script-Worker | 🟡 | ⚠️ (có codeexec worker + mcp proxy, t | 1-2 tuần |
+| [862-session-recovery-reauth.md](862-session-recovery-reauth.md) | AGD: Session-Recovery Reauth | 🟡 | ⚠️ (có intercom retry + abort-signal | 1 tuần |
+
+### Nhóm — Phần E: pi-memory-md (886-888)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [886-git-backed-md-memory.md](886-git-backed-md-memory.md) | AHB: Git-Backed MD Memory | 🟡 | ⚠️ (mya có FileBackend markdown + bra | 1.5 tuần |
+| [887-deep-merge-settings.md](887-deep-merge-settings.md) | AHC: Deep Merge Settings | 🟢 | ❌ (mya dùng spread shallow merge, KH | 0.3 tuần |
+| [888-memory-scan-range-normalize.md](888-memory-scan-range-normalize.md) | AHD: Memory Scan Range Normalize | 🟢 | ❌ (mya KHÔNG có scan-range normalize | 0.2 tuần |
+
+### Nhóm — Phần E: pi-observational-memory (863-863)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [863-recall-source-evidence.md](863-recall-source-evidence.md) | AGE: Recall Source-Evidence | 🟢 | ⚠️ (có memory retrieve/fts5 + store, | 1 tuần |
+
+### Nhóm — Phần E: pi-powerbar (889-891)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [889-threshold-color-progress.md](889-threshold-color-progress.md) | AHE: Threshold Color Progress | 🟡 | ⚠️ (mya có budget.ts + cost.ts token | 0.5 tuần |
+| [890-unicode-block-progress.md](890-unicode-block-progress.md) | AHF: Unicode Block Progress | 🟢 | ❌ (mya dùng spinner/ink, KHÔNG có un | 0.3 tuần |
+| [891-segment-equals-dedup.md](891-segment-equals-dedup.md) | AHG: Segment Equals Dedup | 🟢 | ⚠️ (mya có telemetry emit, nhưng KHÔN | 0.3 tuần |
+
+### Nhóm — Phần E: pi-powerline-footer (870-874)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [870-render-debounce-coalescer.md](870-render-debounce-coalescer.md) | AGL: Render Debounce Coalescer | 🟡 | ⚠️ (ink tự batch re-render, nhưng KHÔ | 0.5 tuần |
+| [871-shortcut-conflict-autoresolve.md](871-shortcut-conflict-autoresolve.md) | AGM: Shortcut Conflict Autoresolve | 🟢 | ❌ (mya có command-registry nhưng KHÔ | 0.5 tuần |
+| [872-settings-layer-write-target.md](872-settings-layer-write-target.md) | AGN: Settings Layer Write-Target | 🟢 | ⚠️ (mya có intercom config + env over | 0.5 tuần |
+| [873-working-vibes-batch-generate.md](873-working-vibes-batch-generate.md) | AGO: Working Vibes Batch Generate | 🔴 | ❌ (mya KHÔNG có AI-generated loading | 1 tuần |
+| [874-transcript-bounded-store.md](874-transcript-bounded-store.md) | AGP: Transcript Bounded Store | 🟢 | ⚠️ (mya có spill.ts truncation + sess | 0.5 tuần |
+
+### Nhóm — Phần E: pi-pretty (875-878)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [875-fff-frecency-search.md](875-fff-frecency-search.md) | AGQ: FFF Frecency Search | 🟡 | ⚠️ (mya có frecency.ts + code-index.t | 1.5 tuần |
+| [876-graceful-sdk-fallback.md](876-graceful-sdk-fallback.md) | AGR: Graceful SDK Fallback | 🟢 | ✅ (mya có ai/fallback.ts + ProviderR | 0.5 tuần |
+| [877-shared-singleton-symbol.md](877-shared-singleton-symbol.md) | AGS: Shared Singleton Symbol | 🟢 | ✅ (mya có print/shared-instances.ts | 0.3 tuần |
+| [878-config-env-precedence.md](878-config-env-precedence.md) | AGT: Config Env Precedence | 🟢 | ⚠️ (mya có cli.ts env override + inte | 0.5 tuần |
+
+### Nhóm — Phần E: pi-prompt-template-model (894-895)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [894-chain-parallel-dsl-parser.md](894-chain-parallel-dsl-parser.md) | AHJ: Chain Parallel DSL Parser | 🟡 | ⚠️ (mya có workflows parallel/pipelin | 1.5 tuần |
+| [895-delegated-subagent-protocol.md](895-delegated-subagent-protocol.md) | AHK: Delegated Subagent Protocol | 🔴 | ⚠️ (mya có spawnSubagent + workflows | 2 tuần |
+
+### Nhóm — Phần E: pi-status (879-882)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [879-component-configurable-statusbar.md](879-component-configurable-statusbar.md) | AGU: Component-Configurable Statusbar | 🟢 | ❌ (mya có agents-panel/status render | 0.5 tuần |
+| [880-idle-reassert-backoff.md](880-idle-reassert-backoff.md) | AGV: Idle Reassert Backoff | 🟡 | ❌ (mya có loop-idle + laneboard hear | 0.3 tuần |
+| [882-live-preview-settings-ui.md](882-live-preview-settings-ui.md) | AGX: Live Preview Settings UI | 🔴 | ❌ (mya KHÔNG có interactive settings | 1 tuần |
+
+### Nhóm — Phần E: pi-sub (883-885)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [883-stale-cache-first-render.md](883-stale-cache-first-render.md) | AGY: Stale-Cache-First Render | 🟡 | ⚠️ (mya có memory cache + spill, nhưn | 0.5 tuần |
+| [884-settings-hot-reload-watch.md](884-settings-hot-reload-watch.md) | AGZ: Settings Hot-Reload Watch | 🟡 | ⚠️ (mya có mtime logic trong code-ind | 0.5 tuần |
+| [885-provider-registry-factory.md](885-provider-registry-factory.md) | AHA: Provider Registry Factory | 🟡 | ✅ (mya có ai/registry.ts ProviderReg | 1 tuần |
+
+### Nhóm — Phần E: pi-subagent3 (906-914)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [906-session-scoped-schedule-store.md](906-session-scoped-schedule-store.md) | AHV: Session-Scoped-Schedule-Store | 🟡 | ⚠️ (có cron store + cross-process-loc | 1.5 tuần |
+| [907-cross-extension-rpc.md](907-cross-extension-rpc.md) | AHW: Cross-Extension-RPC | 🟡 | ⚠️ (có JSON-RPC transport; chưa có su | 1.5 tuần |
+| [908-graceful-turn-limit-wrapup.md](908-graceful-turn-limit-wrapup.md) | AHX: Graceful-Turn-Limit-Wrapup | 🟡 | ⚠️ (có abort + iteration-budget; chưa | 1 tuần |
+| [909-model-scope-enforcement.md](909-model-scope-enforcement.md) | AHY: Model-Scope-Enforcement | 🟡 | ⚠️ (có provider/model config; chưa có | 1 tuần |
+| [910-live-widget-fleetview.md](910-live-widget-fleetview.md) | AHZ: Live-Widget-Fleetview | 🟡 | ❌ | **Effort:** 2 tuần | 2 tuần |
+| [911-group-join-consolidated-notify.md](911-group-join-consolidated-notify.md) | AIA: Group-Join-Consolidated-Notify | 🟡 | ⚠️ (có durable-ack + dedup; chưa có g | 1 tuần |
+| [912-bounded-context-inheritance.md](912-bounded-context-inheritance.md) | AIB: Bounded-Context-Inheritance | 🟡 | ⚠️ (có compaction + format-context; c | 1.5 tuần |
+| [913-per-session-registry-claim.md](913-per-session-registry-claim.md) | AIC: Per-Session-Registry-Claim | 🟢 | ⚠️ (có runtime-claim; chưa có Symbol. | 0.5 tuần |
+| [914-rpc-readiness-gating.md](914-rpc-readiness-gating.md) | AID: RPC-Readiness-Gating | 🟡 | ⚠️ (có JSON-RPC transport; chưa có re | 1 tuần |
+
+### Nhóm — Phần E: pi-subagent4 (926-926)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [926-pi-subagent-allowed-env.md](926-pi-subagent-allowed-env.md) | AIP: Subagent Allowed-Env | 🟡 | ⚠️ (sẵn toolsAllowList + cron allowli | 2 tuần |
+
+### Nhóm — Phần E: pi-subagents (896-905)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [896-subagent-spawn-allowlist.md](896-subagent-spawn-allowlist.md) | AHL: Subagent Spawn Allowlist | 🟡 | ⚠️ (mya có allowedTools + maxSpawnDep | 1 tuần |
+| [897-parallel-fanout-semaphore.md](897-parallel-fanout-semaphore.md) | AHM: Parallel Fanout Semaphore | 🟡 | ✅ (mya có AgentPool maxSessions sema | 0.5 tuần |
+| [898-output-head-truncation.md](898-output-head-truncation.md) | AHN: Output-Head-Truncation | 🟢 | ⚠️ (có text output + kill; chưa có he | 1 tuần |
+| [899-recursive-context-isolation.md](899-recursive-context-isolation.md) | AHO: Recursive-Context-Isolation | 🟡 | ⚠️ (có separate Session + spawnSubage | 2 tuần |
+| [900-two-level-ui-collapse.md](900-two-level-ui-collapse.md) | AHP: Two-Level-UI-Collapse | 🟡 | ❌ | **Effort:** 2 tuần | 2 tuần |
+| [901-intercom-supervisor-bridge.md](901-intercom-supervisor-bridge.md) | AHQ: Intercom-Supervisor-Bridge | 🟡 | ⚠️ (có broker + client + skills; chưa | 1 tuần |
+| [902-stale-run-reconciler.md](902-stale-run-reconciler.md) | AHR: Stale-Run-Reconciler | 🟢 | ⚠️ (có stale-lock PID-liveness; chưa | 1 tuần |
+| [903-completion-dedupe-key.md](903-completion-dedupe-key.md) | AHS: Completion-Dedupe-Key | 🟢 | ⚠️ (có durable-ack classification + d | 0.5 tuần |
+| [904-atomic-json-artifacts.md](904-atomic-json-artifacts.md) | AHT: Atomic-JSON-Artifacts | 🟢 | ⚠️ (có atomic write pattern; chưa có | 1 tuần |
+| [905-doctor-diagnostic-command.md](905-doctor-diagnostic-command.md) | AHU: Doctor-Diagnostic-Command | 🟢 | ⚠️ (có các phần check rời; chưa có lệ | 1 tuần |
+
+### Nhóm — Phần E: pi-subagents2 (927-928)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [927-lifetime-usage-accumulator.md](927-lifetime-usage-accumulator.md) | AIQ: Lifetime Usage Accumulator | 🟢 | ⚠️ (sẵn accumulation theo turn; thiếu | 1 tuần |
+| [928-abort-signal-threading.md](928-abort-signal-threading.md) | AIR: Abort Signal Threading | 🟡 | ✅ (spawnSubagent signal + runTurn si | 1 tuần |
+
+### Nhóm — Phần E: pi-subagents3 (915-916)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [915-parallel-background-queue.md](915-parallel-background-queue.md) | AIE: Parallel-Background-Queue | 🟡 | ⚠️ (có pool maxSessions; chưa có wait | 1 tuần |
+| [916-mid-run-steering-injection.md](916-mid-run-steering-injection.md) | AIF: Mid-Run-Steering-Injection | 🟡 | ⚠️ (có subscribe + abort; chưa có mid | 1.5 tuần |
+
+### Nhóm — Phần E: pi-telegram (917-922)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [917-telegram-queue-control.md](917-telegram-queue-control.md) | AIG: Telegram-Queue-Control | 🟡 | ⚠️ (có channel adapters + registry; c | 1.5 tuần |
+| [918-singleton-lock-registry.md](918-singleton-lock-registry.md) | AIH: Singleton-Lock-Registry | 🟢 | ⚠️ (có cross-process-lock + stale-loc | 1 tuần |
+| [919-multi-instance-bus-leader.md](919-multi-instance-bus-leader.md) | AII: Multi-Instance-Bus-Leader | 🟡 | ⚠️ (có cross-process-lock + sync HLC; | 2 tuần |
+| [920-flat-domain-dag-architecture.md](920-flat-domain-dag-architecture.md) | AIJ: Flat-Domain-DAG-Architecture | 🟢 | ⚠️ (có modular packages; chưa có DAG | 1 tuần (invariant tests) |
+| [921-extension-section-platform.md](921-extension-section-platform.md) | AIK: Extension-Section-Platform | 🟡 | ⚠️ (có extension-api + pkg; chưa có s | 1.5 tuần |
+| [922-demand-driven-thread-reconciler.md](922-demand-driven-thread-reconciler.md) | AIL: Demand-Driven-Thread-Reconciler | 🟡 | ⚠️ (có sync convergence + collab; chư | 2 tuần |
+
+### Nhóm — Phần E: pi-themes (923-924)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [923-semantic-color-vars.md](923-semantic-color-vars.md) | AIM: Semantic-Color-Vars | 🟢 | ❌ (chưa có theme color var system) | | 1 tuần |
+| [924-theme-discovery-manifest.md](924-theme-discovery-manifest.md) | AIN: Theme-Discovery-Manifest | 🟢 | ⚠️ (có pkg themes kind + manifest; ch | 0.5 tuần |
+
+### Nhóm — Phần E: pi-themes-worktree (925-981)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [925-worktree-theme-dev.md](925-worktree-theme-dev.md) | AIO: Worktree-Theme-Dev | 🟢 | ⚠️ | 0 tuần (convention) |
+| [980-theme-count-schema-prefix.md](980-theme-count-schema-prefix.md) | AKR: Theme Count & Schema Prefix | 🟢 | ⚠️ (có pkg themes kind; thiếu theme s | 1 tuần |
+| [981-pairing-theme-basics.md](981-pairing-theme-basics.md) | AKS: Pairing Theme Basics | 🟢 | ⚠️ (có pkg themes + print; thiếu pair | 1 tuần |
+
+### Nhóm — Phần E: pi-web-access (929-935)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [929-github-clone-not-scrape.md](929-github-clone-not-scrape.md) | AIS: GitHub Clone-Not-Scrape | 🟡 | ⚠️ (có codegraph + web_fetch; chưa có | 2 tuần |
+| [930-rsc-flight-payload-extraction.md](930-rsc-flight-payload-extraction.md) | AIT: RSC Flight Payload Extraction | 🟢 | ⚠️ (web_fetch HTML→markdown; chưa par | 1 tuần |
+| [931-video-frame-extraction.md](931-video-frame-extraction.md) | AIU: Video Frame Extraction | 🟡 | ⚠️ (có video-gen; chưa có extract loc | 2 tuần |
+| [932-usage-quota-monitoring.md](932-usage-quota-monitoring.md) | AIV: Usage Quota Monitoring | 🟢 | ⚠️ (có RateLimiter gateway; chưa có m | 1 tuần |
+| [933-readability-markdown-pipeline.md](933-readability-markdown-pipeline.md) | AIW: Readability Markdown Pipeline | 🟢 | ⚠️ (có htmlToMarkdown regex; chưa có | 1 tuần |
+| [934-librarian-skill-evidence-citation.md](934-librarian-skill-evidence-citation.md) | AIX: Librarian Skill Evidence-Citation | 🟢 | ⚠️ (có skill-store + web tools; chưa | 2 tuần |
+| [935-exa-mcp-zero-config.md](935-exa-mcp-zero-config.md) | AIY: Exa MCP Zero-Config | 🟢 | ⚠️ (có backend chain + config; chưa c | 1 tuần |
+
+### Nhóm — Phần E: piolium (864-881)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [864-specialist-subagent-phases.md](864-specialist-subagent-phases.md) | AGF: Specialist-Subagent Phases | 🟡 | ⚠️ (có subagent pool + audit pipeline | 2-3 tuần |
+| [865-deterministic-candidate-scan.md](865-deterministic-candidate-scan.md) | AGG: Deterministic Candidate-Scan | 🟢 | ⚠️ (có threat-scan + find/symbol, thi | 1-2 tuần |
+| [866-anti-anchored-revisit.md](866-anti-anchored-revisit.md) | AGH: Anti-Anchored Revisit | 🟢 | ⚠️ (có memory store + audit, thiếu an | 1 tuần |
+| [867-runtime-header-injection.md](867-runtime-header-injection.md) | AGI: Runtime Header Injection | 🟢 | ⚠️ (có prompts assembler + spawn goal | 0.5-1 tuần |
+| [868-phase-heartbeat-stall-detect.md](868-phase-heartbeat-stall-detect.md) | AGJ: Phase-Heartbeat Stall-Detect | 🟡 | ⚠️ (có RuntimeEvent + telemetry, thiế | 1 tuần |
+| [869-report-repair-before-confirm.md](869-report-repair-before-confirm.md) | AGK: Report-Repair Before Confirm | 🟡 | ⚠️ (có repair tool + subagent, thiếu | 1 tuần |
+| [881-terminal-native-progress-osc.md](881-terminal-native-progress-osc.md) | AGW: Terminal Native Progress OSC | 🔴 | ❌ (mya dùng TUI ink, KHÔNG có native | 1 tuần |
+
+### Nhóm — Phần E: plannotator (936-940)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [936-adr-first-feature-development.md](936-adr-first-feature-development.md) | AIZ: ADR-First Feature Development | 🟡 | ⚠️ (có workflows + council; chưa có A | 2 tuần |
+| [937-guide-review-takeover-ui.md](937-guide-review-takeover-ui.md) | AJA: Guide Review Takeover-UI | 🟡 | ⚠️ (có web dashboard; chưa có review | 2 tuần |
+| [938-vendor-shared-mirror.md](938-vendor-shared-mirror.md) | AJB: Vendor Shared Mirror | 🟡 | ⚠️ (single source tree; chưa có vendo | 1 tuần |
+| [939-event-bus-request-response.md](939-event-bus-request-response.md) | AJC: Event-Bus Request-Response | 🟡 | ⚠️ (có intercom bus + receipts; chưa | 1 tuần |
+| [940-vscode-diff-open-protocol.md](940-vscode-diff-open-protocol.md) | AJD: VSCode Diff-Open Protocol | 🟡 | ⚠️ (gateway HTTP routes có sẵn; chưa | 1 tuần |
+
+### Nhóm — Phần E: remnic (941-947)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [941-trace-to-primitive-pipeline.md](941-trace-to-primitive-pipeline.md) | AJE: Trace-to-Primitive Pipeline | 🟡 | ✅ (auto-capture + sqlite-manager + c | 2 tuần |
+| [942-recall-buffer-extract.md](942-recall-buffer-extract.md) | AJF: Recall-Buffer-Extract | 🟡 | ✅ (recall + buffer + extract rời rạc | 2 tuần |
+| [943-recall-planner-intent-gating.md](943-recall-planner-intent-gating.md) | AJG: Recall-Planner Intent Gating | 🟢 | ⚠️ (có recall path; chưa có intent ga | 1 tuần |
+| [944-synthesis-timeline-entity-format.md](944-synthesis-timeline-entity-format.md) | AJH: Synthesis-Timeline Entity Format | 🟢 | ⚠️ (có facts/takes/pages; chưa có syn | 1 tuần |
+| [945-dreams-consolidation-phases.md](945-dreams-consolidation-phases.md) | AJI: Dreams Consolidation Phases | 🟡 | ✅ (DreamCycle + lifecycle + consolid | 3 tuần |
+| [946-recall-xray-provenance.md](946-recall-xray-provenance.md) | AJJ: Recall X-ray Provenance | 🟢 | ⚠️ (có tier field + RetrievalResult.d | 1.5 tuần |
+| [947-identity-continuity-anchor.md](947-identity-continuity-anchor.md) | AJK: Identity Continuity Anchor | 🟡 | ⚠️ (có stable tier identity + DriftGr | 2.5 tuần |
+
+### Nhóm — Phần E: rtk (948-952)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [948-token-optimized-cli-proxy.md](948-token-optimized-cli-proxy.md) | AJL: Token-Optimized CLI Proxy | 🟡 | ⚠️ (có bash tool + compressors; chưa | 2 tuần |
+| [949-lexer-based-command-rewrite.md](949-lexer-based-command-rewrite.md) | AJM: Lexer-Based Command Rewrite | 🟡 | ❌ (có bash tool spawn raw; chưa có r | 1.5 tuần |
+| [950-toml-filter-inline-tests.md](950-toml-filter-inline-tests.md) | AJN: TOML Filter Inline Tests | 🟢 | ❌ (chưa có TOML filter + inline test | 1 tuần |
+| [951-always-on-passthrough-fallback.md](951-always-on-passthrough-fallback.md) | AJO: Always-On Passthrough Fallback | 🟢 | ⚠️ (có bash tool luôn raw; chưa có pa | 0.5 tuần |
+| [952-sqlite-tracking-analytics.md](952-sqlite-tracking-analytics.md) | AJP: SQLite Tracking Analytics | 🟡 | ⚠️ (có TelemetrySink + cost; chưa có | 1.5 tuần |
+
+### Nhóm — Phần E: skills (953-959)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [953-grilling-interview-alignment.md](953-grilling-interview-alignment.md) | AJQ: Grilling Interview Alignment | 🟡 | ⚠️ (có skill system + triggers; chưa | 1.5 tuần |
+| [954-ubiquitous-language-context-map.md](954-ubiquitous-language-context-map.md) | AJR: Ubiquitous Language Context Map | 🟢 | ⚠️ (có skills store + memory; thiếu g | 2 tuần |
+| [955-tracer-bullet-vertical-slices.md](955-tracer-bullet-vertical-slices.md) | AJS: Tracer-Bullet Vertical Slices | 🟢 | ⚠️ (có workflow runner + subagent; th | 2 tuần |
+| [956-handoff-document-compaction.md](956-handoff-document-compaction.md) | AJT: Handoff Document Compaction | 🟢 | ⚠️ (có exporters + compaction; thiếu | 1-2 tuần |
+| [957-deep-module-interface-design.md](957-deep-module-interface-design.md) | AJU: Deep Module Interface Design | 🟢 | ⚠️ (có prompts + assembler; thiếu dee | 1-2 tuần |
+| [959-zoom-out-abstraction-lift.md](959-zoom-out-abstraction-lift.md) | AJW: Zoom-Out Abstraction Lift | 🟢 | ⚠️ (có codegraph + glossary; thiếu zo | 1 tuần |
+
+### Nhóm — Phần E: spec-kit (966-969)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [966-spec-sources-of-truth.md](966-spec-sources-of-truth.md) | AKD: Spec Sources of Truth | 🟡 | ⚠️ (có prompts + workflows; thiếu spe | 2 tuần |
+| [967-feature-numbering-branch-generation.md](967-feature-numbering-branch-generation.md) | AKE: Feature Numbering & Branch Generation | 🟢 | ⚠️ (có workflows + git tools; thiếu n | 1-2 tuần |
+| [968-hash-tracked-install-manifest.md](968-hash-tracked-install-manifest.md) | AKF: Hash-Tracked Install Manifest | 🟢 | ⚠️ (có signing sha256 + pkg manifest; | 1-2 tuần |
+| [969-wrap-strategy-preset.md](969-wrap-strategy-preset.md) | AKG: Wrap Strategy Preset | 🟢 | ⚠️ (có pkg extensions + registry; thi | 2 tuần |
+
+### Nhóm — Phần E: superpowers (958-965)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [958-explicit-skill-requests.md](958-explicit-skill-requests.md) | AJV: Explicit Skill Requests | 🟢 | ⚠️ (có skill index + triggers; thiếu | 1-2 tuần |
+| [960-brainstorming-hard-gate.md](960-brainstorming-hard-gate.md) | AJX: Brainstorming Hard Gate | 🟡 | ⚠️ (có permission gate + approval; th | 1 tuần |
+| [961-iron-law-debugging.md](961-iron-law-debugging.md) | AJY: Iron-Law Debugging | 🟢 | ⚠️ (có lsp-cascade + repair; thiếu ro | 1 tuần |
+| [962-verification-before-completion-skill.md](962-verification-before-completion-skill.md) | AJZ: Verification-Before-Completion Skill | 🟢 | ⚠️ (có eval + codeexec; thiếu gate fu | 1 tuần |
+| [963-writing-skills-as-tdd.md](963-writing-skills-as-tdd.md) | AKA: Writing Skills as TDD | 🟢 | ⚠️ (có skills + eval harness; thiếu R | 1-2 tuần |
+| [964-worktree-detection-before-creation.md](964-worktree-detection-before-creation.md) | AKB: Worktree Detection Before Creation | 🟢 | ⚠️ (có hashline-edit + find; thiếu wo | 1 tuần |
+| [965-dispatching-parallel-investigation.md](965-dispatching-parallel-investigation.md) | AKC: Dispatching Parallel Investigation | 🟡 | ⚠️ (có spawnSubagent + workflow paral | 2 tuần |
+
+### Nhóm — Phần E: vetc-dev-kit (970-979)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [970-adaptive-stack-detection.md](970-adaptive-stack-detection.md) | AKH: Adaptive Stack Detection | 🟢 | ⚠️ (có registry + codegraph; thiếu st | 1 tuần |
+| [971-secret-scan-precommit-hook.md](971-secret-scan-precommit-hook.md) | AKI: Secret-Scan Pre-Commit Hook | 🟡 | ⚠️ (có threat-scan + redact + osv; th | 1 tuần |
+| [972-parallel-reviewer-dispatch.md](972-parallel-reviewer-dispatch.md) | AKJ: Parallel Reviewer Dispatch | 🟡 | ⚠️ (có subagent + council; thiếu per- | 2 tuần |
+| [973-spec-first-sdlc-router.md](973-spec-first-sdlc-router.md) | AKK: Spec-First SDLC Router | 🟡 | ⚠️ (có workflows + council; thiếu SDL | 2 tuần |
+| [974-surgical-change-traceability.md](974-surgical-change-traceability.md) | AKL: Surgical Change Traceability | 🟡 | ⚠️ (có hashline-edit + audit; thiếu t | 1-2 tuần |
+| [975-spec-quality-english-tests.md](975-spec-quality-english-tests.md) | AKM: Spec Quality English Tests | 🟢 | ⚠️ (có prompts + eval; thiếu spec val | 2 tuần |
+| [976-evidence-before-claims-gate.md](976-evidence-before-claims-gate.md) | AKN: Evidence-Before-Claims Gate | 🟡 | ⚠️ (có eval + lsp-cascade; thiếu evid | 1 tuần |
+| [977-hook-accumulator-batch-verify.md](977-hook-accumulator-batch-verify.md) | AKO: Hook Accumulator Batch Verify | 🟡 | ⚠️ (có ToolHookSink + lsp-cascade; th | 1 tuần |
+| [978-persistence-loop-ralph.md](978-persistence-loop-ralph.md) | AKP: Persistence Loop Ralph | 🟡 | ⚠️ (có runTurn loop + iteration-budge | 2 tuần |
+| [979-installer-doctor-validation.md](979-installer-doctor-validation.md) | AKQ: Installer Doctor Validation | 🟢 | ⚠️ (có validate-distill-run + tool-te | 1-2 tuần |
+
 ## So sánh nhanh
 
 ```
