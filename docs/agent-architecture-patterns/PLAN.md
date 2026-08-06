@@ -342,14 +342,17 @@
 | 402 | OL | `402-request-type-authorization.md` | leaks (Codex) | Autonomy matrix: answer/diagnose/change/monitor; destructive-action protocol |
 
 ## Ghi chú Phần B
-- Tổng 55 hướng, số tiếp theo từ `403` (`OM`) nếu thêm.
 - Các slug gần hướng cũ nhưng khác bản chất đã ghi chú ở cột 'Tránh trùng'.
+---
+
+---
+
 ---
 
 ## PHẦN C — Đào sâu toàn bộ source (2 vòng scan, 2026-08-06)
 
 > Sau vòng đầu 55 hướng (Phần B), đào tiếp 41 repo với 4 subagent độ sâu cao + 2 vòng duplicate-check.
-> Kết quả: **112 hướng mới** (403 → 514), không trùng 400 slug đã có, đã đối chiếu cả nghĩa từ-vựng.
+> Kết quả: **126 hướng mới** (403 → 528), không trùng 400 slug đã có, đã đối chiếu cả nghĩa từ-vựng.
 
 | # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
 |---|---|---|---|---|
@@ -465,7 +468,21 @@
 | 512 | SR | `512-agent-changed-file-git.md` | openpi | IPC AGENT_CHANGED_FILES {count,files} để git panel ghim mục Agent changed filter và sinh commit message từ turn summary |
 | 513 | SS | `513-sandboxed-script-trusted-host-split.md` | pi-extensible-workflows | Tách rõ: workflow scripts chạy sandbox riêng, còn factory/hook/registered-functions/transports chạy trusted host — cùng một codebase đôi đường tin cậy khác nhau, không trộn |
 | 514 | ST | `514-preflight-static-model-resolution.md` | pi-extensible-workflows | Model reference tĩnh được resolve+check ngay preflight; model động resolve khi agent start với run's captured inventory, fail UNKNOWN_MODEL nếu thiếu — phân loại rõ quyết định lúc khởi chạy |
+| 515 | SU | `515-hermes-scale-to-zero-cron.md` | hermes-agent | Cron giao scheduler ngoài arm one-shot đúng giờ fire rồi gọi agent qua webhook xác thực — agent scale-to-zero giữa các lần kích hoạt, không cần ticker nội bộ |
+| 516 | SV | `516-herdr-daemon-live-runtime-handoff.md` | herdr | Khi daemon tự upgrade/rollback chuyển giao runtime sống (PTY, tiến trình, session identity) sang process mới, bỏ coordination transient — nâng cấp không mất phiên |
+| 517 | SW | `517-openhuman-tool-scoped-memory-rules.md` | openhuman | Rule bền vững theo từng tool, rule critical/high pin vào system prompt (frozen trong prefix cache) — compactor không bao giờ xóa được |
+| 518 | SX | `518-gbrain-entity-create-safety-hint.md` | gbrain | Mỗi kết quả truy vấn trả gợi ý mức tồn tại exists/probable/unknown để agent quyết định trước khi tạo entity mới — chặn ghi trùng lúc quyết định |
+| 519 | SY | `519-hermes-persisted-restart-loop-breaker.md` | hermes-agent | Bộ ngắt vòng lặp khởi động tầng process: cửa sổ rolling các lần boot persist, quá nhiều boot ngắn hạn thì bỏ auto-resume phiên lỗi — phá vòng respawn supervisor |
+| 520 | SZ | `520-hermes-cache-aware-review-fork-replay.md` | hermes-agent | Fork agent review-turn: cùng model cha thì replay transcript (warm prompt cache rẻ), khác model thì chỉ replay digest — tránh cold-write tốn token |
+| 521 | TA | `521-openhuman-ambient-window-context-capture.md` | openhuman | Vòng nền chụp cửa sổ active OCR+vision ghi chú người dùng đang làm gì vào memory; consent+TTL, dedup timestamp — context thụ động |
+| 522 | TB | `522-branch-atlas-session-tree-ui.md` | pi-session-manager | Atlas map trực quan toàn bộ cây session-branch: visualize + replay cây nhánh, điều hướng thay vì transcript phẳng — UI companion của session-branch-tree-reconstruction |
+| 523 | TC | `523-code-community-detection.md` | graphify | Leiden community detection gom cụm nút code-graph (module/đồng sửa) để điều hướng và dự đoán xung đột PR |
+| 524 | TD | `524-failure-derived-instruction-learning.md` | hermes-agent | Turn failure trở thành instruction/lesson bền vững (ghi lesson durable) tái dùng cho run sau |
+| 525 | TE | `525-graph-edge-provenance-tags.md` | graphify | Mỗi edge của code-graph mang provenance (origin/commit/tool) để query giải thích được |
+| 526 | TF | `526-hybrid-lsp-semantic-resolution.md` | codebase-memory-mcp | Giải quyết symbolic qua LSP, fallback semantic-index khi LSP miss — hybrid resolution cho codebase lớn |
+| 527 | TG | `527-prewarmed-session-pool.md` | openclaw | Cache + prewarm sẵn các session manager để run mới dùng lại session ấm (session-manager-cache) — giảm cold start |
+| 528 | TH | `528-retrieval-trajectory-inspection.md` | codebase-memory-mcp | Phơi bày đường retrieval đã dùng để trả lời query cho audit (trajectory trace thay vì chỉ kết quả) |
 
 ## Ghi chú Phần C
-- Tổng 112 hướng, số tiếp theo từ `515` (`SU`).
-- Nguồn gốc: mem0/agentmemory/gbrain/graphify (memory), context-mode/ctx/headroom/rtk/hypa (context/compression), pi-family, openclaw/openhuman, oh-my-pi, papers, system_prompts_leaks, mya-v1/openpi/herdr/MyAgents/fff.
+- Tổng 126 hướng, số tiếp theo từ `529` (`TI`).
+- Nguồn gốc: mem0/agentmemory/gbrain/graphify (memory), context-mode/ctx/headroom/rtk/hypa (context/compression), pi-family, openclaw/openhuman, oh-my-pi, papers, system_prompts_leaks, mya-v1/openpi/herdr/MyAgents/fff/hermes-agent.

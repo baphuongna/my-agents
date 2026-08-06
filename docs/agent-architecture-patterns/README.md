@@ -1009,6 +1009,168 @@
 | [402-request-type-authorization.md](402-request-type-authorization.md) | OL: Request Type Authorization | 🟢 | ⚠️ (permission-prompt + dynamic-permi | 2-3 tuần |
 
 
+### Nhóm — C1: Memory & Graph (403-420)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [403-windowed-history-retrieval.md](403-windowed-history-retrieval.md) | OM: Windowed History Retrieval | 🟢 | ⚠️ (session-history + memory retrieva | 1-2 tuần |
+| [404-entity-query-expansion.md](404-entity-query-expansion.md) | ON: Entity Query Expansion | 🟢 | ⚠️ (entity-extraction + entity-store | 2 tuần |
+| [405-bm25-entity-boost-fusion.md](405-bm25-entity-boost-fusion.md) | OO: BM25 Entity Boost Fusion | 🟢 | ⚠️ (hybrid-search + reranking sẵn — c | 2 tuần |
+| [406-near-duplicate-gc.md](406-near-duplicate-gc.md) | OP: Near-Duplicate GC | 🟢 | ⚠️ (memory-add + conflict-merge sẵn — | 1-2 tuần |
+| [407-add-v3-phased-commit.md](407-add-v3-phased-commit.md) | OQ: Add v3 Phased Commit | 🟡 | ⚠️ (memory-add + entity-extraction sẵ | 3-4 tuần |
+| [408-provider-vector-plan-swap.md](408-provider-vector-plan-swap.md) | OR: Provider Vector Plan Swap | 🟡 | ⚠️ (provider-config + embedding sẵn — | 2-3 tuần |
+| [409-slotted-memory-schema.md](409-slotted-memory-schema.md) | OS: Slotted Memory Schema | 🟡 | ⚠️ (memory-store + structured-output | 2-3 tuần |
+| [410-pre-tool-context-injection.md](410-pre-tool-context-injection.md) | OT: Pre-Tool Context Injection | 🟡 | ⚠️ (lifecycle-hooks + tool-dispatch s | 2-3 tuần |
+| [411-hot-cold-epistemic-tiers.md](411-hot-cold-epistemic-tiers.md) | OU: Hot-Cold Epistemic Tiers | 🟡 | ⚠️ (hierarchical-memory + decay sẵn — | 3 tuần |
+| [412-dream-cycle-consolidation.md](412-dream-cycle-consolidation.md) | OV: Dream Cycle Consolidation | 🟡 | ⚠️ (scheduled-agents + memory-store s | 3-4 tuần |
+| [413-knowledge-kind-typology.md](413-knowledge-kind-typology.md) | OW: Knowledge Kind Typology | 🟡 | ⚠️ (confidence-scoring + memory-store | 3 tuần |
+| [414-holder-attributed-confidence.md](414-holder-attributed-confidence.md) | OX: Holder Attributed Confidence | 🟡 | ⚠️ (confidence-scoring + provenance s | 2-3 tuần |
+| [415-time-travel-snapshot-query.md](415-time-travel-snapshot-query.md) | OY: Time-Travel Snapshot Query | 🟡 | ⚠️ (memory-state-versioning + tempora | 3-4 tuần |
+| [416-ontology-schema-packs.md](416-ontology-schema-packs.md) | OZ: Ontology Schema Packs | 🟡 | ⚠️ (AST-KG + knowledge-graph sẵn — ch | 3 tuần |
+| [417-per-identity-memory-drift.md](417-per-identity-memory-drift.md) | PA: Per-Identity Memory Drift | 🟡 | ⚠️ (delegated-identity + multi-tenanc | 3 tuần |
+| [418-file-watch-incremental-graph.md](418-file-watch-incremental-graph.md) | PB: File-Watch Incremental Graph | 🟡 | ⚠️ (file-watcher + repo-graph sẵn — c | 3-4 tuần |
+| [419-context-aware-inference-layer.md](419-context-aware-inference-layer.md) | PC: Context-Aware Inference Layer | 🟡 | ⚠️ (repo-graph + context-engineering | 3 tuần |
+| [420-cross-platform-runtime-adapters.md](420-cross-platform-runtime-adapters.md) | PD: Cross-Platform Runtime Adapters | 🟡 | ⚠️ (interop protocols + transports sẵ | 4-5 tuần |
+
+### Nhóm — C2: Session & Workflow (421-438)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [421-tiered-review-agent-pipeline.md](421-tiered-review-agent-pipeline.md) | PE: Tiered Review Agent Pipeline | 🟡 | ⚠️ (codebase-memory-mcp graph + impac | 2-3 tuần |
+| [422-deterministic-context-compactor.md](422-deterministic-context-compactor.md) | PF: Deterministic Context Compactor | 🟢 | ⚠️ (summarize + rank + merge sẵn tron | 1.5-2 tuần |
+| [423-lineage-scoped-recall.md](423-lineage-scoped-recall.md) | PG: Lineage-Scoped Recall | 🟢 | ⚠️ (lineage.ts + recall-scope.ts sẵn | 1-1.5 tuần |
+| [424-cross-agent-session-library.md](424-cross-agent-session-library.md) | PH: Cross-Agent Session Library | 🟡 | ⚠️ (pi-session-manager dataset cache | 2-2.5 tuần |
+| [425-session-branch-tree-reconstruction.md](425-session-branch-tree-reconstruction.md) | PI: Session Branch Tree Reconstruction | 🟢 | ⚠️ (entry parsing với parentId/parent | 1-1.5 tuần |
+| [426-workflow-call-index-journaling.md](426-workflow-call-index-journaling.md) | PJ: Workflow Call-Index Journaling | 🟡 | ⚠️ (workflow.ts journal + resume + fi | 2-2.5 tuần |
+| [427-orchestrator-determinism-realm.md](427-orchestrator-determinism-realm.md) | PK: Orchestrator Determinism Realm | 🟡 | ⚠️ (DETERMINISM_PRELUDE sẵn trong pi- | 1-1.5 tuần |
+| [428-idle-gated-session-messaging.md](428-idle-gated-session-messaging.md) | PL: Idle-Gated Session Messaging | 🟡 | ⚠️ (pi-intercom lifecycleStatus + inb | 1.5-2 tuần |
+| [429-warm-fresh-dual-analysis-server.md](429-warm-fresh-dual-analysis-server.md) | PM: Warm-Fresh Dual Analysis Server | 🟡 | ⚠️ (pi-lens warm-attach + cold/warm r | 2-2.5 tuần |
+| [430-cold-warm-ipc-sidechannel-routing.md](430-cold-warm-ipc-sidechannel-routing.md) | PN: Cold-Warm IPC Sidechannel Routing | 🟡 | ⚠️ (pi-lens IPC path + request/respon | 1.5-2 tuần |
+| [431-verified-ui-action-transition.md](431-verified-ui-action-transition.md) | PO: Verified UI Action Transition | 🟡 | ⚠️ (pi-computer-use prepareAction + v | 2-3 tuần |
+| [432-agent-prompt-cache-miss-attribution.md](432-agent-prompt-cache-miss-attribution.md) | PP: Agent Prompt Cache-Miss Attribution | 🟢 | ⚠️ (cacheRead field + cost.ts 50% rul | 1-1.5 tuần |
+| [433-agent-branch-summarization-backfill.md](433-agent-branch-summarization-backfill.md) | PQ: Agent Branch Summarization Backfill | 🟢 | ⚠️ (branch_summary entry type + pi-vc | 1.5-2 tuần |
+| [434-server-snapshot-broadcast.md](434-server-snapshot-broadcast.md) | PR: Server Snapshot Broadcast | 🟡 | ⚠️ (gateway multi-connection + event | 1.5-2 tuần |
+| [435-session-log-config-entry-scope.md](435-session-log-config-entry-scope.md) | PS: Session Log Config Entry Scope | 🟢 | ⚠️ (JSONL entry format + toolCallId l | 0.5-1 tuần |
+| [436-openclaw-commitments.md](436-openclaw-commitments.md) | PT: Openclaw Commitments | 🟡 | ⚠️ (openclaw commitments module sẵn — | 2-2.5 tuần |
+| [437-openclaw-standing-orders.md](437-openclaw-standing-orders.md) | PU: Openclaw Standing Orders | 🟡 | ⚠️ (openclaw persisted config + exec- | 2-2.5 tuần |
+| [438-openclaw-parallel-specialist-lanes.md](438-openclaw-parallel-specialist-lanes.md) | PV: Openclaw Parallel Specialist Lanes | 🟡 | ⚠️ (openclaw lanes + subagent-spawn s | 2-3 tuần |
+
+### Nhóm — C3: Platform & Ops (439-456)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [439-openclaw-queue-steering.md](439-openclaw-queue-steering.md) | PW: Queue Steering | 🟢 | ⚠️ (agent-loop + message queue sẵn — | 2-3 tuần |
+| [440-openclaw-active-memory-recall-subagent.md](440-openclaw-active-memory-recall-subagent.md) | PX: Active Memory Recall Subagent | 🟡 | ⚠️ (subagent + memory query sẵn — chư | 2-3 tuần |
+| [441-openclaw-dreaming-sleep-phases.md](441-openclaw-dreaming-sleep-phases.md) | PY: Dreaming Sleep Phases | 🟡 | ⚠️ (memory-consolidation sẵn — chưa c | 3-4 tuần |
+| [442-openclaw-progress-drafts.md](442-openclaw-progress-drafts.md) | PZ: Progress Drafts | 🟢 | ⚠️ (message editing + streaming sẵn — | 1-2 tuần |
+| [443-openclaw-managed-worktrees.md](443-openclaw-managed-worktrees.md) | QA: Managed Worktrees | 🟡 | ⚠️ (git tools + bash sẵn — chưa có wo | 2-3 tuần |
+| [444-openclaw-channel-docking.md](444-openclaw-channel-docking.md) | QB: Channel Docking | 🟡 | ⚠️ (session store + transport layer s | 2-3 tuần |
+| [445-openclaw-resumable-approval-pipeline.md](445-openclaw-resumable-approval-pipeline.md) | QC: Resumable Approval Pipeline | 🟡 | ⚠️ (tool execution + permission-promp | 3-4 tuần |
+| [446-openhuman-subconscious-steering.md](446-openhuman-subconscious-steering.md) | QD: Subconscious Steering | 🟡 | ⚠️ (system-prompt + background loop s | 2-3 tuần |
+| [447-openhuman-goal-reflection-agent.md](447-openhuman-goal-reflection-agent.md) | QE: Goal Reflection Agent | 🟡 | ⚠️ (subagent + memory sẵn — chưa có g | 2-3 tuần |
+| [448-openhuman-idle-thread-continuation.md](448-openhuman-idle-thread-continuation.md) | QF: Idle Thread Continuation | 🟡 | ⚠️ (agent-loop + scheduler sẵn — chưa | 2-3 tuần |
+| [449-openhuman-command-class-gate.md](449-openhuman-command-class-gate.md) | QG: Command Class Gate | 🟢 | ⚠️ (permission-prompt + dynamic-permi | 2-3 tuần |
+| [450-openhuman-agent-proposed-workflow.md](450-openhuman-agent-proposed-workflow.md) | QH: Agent Proposed Workflow | 🟡 | ⚠️ (workflows package + dynamic-workf | 3-4 tuần |
+| [451-openhuman-memory-diff-readmarker.md](451-openhuman-memory-diff-readmarker.md) | QI: Memory Diff Readmarker | 🟡 | ⚠️ (memory store + git tools sẵn — ch | 2-3 tuần |
+| [452-inter-client-user-message-envelope.md](452-inter-client-user-message-envelope.md) | QJ: Inter-Client User Message Envelope | 🟡 | ⚠️ (transport + message handling sẵn | 2-3 tuần |
+| [453-herdr-screen-manifest-agent-state.md](453-herdr-screen-manifest-agent-state.md) | QK: Screen Manifest Agent State | 🟡 | ⚠️ (terminal/PTY + regex sẵn — chưa c | 2-3 tuần |
+| [454-oh-my-pi-stream-abort-rule-injection.md](454-oh-my-pi-stream-abort-rule-injection.md) | QL: Stream Abort Rule Injection | 🟡 | ⚠️ (streaming + system-reminder sẵn — | 2-3 tuần |
+| [455-oh-my-pi-fuzzy-kernel-tool-reentry.md](455-oh-my-pi-fuzzy-kernel-tool-reentry.md) | QM: Fuzzy Kernel Tool Reentry | 🟡 | ⚠️ (code-exec tool + kernel sẵn — chư | 3-4 tuần |
+| [456-oh-my-pi-lsp-wired-edits.md](456-oh-my-pi-lsp-wired-edits.md) | QN: LSP Wired Edits | 🟡 | ⚠️ (edit tool + file ops sẵn — chưa c | 3-4 tuần |
+
+### Nhóm — C4: Debugging & Context (457-474)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [457-oh-my-pi-dap-driven-debugging.md](457-oh-my-pi-dap-driven-debugging.md) | QO: DAP-Driven Debugging | 🟡 | ⚠️ (packages/dap + dap-server sẵn — c | 3-4 tuần |
+| [458-oh-my-pi-advisor-second-model.md](458-oh-my-pi-advisor-second-model.md) | QP: Advisor Second-Model | 🟡 | ⚠️ (packages/council multi-model + 07 | 3-4 tuần |
+| [459-oh-my-pi-conflict-uri-resolution.md](459-oh-my-pi-conflict-uri-resolution.md) | QQ: Conflict URI Resolution | 🟡 | ⚠️ (read/edit/apply-patch sẵn — chưa | 2-3 tuần |
+| [460-oh-my-pi-atomic-commit-splitting.md](460-oh-my-pi-atomic-commit-splitting.md) | QR: Atomic Commit Splitting | 🟢 | ⚠️ (bash git + edit sẵn — chưa có dif | 2-3 tuần |
+| [461-oh-my-pi-collab-session-relay.md](461-oh-my-pi-collab-session-relay.md) | QS: Collab Session Relay | 🟡 | ⚠️ (packages/collab relay + intercom | 3-4 tuần |
+| [462-hermes-incremental-micro-compaction.md](462-hermes-incremental-micro-compaction.md) | QT: Incremental Micro-Compaction | 🟡 | ⚠️ (memory + context-window manager s | 2-3 tuần |
+| [463-openviking-typed-query-retrieval.md](463-openviking-typed-query-retrieval.md) | QU: Typed Query Retrieval | 🟢 | ⚠️ (find/grep + search-index sẵn — ch | 2-3 tuần |
+| [464-mya-v1-hardware-peripheral-tools.md](464-mya-v1-hardware-peripheral-tools.md) | QV: Hardware Peripheral Tools | 🟡 | ❌ (chưa có Peripheral trait — cần Ru | 5-6 tuần |
+| [465-fff-frequency-ranked-fuzzy-finder.md](465-fff-frequency-ranked-fuzzy-finder.md) | QW: Frequency-Ranked Fuzzy Finder | 🟢 | ⚠️ (find + fuzzy-score sẵn — chưa có | 1-2 tuần |
+| [466-context-citation-attribution.md](466-context-citation-attribution.md) | QX: Context Citation Attribution | 🟢 | ⚠️ (memory + trajectory sẵn — chưa có | 2-3 tuần |
+| [467-staged-memory-writes.md](467-staged-memory-writes.md) | QY: Staged Memory Writes | 🟡 | ⚠️ (packages/memory brain-store sẵn — | 3-4 tuần |
+| [468-text-embedded-ui-directives.md](468-text-embedded-ui-directives.md) | QZ: Text-Embedded UI Directives | 🟢 | ⚠️ (output stream + bash git sẵn — ch | 2-3 tuần |
+| [469-terminal-state-as-files.md](469-terminal-state-as-files.md) | RA: Terminal State as Files | 🟢 | ⚠️ (bash tool + terminal session sẵn | 1-2 tuần |
+| [470-runtime-transition-reminders.md](470-runtime-transition-reminders.md) | RB: Runtime Transition Reminders | 🟢 | ⚠️ (system prompt + context builder s | 1-2 tuần |
+| [471-phase-topics-broadcast.md](471-phase-topics-broadcast.md) | RC: Phase Topics Broadcast | 🟢 | ⚠️ (lifecycle-hooks + progress sẵn — | 1-2 tuần |
+| [472-jittered-bounded-scheduling.md](472-jittered-bounded-scheduling.md) | RD: Jittered Bounded Scheduling | 🟢 | ⚠️ (packages/cron cron-store sẵn — ch | 2-3 tuần |
+| [473-permission-allowlist-mining.md](473-permission-allowlist-mining.md) | RE: Permission Allowlist Mining | 🟢 | ⚠️ (124 dynamic-permissions + traject | 2-3 tuần |
+| [474-fuzzy-code-emulator.md](474-fuzzy-code-emulator.md) | RF: Fuzzy Code Emulator | 🟡 | ❌ (chưa có code emulator — cần parse | 4-5 tuần |
+
+### Nhóm — C5: Compression & Search (475-492)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [475-plan-after-trial.md](475-plan-after-trial.md) | RG: Plan-After-Trial | 🟡 | ⚠️ (agent loop + tool exec sẵn — chưa | 2-3 tuần |
+| [476-fuzzer-crash-feedback.md](476-fuzzer-crash-feedback.md) | RH: Fuzzer Crash Feedback | 🟡 | ⚠️ (code-exec + test runner sẵn — chư | 3-4 tuần |
+| [477-agent-out-of-sync-recovery.md](477-agent-out-of-sync-recovery.md) | RI: Agent Out-of-Sync Recovery | 🟡 | ⚠️ (session state + context sẵn — chư | 3-4 tuần |
+| [478-transactional-action-sandbox.md](478-transactional-action-sandbox.md) | RJ: Transactional Action Sandbox | 🟡 | ⚠️ (FS tools + edit sẵn — chưa có tra | 3-4 tuần |
+| [479-server-side-tool-profiles.md](479-server-side-tool-profiles.md) | RK: Server-Side Tool Profiles | 🟢 | ⚠️ (MCP tool registry sẵn — chưa có t | 2-3 tuần |
+| [480-thread-scoped-worktree.md](480-thread-scoped-worktree.md) | RL: Thread-Scoped Worktree | 🟡 | ⚠️ (session/branch sẵn — chưa có work | 3-4 tuần |
+| [481-decision-complete-plan-contract.md](481-decision-complete-plan-contract.md) | RM: Decision-Complete Plan Contract | 🟡 | ⚠️ (plan/TODO tracking + tool-gate sẵ | 2-3 tuần |
+| [482-memory-index-in-context.md](482-memory-index-in-context.md) | RN: Memory Index In-Context | 🟡 | ⚠️ (hierarchical/slotted memory sẵn — | 1.5-2 tuần |
+| [483-session-resume-category-snapshot.md](483-session-resume-category-snapshot.md) | RO: Session-Resume Category Snapshot | 🟢 | ⚠️ (session event tracking + compacti | 2-3 tuần |
+| [484-per-agent-context-search-throttle.md](484-per-agent-context-search-throttle.md) | RP: Per-Agent-Context Search Throttle | 🟢 | ⚠️ (search/MCP sẵn — chưa có per-agen | 1-1.5 tuần |
+| [485-out-of-band-byte-marker-bridge.md](485-out-of-band-byte-marker-bridge.md) | RQ: Out-Of-Band Byte Marker Bridge | 🟢 | ⚠️ (PostToolUse hook + telemetry sẵn | 1 tuần |
+| [486-soft-shell-exit-classifier.md](486-soft-shell-exit-classifier.md) | RR: Soft-Shell-Exit Classifier | 🟢 | ⚠️ (bash/exec tool + exit-code handli | 0.5-1 tuần |
+| [487-real-conversation-import-gate.md](487-real-conversation-import-gate.md) | RS: Real-Conversation Import Gate | 🟢 | ⚠️ (session import/library sẵn — chưa | 1-1.5 tuần |
+| [488-transcript-retention-policy.md](488-transcript-retention-policy.md) | RT: Transcript Retention Policy | 🟢 | ⚠️ (history/store + token tracking sẵ | 1.5-2 tuần |
+| [489-deterministic-rollup-semantic-corpus.md](489-deterministic-rollup-semantic-corpus.md) | RU: Deterministic Rollup Semantic Corpus | 🟢 | ⚠️ (semantic search/indexing sẵn — ch | 2-3 tuần |
+| [490-readiness-gated-search-freshness.md](490-readiness-gated-search-freshness.md) | RV: Readiness-Gated Search Freshness | 🟡 | ⚠️ (search + indexing sẵn — chưa có d | 2-3 tuần |
+| [491-cache-invalidation-aware-compression.md](491-cache-invalidation-aware-compression.md) | RW: Cache-Invalidation-Aware Compression | 🟡 | ⚠️ (361 MW cache-prefix-preserving + | 2-3 tuần |
+| [492-auth-tiered-compression-policy.md](492-auth-tiered-compression-policy.md) | RX: Auth-Tiered Compression Policy | 🟡 | ⚠️ (359 MU content-type + 361 MW cach | 2-3 tuần |
+
+### Nhóm — C6: Guard & Safety (493-510)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [493-reversible-context-compression.md](493-reversible-context-compression.md) | RY: Reversible Context Compression | 🟡 | ⚠️ (packages/ai LLM client + context- | 2-3 tuần |
+| [494-holdout-control-savings-accounting.md](494-holdout-control-savings-accounting.md) | RZ: Holdout-Control Savings Accounting | 🟢 | ⚠️ (packages/ai compressor + budget t | 1-2 tuần |
+| [495-never-worse-output-guard.md](495-never-worse-output-guard.md) | SA: Never-Worse Output Guard | 🟢 | ⚠️ (packages/ai compressor sẵn — chưa | 0.5-1 tuần |
+| [496-tee-full-output-recovery-hint.md](496-tee-full-output-recovery-hint.md) | SB: Tee Full-Output Recovery Hint | 🟢 | ⚠️ (packages/ai compressor + session | 1-2 tuần |
+| [497-project-filter-trust-records.md](497-project-filter-trust-records.md) | SC: Project Filter Trust Records | 🟡 | ⚠️ (packages/ai compressor + config l | 2-3 tuần |
+| [498-compression-attribution-footer.md](498-compression-attribution-footer.md) | SD: Compression Attribution Footer | 🟢 | ⚠️ (packages/ai compressor sẵn — chưa | 1 tuần |
+| [499-user-proficiency-adaptive-communication.md](499-user-proficiency-adaptive-communication.md) | SE: User Proficiency Adaptive Communication | 🟢 | ⚠️ (packages/agent system-prompt sẵn | 2 tuần |
+| [500-harness-config-drift-detection.md](500-harness-config-drift-detection.md) | SF: Harness Config Drift Detection | 🟢 | ⚠️ (skill registry + AGENTS.md sẵn — | 1-2 tuần |
+| [501-tool-argument-hallucination-guard.md](501-tool-argument-hallucination-guard.md) | SG: Tool Argument Hallucination Guard | 🟢 | ⚠️ (tool dispatcher + tool.meta schem | 1-2 tuần |
+| [502-deferred-simplification-ledger.md](502-deferred-simplification-ledger.md) | SH: Deferred Simplification Ledger | 🟢 | ⚠️ (source tree + lint pipeline sẵn — | 1-2 tuần |
+| [503-anti-slop-triage-taxonomy.md](503-anti-slop-triage-taxonomy.md) | SI: Anti-Slop Triage Taxonomy | 🟢 | ⚠️ (packages/ai LLM client sẵn — chưa | 1-2 tuần |
+| [504-workspace-clone-session-partitioning.md](504-workspace-clone-session-partitioning.md) | SJ: Workspace Clone Session Partitioning | 🟢 | ⚠️ (session store + cwd tracking sẵn | 1 tuần |
+| [505-runtime-api-key-rotation.md](505-runtime-api-key-rotation.md) | SK: Runtime API Key Rotation | 🟡 | ⚠️ (packages/ai LLM client + retry sẵ | 1-2 tuần |
+| [506-multi-question-structured-picker.md](506-multi-question-structured-picker.md) | SL: Multi-Question Structured Picker | 🟢 | ⚠️ (packages/intercom interactive UI | 1-2 tuần |
+| [507-truncated-tool-call-fail-closed.md](507-truncated-tool-call-fail-closed.md) | SM: Truncated Tool Call Fail-Closed | 🟢 | ⚠️ (LLM stream parsing + tool dispatc | 1 tuần |
+| [508-session-html-export.md](508-session-html-export.md) | SN: Session HTML Export | 🟢 | ⚠️ (session store JSONL + CLI sẵn — c | 1-2 tuần |
+| [509-per-file-mutation-queue.md](509-per-file-mutation-queue.md) | SO: Per-File Mutation Queue | 🟡 | ⚠️ (tool dispatcher + edit/write tool | 1-2 tuần |
+| [510-plugin-abi-shadow-policy.md](510-plugin-abi-shadow-policy.md) | SP: Plugin ABI Shadow Policy | 🟡 | ⚠️ (plugin loader + tool registry sẵn | 1-2 tuần |
+
+### Nhóm — C7: Platform & Retrieval (511-528)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [511-provider-ranking-attribution.md](511-provider-ranking-attribution.md) | SQ: Provider Ranking Attribution | 🟢 | ⚠️ (transport + headers sẵn — chưa có | 1-2 tuần |
+| [512-agent-changed-file-git.md](512-agent-changed-file-git.md) | SR: Agent-Changed-File Git | 🟢 | ⚠️ (edit/write tools + IPC sẵn — chưa | 2-3 tuần |
+| [513-sandboxed-script-trusted-host-split.md](513-sandboxed-script-trusted-host-split.md) | SS: Sandboxed-Script / Trusted-Host Split | 🟡 | ⚠️ (shell exec + worktree sẵn — chưa | 3-4 tuần |
+| [514-preflight-static-model-resolution.md](514-preflight-static-model-resolution.md) | ST: Preflight Static Model Resolution | 🟢 | ⚠️ (model config + validation sẵn — c | 2-3 tuần |
+| [515-hermes-scale-to-zero-cron.md](515-hermes-scale-to-zero-cron.md) | SU: Hermes Scale-to-Zero Cron | 🟢 | ❌ (cron/scheduler chưa có — cần exte | 3-4 tuần |
+| [516-herdr-daemon-live-runtime-handoff.md](516-herdr-daemon-live-runtime-handoff.md) | SV: Herdr Daemon Live-Runtime Handoff | 🟡 | ❌ (chưa có FD-passing handoff + runt | 5-6 tuần |
+| [517-openhuman-tool-scoped-memory-rules.md](517-openhuman-tool-scoped-memory-rules.md) | SW: Openhuman Tool-Scoped Memory Rules | 🟡 | ⚠️ (memory + tool policy sẵn — chưa c | 3-4 tuần |
+| [518-gbrain-entity-create-safety-hint.md](518-gbrain-entity-create-safety-hint.md) | SX: Gbrain Entity-Create Safety Hint | 🟢 | ⚠️ (memory store + lookup sẵn — chưa | 2-3 tuần |
+| [519-hermes-persisted-restart-loop-breaker.md](519-hermes-persisted-restart-loop-breaker.md) | SY: Hermes Persisted Restart-Loop Breaker | 🟢 | ❌ (chưa có boot-persist window + aut | 2-3 tuần |
+| [520-hermes-cache-aware-review-fork-replay.md](520-hermes-cache-aware-review-fork-replay.md) | SZ: Hermes Cache-Aware Review Fork-Replay | 🟡 | ⚠️ (subagent + transcript sẵn — chưa | 3-4 tuần |
+| [521-openhuman-ambient-window-context-capture.md](521-openhuman-ambient-window-context-capture.md) | TA: Openhuman Ambient Window-Context Capture | 🟡 | ❌ (chưa có ambient capture + OCR/vis | 4-5 tuần |
+| [522-branch-atlas-session-tree-ui.md](522-branch-atlas-session-tree-ui.md) | TB: Branch-Atlas Session-Tree UI | 🟡 | ⚠️ (session/branch persist sẵn — chưa | 4-5 tuần |
+| [523-code-community-detection.md](523-code-community-detection.md) | TC: Code Community Detection | 🟡 | ❌ (chưa có code-graph + Leiden commu | 3-4 tuần |
+| [524-failure-derived-instruction-learning.md](524-failure-derived-instruction-learning.md) | TD: Failure-Derived Instruction Learning | 🟡 | ⚠️ (memory + review sẵn — chưa có fai | 3-4 tuần |
+| [525-graph-edge-provenance-tags.md](525-graph-edge-provenance-tags.md) | TE: Graph-Edge Provenance Tags | 🟢 | ⚠️ (code-graph + symbol resolution sẵ | 2-3 tuần |
+| [526-hybrid-lsp-semantic-resolution.md](526-hybrid-lsp-semantic-resolution.md) | TF: Hybrid LSP Semantic Resolution | 🟡 | ❌ (chưa có LSP integration + semanti | 4-5 tuần |
+| [527-prewarmed-session-pool.md](527-prewarmed-session-pool.md) | TG: Prewarmed Session Pool | 🟡 | ⚠️ (session cache sẵn — chưa có prewa | 2-3 tuần |
+| [528-retrieval-trajectory-inspection.md](528-retrieval-trajectory-inspection.md) | TH: Retrieval Trajectory Inspection | 🟢 | ❌ (chưa có retrieval-trajectory logg | 2-3 tuần |
+
+
 ## So sánh nhanh
 
 ```
