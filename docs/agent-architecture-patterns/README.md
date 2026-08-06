@@ -569,6 +569,22 @@
 | [226-human-approval-gates.md](226-human-approval-gates.md) | HR: Approval Gate | 🟡 | ⚠️ (HITL thô) | 2-4 tuần |
 | [227-agent-notifications-alerts.md](227-agent-notifications-alerts.md) | HS: Notify | 🟢 | ⚠️ (terminal) | 2-4 tuần |
 
+### Nhóm 68: Distributed & Consensus (Vòng 52)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [228-raft-consensus-cluster.md](228-raft-consensus-cluster.md) | HT: Raft Cluster | 🟡 | ⚠️ (intercom sẵn) | 3-5 tuần |
+| [229-distributed-locking.md](229-distributed-locking.md) | HU: Distributed Lock | 🟢 | ⚠️ (cross-process-lock sẵn) | 1-2 tuần |
+| [230-event-sourcing-outbox.md](230-event-sourcing-outbox.md) | HV: Event Sourcing + Outbox | 🟢 | ⚠️ (AuditLog sẵn) | 2-3 tuần |
+
+### Nhóm 69: Task Reliability (Vòng 53)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [231-dead-letter-queue.md](231-dead-letter-queue.md) | HW: Dead-Letter Queue | 🟢 | ⚠️ (retry sẵn) | 1 tuần |
+| [232-actor-supervision.md](232-actor-supervision.md) | HX: Actor Supervision | 🟡 | ⚠️ (32 supervisor-tree sẵn) | 1-2 tuần |
+| [233-work-stealing.md](233-work-stealing.md) | HY: Work Stealing | 🟢 | ⚠️ (kanban sẵn) | 1-2 tuần |
+
 
 
 

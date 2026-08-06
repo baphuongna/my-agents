@@ -253,3 +253,94 @@
 - Nếu cần thêm vòng sau 347: tiếp tục công thức letter, chủ đề mới tương tự (tránh trùng 347 slug hiện có — grep trước khi chốt).
 - Ưu tiên độc lập: mỗi vòng đứng riêng được, không phụ thuộc vòng trước — chạy theo thứ tự nào cũng được.
 - Một số chủ đề gần hướng cũ nhưng đủ khác: 232 (supervision ≠ 13 actor), 271 (speculative *task* ≠ 207 speculative *decoding*), 281 (idempotency ≠ 203 retry), 302 (arbitration ≠ 191 attribution).
+---
+
+## PHẦN B — Hướng bổ sung từ khảo sát nguồn `source/` (pull 2026-08-06)
+
+> Đã pull 40+ repo trong `my-agent/source/` và đối chiếu với 227 pattern + Phần A.
+> Quy ước letter tiếp tục `toCode(n)`. Đây là 55-56 hướng KHÔNG trùng — dành làm thêm sau Phần A.
+> Khi nghiên cứu, dùng `web-search-prime` (query, timeout→rút gọn / firecrawl fallback) như Phần A.
+
+### B1 — Code & Memory (11)
+
+| # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
+|---|---|---|---|---|
+| 348 | MJ | `348-ast-code-knowledge-graph.md` | graphify, codebase-memory-mcp | Đồ thị tri thức mã nguồn 0-LLM từ tree-sitter/TS-LSP; query thay vì grep (khác tool-orchestration-graph = graph tool CALL) |
+| 349 | MK | `349-synthesis-with-gap-analysis.md` | gbrain | Lớp tổng hợp trả lời có citation + nêu 'brain chưa biết/stale/mâu thuẫn' (khác error-analysis) |
+| 350 | ML | `350-agent-session-history-indexing.md` | ctx | Index transcript 30+ harness về SQLite local, tìm kiếm có citation, tiết kiệm ~50x token so với grep raw |
+| 351 | MM | `351-append-only-memory-accumulation.md` | mem0 | Memory bất biến ADD-only không ghi đè/xóa, facts tích lũy + entity linking + temporal reasoning |
+| 352 | MN | `352-memory-confidence-scoring.md` | agentmemory | Điểm tin cậy + vòng đời (Karpathy LLM-wiki) cho từng memory entry |
+| 353 | MO | `353-memory-state-versioning.md` | agentmemory | Git-snapshot toàn bộ memory state (rollback/diff) |
+| 354 | MP | `354-attention-based-memory-decay.md` | agentmemory | Decay theo đường cong Ebbinghaus, truy cập nhiều mạnh lên, evict theo importance |
+| 355 | MQ | `355-memory-provenance-traceability.md` | agentmemory | Mỗi memory trace ngược về observation/source ban đầu (chiều mới ≠ grounding/audit) |
+| 356 | MR | `356-time-aware-memory-retrieval.md` | mem0 | Xếp hạng retrieval theo thì (hiện tại/quá khứ/tương lai) — khác temporal-knowledge chỉ là edge |
+| 357 | MS | `357-entity-trajectory-scoring.md` | gbrain | Theo dõi claims có thời gian của entity (mrr, mốc, event) auto-flag regression/red flag |
+| 358 | MT | `358-execution-trace-world-modeling.md` | papers WorldCoder | Agent viết code để build world-model/simulator môi trường |
+
+### B2 — Context & Token (9)
+
+| # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
+|---|---|---|---|---|
+| 359 | MU | `359-content-type-aware-compression.md` | headroom | Router chọn compressor theo loại nội dung (JSON-crusher/AST/LLM prose) thay policy chung |
+| 360 | MV | `360-model-output-token-shaping.md` | headroom | Giảm token model VIẾT RA: verbosity steering + effort routing + đo savings CI |
+| 361 | MW | `361-cache-prefix-preserving-compression.md` | headroom | CacheAligner giữ KV-cache prefix khi nén, không phá cache hit của provider |
+| 362 | MX | `362-event-sourced-session-continuity.md` | context-mode, pi-vcc | Index mọi event (edit/git/decision) FTS5, compact không mất data, trả đúng phần liên quan |
+| 363 | MY | `363-programmatic-context-mining.md` | context-mode | Think-in-code: sandbox chạy script chỉ lấy stdout (1 script thay 47 Reads) |
+| 364 | MZ | `364-fetch-index-then-search.md` | context-mode | Fetch→index→search, raw HTML không vào context, chặn curl/wget/WebFetch |
+| 365 | NA | `365-deterministic-command-reducers.md` | rtk, hypa | Reducer per-lệnh (git/npm/docker) giảm ~90% token, có analytics dashboard |
+| 366 | NB | `366-seamless-compaction-continuity.md` | leaks+Codex | Compact→continue tự nhiên 'time never runs out', không làm lại việc đã xong |
+| 367 | NC | `367-designated-scratchpad.md` | leaks | Thư mục scratch riêng agent tùy ý, không cần xác nhận gọi, thay /tmp mặc định |
+
+### B3 — Editing & Workflow (13)
+
+| # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
+|---|---|---|---|---|
+| 368 | ND | `368-hash-anchored-editing.md` | pi-hashline-edit-pro | Địa chỉ dòng bằng content-hash (62-symbol perfect), stale anchor → E_STALE_ANCHOR fail-closed |
+| 369 | NE | `369-mandatory-undo-precondition.md` | pi-hashline-edit-pro | Undo record persisted TRƯỚC khi ghi, không undo được thì từ chối (fail-closed) |
+| 370 | NF | `370-read-tracked-edit-guard.md` | pi-lens | Theo dõi mọi nguồn đọc (read/bash/grep/LSP) để chặn edit vùng chưa đọc, autopatch oldText |
+| 371 | NG | `371-impact-cascade-diagnostics.md` | pi-lens | Sau edit chạy LSP/linters trên dependents qua reverse-deps graph (BFS depth-bound) |
+| 372 | NH | `372-diagnostic-triage-dispositions.md` | pi-lens | Mark false-positive/suppress/defer/flag, content-anchored, feed rule tuning |
+| 373 | NI | `373-plan-as-branch-workflow.md` | pi-soly | Plan = git branch (.agents/plans/slug/PLAN.md) → scaffold/execute/verify/PR; STATE.md mỗi turn |
+| 374 | NJ | `374-conditional-rule-loading.md` | pi-soly | Rules markdown frontmatter glob-scope; block MANDATORY token-budgeted; built-in ưu tiên cao nhất |
+| 375 | NK | `375-differential-workflow-resume.md` | pi-dynamic-workflows | Resume run cũ sau khi sửa script: agent() không đổi replay từ journal, chỉ re-run phần edit |
+| 376 | NL | `376-model-tier-routing.md` | pi-dynamic-workflows | Routing task→model theo tier small/medium/big (rõ hơn dynamic-model-routing) |
+| 377 | NM | `377-tool-execution-order-preservation.md` | pi-core-agent | Tool chạy parallel nhưng persist theo thứ tự gọi nguồn (completion ≠ source order) |
+| 378 | NN | `378-single-writer-session-lease.md` | pi-mobile | Một-writer/session JSONL: web giữ runtime, Release bàn giao CLI an toàn |
+| 379 | NO | `379-workflow-keyword-triggering.md` | pi-dynamic-workflows | Keyword ('workflow') arm orchestrate mode nhưng không ép phải theo lệnh |
+| 380 | NP | `380-context-filesystem-abstraction.md` | OpenViking | Memory/resource/skill là virtual FS (viking://), agent dùng ls/tree/find thay vì truy vấn store |
+
+### B4 — Multi-agent & Platform (10)
+
+| # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
+|---|---|---|---|---|
+| 381 | NQ | `381-inter-session-message-broker.md` | pi-intercom | Broker 1:1 session↔session local, ask/reply timeout 10ph, mailbox, reply hints |
+| 382 | NR | `382-structured-escalation-protocol.md` | pi-intercom | Taxonomy 3 reason subagent→supervisor: need_decision / interview_request / progress_update |
+| 383 | NS | `383-omnichannel-agent-gateway.md` | openlclaw | 1 agent, ~22 kênh chat (WhatsApp/Telegram/Zalo/Signal/iMessage), transport-agnostic |
+| 384 | NT | `384-agent-daemon-lifecycle.md` | theo openclaw | Agent như daemon OS (launchd/systemd always-on), onboarding wizard |
+| 385 | NU | `385-meeting-presence-agents.md` | openhuman | Agent tham dự Meet/Zoom/Teams có mặt + giọng nói, transcript + action items |
+| 386 | NV | `386-privacy-mode-enforcement.md` | openhuman | 1 switch: không inference rời máy, enforced ở core (≠ pii-redaction) |
+| 387 | NW | `387-agent-blocked-signaling.md` | herdr | Pane trạng thái working/blocked/idle, báo khi agent kẹt cần người |
+| 388 | NX | `388-skill-lifecycle-curation.md` | hermes-agent | Curator nền theo usage → stale → archive (không xóa); quản skill tự sinh |
+| 389 | NY | `389-agent-environment-hibernation.md` | hermes-agent | Thuê bao sleep khi idle, wake-on-demand (chi tiết hóa serverless) |
+| 390 | NZ | `390-low-cost-agent-triggers.md` | MyAgents | Watcher lệnh rẻ, chỉ wake AI khi trúng điều kiện |
+
+### B5 — UI · Auth · Trust & Research (12)
+
+| # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
+|---|---|---|---|---|
+| 391 | OA | `391-biometric-agent-gate.md` | pi-mobile | WebAuthn Face ID/Touch ID làm cổng truy cập agent từ xa |
+| 392 | OB | `392-trust-scoped-context-blocks.md` | leaks (Gemini/Claude) | Gắn nhãn tin cậy từng block; Capabilities không được dùng làm lệnh; reminder/untrusted title |
+| 393 | OC | `393-dual-channel-agent-communication.md` | leaks (Codex) | Kênh commentary (ngắn) vs final (self-contained), link clickable |
+| 394 | OD | `394-safeguard-model-tiering.md` | leaks (Anthropic) | Cùng weights 2 tier safety + routing, agent giải thích vì sao bị route |
+| 395 | OE | `395-minimal-code-ladder.md` | ponytail | Thang 7 bậc reuse-before-write; giữ 100% safety; -54% LOC |
+| 396 | OF | `396-repository-graph-planning.md` | papers CodePlan/RPG | Planning trên đồ thị repo thay vì file-by-file |
+| 397 | OG | `397-adaptive-topology-search.md` | papers BOAD/SEW | Tìm topology multi-agent bằng bandit (khác agent-topology tĩnh) |
+| 398 | OH | `398-test-gated-convergence.md` | papers RLTF/BOAD | Cửa dừng multi-agent theo test pass (điểm hội tụ correctness) |
+| 399 | OI | `399-rl-from-execution-feedback.md` | papers RLTF | RL từ compiler/test/fuzzer feedback (≠ process-reward chuỗi suy luận) |
+| 400 | OJ | `400-harness-as-distillation-surface.md` | papers Composer | Dùng trajectory harness thực làm bề mặt distill + RL real-time cho model code |
+| 401 | OK | `401-observability-driven-harness.md` | papers Meta-Harness | Harness tự tiến hóa dựa trên observability |
+| 402 | OL | `402-request-type-authorization.md` | leaks (Codex) | Autonomy matrix: answer/diagnose/change/monitor; destructive-action protocol |
+
+## Ghi chú Phần B
+- Tổng 55 hướng, số tiếp theo từ `403` (`OM`) nếu thêm.
+- Các slug gần hướng cũ nhưng khác bản chất đã ghi chú ở cột 'Tránh trùng'.
