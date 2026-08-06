@@ -1,4 +1,4 @@
-# Hướng N: Agent OS — mya là platform, agents là apps
+# Hướng O: Agent OS — mya là platform, agents là apps
 
 > **Coupling:** 🟢 Zero — agents run ON mya, use OS APIs if wanted
 > **Agent-agnostic:** ✅ — bất kỳ agent chạy trên OS

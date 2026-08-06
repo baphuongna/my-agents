@@ -1,4 +1,4 @@
-# Hướng PPPPPPPP: Hybrid Search & Reranking — BM25 + vector + rerank: lấy đúng nhất, không bỏ sót
+# Hướng GO: Hybrid Search & Reranking — BM25 + vector + rerank: lấy đúng nhất, không bỏ sót
 
 > **Nguồn gốc:** Qdrant "Hybrid Search with Reranking" (dense embeddings semantic + sparse keyword + rerank); YouTube "Complete Guide to Hybrid Search in RAG" (BM25 + RRF fusion + rerank top candidates); Superlinked "Optimizing RAG with Hybrid Search & Reranking" (keyword + vector + semantic rerank — precision & recall); digitalapplied "Hybrid Search Reference 2026" (embedding eval, RRF config, cross-encoder); Weaviate (native hybrid — BM25 + dense + weights)
 > **Coupling:** 🟡 — retriever phải chạy 2 index + reranker

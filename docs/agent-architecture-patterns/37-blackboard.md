@@ -1,4 +1,4 @@
-# Hướng LL: Blackboard — shared problem-solving state, knowledge sources
+# Hướng AK: Blackboard — shared problem-solving state, knowledge sources
 
 > **Nguồn gốc:** Hearsay-II speech recognition (Erman, Hayes-Roth, Lesser, 1980)
 > **Coupling:** 🟡 Shared state — mọi KS đọc/ghi cùng blackboard

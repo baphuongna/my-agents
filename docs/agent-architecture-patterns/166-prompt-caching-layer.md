@@ -1,4 +1,4 @@
-# Hướng KKKKKKK: Prompt Caching Layer — tầng cache prompt/KV giảm cost + latency
+# Hướng FJ: Prompt Caching Layer — tầng cache prompt/KV giảm cost + latency
 
 > **Nguồn gốc:** arXiv 2601.06007 "An Evaluation of Prompt Caching for Long-Horizon Agentic" (41-80% cost, 13-31% TTFT); AWS "Optimize LLM response costs and latency with caching" (embeddings/tokens/outputs/prompts); Flexera "Prompt Caching: Cut token spend 2026" (90%); preMAI "8 Strategies That Cut API Spend by 80%" (50-70% với caching+routing)
 > **Coupling:** 🟢 — lớp độc lập trước LLM, runtime không đổi

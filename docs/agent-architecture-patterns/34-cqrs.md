@@ -1,4 +1,4 @@
-# Hướng II: CQRS — tách command path khỏi query path
+# Hướng AH: CQRS — tách command path khỏi query path
 
 > **Nguồn gốc:** Command Query Responsibility Segregation (Fowler, 2010; from Bertrand Meyer's CQS)
 > **Coupling:** 🟡 Separate read/write models

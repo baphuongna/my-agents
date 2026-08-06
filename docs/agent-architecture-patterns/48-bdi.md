@@ -1,4 +1,4 @@
-# Hướng WW: BDI + 3-Stage Commitment — beliefs, desires, intentions, reconsideration
+# Hướng AV: BDI + 3-Stage Commitment — beliefs, desires, intentions, reconsideration
 
 > **Nguồn gốc:** Rao & Georgeff BDI (1995); Wray/Kirk/Laird — "Applying Cognitive Design Patterns to General LLM Agents" (arXiv:2505.07087)
 > **Coupling:** 🟡 — beliefs/intentions là state dùng chung

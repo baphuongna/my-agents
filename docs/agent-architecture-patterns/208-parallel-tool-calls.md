@@ -1,4 +1,4 @@
-# Hướng AAAAAAAA: Parallel Tool Calls — LLM yêu cầu nhiều tool độc lập trong 1 lần, thực thi song song
+# Hướng GZ: Parallel Tool Calls — LLM yêu cầu nhiều tool độc lập trong 1 lần, thực thi song song
 
 > **Nguồn gốc:** Airbyte "What Are Parallel Tool Calls in LLMs?" ("pattern where the LLM identifies independent operations, requests them all in a single response"); OpenHands SDK "Parallel Tool Execution" ("when LLM requests multiple tool calls, the SDK executes them concurrently rather than sequentially"); Restate "Parallel Tool Calls" ("executing them in parallel significantly reduces latency"); tianpan.co "Parallel Tool Calls: The Coupling Test" (bật parallel tool calls **lộ ra hidden coupling** — 3 failure modes: shared state, ordering, side-effect)
 > **Coupling:** 🔴 — bọc trần coupling ngầm của tool (shared state/order/rate-limit)

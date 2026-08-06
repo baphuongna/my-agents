@@ -1,4 +1,4 @@
-# Hướng PPPPPPPP: Web Search as Grounding Tool — agent gọi search API để lấy thông tin mới + citation
+# Hướng HO: Web Search as Grounding Tool — agent gọi search API để lấy thông tin mới + citation
 
 > **Nguồn gốc:** Confident AI "7 Best Web Search APIs for Grounding LLMs 2026" (Firecrawl, Brave, Exa, Tavily, Parallel, Google — validated for grounding); parallel.ai "Honest 2026 comparison — web search APIs for AI agents" (3 nhóm: SERP APIs, AI-native search, native LLM tools); Vellum "Best Web Search APIs & MCPs" ("AI Grounding: structured output formatted for grounding LLM responses with verifiable sources"); You.com "Web Search API for AI Agents" (design tốt cho agents — không chỉ human); TDS "Grounding with Fresh Web Data" ("tool-use setup — LLM gọi search API khi cần external info"); Google Gemini Search Grounding (real-time grounding + citations)
 > **Coupling:** 🟢 — một tool riêng, agent quyết khi gọi

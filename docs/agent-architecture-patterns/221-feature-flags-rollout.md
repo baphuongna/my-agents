@@ -1,4 +1,4 @@
-# Hướng NNNNNNNN: Feature Flags & Gradual Rollout cho Agent — bật/tắt năng lực, canary, rollback nhanh không deploy
+# Hướng HM: Feature Flags & Gradual Rollout cho Agent — bật/tắt năng lực, canary, rollback nhanh không deploy
 
 > **Nguồn gốc:** GrowthBook "Feature Flags for AI" ("feature flags give runtime control — gradual rollouts tăng % cho probabilistic settings"); AWS AppConfig "Experiment feature flag" (flag attributes + constraints cho experiment); Amplitude "Feature Flags Best Practices" ("phased rollouts — new elements dần giới thiệu limited audience trước full-scale"); Harness "Feature Management & Experimentation" (beyond basic toggles — A/B testing, gradual rollouts, traffic targeting); Facebook "Safely experimenting with agents using feature flags" (enable/disable agent capabilities, test new behaviors, rollback mà không deploy lại code); Azure App Config (groups + percentage rollout)
 > **Coupling:** 🟢 — độc lập, điểm cắm cấu hình ngoài runtime

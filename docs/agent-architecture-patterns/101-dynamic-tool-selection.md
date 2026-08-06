@@ -1,4 +1,4 @@
-# Hướng XXXX: Dynamic Tool Selection — chọn subset tool tối ưu cho từng turn
+# Hướng CW: Dynamic Tool Selection — chọn subset tool tối ưu cho từng turn
 
 > **Nguồn gốc:** "Dynamic Tool Selection for AI Agents — Solving Context Management" (lunar.dev 2026); solo.io MCP progressive disclosure 2026
 > **Coupling:** 🟡 — chèn router tool, cần danh mục metadata

@@ -1,4 +1,4 @@
-# Hướng PP: Eval Harness — golden scenarios, drift grading, no-egress guard
+# Hướng AO: Eval Harness — golden scenarios, drift grading, no-egress guard
 
 > **Nguồn gốc:** Golden tests / regression harness; LLM evals (OpenAI Evals, 2023)
 > **Coupling:** 🟢 — chạy ngoài, grade kết quả
@@ -8,7 +8,7 @@
 
 ## Nguồn gốc
 
-Code có unit tests; **agent behavior thì cần harness riêng**: golden scenarios (đầu vào cố định + output kỳ vọng), chạy lại khi đổi model/prompt/compressor, **grade độ lệch (drift)**. OpenAI Evals (2023) chuẩn hóa cách này. Khác GAN (Hướng JJ — vòng lặp adversarial runtime), eval harness là *regression test chạy ngoài phiên làm việc*, gác cổng chất lượng trước khi release thay đổi.
+Code có unit tests; **agent behavior thì cần harness riêng**: golden scenarios (đầu vào cố định + output kỳ vọng), chạy lại khi đổi model/prompt/compressor, **grade độ lệch (drift)**. OpenAI Evals (2023) chuẩn hóa cách này. Khác GAN (Hướng AI — vòng lặp adversarial runtime), eval harness là *regression test chạy ngoài phiên làm việc*, gác cổng chất lượng trước khi release thay đổi.
 
 ## Mô tả
 
@@ -95,7 +95,7 @@ defaultHarness.add({
 | ✅ Egress guard chống test chạy network vô tình | ❌ DriftGrader heuristic (không phải semantic perfect) |
 | ✅ Đã có + đang gác cổng compressor | |
 
-## Khác GAN Adversarial (Hướng JJ)
+## Khác GAN Adversarial (Hướng AI)
 
 | | JJ: GAN loop | PP: Eval Harness |
 |---|---|---|

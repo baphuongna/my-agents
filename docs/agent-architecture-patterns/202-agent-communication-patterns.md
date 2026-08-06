@@ -1,4 +1,4 @@
-# Hướng UUUUUUUU: Multi-Agent Communication — message passing, event-driven, blackboard, pub-sub
+# Hướng GT: Multi-Agent Communication — message passing, event-driven, blackboard, pub-sub
 
 > **Nguồn gốc:** Confluent "Four Design Patterns for Event-Driven, Multi-Agent Systems" (orchestrator-worker, hierarchical agent, blackboard, market-based — trên nền Kafka); zylos.ai "Event-Driven Architecture for AI Agent Systems" (pub/sub là pattern giao tiếp chủ đạo — AutoGen v0.4 actor model, event sourcing, "point-to-point REST does not scale under LLM latency variance"); Particula "AI Agent Communication Patterns" (orchestrator, pub-sub, blackboard, direct request-response); Tetrate "Multi-Agent Systems: Design Patterns and Orchestration" (message-based communication — metadata sender/receiver/timestamp; pub-sub broadcast)
 > **Coupling:** 🟡 — chạm mọi agent (giao thức chung)

@@ -1,4 +1,4 @@
-# Hướng WWWWWWW: Dynamic Model Routing & Cascading — mỗi request chọn model rẻ nhất đủ tốt
+# Hướng FV: Dynamic Model Routing & Cascading — mỗi request chọn model rẻ nhất đủ tốt
 
 > **Nguồn gốc:** Zylos "AI Agent Model Routing" (dynamic routing giảm 40-85% inference cost, giữ 90-95% quality); arXiv 2603.04445 "Dynamic Model Routing and Cascading" (balancing competing objectives cho hiệu quả); AWS "Multi-LLM Routing Strategies" (static vs dynamic); digitalapplied "LLM Model Routing 2026" (route mỗi request tới model rẻ nhất xử lý được — cắt 40-85% bill); TrueFoundry (dynamic routing rules theo real-time metrics + budget)
 > **Coupling:** 🟡 — các thành phần gọi model phải qua router

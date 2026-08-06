@@ -1,4 +1,4 @@
-# Hướng QQQ: Subsumption Architecture — hành vi ưu tiên, không planner trung tâm
+# Hướng BP: Subsumption Architecture — hành vi ưu tiên, không planner trung tâm
 
 > **Nguồn gốc:** Brooks, 1986 "A Robust Layered Control System for a Mobile Robot" (MIT)
 > **Coupling:** 🟢 — mỗi lớp hành vi độc lập, chỉ chung 1 bus ưu tiên

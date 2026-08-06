@@ -1,4 +1,4 @@
-# Hướng XXXXXXX: Agent Testing Sandbox — CI/CD cho agent: chạy trong môi trường an toàn trước khi deploy
+# Hướng FW: Agent Testing Sandbox — CI/CD cho agent: chạy trong môi trường an toàn trước khi deploy
 
 > **Nguồn gốc:** Modal "Best Sandboxes for AI CI/CD and Test Automation 2026" (serverless sandbox platforms — 7 platforms); Confident AI "Best CI/CD Tools for Testing AI Agents" (agent testing → reviewable release workflow); datagrid "4 Testing Frameworks for Non-Deterministic AI Agents" (Simulation-Based — validate trong synthetic environments); Straiker (Embedding Autonomous Attack Simulation into CI/CD — test + harden trước deploy); bunnyshell (Docker, Firecracker microVMs, K8s, cloud sandboxes)
 > **Coupling:** 🟢 — lớp test ngoài runtime, không đổi lõi

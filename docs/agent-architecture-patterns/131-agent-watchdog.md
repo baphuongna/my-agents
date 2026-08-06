@@ -1,4 +1,4 @@
-# Hướng BBBBBB: Agent Watchdog — giám sát sức khỏe agent liên tục, can thiệp khi lệch
+# Hướng EA: Agent Watchdog — giám sát sức khỏe agent liên tục, can thiệp khi lệch
 
 > **Nguồn gốc:** Datadog Watchdog AI; os.moda "Run AI Agent 24/7 — Supervision & Recovery" 2026; Zylos "Process Supervision & Health Monitoring for Long-Running AI Agents" 2026; UptimeRobot Agent Monitoring 2026
 > **Coupling:** 🟢 — lớp ngoài quan sát, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng DDD: Mixture of Agents (MoA) — nhiều lời giải, một kết luận
+# Hướng BC: Mixture of Agents (MoA) — nhiều lời giải, một kết luận
 
 > **Nguồn gốc:** Together AI, 2024 (arXiv 2406.04692); inspired by Mixture-of-Experts
 > **Coupling:** 🟢 — các agent/model độc lập, aggregator gom

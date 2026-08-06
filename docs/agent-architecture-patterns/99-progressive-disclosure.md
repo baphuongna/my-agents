@@ -1,4 +1,4 @@
-# Hướng VVVV: Progressive Disclosure — lộ context dần theo nhu cầu thực
+# Hướng CU: Progressive Disclosure — lộ context dần theo nhu cầu thực
 
 > **Nguồn gốc:** "Effective Context Engineering" (Anthropic engineering); "Is Progressive Disclosure All You Need" (arXiv 2607.17598, 2026); mindstudio 2026
 > **Coupling:** 🟢 — tầng context, agent không đổi

@@ -100,6 +100,6 @@ return new PiInProcessSession(session, opts);
 
 ## Migration path (nếu muốn thoát)
 
-1. Thêm PiRpcRuntime (Hướng R) — spawn `pi --mode rpc` thay vì `createAgentSession()`
+1. Thêm PiRpcRuntime (Hướng I) — spawn `pi --mode rpc` thay vì `createAgentSession()`
 2. SmartRouter route đến PiRpcRuntime thay vì PiInProcessRuntime
 3. PiInProcessRuntime giữ làm optional (cho deep integration khi cần)

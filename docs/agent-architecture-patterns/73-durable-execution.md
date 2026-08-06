@@ -1,4 +1,4 @@
-# Hướng VVV: Durable Execution — workflow sống sót mọi crash
+# Hướng BU: Durable Execution — workflow sống sót mọi crash
 
 > **Nguồn gốc:** Temporal (2024-2026); LangGraph+Temporal plugin; activewizards "Indestructible AI Agents"
 > **Coupling:** 🟢 — workflow code thuần, hạ tầng replay vô hình

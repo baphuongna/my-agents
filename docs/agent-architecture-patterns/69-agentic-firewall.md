@@ -1,4 +1,4 @@
-# Hướng RRR: Agentic Firewall — bảo vệ luồng prompt khỏi injection
+# Hướng BQ: Agentic Firewall — bảo vệ luồng prompt khỏi injection
 
 > **Nguồn gốc:** AccuKnox Prompt Firewall; Palo Alto Cyberpedia; MDPI 2025 "LLM Firewall with Validator Agent"; arXiv 2510.05244
 > **Coupling:** 🟢 — firewall là lớp intercept input/output, không đụng core

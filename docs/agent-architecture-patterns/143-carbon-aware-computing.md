@@ -1,4 +1,4 @@
-# Hướng NNNNNN: Carbon-Aware Computing — route/compute theo cường độ carbon
+# Hướng EM: Carbon-Aware Computing — route/compute theo cường độ carbon
 
 > **Nguồn gốc:** GAR "Carbon-Aware Routing for LLM Inference" (OpenReview, CO₂-aware routing); Devadas "Towards carbon-aware AI" (Springer 2026, PRISMA review); arXiv 2509.19996 "Advancing Green AI via Dynamic Model Selection" (≈25% tiết kiệm); ACM "Carbon-Aware Workload Simulation" 2026
 > **Coupling:** 🟢 — thêm lớp route/quyết định, runtime không đổi

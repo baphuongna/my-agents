@@ -1,4 +1,4 @@
-# Hướng FFFFFF: Agent Versioning — prompt/config/tool theo phiên bản, rollback bằng cấu hình
+# Hướng EE: Agent Versioning — prompt/config/tool theo phiên bản, rollback bằng cấu hình
 
 > **Nguồn gốc:** Claude "Managed Agents: prompt versioning and rollback" cookbook; Arthur AI "Version & Rollback LLM Agent Prompts"; Restate "Updating AI Agents safely in production"; Notch "Versioning AI Agents in Production"
 > **Coupling:** 🟢 — thêm lớp cấu hình, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng RRRRRRRR: Delegation & Task Handoff — agent giao việc cho agent; ủy quyền, theo dõi, thu quyền về
+# Hướng GQ: Delegation & Task Handoff — agent giao việc cho agent; ủy quyền, theo dõi, thu quyền về
 
 > **Nguồn gốc:** arXiv 2501.09674 "Authenticated Delegation and Authorized AI Agents" (framework — authenticated, authorized, auditable delegation of authority; user securely ủy quyền); fast.io "AI Agent Delegation Patterns" (4 architectures — distribute tasks, share context, coordinate); Scalekit "On-Behalf-Of" (secure scoped delegation — agent hoạt động trong scope user cấp); WorkOS (delegation chain 4 agents 3 handoffs tái dựng từ 1 task ID); cellcog (bounded child task — delegating agent giữ quyền)
 > **Coupling:** 🟡 — runtime phải hỗ trợ delegation chain + scoped authority

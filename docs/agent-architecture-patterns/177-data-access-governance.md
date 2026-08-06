@@ -1,4 +1,4 @@
-# Hướng VVVVVVV: Data Access Governance — quyền truy cập dữ liệu fine-grained, policy qua mọi lớp
+# Hướng FU: Data Access Governance — quyền truy cập dữ liệu fine-grained, policy qua mọi lớp
 
 > **Nguồn gốc:** KuppingerCole BalaGanski "Agentic AI and Data Access Control" (database-level enforcement của fine-grained, identity- và context-aware policies); Okta "Improve AI Agent Data Privacy" (identity-first, fine-grained authorization FGA, continuous monitoring); TrustLogix (FGAC — access dựa trên nhiều điều kiện đồng thời); colrows "Governing AI Agents That Query Enterprise Data" (enforce policy trước khi data queried — compile-time policy)
 > **Coupling:** 🟡 — mọi truy cập dữ liệu của agent qua policy layer

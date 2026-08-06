@@ -1,4 +1,4 @@
-# Hướng NNNNNNNN: Persona-Driven Agents — agent có tính cách nhất quán: tone/style/vai trò bền qua phiên
+# Hướng GM: Persona-Driven Agents — agent có tính cách nhất quán: tone/style/vai trò bền qua phiên
 
 > **Nguồn gốc:** arXiv 2406.17962 "Persona-Driven Role-Playing Agent Framework" (simulate characters qua personalised characteristic features); ACL 2025 "Enhancing Persona Consistency" (Ji — 38 cites — chain of persona, self-questioning); Zylos "AI Agent Persona Design and Behavioral Consistency" (coherent identity, personality, behavioral consistency across sessions); learnprompting (Role prompting — guide style/tone/focus); reddit r/PromptEngineering (personas chủ yếu cho tone & style, không phải expertise)
 > **Coupling:** 🟢 — lớp prompt/persona, runtime không đổi

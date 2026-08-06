@@ -1,4 +1,4 @@
-# Hướng NNN: Tool Maker — agent tạo tool mới khi thiếu
+# Hướng BM: Tool Maker — agent tạo tool mới khi thiếu
 
 > **Nguồn gốc:** Cai et al., 2023 "Large Language Models as Tool Makers" (arXiv 2305.17126)
 > **Coupling:** 🟢 — tool mới là module độc lập qua ToolRegistry

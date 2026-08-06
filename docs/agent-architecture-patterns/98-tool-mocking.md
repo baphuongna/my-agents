@@ -1,4 +1,4 @@
-# Hướng UUUU: Tool Mocking & Simulation — test agent với tool giả có kiểm soát
+# Hướng CT: Tool Mocking & Simulation — test agent với tool giả có kiểm soát
 
 > **Nguồn gốc:** Zod Contract Mock Forge MCP (2026); specmatic mock server 2026; n8n/agentbase simulation guides
 > **Coupling:** 🟢 — tầng test, không đụng runtime

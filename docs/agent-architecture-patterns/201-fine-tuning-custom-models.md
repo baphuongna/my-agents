@@ -1,4 +1,4 @@
-# Hướng TTTTTTTT: Fine-Tuning & Custom Models — huấn luyện thêm mô hình riêng theo domain
+# Hướng GS: Fine-Tuning & Custom Models — huấn luyện thêm mô hình riêng theo domain
 
 > **Nguồn gốc:** "Fine tuning LLMs for Enterprise: Practical Guidelines" (arXiv 2404.10779 — mô hình hiểu domain: "LLM trained for code generation must understand the domain with quality along with quantity"); Databricks "A Practical Guide to LLM Fine Tuning" (instruction fine-tuning — huấn luyện model theo cặp instruction-response); SuperAnnotate "Fine-tuning LLMs in 2026" (tiếp tục huấn luyện pre-trained model trên tập dữ liệu mục tiêu); Meta Intelligence "LLM Fine-Tuning Data Pipeline" (collection, cleaning, human annotation, SFT/RLHF); Snorkel "fine-tune LLMs for enterprise"
 > **Coupling:** 🟢 — độc lập, thay model chuẩn

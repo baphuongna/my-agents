@@ -1,4 +1,4 @@
-# Hướng PPP: Serverless / FaaS Agents — agent scale-to-zero, event-triggered
+# Hướng BO: Serverless / FaaS Agents — agent scale-to-zero, event-triggered
 
 > **Nguồn gốc:** AWS Prescriptive Guidance 2026 "Agentic AI on serverless"; blaxel 2026
 > **Coupling:** 🟢 — triển khai qua event bus, agent không biết hạ tầng

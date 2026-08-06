@@ -1,4 +1,4 @@
-# Hướng KKK: Credential Broker (CB4A) — secret không bao giờ chạm agent
+# Hướng BJ: Credential Broker (CB4A) — secret không bao giờ chạm agent
 
 > **Nguồn gốc:** IETF draft-hartman-credential-broker-4-agents; Infisical agent-vault (2025)
 > **Coupling:** 🟢 — broker là proxy trong suốt, agent không biết

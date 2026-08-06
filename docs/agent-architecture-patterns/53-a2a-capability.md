@@ -1,4 +1,4 @@
-# Hướng BBB: A2A Opaque Protocol — capability cards, thay agent drop-in
+# Hướng BA: A2A Opaque Protocol — capability cards, thay agent drop-in
 
 > **Nguồn gốc:** Google Agent2Agent (A2A) protocol, Linux Foundation (2025)
 > **Coupling:** 🟢 Protocol — agent expose AgentCard, không lộ nội bộ

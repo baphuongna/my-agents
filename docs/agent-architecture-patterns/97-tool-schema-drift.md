@@ -1,4 +1,4 @@
-# Hướng TTTT: Tool Schema Drift — bắt MCP server đổi schema khiến agent gọi sai
+# Hướng CS: Tool Schema Drift — bắt MCP server đổi schema khiến agent gọi sai
 
 > **Nguồn gốc:** "MCP Tools Broke Silently — Schema Drift is the New Dependency Hell" (dev.to 2026); fixzi taxonomy 2026; microsoft/agent-framework #4725
 > **Coupling:** 🟢 — tầng gateway, agent không đổi

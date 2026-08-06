@@ -1,4 +1,4 @@
-# Hướng DD: Declarative Reconcile Loop — mya = K8s controller cho agents
+# Hướng AC: Declarative Reconcile Loop — mya = K8s controller cho agents
 
 > **Nguồn gốc:** Kubernetes control loop (K8s, 2014)
 > **Coupling:** 🟡 Declarative spec + reconcile

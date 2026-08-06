@@ -1,4 +1,4 @@
-# Hướng VVVVV: Structured Reasoning Output — thinking có cấu trúc, tái sử dụng được
+# Hướng DU: Structured Reasoning Output — thinking có cấu trúc, tái sử dụng được
 
 > **Nguồn gốc:** Reasoning models 2025-2026 (thinking blocks); explainability techniques (testrigor 2026); GGGGG nền
 > **Coupling:** 🟡 — output format thêm phần, consumer cần theo

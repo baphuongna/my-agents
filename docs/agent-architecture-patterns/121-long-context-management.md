@@ -1,4 +1,4 @@
-# Hướng RRRRR: Long-Context Management — chống suy giảm trí tuệ khi context dài
+# Hướng DQ: Long-Context Management — chống suy giảm trí tuệ khi context dài
 
 > **Nguồn gốc:** "Intelligence Degradation in Long-Context LLMs" (arXiv 2601.15300, 2026); Google Chain-of-Agents; langchain Deep Agents 2025
 > **Coupling:** 🟡 — chiến lược context, agent loop đổi nhẹ

@@ -1,4 +1,4 @@
-# Hướng KK: MapReduce — chia task, xử lý song song, gộp kết quả
+# Hướng AJ: MapReduce — chia task, xử lý song song, gộp kết quả
 
 > **Nguồn gốc:** Google MapReduce (Dean & Ghemawat, 2004)
 > **Coupling:** 🟡 Map/Reduce functions

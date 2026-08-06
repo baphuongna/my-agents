@@ -1,4 +1,4 @@
-# Hướng FFF: Plan-and-Execute — planner riêng, executor riêng
+# Hướng BE: Plan-and-Execute — planner riêng, executor riêng
 
 > **Nguồn gốc:** Wang et al., 2023 (Plan-and-Solve; arXiv 2305.04091); LangChain Plan-and-Execute
 > **Coupling:** 🟢 — planner ↔ executor qua task list (kanban)

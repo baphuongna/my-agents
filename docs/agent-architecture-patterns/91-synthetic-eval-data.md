@@ -1,4 +1,4 @@
-# Hướng NNNN: Synthetic Eval Data — sinh test case giả cho đánh giá
+# Hướng CM: Synthetic Eval Data — sinh test case giả cho đánh giá
 
 > **Nguồn gốc:** evidentlyai LLM test dataset guide; decodingai (Iusztin) 2026; futureagi "Synthetic Test Data" 2026
 > **Coupling:** 🟢 — data pipeline, tách khỏi runtime

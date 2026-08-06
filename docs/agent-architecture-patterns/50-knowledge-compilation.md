@@ -1,4 +1,4 @@
-# Hướng YY: Knowledge Compilation — nén lặp lại thành skill thủ tục
+# Hướng AX: Knowledge Compilation — nén lặp lại thành skill thủ tục
 
 > **Nguồn gốc:** Soar chunking (Laird/Rosenbloom/Newell, 1986); ACT-R production compilation; PRAXIS (arXiv:2511.22074)
 > **Coupling:** 🟢 — skill là artifact tĩnh, agents đọc khi cần

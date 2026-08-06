@@ -1,4 +1,4 @@
-# Hướng LLLLLLLL: Answer Grounding & Citation Verification — kiểm tra câu trả lời có bám đúng nguồn, chống hallucination
+# Hướng HK: Answer Grounding & Citation Verification — kiểm tra câu trả lời có bám đúng nguồn, chống hallucination
 
 > **Nguồn gốc:** arXiv 2510.11394 "VeriCite: Towards Reliable Citations in RAG" (attributing RAG content qua in-line citations — "reduce hallucinations + facilitate human verification"); llmware "Automated Source Citation Verification for RAG" (tools verify sources/evidence — simple prompt methods); apxml "Reduce RAG Hallucinations" (strategies detect + mitigate hallucination — improve factual accuracy); Medium "Reducing Hallucinations & Advanced Citations" ("dùng citations link answer → source chunk — cho user verification; RAG + groundedness verification"); Stanford Legal RAG (evaluating hallucination trong legal RAG — 589 cites)
 > **Coupling:** 🟡 — chạm lớp tạo output của mọi RAG

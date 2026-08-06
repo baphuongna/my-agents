@@ -1,4 +1,4 @@
-# Hướng AAAAAAAA: Conversational Memory Management — nhớ hội thoại dài: tóm tắt + giữ lượt gần
+# Hướng FZ: Conversational Memory Management — nhớ hội thoại dài: tóm tắt + giữ lượt gần
 
 > **Nguồn gốc:** mem0 "LLM Chat History Summarization Guide" (contextual summarization — nén hội thoại định kỳ, giữ exchanges gần đầy đủ); Oracle "Which Agent Memory Approach Is Best for Long Conversations" (layered — recent context + summaries); Pinecone "Conversational Memory with LangChain" (longer conversations — summarization LLM trung gian); padme (giữ messages gần, tóm messages cũ, kiểm soát token); arXiv 2402.17753 (long-term memory benchmark — QA + event summarization)
 > **Coupling:** 🟢 — lớp memory, runtime không đổi

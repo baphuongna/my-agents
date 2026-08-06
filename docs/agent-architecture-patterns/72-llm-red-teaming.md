@@ -1,4 +1,4 @@
-# Hướng UUU: LLM Red Teaming — tấn công chủ động để đo phòng thủ
+# Hướng BT: LLM Red Teaming — tấn công chủ động để đo phòng thủ
 
 > **Nguồn gốc:** Microsoft PyRIT (2024); arXiv 2605.04019 "Redefining AI Red Teaming in the Agentic Era" (2026); garak; Cloud Security Alliance
 > **Coupling:** 🟢 — harness ngoài, không đụng core

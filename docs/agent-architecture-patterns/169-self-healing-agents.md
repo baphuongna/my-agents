@@ -1,4 +1,4 @@
-# Hướng NNNNNNN: Self-Healing & Error Recovery — agent tự phục hồi, lỗi rẻ, hồi phục nhanh
+# Hướng FM: Self-Healing & Error Recovery — agent tự phục hồi, lỗi rẻ, hồi phục nhanh
 
 > **Nguồn gốc:** Zylos "AI Agent Self-Healing and Auto-Recovery Patterns" (60% downtime reduction; 67% failures từ context); arXiv 2605.06737 "A Self-Healing Framework for Reliable LLM-based Agents" (failure detection + recovery); Union.ai "How to Build Self-Healing Agents" ("Don't aim for failure-proof. Aim for cheap failures and fast recovery"); Taskade "Error Handling & Self-Healing Patterns" (try-catch + classify + route)
 > **Coupling:** 🟡 — runtime phải báo lỗi chi tiết qua pipeline

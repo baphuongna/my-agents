@@ -1,4 +1,4 @@
-# Hướng MMMMMM: Skill Marketplace — phát hành/mua bán/dùng chung skill agent
+# Hướng EL: Skill Marketplace — phát hành/mua bán/dùng chung skill agent
 
 > **Nguồn gốc:** Manus "Agent Skills open standard" (SKILL.md, one-click import); agent-skills.cc (63k+ skills); Agensi "Skill Store for AI Agents"; KDnuggets "Top 5 Agent Skill Marketplaces" (SkillsMP 425k+); Skywork "AI Skill Marketplace Guide"
 > **Coupling:** 🟢 — thêm kênh nạp skill, runtime không đổi

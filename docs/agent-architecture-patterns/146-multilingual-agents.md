@@ -1,4 +1,4 @@
-# Hướng QQQQQQ: Multilingual Agents — agent nói nhiều ngôn ngữ, localization theo người dùng
+# Hướng EP: Multilingual Agents — agent nói nhiều ngôn ngữ, localization theo người dùng
 
 > **Nguồn gốc:** UseInvent "How to Build a Multilingual AI Agent" 2026 (UX native, không "dịch thô"); Delight.ai "Localized AI Agents for Multilingual Customer Service" (localization ≠ translation layer); Fin.ai "Best Multilingual AI Agents 2026"; Aisera "95+ languages"
 > **Coupling:** 🟢 — thêm lớp ngôn ngữ, runtime không đổi

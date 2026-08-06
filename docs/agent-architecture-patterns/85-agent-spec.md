@@ -1,4 +1,4 @@
-# Hướng HHHH: Declarative Agent Spec — định nghĩa agent bằng khai báo
+# Hướng CG: Declarative Agent Spec — định nghĩa agent bằng khai báo
 
 > **Nguồn gốc:** Oracle Open Agent Spec (2025); contract4agents (2025); Agent SDKs (OpenAI/Claude)
 > **Coupling:** 🟢 — spec là dữ liệu, không phụ thuộc runtime

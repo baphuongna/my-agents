@@ -1,4 +1,4 @@
-# Hướng QQQQQQQQ: Audit Trails & Traceability — mọi hành động agent có vết không thể sửa, tái dựng được
+# Hướng GP: Audit Trails & Traceability — mọi hành động agent có vết không thể sửa, tái dựng được
 
 > **Nguồn gốc:** Collibra (audit trail = chronological traceable record — inputs, decisions, outputs, actions, data); ArmoSec "Minimum Viable Audit Trail" (security team cần audit 72h sau agent làm chuyện lạ); EU AI Act Art 12 (tamper-proof chronological record — immutable storage); loginradius (audit = who/what/why — khác log kỹ thuật); IETF draft-agent-audit-trail (standard logging format)
 > **Coupling:** 🟡 — mọi hành động/decision phải ghi qua layer

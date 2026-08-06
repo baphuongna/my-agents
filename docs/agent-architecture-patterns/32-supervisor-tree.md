@@ -1,4 +1,4 @@
-# Hướng GG: Supervisor Tree — Erlang OTP hierarchy
+# Hướng AF: Supervisor Tree — Erlang OTP hierarchy
 
 > **Nguồn gốc:** Erlang OTP (Ericsson, 1986). Joe Armstrong's "Let it crash" philosophy.
 > **Coupling:** 🟡 Supervisor hierarchy + restart strategies

@@ -1,4 +1,4 @@
-# Hướng O: Policy Engine — mya là guard rails
+# Hướng P: Policy Engine — mya là guard rails
 
 > **Coupling:** 🟢 Zero — agents run freely, mya says YES/NO
 > **Agent-agnostic:** ✅ — bất kỳ agent check policy

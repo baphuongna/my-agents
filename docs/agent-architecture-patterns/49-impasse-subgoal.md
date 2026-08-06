@@ -1,4 +1,4 @@
-# Hướng XX: Impasse-Subgoal — spawn specialist khi agent bế tắc
+# Hướng AW: Impasse-Subgoal — spawn specialist khi agent bế tắc
 
 > **Nguồn gốc:** Soar cognitive architecture (Laird, 2012); Wray/Kirk/Laird arXiv:2505.07087
 > **Coupling:** 🟢 — specialist tạm thời, terminate sau khi xong

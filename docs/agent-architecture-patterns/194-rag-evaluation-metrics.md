@@ -1,4 +1,4 @@
-# Hướng MMMMMMMM: RAG Evaluation & Grounding Metrics — đo chất lượng RAG: faithfulness, relevancy, retrieval
+# Hướng GL: RAG Evaluation & Grounding Metrics — đo chất lượng RAG: faithfulness, relevancy, retrieval
 
 > **Nguồn gốc:** DeepEval (faithfulness — LLM-as-a-judge: actual_output có align với context không); arXiv 2405.07437 "Evaluation of RAG: A Survey" (retrieval + generation — relevance, accuracy, faithfulness); Confident AI "RAG Evaluation Metrics" (answer relevancy, faithfulness, contextual relevancy); kinde "RAG Evaluation in Practice" (faithfulness = grounded trong context); Braintrust (4 core metrics: answer relevancy, faithfulness/groundedness)
 > **Coupling:** 🟢 — lớp đo, runtime không đổi

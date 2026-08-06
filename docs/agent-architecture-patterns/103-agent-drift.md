@@ -1,4 +1,4 @@
-# Hướng ZZZZ: Agent Drift — bắt chất lượng agent suy giảm âm thầm theo thời gian
+# Hướng CY: Agent Drift — bắt chất lượng agent suy giảm âm thầm theo thời gian
 
 > **Nguồn gốc:** "Agent Drift: Measuring Performance Degradation" (2026); galileo output drift monitoring; golden-task regression (2026)
 > **Coupling:** 🟢 — tầng giám sát, không đụng runtime

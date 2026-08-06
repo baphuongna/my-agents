@@ -1,4 +1,4 @@
-# Hướng VV: Anti-Patterns — những cái KHÔNG nên làm
+# Hướng AU: Anti-Patterns — những cái KHÔNG nên làm
 
 > **Nguồn gốc:** agentpatternscatalog category "anti-patterns" (Hero Agent, Unbounded Subagent Spawn, ...)
 > **Coupling:** — tài liệu thuần (no code)

@@ -1,4 +1,4 @@
-# Hướng OOOOOO: Agent Fleet Management — vận hành hàng trăm agent như hạm đội
+# Hướng EN: Agent Fleet Management — vận hành hàng trăm agent như hạm đội
 
 > **Nguồn gốc:** Fast.io "AI Agent Fleet Management: Complete Scaling Guide" (6 operational pillars); Zylos "Fleet Management & Multi-Instance Orchestration" 2026 (45% nhanh hơn / 60% chính xác hơn); Tyk "AI agent orchestration enterprise guide" 2026; Okteto "Run AI Agents at Scale"
 > **Coupling:** 🟡 — thêm lớp điều phối/vận hành nhiều instance

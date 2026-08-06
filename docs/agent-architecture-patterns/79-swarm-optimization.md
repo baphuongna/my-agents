@@ -1,4 +1,4 @@
-# Hướng BBBB: Swarm Optimization — tối ưu cấu hình agent theo đàn
+# Hướng CA: Swarm Optimization — tối ưu cấu hình agent theo đàn
 
 > **Nguồn gốc:** PSO (Kennedy & Eberhart, 1995); SwarmAgentic (EMNLP 2025, arXiv 2506.15672, ~19 cites)
 > **Coupling:** 🟢 — đàn chạy ngoài runtime, qua eval

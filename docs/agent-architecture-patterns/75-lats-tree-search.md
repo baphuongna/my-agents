@@ -1,4 +1,4 @@
-# Hướng XXX: LATS / Tree Search — thăm dò nhiều nhánh hành động
+# Hướng BW: LATS / Tree Search — thăm dò nhiều nhánh hành động
 
 > **Nguồn gốc:** Zhou et al., 2024 "Language Agent Tree Search" (arXiv 2310.04406)
 > **Coupling:** 🟢 — tree search là harness quanh agent, không đụng core

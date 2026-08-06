@@ -1,4 +1,4 @@
-# Hướng FFFFF: Simulated User Testing — LLM đóng vai người dùng tương tác live với agent
+# Hướng DE: Simulated User Testing — LLM đóng vai người dùng tương tác live với agent
 
 > **Nguồn gốc:** UXAgent (arXiv 2504.09407); langwatch User Simulator Agent; galtea Conversation Simulator 2026
 > **Coupling:** 🟢 — tầng test đối ngoại, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng MMM: MCP Gateway — tổng hợp nhiều MCP servers sau một endpoint
+# Hướng BL: MCP Gateway — tổng hợp nhiều MCP servers sau một endpoint
 
 > **Nguồn gốc:** arcade.dev "MCP Gateway Pattern" (2025); zuplo/xenoss/requesty (2025-2026)
 > **Coupling:** 🟢 Protocol — client chỉ thấy 1 MCP surface

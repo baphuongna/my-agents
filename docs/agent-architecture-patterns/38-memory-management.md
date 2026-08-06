@@ -1,4 +1,4 @@
-# Hướng MM: Memory Management — context compaction, 3-tier hierarchy
+# Hướng AL: Memory Management — context compaction, 3-tier hierarchy
 
 > **Nguồn gốc:** LLM context window constraint (2022–); pi-vcc ranked compaction
 > **Coupling:** 🟢 — mya nội bộ, agents không cần biết

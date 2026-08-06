@@ -1,4 +1,4 @@
-# Hướng RRRR: Tool-Call Failure Recovery — agent tự sửa lỗi khi gọi tool
+# Hướng CQ: Tool-Call Failure Recovery — agent tự sửa lỗi khi gọi tool
 
 > **Nguồn gốc:** "AI Agent Error Handling & Recovery" (zylos 2026); taskade "Self-Healing Patterns" 2026; agentbase Self-Healing docs
 > **Coupling:** 🟡 — bọc tool layer, cần chính sách giới hạn

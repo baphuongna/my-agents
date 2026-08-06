@@ -1,4 +1,4 @@
-# Hướng BBBBBBB: Agent Scorecard — bảng điểm liên tục theo KPI chất lượng/cost/safety
+# Hướng FA: Agent Scorecard — bảng điểm liên tục theo KPI chất lượng/cost/safety
 
 > **Nguồn gốc:** AWS Connect "Agent performance evaluations dashboard" (cohorts + time series); Arize "Agent evaluation metrics" (quality/cost/safety/behavior KPIs); Verint "Agent Scorecard"; Medium "AI agent evaluation best practices" (baselines + balance)
 > **Coupling:** 🟢 — thêm lớp đo, runtime không đổi

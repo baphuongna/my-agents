@@ -1,4 +1,4 @@
-# Hướng GGG: Agentic RAG — retrieval do agent điều khiển
+# Hướng BF: Agentic RAG — retrieval do agent điều khiển
 
 > **Nguồn gốc:** 2024-2025 (Agentic RAG; Neo4j/LangChain phổ biến hóa); kế thừa RAG (Lewis 2020)
 > **Coupling:** 🟢 — agent ↔ index qua tool call

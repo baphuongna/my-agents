@@ -1,4 +1,4 @@
-# Hướng I: Kanban Board — task queue qua SQLite
+# Hướng J: Kanban Board — task queue qua SQLite
 
 > **Coupling:** 🟢 SQLite — agents chỉ cần đọc/ghi SQLite
 > **Agent-agnostic:** ✅ — bất kỳ agent poll board

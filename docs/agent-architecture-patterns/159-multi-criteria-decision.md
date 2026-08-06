@@ -1,4 +1,4 @@
-# Hướng DDDDDDD: Multi-Criteria Decision — agent chọn phương án bằng TOPSIS/khung tiêu chí
+# Hướng FC: Multi-Criteria Decision — agent chọn phương án bằng TOPSIS/khung tiêu chí
 
 > **Nguồn gốc:** arXiv 2601.22433 "When LLM meets Fuzzy-TOPSIS" (LLM + MCDM); TOPSIS (Hwang & Yoon 1981 — ScienceDirect); Nature s41598-026 "Multi-criteria consensus group decision making" (prospect-regret TOPSIS); MetricGate TOPSIS calculator
 > **Coupling:** 🟢 — thêm lớp quyết định, runtime không đổi

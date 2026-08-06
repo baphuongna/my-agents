@@ -1,4 +1,4 @@
-# Hướng PPPPP: Bounded Self-Correction — tự sửa có giới hạn, fail-loud khi hết vòng
+# Hướng DO: Bounded Self-Correction — tự sửa có giới hạn, fail-loud khi hết vòng
 
 > **Nguồn gốc:** "Self-Correcting Agents Are Not What You Think" (Lanham 2026); SSRN failure taxonomy 2026; 56 Reflexion nền
 > **Coupling:** 🟢 — policy vòng, runtime không đổi

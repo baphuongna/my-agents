@@ -1,4 +1,4 @@
-# Hướng YYYYYYYY: Dynamic Few-Shot Exemplar Selection — chọn ví dụ phù hợp mỗi câu hỏi, không dùng 1 bộ tĩnh
+# Hướng GX: Dynamic Few-Shot Exemplar Selection — chọn ví dụ phù hợp mỗi câu hỏi, không dùng 1 bộ tĩnh
 
 > **Nguồn gốc:** arXiv 2507.23211 "Enhancing Few-Shot In-Context Learning" ("static prompt đã chuyển sang dynamic retrieval của task-specific exemplars tại thời điểm inference"); Wang W "Dynamic k-shot In-Context Learning" (Dk-ICL — tự quyết k lời cho từng query); tianpan.co "Dynamic Few-Shot Retrieval" ("dynamic few-shot retrieval là intervention high-leverage sau khi team đã tối ưu prompt + system"); ACM "Few-Shot Learning: Fine-Tuning vs. In-Context Learning" (so sánh fine-tune vs ICL)
 > **Coupling:** 🟢 — độc lập, chỉ chạm bước build prompt

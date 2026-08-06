@@ -1,4 +1,4 @@
-# Hướng OOOOOOOO: Batch Processing & Context Batching — gom nhiều request qua 1 forward, tăng throughput giảm cost
+# Hướng HN: Batch Processing & Context Batching — gom nhiều request qua 1 forward, tăng throughput giảm cost
 
 > **Nguồn gốc:** apxml "Async & Batching in RAG" ("LLMs achieve much higher throughput khi processing inputs in batches — GPUs designed for parallel computation"); zylos "LLM Inference Optimization" ("continuous batching delivers up to 23x throughput"); AnyScale "Batch LLM Inference" (cost giảm tới 2.9x so với online — Bedrock/OpenAI); Swfate "Batch Inference 70% cut 2026"; deepchecks "Batch Processing for LLMs" (cuts inference costs, boosts throughput, scale AI workloads); Spheron (PagedAttention — 64+ concurrent — 25% higher throughput)
 > **Coupling:** 🟢 — chỉ chạm tầng gọi LLM (phía sau)

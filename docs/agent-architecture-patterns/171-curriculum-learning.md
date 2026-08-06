@@ -1,4 +1,4 @@
-# Hướng PPPPPPP: Curriculum Learning Layer — agent tự tăng độ khó task theo năng lực
+# Hướng FO: Curriculum Learning Layer — agent tự tăng độ khó task theo năng lực
 
 > **Nguồn gốc:** arXiv 2512.08545 "Curriculum Guided Massive Multi-Agent" (Kar 2025 — progressive skill acquisition); WebRL (Qi — 96 cites, curriculum + online actor-critic, task sets tăng độ khó); ADCL (EMNLP 2025, 22 cites — Difficulty Shift, adaptive difficulty); CurriculumPT (MDPI Appl. Sci. 2025, 15 cites — định nghĩa task difficulty + curriculum sequence)
 > **Coupling:** 🟡 — runtime phải đo được năng lực + phục vụ task theo độ khó

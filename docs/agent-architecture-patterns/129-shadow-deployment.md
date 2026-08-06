@@ -1,4 +1,4 @@
-# Hướng ZZZZZ: Shadow Deployment — chạy agent song song, so sánh trước khi áp dụng
+# Hướng DY: Shadow Deployment — chạy agent song song, so sánh trước khi áp dụng
 
 > **Nguồn gốc:** Agentic Digital Twins (Ivanov 2026, Int. J. Prod. Research — A-SCDT); Materialize "Digital Twin for AI Agents" 2026; XMPro 2026; AWS Agentic AI + Digital Twins blog 2026
 > **Coupling:** 🟡 — cần mirror môi trường + hook so sánh kết quả

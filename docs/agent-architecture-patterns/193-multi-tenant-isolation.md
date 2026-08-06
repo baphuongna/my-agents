@@ -1,4 +1,4 @@
-# Hướng LLLLLLLL: Multi-Tenant Agent Isolation — 1 hệ, nhiều khách; dữ liệu/tài nguyên tách kín
+# Hướng GK: Multi-Tenant Agent Isolation — 1 hệ, nhiều khách; dữ liệu/tài nguyên tách kín
 
 > **Nguồn gốc:** Azure Architecture "Tenancy Models for Multitenant Solution" (isolation level là cân nhắc lớn nhất); Redis "Data isolation in multi-tenant SaaS" (isolation models — ngoài DB chính, scaling); AWS Bedrock "Implementing tenant isolation" (agents trong multi-tenant environment); blaxel "Multi-tenant AI agent isolation" (container — process tree riêng, isolated network/filesystem); fast.io "Multi-Tenant AI Agent Architecture" (1 agent system phục vụ nhiều tenant — data/files/chats tách)
 > **Coupling:** 🟡 — mọi component phải biết tenant + tôn trọng ranh giới

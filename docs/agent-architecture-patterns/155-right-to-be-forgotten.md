@@ -1,4 +1,4 @@
-# Hướng ZZZZZZ: Right-to-Be-Forgotten — agent quên dữ liệu người dùng theo yêu cầu (GDPR)
+# Hướng EY: Right-to-Be-Forgotten — agent quên dữ liệu người dùng theo yêu cầu (GDPR)
 
 > **Nguồn gốc:** GDPR Article 17 "Right to Erasure"; TechPolicy "The Right to Be Forgotten Is Dead: Data Lives Forever in AI"; CSA "The Right to Be Forgotten — But Can AI Forget?" 2025; Varonis "GDPR: Right to Be Forgotten and AI"; Fosch-Villaronga "AI and the Right to Be Forgotten" (318 cites)
 > **Coupling:** 🟡 — mọi nơi lưu dữ liệu user phải hỗ trợ xóa theo yêu cầu

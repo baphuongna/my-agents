@@ -1,4 +1,4 @@
-# Hướng OOOOO: Error Analysis — phân tích failure có hệ thống thay vì vá từng lỗi
+# Hướng DN: Error Analysis — phân tích failure có hệ thống thay vì vá từng lỗi
 
 > **Nguồn gốc:** "Why Do Multi-Agent LLM Systems Fail?" (Cemri, 602 cites); ErrorProbe (ACL 2026 findings); Confident AI error analysis guide
 > **Coupling:** 🟢 — tầng phân tích, runtime không đổi

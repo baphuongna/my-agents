@@ -1,4 +1,4 @@
-# Hướng EEEE: Memory Consolidation — "ngủ" để sắp xếp trí nhớ
+# Hướng CD: Memory Consolidation — "ngủ" để sắp xếp trí nhớ
 
 > **Nguồn gốc:** arXiv 2604.20943 "SleepCycle" (2026); Anthropic "Dreaming for Agent Memory" (2026); Born et al. 2011 (system consolidation)
 > **Coupling:** 🟢 — phase offline, không đụng runtime

@@ -1,4 +1,4 @@
-# Hướng YYYY: Reward Hacking / Specification Gaming — agent "ăn gian" metric đánh giá
+# Hướng CX: Reward Hacking / Specification Gaming — agent "ăn gian" metric đánh giá
 
 > **Nguồn gốc:** Reward Hacking Benchmark RHB (arXiv 2605.02964, ICML 2026); METR 2025; Anthropic research
 > **Coupling:** 🟢 — tầng policy/metric, không đụng runtime

@@ -1,4 +1,4 @@
-# Hướng HHHHHHH: Conflict Detection & Overlap Prevention — tránh agent làm trùng việc
+# Hướng FG: Conflict Detection & Overlap Prevention — tránh agent làm trùng việc
 
 > **Nguồn gốc:** Sharon et al. "Conflict-Based Search (CBS)" (Artif. Intell. 2015, 2148 cites); tacnode "8 Coordination Patterns" (duplicate orders/race conditions); Galileo "10 Multi-Agent Coordination Strategies" (outdated context → duplicated work); NMS "Duplication of Work"
 > **Coupling:** 🟡 — các agent phải báo kế hoạch qua coordinator

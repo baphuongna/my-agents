@@ -1,4 +1,4 @@
-# Hướng T: Stigmergic Coordination — kiến sửa môi trường, agent phản ứng
+# Hướng S: Stigmergic Coordination — kiến sửa môi trường, agent phản ứng
 
 > **Nguồn gốc:** Sinh học — Entomology (Grassé, 1959)
 > **Coupling:** 🟢 Zero — chỉ fs.watch filesystem

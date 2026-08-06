@@ -1,4 +1,4 @@
-# Hướng MMMMMMM: Agent Guardrails Layer — rào chắn an toàn system-level cho agent tự động
+# Hướng FL: Agent Guardrails Layer — rào chắn an toàn system-level cho agent tự động
 
 > **Nguồn gốc:** arXiv 2601.18491 "AgentDoG: A Diagnostic Guardrail Framework" (18 cites — fine-grained contextual monitoring, diagnose root causes of unsafe actions); IBM "What Are AI Guardrails"; Galileo "AI Agent Guardrails Framework" (system-level safety controls); McKinsey (organizational standards/policies/values)
 > **Coupling:** 🟡 — mọi hành động agent phải qua guardrail

@@ -1,4 +1,4 @@
-# Hướng SSSS: Agent CI/CD — chạy eval làm gate khi merge prompt/tool
+# Hướng CR: Agent CI/CD — chạy eval làm gate khi merge prompt/tool
 
 > **Nguồn gốc:** "CI/CD for Evals: Prompt & Agent Regression in GitHub Actions" (kinde 2026); galtea quality gate 2026; Red Hat "Behavioral Testing" 2026
 > **Coupling:** 🟢 — tầng dev, không đụng runtime

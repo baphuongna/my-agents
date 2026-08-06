@@ -1,4 +1,4 @@
-# Hướng OOOO: Semantic/Cache Response Caching — tái dùng kết quả query giống nhau
+# Hướng CN: Semantic/Cache Response Caching — tái dùng kết quả query giống nhau
 
 > **Nguồn gốc:** "GPT Semantic Cache" (arXiv 2411.05276); Redis LangCache 2026; GPTCache (zilliztech)
 > **Coupling:** 🟡 — chèn giữa request/output, cần vô hiệu hóa đúng

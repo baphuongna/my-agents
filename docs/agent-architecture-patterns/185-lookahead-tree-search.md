@@ -1,4 +1,4 @@
-# Hướng DDDDDDDD: Lookahead Planning & Tree Search — agent mô phỏng tương lai trước khi hành động
+# Hướng GC: Lookahead Planning & Tree Search — agent mô phỏng tương lai trước khi hành động
 
 > **Nguồn gốc:** arXiv 2601.08955 "Imagine-then-Plan" (imagined trajectories — rich signals về future consequences: achieved progress, potential conflicts); FLARE (co-r-e.com — "explicit lookahead via trajectory simulation — search tree rooted at current state"); LATS (Language Agent Tree Search — reasoning + acting + planning qua tree search + external feedback); ACL 2025 LEAP (look-ahead planning + agile navigation — tree search giảm inference overhead)
 > **Coupling:** 🟡 — runtime phải chạy mô phỏng + quay lại

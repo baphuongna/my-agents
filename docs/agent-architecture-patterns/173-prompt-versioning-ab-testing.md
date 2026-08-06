@@ -1,4 +1,4 @@
-# Hướng RRRRRRR: Prompt Versioning & A/B Testing — prompt như code: version, so sánh, regression
+# Hướng FQ: Prompt Versioning & A/B Testing — prompt như code: version, so sánh, regression
 
 > **Nguồn gốc:** MLflow "Top 3 LLM Prompt Versioning Platforms 2026" (prompt registry + version); Confident AI (prompt như code — git-style branching, PRs); Maxim "How to Perform A/B Testing with Prompts" (version prompts, deployment variables, tag experiments); Galtea "Complete Guide for LLM Evaluations 2026" (controlled comparison — hold everything constant); Dynatrace (AI Model Versioning — metadata: model version, dataset ID, hyperparameters)
 > **Coupling:** 🟢 — lớp quản lý prompt, runtime không đổi

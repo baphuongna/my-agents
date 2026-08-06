@@ -1,4 +1,4 @@
-# Hướng BBBBBBBB: Swarm Intelligence — đàn agent tự tổ chức, hành vi trồi dậy từ luật đơn giản
+# Hướng GA: Swarm Intelligence — đàn agent tự tổ chức, hành vi trồi dậy từ luật đơn giản
 
 > **Nguồn gốc:** AWS "Enterprise Swarm Intelligence" (Swarm Agentic AI pattern — decentralized multi-agent, tự tổ chức qua local interactions); Serugendo "Self-Organisation and Emergence in MAS" (346 cites — software agents tự tổ chức, autonomy); Arboria Labs (tự tổ chức + emergence = nền tảng lý thuyết swarm intelligence); Khan "Emergent Intelligence in Multi-Agent and LLM Systems" (emerging behavior — coordination, self-learning)
 > **Coupling:** 🟡 — agents phải tuân theo luật tương tác local

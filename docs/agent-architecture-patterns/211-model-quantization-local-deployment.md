@@ -1,4 +1,4 @@
-# Hướng DDDDDDDD: Model Quantization & Local Deployment — nén model để tự host/edge: GGUF, INT4/INT8, AWQ
+# Hướng HC: Model Quantization & Local Deployment — nén model để tự host/edge: GGUF, INT4/INT8, AWQ
 
 > **Nguồn gốc:** Meta Intelligence "7B LLMs in 4 Bits — INT8, GPTQ, AWQ & GGUF [2026]" ("GGUF hỗ trợ 1.5-bit → 8-bit, dùng trên edge"); arXiv 2601.14277 "Which Quantization Should I Use? A Unified Evaluation" (llama.cpp toolchain dùng post-training quantization — PTQ — lưu GGUF/GGML); vRlat "INT4/INT8/FP8/AWQ/GPTQ in 2026" (GGUF: Q2_K → Q8_0, CPU+GPU hybrid); branch8 (4-bit AWQ/GPTQ/GGUF giảm 60-80% chi phí inference); ggml llama.cpp discussions (blind test giữa quants)
 > **Coupling:** 🟢 — độc lập hoàn toàn (chỉ thay runtime model)

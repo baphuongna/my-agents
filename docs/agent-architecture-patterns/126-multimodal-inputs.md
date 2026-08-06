@@ -1,4 +1,4 @@
-# Hướng WWWWW: Multi-Modal Inputs — agent xử lý ảnh/âm thanh/văn bản
+# Hướng DV: Multi-Modal Inputs — agent xử lý ảnh/âm thanh/văn bản
 
 > **Nguồn gốc:** chanl.ai "Voice, Vision, Text in Production" 2026; MLLM (quiq/xenonstack); oneReach
 > **Coupling:** 🟡 — input pipeline mới, gateway đổi nhẹ

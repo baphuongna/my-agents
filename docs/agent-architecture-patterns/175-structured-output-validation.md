@@ -1,4 +1,4 @@
-# Hướng TTTTTTT: Structured Output Validation Layer — ép LLM trả đúng schema, validate trước khi chạy
+# Hướng FS: Structured Output Validation Layer — ép LLM trả đúng schema, validate trước khi chạy
 
 > **Nguồn gốc:** Michael Lanham "Stop Blaming the LLM: JSON Schema Is the Cheapest Fix" (enforce structured outputs validated against JSON Schema); understandingdata "Tool Call Validation (Zod)" (runtime schema validation — untrusted LLM output → typed validated data); arXiv 2606.09395 "LLGuidance" (grammar engine — enforce arbitrary CFG/JSON Schema/RegEx trên LLM output); agenta "Guide to Structured Outputs & Function Calling" (validate response against original model schema)
 > **Coupling:** 🟢 — lớp ép schema, runtime không đổi

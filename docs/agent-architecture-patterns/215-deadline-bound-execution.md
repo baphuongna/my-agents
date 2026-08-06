@@ -1,4 +1,4 @@
-# Hướng HHHHHHHH: Deadline-Bounded Execution — giới hạn thời gian chạy của mỗi bước LLM, trả kết quả một phần, không leo thang
+# Hướng HG: Deadline-Bounded Execution — giới hạn thời gian chạy của mỗi bước LLM, trả kết quả một phần, không leo thang
 
 > **Nguồn gốc:** YouTube "LLM Retry Budgets: Cut Latency, Cost, and Duplicate Side Effects" ("design bounded retry behavior using deadlines, cost, priority, error classification"); zylos.ai "LLM Output Streaming" (TTFT — time-to-first-token, dominated by prefill phase); LinkedIn "Why Increasing Your API Timeout Won't Fix LLM Latency" (gọi LLM như REST API — send and wait — không đúng với latency LLM); BAML docs "Configuring Timeouts" (timeout mọi stage — prevent requests hanging indefinitely); mdpgroup (TTFT, TPOT, latency — "20% requests timeout" quản lý bằng thời gian-bước)
 > **Coupling:** 🟡 — chạm mọi placeholder gọi LLM/agent

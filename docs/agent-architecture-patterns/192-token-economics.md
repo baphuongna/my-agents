@@ -1,4 +1,4 @@
-# Hướng KKKKKKKK: Token Economics & Pricing Models — định giá agent theo token/task/outcome; hiểu cơ cấu chi phí
+# Hướng GJ: Token Economics & Pricing Models — định giá agent theo token/task/outcome; hiểu cơ cấu chi phí
 
 > **Nguồn gốc:** McKinsey "Is That AI Agent Worth It? Agentic Economics" ("Tokens are not value; tokens are the bill" — 10% users ≈ 65% usage); Stanford Digital Economy "How are AI agents spending your tokens?" (cost cao ở INPUT tokens; agents không tự đoán được token cost); pickaxe "AI Agent Pricing Models" (token pricing confusing — billing anxiety); mightybot "2026 Pricing Models" (4 models: per-seat, per-token, per-task, per-outcome)
 > **Coupling:** 🟡 — runtime phải đo chính xác token per entity

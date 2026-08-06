@@ -1,4 +1,4 @@
-# Hướng IIII: Agent Topology — chọn cấu trúc liên kết giữa các agents
+# Hướng CH: Agent Topology — chọn cấu trúc liên kết giữa các agents
 
 > **Nguồn gốc:** "A Taxonomy of Hierarchical Multi-Agent Systems" (arXiv 2508.12683, 2025); surveys orchestration (2026)
 > **Coupling:** 🟢 — topology là cấu hình, đổi không đụng agent

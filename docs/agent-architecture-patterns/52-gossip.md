@@ -1,4 +1,4 @@
-# Hướng AAA: Gossip / Epidemic Protocol — phối hợp phân tán peer-to-peer
+# Hướng AZ: Gossip / Epidemic Protocol — phối hợp phân tán peer-to-peer
 
 > **Nguồn gốc:** Gossip protocols (Demers et al., 1987); "Revisiting Gossip Protocols for Emergent Coordination in Agentic MAS" (arXiv:2508.01531)
 > **Coupling:** 🟢 — không điểm trung tâm, chỉ truyền lân cận

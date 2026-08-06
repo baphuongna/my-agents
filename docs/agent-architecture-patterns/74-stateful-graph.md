@@ -1,4 +1,4 @@
-# Hướng WWW: Stateful Graph Orchestration — agent workflow như đồ thị trạng thái
+# Hướng BV: Stateful Graph Orchestration — agent workflow như đồ thị trạng thái
 
 > **Nguồn gốc:** LangGraph (LangChain, 2024-2026); Temporal plugin integration (2025)
 > **Coupling:** 🟢 — node là module độc lập, graph nối chúng

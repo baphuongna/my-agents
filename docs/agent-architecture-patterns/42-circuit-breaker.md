@@ -1,4 +1,4 @@
-# Hướng QQ: Circuit Breaker + Rate Limit — resilience trước LLM provider
+# Hướng AP: Circuit Breaker + Rate Limit — resilience trước LLM provider
 
 > **Nguồn gốc:** Michael Nygard, Release It! (2007); Martin Fowler circuit breaker (2014)
 > **Coupling:** 🟢 — transparent middleware giữa mya ↔ provider
@@ -104,7 +104,7 @@ class ProviderCircuitBreaker {
 | ✅ Transparent — agents không cần biết | |
 | ✅ Đã có backoff + taint + rate limiter | |
 
-## Khác Supervisor (Hướng GG)
+## Khác Supervisor (Hướng AF)
 
 | | GG: Supervisor Tree | QQ: Circuit Breaker |
 |---|---|---|

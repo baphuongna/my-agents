@@ -1,4 +1,4 @@
-# Hướng EEEEE: Credit Assignment — biết agent nào thực sự đóng góp kết quả
+# Hướng DD: Credit Assignment — biết agent nào thực sự đóng góp kết quả
 
 > **Nguồn gốc:** "LLM-Guided Credit Assignment in Multi-Agent" (NeurIPS 2025, arXiv 2502.03723); AAMAS 2025 LLM-TACA; arXiv 2603.06859
 > **Coupling:** 🟢 — tầng phân tích trace, runtime không đổi

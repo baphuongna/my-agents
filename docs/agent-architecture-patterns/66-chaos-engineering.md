@@ -1,4 +1,4 @@
-# Hướng OOO: Agent Chaos Engineering — inject lỗi trước production
+# Hướng BN: Agent Chaos Engineering — inject lỗi trước production
 
 > **Nguồn gốc:** tianpan.co 2026 "Chaos Engineering for AI Agents"; Microsoft Agent SRE (2026); zenn fault-injection TDD
 > **Coupling:** 🟢 — injection qua harness, không đụng core

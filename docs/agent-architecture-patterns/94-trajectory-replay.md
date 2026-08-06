@@ -1,4 +1,4 @@
-# Hướng QQQQ: Trajectory Replay — chạy lại trace để sửa prompt và sinh eval data
+# Hướng CP: Trajectory Replay — chạy lại trace để sửa prompt và sinh eval data
 
 > **Nguồn gốc:** "Survey of Evidence Tracing and Execution Provenance" (arXiv 2606.04990, 2026); LangChain/Langfuse 2026
 > **Coupling:** 🟢 — replay tách khỏi runtime

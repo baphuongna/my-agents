@@ -1,4 +1,4 @@
-# Hướng BB: Immune System — học "normal", chặn "abnormal"
+# Hướng T: Immune System — học "normal", chặn "abnormal"
 
 > **Nguồn gốc:** Biology — vertebrate immune system (Forrest et al., 1994)
 > **Coupling:** 🟢 Zero — observes + blocks

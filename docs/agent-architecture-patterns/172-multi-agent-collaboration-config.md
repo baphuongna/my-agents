@@ -1,4 +1,4 @@
-# Hướng QQQQQQQ: Multi-Agent Collaboration Config — team agent có cấu hình phối hợp khai báo
+# Hướng FP: Multi-Agent Collaboration Config — team agent có cấu hình phối hợp khai báo
 
 > **Nguồn gốc:** AWS Bedrock "Multi-Agent Collaboration" (supervisor agent + collaboration agents — plan & solve complex tasks); IBM "What is Multi-Agent Collaboration?" (cooperate via established communication protocols — exchange state, assign responsibilities); Oracle ADK (supervisor invokes collaborator's run as tool); Vertex AI "Agent Engine" (managed runtime — built-in testing, release)
 > **Coupling:** 🟡 — runtime phải hỗ trợ supervisor/subagent theo khai báo

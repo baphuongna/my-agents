@@ -1,4 +1,4 @@
-# Hướng HH: Sidecar — mya là sidecar bên cạnh agent container
+# Hướng AG: Sidecar — mya là sidecar bên cạnh agent container
 
 > **Nguồn gốc:** Kubernetes service mesh (Envoy sidecar proxy, 2016)
 > **Coupling:** 🟢 Zero — sidecar bên cạnh agent

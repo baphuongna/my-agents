@@ -1,4 +1,4 @@
-# Hướng ZZZ: DSPy Compilation — pipeline khai báo, compiler tự tối ưu prompt
+# Hướng BY: DSPy Compilation — pipeline khai báo, compiler tự tối ưu prompt
 
 > **Nguồn gốc:** Khattab et al., 2024 "DSPy" (Stanford; arXiv 2310.03714)
 > **Coupling:** 🟢 — modules thuần, compiler ngoài runtime

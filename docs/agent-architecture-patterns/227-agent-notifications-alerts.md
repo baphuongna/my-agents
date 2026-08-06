@@ -1,4 +1,4 @@
-# Hướng TTTTTTTT: Agent Notification & Alerts — agent chủ động nhắc user qua Slack/email/push khi có chuyện cần
+# Hướng HS: Agent Notification & Alerts — agent chủ động nhắc user qua Slack/email/push khi có chuyện cần
 
 > **Nguồn gốc:** Sequenzy "12 Best Notification APIs for AI Agents 2026" (Knock — "manage product notifications across in-app, email, push, Slack, SMS, chat"); Slack/Wrike "AI Agent Notifications" (agent gửi đến Slack/Teams channels qua connected account); MindStudio community "SMS notify khi pending Input Block" (agent cần input user — gửi SMS kèm nội dung); quickchat "Human Handoff Notification" (ping team Slack khi user cần trợ giúp); Reddit "notification relay hub — MCP endpoint để agent deliver notifications"
 > **Coupling:** 🟢 — tách riêng, agent gọi khi cần — một tool

@@ -1,4 +1,4 @@
-# Hướng CCCCCCCC: RLHF/Preference Alignment — agent chỉnh theo sở thích người dùng qua phản hồi
+# Hướng GB: RLHF/Preference Alignment — agent chỉnh theo sở thích người dùng qua phản hồi
 
 > **Nguồn gốc:** HuggingFace "Illustrating RLHF" (align model với human values); arXiv 2504.03784 "Robust RLHF" (revolutionized fine-tuning — achieve human preference); AWS "RLAIF" (so sánh các task — comparable/superior với RLHF); Wikipedia — RLHF (align agent với human preferences); OpenUser (RLHF useful cho goals phức tạp/mơ hồ)
 > **Coupling:** 🔴 — ảnh hưởng mô hình LLM nền (retrain/gate) — vượt ranh giới coupling hệ thống

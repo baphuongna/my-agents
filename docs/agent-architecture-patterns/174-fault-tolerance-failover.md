@@ -1,4 +1,4 @@
-# Hướng SSSSSSS: Fault Tolerance & Failover — agent chịu lỗi, chuyển dự phòng, gần như không downtime
+# Hướng FR: Fault Tolerance & Failover — agent chịu lỗi, chuyển dự phòng, gần như không downtime
 
 > **Nguồn gốc:** Couchbase "High Availability vs Fault Tolerance" (HA — minimize downtime qua rapid recovery; FT — uninterrupted operation trong lúc failure); Nobl9 "HA vs FT Comparative Guide" (đo qua SLOs); ITU "HA vs FT" (HA giảm tác động, FT giấu hoàn toàn lỗi); Medium "Failover = plan B — backup team member steps in"
 > **Coupling:** 🟡 — runtime phải có dự phòng + điểm chuyển đổi

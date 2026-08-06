@@ -1,4 +1,4 @@
-# Hướng EEEEEE: Multi-Agent Consensus — nhiều agent bàn bạc, quyết định theo giao thức
+# Hướng ED: Multi-Agent Consensus — nhiều agent bàn bạc, quyết định theo giao thức
 
 > **Nguồn gốc:** Kaesberg "Voting or Consensus? Decision-Making in Multi-Agent" (ACL Findings 2025, 67 cites); Lee "Reliable Decision-Making for Multi-Agent LLM Systems" (MultiAgents 2025, 12 cites); Zylos "Consensus Protocols for Multi-Agent Decision Making" 2026
 > **Coupling:** 🟢 — lớp quyết định mới, runtime không đổi

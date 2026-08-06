@@ -1,4 +1,4 @@
-# Hướng ZZ: Pressure-Field Coordination — gradient chất lượng, temporal decay
+# Hướng AY: Pressure-Field Coordination — gradient chất lượng, temporal decay
 
 > **Nguồn gốc:** Rodriguez, "Emergent Coordination via Pressure Fields and Temporal Decay" (arXiv:2601.08129, 2026)
 > **Coupling:** 🟢 — không có orchestration trung tâm

@@ -1,4 +1,4 @@
-# Hướng LLLLLLL: Per-Task Cost Attribution & Budgeting — tính giá chính xác từng task, cấp ngân sách
+# Hướng FK: Per-Task Cost Attribution & Budgeting — tính giá chính xác từng task, cấp ngân sách
 
 > **Nguồn gốc:** Codenotary "AI Agent Cost Monitoring" (tracking, attributing, optimizing LLM + tool spend of autonomous agents in real time); finout.io "AI FinOps: 7 Steps" (cost-per metrics); portkey "AI Cost Observability" (where costs leak, metrics that matter); finops.org "FinOps for AI"
 > **Coupling:** 🟡 — các thành phần phải báo cost đầy đủ (LLM + tool + infra)

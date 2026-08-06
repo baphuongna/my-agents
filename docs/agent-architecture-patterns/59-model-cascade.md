@@ -1,4 +1,4 @@
-# Hướng HHH: Model Cascade — bậc rẻ trước, escalate khi thiếu tự tin
+# Hướng BG: Model Cascade — bậc rẻ trước, escalate khi thiếu tự tin
 
 > **Nguồn gốc:** Fuego et al., 2023 (arXiv 2312.11444); hệ Cascade (NVIDIA)
 > **Coupling:** 🟢 — chỉ quanh 1 request qua các tier

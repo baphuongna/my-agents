@@ -1,4 +1,4 @@
-# Hướng YYYYY: GenAI Observability — telemetry chuẩn OTel cho agent
+# Hướng DX: GenAI Observability — telemetry chuẩn OTel cho agent
 
 > **Nguồn gốc:** OpenTelemetry GenAI Semantic Conventions (CNCF, semconv-genai); opentelemetry.io blog 2025; Datadog 2026
 > **Coupling:** 🟢 — thêm telemetry, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng IIIIIII: Agentic Workflows as Code — workflow DAG/state machine định nghĩa bằng code
+# Hướng FH: Agentic Workflows as Code — workflow DAG/state machine định nghĩa bằng code
 
 > **Nguồn gốc:** arXiv 2509.09915 "The (R)evolution of Scientific Workflows in the Agentic AI Era" (state machine loop — execution unit); Temporal "The Fallacy of the Graph" (durable execution — code not diagram); AWS Step Functions (outer loop for long-running AI workflows); MindStudio "Agentic Workflows: Conditional Logic, Branching, Loops"
 > **Coupling:** 🟡 — runtime phải chạy được graph/state machine

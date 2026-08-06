@@ -1,4 +1,4 @@
-# Hướng SSSSS: Agent Reproducibility — chạy lại agent ra cùng kết quả
+# Hướng DR: Agent Reproducibility — chạy lại agent ra cùng kết quả
 
 > **Nguồn gốc:** "Multi-Artifact Versioning" (SSRN 2026); jfrog reproducibility; arXiv 2603.06862 artifact evaluation
 > **Coupling:** 🟢 — tầng ghi/khôi phục, runtime không đổi

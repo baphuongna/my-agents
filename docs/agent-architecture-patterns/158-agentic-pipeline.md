@@ -1,4 +1,4 @@
-# Hướng CCCCCCC: Agentic Data Pipeline — agent gắn trực tiếp vào luồng dữ liệu real-time
+# Hướng FB: Agentic Data Pipeline — agent gắn trực tiếp vào luồng dữ liệu real-time
 
 > **Nguồn gốc:** Conduktor "Agentic AI Pipelines: Streaming Data for Autonomous Agents"; StreamNative "Data Streaming to Agentic AI" (Pulsar Functions + MCP); Redpanda "Real-time AI: why it needs streaming data"; Solace Agent Mesh; arXiv 2512.23737 "Governing Cloud Data Pipelines with Agentic AI" (−45% recovery time)
 > **Coupling:** 🟡 — agent phải nối vào event stream (transport)

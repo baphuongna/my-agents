@@ -1,4 +1,4 @@
-# Hướng III: Agent-Computer Interface (ACI) — giao diện agent↔máy là sản phẩm
+# Hướng BH: Agent-Computer Interface (ACI) — giao diện agent↔máy là sản phẩm
 
 > **Nguồn gốc:** SWE-agent — Yang et al., NeurIPS 2024 (arXiv 2405.15793); Anthropic khuyên dùng
 > **Coupling:** 🟢 — interface độc lập với model

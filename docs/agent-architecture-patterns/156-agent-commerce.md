@@ -1,4 +1,4 @@
-# Hướng AAAAAAA: Agent Commerce — agent trả phí cho dịch vụ/tool của nhau
+# Hướng EZ: Agent Commerce — agent trả phí cho dịch vụ/tool của nhau
 
 > **Nguồn gốc:** Nevermined "AI Agent Pay-Per-Use Pricing" (real-time metering); Unframe "Token-Based Pricing Is Broken — Outcome-Based"; Ibbaka "Pricing in the Agent Economy" (pricing layer cake); MightyBot "Agent Pricing Models 2026" (per-seat/per-token/per-task/per-outcome)
 > **Coupling:** 🟢 — thêm lớp thanh toán/meter, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng SSSSSSSS: Human Approval Gates — agent dừng ở cổng duyệt trước hành động rủi ro, không tự submit/pay/sign
+# Hướng HR: Human Approval Gates — agent dừng ở cổng duyệt trước hành động rủi ro, không tự submit/pay/sign
 
 > **Nguồn gốc:** MindStudio "The Gate Pattern — Prepare, Don't Submit" ("gate pattern stops AI agents before they submit, pay, or sign — why essential for high-trust agentic"); agentic-patterns "Human-in-the-Loop Approval Framework" ("insert human approval gates for designated high-risk functions while maintaining autonomy for safe ops"); LangGraph HITL (state-managed interruptions — agent pause for human approval); StackAI "Approval Workflows" ("keep workflows fast for low-risk — enforce approval gates for high-risk"); Nylas "Build HITL Email Agent" (approval gate = review script: list drafts, wait reviewer)
 > **Coupling:** 🟡 — chạm những nơi hành động có tác động (submit/pay)

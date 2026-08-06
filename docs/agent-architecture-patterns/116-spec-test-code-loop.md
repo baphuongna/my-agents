@@ -1,4 +1,4 @@
-# Hướng MMMMM: Spec→Test→Code Loop — exec contract: sinh test từ spec trước khi code
+# Hướng DL: Spec→Test→Code Loop — exec contract: sinh test từ spec trước khi code
 
 > **Nguồn gốc:** GitHub Spec-Kit (2025); arXiv 2602.00180 SDD; "TDD becomes more powerful with agentic coding" (Spec-Kit discussion)
 > **Coupling:** 🟢 — quy trình xây dựng, runtime không đổi

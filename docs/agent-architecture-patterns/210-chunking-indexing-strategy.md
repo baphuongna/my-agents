@@ -1,4 +1,4 @@
-# Hướng CCCCCCCC: Chunking & Indexing Strategy — tách tài liệu đúng mức cho retrieval: parent-child, semantic
+# Hướng HB: Chunking & Indexing Strategy — tách tài liệu đúng mức cho retrieval: parent-child, semantic
 
 > **Nguồn gốc:** prodinit "RAG Chunking Strategies" ("Hierarchical (parent-child) chunking là hiệu suất cao nhất cho production — small chunks cho vector retrieval chính xác, parent chunks cho context"); Dell "Chunk Twice, Retrieve Once" ("cách split tài liệu ảnh hưởng trực tiếp khả năng hiểu + retrieve; poor chunking → kém"); dev.to "10 Chunking Strategies That Make or Break Your RAG" ("chunking strategy có ảnh hưởng bằng hoặc hơn embedding model selection"); TowardsAI "Parent-Child Document Architecture" (child trong parent qua sliding windows + semantic merging); insertchat (small chunks retrieval — large parent chunks cho LLM context)
 > **Coupling:** 🟡 — chạm pipeline ingest + retrieval của mọi RAG

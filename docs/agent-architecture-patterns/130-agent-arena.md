@@ -1,4 +1,4 @@
-# Hướng AAAAAA: Agent Arena — xếp hạng năng lực agent bằng đấu trận Elo
+# Hướng DZ: Agent Arena — xếp hạng năng lực agent bằng đấu trận Elo
 
 > **Nguồn gốc:** LMArena Elo (Stanford AI Index 2026); Arena-Hard-Auto auto-benchmark; Bradley-Terry model; llm-stats.com/benchmarks 2026
 > **Coupling:** 🟢 — thêm lớp đo, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng CCC: Explicit Handoff — chuyển quyền điều khiển tường minh
+# Hướng BB: Explicit Handoff — chuyển quyền điều khiển tường minh
 
 > **Nguồn gốc:** OpenAI Swarm (2024); LangChain — 1 trong 4 foundation patterns (subagents, skills, handoffs, routers)
 > **Coupling:** 🟢 — chỉ qua giá trị trả về, không cần biết agent kia

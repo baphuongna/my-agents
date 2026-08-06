@@ -1,4 +1,4 @@
-# Hướng EEEEEEEE: Multi-Agent Debate & Ensemble — nhiều LLM tranh luận/trung bình để chính xác hơn
+# Hướng GD: Multi-Agent Debate & Ensemble — nhiều LLM tranh luận/trung bình để chính xác hơn
 
 > **Nguồn gốc:** "Wisdom of the Silicon Crowd" (Schoenegger 2024, Science Adv — LLM ensemble rival human crowd; 146 cites); NeurIPS 2024 "Multi-LLM Debate: Framework, Principles, Interventions" (theoretical — Bayesian inference); "Multi-Agent Debate for LLM Judges" (Hu — 25 cites — iterate + refine qua structured discussion); ACM "The Cost of Consensus" (đặt câu hỏi — self-correction có thể tốt hơn debate)
 > **Coupling:** 🟡 — nhiều LLM gọi am song song + aggregate

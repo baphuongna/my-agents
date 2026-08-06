@@ -1,4 +1,4 @@
-# Hướng VVVVVV: Model Distillation — model lớn dạy model nhỏ, agent rẻ hơn/offline được
+# Hướng EU: Model Distillation — model lớn dạy model nhỏ, agent rẻ hơn/offline được
 
 > **Nguồn gốc:** Google "Distilling step-by-step" (outperform larger LLM, less data, smaller model); IBM Knowledge Distillation (teacher → student); arXiv 2312.15842 "KD of LLM for Education"; DistillLabs "LLM to Deployable SLM" tutorial
 > **Coupling:** 🟢 — model layer, runtime không đổi (đổi model nền)

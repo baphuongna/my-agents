@@ -1,4 +1,4 @@
-# Hướng WWWW: Prompt Compression — nén token trước khi gọi LLM
+# Hướng CV: Prompt Compression — nén token trước khi gọi LLM
 
 > **Nguồn gốc:** microsoft/LLMLingua & LLMLingua-2 (arXiv 2407.08892); machinelearningmastery 2026
 > **Coupling:** 🟡 — chèn trước LLM call, cần giữ chất lượng

@@ -1,4 +1,4 @@
-# Hướng TTT: EvoPrompt — tối ưu prompt/config agent bằng tiến hóa
+# Hướng BS: EvoPrompt — tối ưu prompt/config agent bằng tiến hóa
 
 > **Nguồn gốc:** Guo et al., 2023 "EvoPrompt" (arXiv 2309.08532, ~587 cites, +25% BBH)
 > **Coupling:** 🟢 — evolution chạy ngoài runtime, qua eval

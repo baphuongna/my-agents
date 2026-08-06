@@ -1,4 +1,4 @@
-# Hướng IIIIIIII: Voice Agent Pipeline — VAD → STT → LLM → TTS, tối ưu latency dưới 500ms
+# Hướng HH: Voice Agent Pipeline — VAD → STT → LLM → TTS, tối ưu latency dưới 500ms
 
 > **Nguồn gốc:** LiveKit "Voice Agent Architecture: STT, LLM, TTS Pipelines" (4 nguồn latency — streaming pipeline overlap làm giảm latency tổng); Ketch "Voice Agent Pipeline: VAD, STT, LLM & TTS" (ABY — phải dưới 500ms response time); Retell AI "How Real-Time Voice AI Works" (voice agent stream audio out 200-400ms chunks); arXiv 2603.05413 "Building Enterprise Realtime Voice Agents" (measured TTFA 755ms — streaming overlap giảm dưới sequential); Hamming "Voice AI Latency" ("industry consensus: 500ms TTFT hoặc thấp hơn — LLM chiếm ~70% tổng latency"); Cerebrium (500ms global voice agent)
 > **Coupling:** 🟡 — chạm layer giao diện âm thanh (input/output) + LLM latency

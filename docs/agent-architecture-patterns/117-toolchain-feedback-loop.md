@@ -1,4 +1,4 @@
-# Hướng NNNNN: Toolchain Feedback Loop — lint/typecheck/test làm feedback cho agent code
+# Hướng DM: Toolchain Feedback Loop — lint/typecheck/test làm feedback cho agent code
 
 > **Nguồn gốc:** "Rust's Compiler Catches What Coding Agents Get Wrong" (marclove 2025); aihero "AI Coding Feedback Loops for TS" 2026; arXiv 2605.20456 Agentic Agile-V
 > **Coupling:** 🟢 — toolchain chạy ngoài, agent không đổi

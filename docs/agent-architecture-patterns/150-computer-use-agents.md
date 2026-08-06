@@ -1,4 +1,4 @@
-# Hướng UUUUUU: Computer-Use Agents — agent thao tác GUI/trình duyệt như người
+# Hướng ET: Computer-Use Agents — agent thao tác GUI/trình duyệt như người
 
 > **Nguồn gốc:** Claude Platform "Computer use tool" (Anthropic); arXiv 2411.10323 "Preliminary Case Study with Claude 3.5 Computer Use"; Ui.Vision "Computer Use in Browser"; XHinker "How AI Agent Sees Desktop and Controls Mouse"
 > **Coupling:** 🟢 — thêm tool layer mới, runtime không đổi

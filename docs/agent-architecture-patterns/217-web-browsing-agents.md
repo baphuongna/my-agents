@@ -1,4 +1,4 @@
-# Hướng JJJJJJJJ: Web Browsing Agents — agent điều khiển trình duyệt (Playwright) để tương tác web thật
+# Hướng HI: Web Browsing Agents — agent điều khiển trình duyệt (Playwright) để tương tác web thật
 
 > **Nguồn gốc:** Playwright docs ("reliable web automation — one API drive Chromium, Firefox, WebKit — for testing, scripting, and AI agents"); Stackademic "Playwright in Agentic AI" ("Playwright's interaction model mirrors how humans use browsers — fires real mouse events, keyboard"); fast.io "Best Headless Browsers for AI Agents" (Playwright + agent browser — interact, authenticate, save sessions); Playwright MCP guide (navigation, form filling, data extraction — LLM-friendly); plainenglish "Autonomous Browser Agents" (LLMs + Playwright + memory + planning loops)
 > **Coupling:** 🟡 — chạm tầng tool tương tác web (quyền, session, DOM)

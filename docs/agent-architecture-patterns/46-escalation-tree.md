@@ -1,4 +1,4 @@
-# Hướng UU: Escalation Tree — graduated failure, không chỉ retry
+# Hướng AT: Escalation Tree — graduated failure, không chỉ retry
 
 > **Nguồn gốc:** enterprise workflow design; LangGraph long-running processes; agentpatternscatalog "Incident Response Runbook"
 > **Coupling:** 🟢 — mya nội bộ giữa các lớp xử lý

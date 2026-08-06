@@ -1,4 +1,4 @@
-# Hướng PPPPPP: Model Registry — catalog tập trung mọi model, quản vòng đời model
+# Hướng EO: Model Registry — catalog tập trung mọi model, quản vòng đời model
 
 > **Nguồn gốc:** MLflow Model Registry; AWS SageMaker Model Registry ("catalog and manage model versions, collaboration, governance"); Databricks Unity Catalog Model Lifecycle; Portkey "Model Catalog accelerates LLM development"; Atlan "Model Registry Implementation Guide" (schema/versioning/lineage/access)
 > **Coupling:** 🟢 — thêm lớp catalog, runtime không đổi

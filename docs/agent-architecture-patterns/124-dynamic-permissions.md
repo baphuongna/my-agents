@@ -1,4 +1,4 @@
-# Hướng UUUUU: Dynamic Contextual Permissions — quyền tool co giãn theo ngữ cảnh
+# Hướng DT: Dynamic Contextual Permissions — quyền tool co giãn theo ngữ cảnh
 
 > **Nguồn gốc:** "Dynamic Capability Scoping for Enterprise AI Agents" (arXiv 2607.22445, 2026); aembit CBAC MCP 2026; oso context-aware
 > **Coupling:** 🟡 — policy động, gateway đổi nhẹ

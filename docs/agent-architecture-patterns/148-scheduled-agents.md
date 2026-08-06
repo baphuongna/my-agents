@@ -1,4 +1,4 @@
-# Hướng SSSSSS: Scheduled Agents — agent tự chạy định kỳ (cron), tóm tắt/kiểm tra liên tục
+# Hướng ER: Scheduled Agents — agent tự chạy định kỳ (cron), tóm tắt/kiểm tra liên tục
 
 > **Nguồn gốc:** Fast.io "AI Agent Job Scheduling: Best Patterns for 2026" (cron/event triggers/state persistence); ChatGPT Scheduled Tasks 2026 (periodic summaries); Azure SRE Agent scheduled tasks; AMD/GAIA recurring task scheduler (#550); Panaversity "Loop Skill and Cron Tools" (`/loop 15m`)
 > **Coupling:** 🟢 — thêm bộ lập lịch, runtime không đổi

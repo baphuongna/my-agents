@@ -1,4 +1,4 @@
-# Hướng FF: Saga Pattern — distributed transactions cho multi-agent
+# Hướng AE: Saga Pattern — distributed transactions cho multi-agent
 
 > **Nguồn gốc:** Distributed Systems (Garcia-Molina & Salem, 1987)
 > **Coupling:** 🟡 Saga coordinator + compensation

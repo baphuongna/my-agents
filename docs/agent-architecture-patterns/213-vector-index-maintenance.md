@@ -1,4 +1,4 @@
-# Hướng FFFFFFFF: Vector Index Maintenance — cập nhật index tăng dần, reindex nền, chống stale embedding
+# Hướng HE: Vector Index Maintenance — cập nhật index tăng dần, reindex nền, chống stale embedding
 
 > **Nguồn gốc:** apxml "Vector Index Updates & Maintenance" (strategies + trade-offs quản lý index updates trong production); Medium "Incremental Indexing Strategies for Large RAG Systems" (update vector DB hiệu quả, giảm cost, real-time); arXiv 2411.00970 "Incremental IVF Index Maintenance for Streaming Vector Databases" (Ada-IVF — nhiệt độ ưu tiên partition hay truy cập, tránh work thừa cho partition hiếm); ACM "Incremental In-Place Update for Billion-Scale Vector Search" (LIRE — reassign vector ở biên partition); Unstructured "Vector Indexing Strategies" ("nếu ingest liên tục — chọn index hỗ trợ incremental inserts + maintenance window dự đoán")
 > **Coupling:** 🟡 — chạm tầng index của RAG/memory

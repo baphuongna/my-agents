@@ -1,4 +1,4 @@
-# Hướng BBBBBBBB: Query Rewriting & Expansion — LLM chỉnh lại câu hỏi trước khi retrieval cho RAG tốt hơn
+# Hướng HA: Query Rewriting & Expansion — LLM chỉnh lại câu hỏi trước khi retrieval cho RAG tốt hơn
 
 > **Nguồn gốc:** Meilisearch "Query rewriting for RAG" (rewrite cải thiện retrieval accuracy, giảm hallucination); Elastic Search Labs "Query rewriting strategies" (LLM-generated keywords, pseudo-answers, enriched terms — concrete QR strategies); arXiv 2407.12529 "Crafting the Path: Robust Query Rewriting" ("generate a new query that complements the original to improve the IR system"); AnyScale "Retrieval strategies" ("rewrite + expansion: correct spelling, expand acronyms, clarify ambiguities, add synonyms"); gopenai "LLM-Based Query Rewriting and HyDE"
 > **Coupling:** 🟢 — thuần ở bước pre-retrieval, không đụng agent

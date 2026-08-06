@@ -1,4 +1,4 @@
-# Hướng CCCCCC: Human-in-the-Loop — agent thực thi, người duyệt quyết định cuối
+# Hướng EB: Human-in-the-Loop — agent thực thi, người duyệt quyết định cuối
 
 > **Nguồn gốc:** StackAI HITL Approval Workflows; Strata "HITL: 2026 Guide to AI Oversight"; Port.io "HITL for AI Coding Agents"; Galileo AI HITL Oversight 2026
 > **Coupling:** 🟢 — thêm lớp duyệt, runtime không đổi

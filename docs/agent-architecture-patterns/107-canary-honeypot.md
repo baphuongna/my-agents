@@ -1,4 +1,4 @@
-# Hướng DDDDD: Canary/Honeypot Tools — bẫy phát hiện agent bị thao túng
+# Hướng DC: Canary/Honeypot Tools — bẫy phát hiện agent bị thao túng
 
 > **Nguồn gốc:** "Honeypot for Prompt Injections in Claude Code" (ianlpaterson 2026); "LLM Agent Honeypot" (lesswrong 2026); reverse prompt injection honeypot (itnext)
 > **Coupling:** 🟢 — đặt bẫy riêng, agent không đổi

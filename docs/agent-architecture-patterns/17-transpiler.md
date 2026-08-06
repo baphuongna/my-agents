@@ -1,4 +1,4 @@
-# Hướng P: Transpiler — mya dịch giữa agent formats
+# Hướng Q: Transpiler — mya dịch giữa agent formats
 
 > **Coupling:** 🟢 Zero — mya chỉ translate
 > **Agent-agnostic:** ✅ — biên dịch sang bất kỳ agent

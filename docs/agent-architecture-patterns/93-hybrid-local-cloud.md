@@ -1,4 +1,4 @@
-# Hướng PPPP: Hybrid Local-Cloud LLM Routing — chạy model rẻ local, cloud khi cần
+# Hướng CO: Hybrid Local-Cloud LLM Routing — chạy model rẻ local, cloud khi cần
 
 > **Nguồn gốc:** "Hybrid Cloud-Local LLM: Complete Architecture Guide" (sitepoint 2026); promptquorum/mindstudio 2026
 > **Coupling:** 🟢 — tầng router, đổi model không đổi agent

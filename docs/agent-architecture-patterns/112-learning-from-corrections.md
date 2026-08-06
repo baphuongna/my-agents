@@ -1,4 +1,4 @@
-# Hướng IIIII: Learning from User Corrections — agent ngày càng hợp ý người dùng
+# Hướng DH: Learning from User Corrections — agent ngày càng hợp ý người dùng
 
 > **Nguồn gốc:** "Learning Personalized Agents from Human Feedback" (Meta AI PAHF); RLHF → online preference 2026
 > **Coupling:** 🟡 — vòng học cần cổng quyết định

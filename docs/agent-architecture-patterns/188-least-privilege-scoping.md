@@ -1,4 +1,4 @@
-# Hướng GGGGGGGG: Least Privilege Tool Scoping — agent chỉ thấy/có quyền tool vừa đủ cho task
+# Hướng GF: Least Privilege Tool Scoping — agent chỉ thấy/có quyền tool vừa đủ cho task
 
 > **Nguồn gốc:** Microsoft Security "Least Privilege for AI Agents" (managed identity + least-privilege RBAC — nếu không agent có thể access/modify sensitive data); Cequence "Why AI Agents Need Least Privilege" (restrict tool access/API permissions/data scope — chỉ đúng task cần); arXiv 2607.22445 "Dynamic Capability Scoping" (dynamic least-privilege — prevention trước detection); Okta (implement guide); Oso research (96% permissions unused — agents inherit at machine speed)
 > **Coupling:** 🟡 — tool registry phải hỗ trợ scope động theo task

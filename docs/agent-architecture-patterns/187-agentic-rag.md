@@ -1,4 +1,4 @@
-# Hướng FFFFFFFF: Agentic RAG — retrieval là chuỗi quyết định: lập kế hoạch truy vấn, gọi công cụ, đối chiếu
+# Hướng GE: Agentic RAG — retrieval là chuỗi quyết định: lập kế hoạch truy vấn, gọi công cụ, đối chiếu
 
 > **Nguồn gốc:** arXiv 2501.09136 "Agentic Retrieval-Augmented Generation" (Singh 2025 — 561 cites: RAG → real-time retrieval context); AgenticRAG Survey (cardinality, control structure, autonomy, knowledge); TuringPost "20 Advanced RAG Types" (agentic RAG — retrieval là multi-step decision process — LLM plan, orchestrate); futureAGI "Agentic RAG 2026" (tool-using agents over vector DBs — query rewriting, multi-hop retrieval)
 > **Coupling:** 🟡 — RAG phải qua pipeline agent (không phải 1 retrieve)

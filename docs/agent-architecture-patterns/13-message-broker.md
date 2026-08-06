@@ -1,4 +1,4 @@
-# Hướng L: Message Broker — Redis/NATS giữa agents
+# Hướng M: Message Broker — Redis/NATS giữa agents
 
 > **Coupling:** 🟢 Redis/NATS — agents pub/sub topics
 > **Agent-agnostic:** ✅ — bất kỳ agent connect broker

@@ -1,4 +1,4 @@
-# Hướng JJJJ: TEE / Confidential Computing — agent chạy trong enclave tin cậy
+# Hướng CI: TEE / Confidential Computing — agent chạy trong enclave tin cậy
 
 > **Nguồn gốc:** "A Survey of Confidential Computing for Agentic AI" (arXiv 2605.03213, 2026); confidentialcomputing.io 2026
 > **Coupling:** 🟢 — enclave thay runtime, agent không đổi

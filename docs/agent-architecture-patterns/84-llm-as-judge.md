@@ -1,4 +1,4 @@
-# Hướng GGGG: LLM-as-Judge — LLM chấm LLM theo rubric
+# Hướng CF: LLM-as-Judge — LLM chấm LLM theo rubric
 
 > **Nguồn gốc:** Zheng et al., 2023 (MT-Bench); zylos.ai 2026 "LLM-as-Judge Patterns for Agent Evaluation"; arXiv 2506.22316
 > **Coupling:** 🟢 — judge ngoài runtime, qua eval

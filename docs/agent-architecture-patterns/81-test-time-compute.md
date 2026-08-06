@@ -1,4 +1,4 @@
-# Hướng DDDD: Test-Time Compute Scaling — chi compute theo độ khó
+# Hướng CC: Test-Time Compute Scaling — chi compute theo độ khó
 
 > **Nguồn gốc:** Snell et al., ICLR 2025 oral (arXiv 2408.03314, ~569 cites); arXiv 2506.12928 (agents); TOPS NeurIPS 2025
 > **Coupling:** 🟢 — compute allocation quanh 1 request

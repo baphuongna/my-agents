@@ -1,4 +1,4 @@
-# Hướng SSSSSSSS: Prompt Injection Defense — chống tấn công inject: input sanitize, tách dữ liệu không tin, guard
+# Hướng GR: Prompt Injection Defense — chống tấn công inject: input sanitize, tách dữ liệu không tin, guard
 
 > **Nguồn gốc:** OWASP LLM Prompt Injection Prevention Cheat Sheet (regular security testing, monitor new techniques, update defenses); Microsoft "How Microsoft Defends Against Indirect Prompt Injection" (systems xử lý untrusted data); Palo Alto "What is Prompt Injection" (attacker inject executable code — manipulate responses, execute unauthorized actions); tldrsec "Injecting compute — treat all LLM outputs and untrusted data as potentially malicious"
 > **Coupling:** 🟡 — mọi input/output LLM phải qua kiểm tra

@@ -1,4 +1,4 @@
-# Hướng GGGGGGGG: PII Redaction & Anonymization — lọc dữ liệu nhạy cảm trước khi gửi LLM và sau khi nhận output
+# Hướng HF: PII Redaction & Anonymization — lọc dữ liệu nhạy cảm trước khi gửi LLM và sau khi nhận output
 
 > **Nguồn gốc:** arXiv 2501.12465 "Adaptive PII Mitigation Framework for LLMs" ("GDPR mandates stricter anonymization for sensitive identifiers — replacing email..."); PredictionGuard "PII detection and redaction for LLM pipelines" ("LLM apps can reveal sensitive information through outputs — unauthorized access, IP loss"); radicalbit "PII redaction and anonymization at the gateway level" (gateway-level để enforce privacy); Presidio PII Redaction Guard (redacts PII before LLM + sweeps output để catch leaked/hallucinated data); LBL "Handling PII with LLMs" (privacy filter models + sanitization); strac.io (automated tools identify + redact sensitive info from outputs)
 > **Coupling:** 🟡 — chặn giữa input/output và LLM (gateway)

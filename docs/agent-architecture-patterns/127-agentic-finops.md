@@ -1,4 +1,4 @@
-# Hướng XXXXX: Agentic FinOps — quản trị chi phí agent theo tổ chức
+# Hướng DW: Agentic FinOps — quản trị chi phí agent theo tổ chức
 
 > **Nguồn gốc:** praesidia "AI FinOps" 2026; finout "Agentic AI Cost Governance" 2026; tmls "Agentic FinOps"
 > **Coupling:** 🟡 — meter + policy, gateway đổi nhẹ

@@ -1,4 +1,4 @@
-# Hướng ZZZZZZZ: Tool Orchestration Graph — LLM quản lý luồng tool: subset, song song, phụ thuộc
+# Hướng FY: Tool Orchestration Graph — LLM quản lý luồng tool: subset, song song, phụ thuộc
 
 > **Nguồn gốc:** arXiv 2603.22862 "The Evolution of Tool Use in LLM Agents: From Single-Tool to Orchestrated" (dynamic tool subset, cross-tool dependency modeling, sequential + parallel scheduling, failure recovery); Union.ai "Planner Agent with Parallel Execution" (LLM tạo execution plan → orchestrate specialist agents); IBM "LLM Agent Orchestration" (manage + coordinate LLM với tools/APIs); LangChain "Plan-and-Execute Agents" (faster + cheaper — plan trước rồi execute)
 > **Coupling:** 🟡 — runtime phải hỗ trợ graph tool (song song/phụ thuộc)

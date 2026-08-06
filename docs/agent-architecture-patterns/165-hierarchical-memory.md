@@ -1,4 +1,4 @@
-# Hướng JJJJJJJ: Hierarchical Memory Architecture — bộ nhớ agent phân cấp (working/episodic/semantic/procedural)
+# Hướng FI: Hierarchical Memory Architecture — bộ nhớ agent phân cấp (working/episodic/semantic/procedural)
 
 > **Nguồn gốc:** IBM "What Is AI Agent Memory?" (episodic — recall past experiences); MongoDB "Agent Memory Guide" (short-term: working/semantic cache/shared; long-term: episodic/semantic/procedural/associative); mem0 "Long-Term Memory for AI Agents"; emasterlabs "Architecture and Orchestration of Memory Systems" (records of past conversations, task executions, decisions)
 > **Coupling:** 🟡 — các thành phần phải đọc/ghi qua memory layer

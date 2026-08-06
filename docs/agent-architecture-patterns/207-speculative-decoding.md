@@ -1,4 +1,4 @@
-# Hướng ZZZZZZZZ: Speculative Decoding — dùng draft model đề xuất vài token, target model kiểm tra song song
+# Hướng GY: Speculative Decoding — dùng draft model đề xuất vài token, target model kiểm tra song song
 
 > **Nguồn gốc:** NVIDIA "Introduction to Speculative Decoding" (draft-target — draft nhỏ đề xuất token, target lớn verify song song); arXiv 2402.01528 "Decoding Speculative Decoding" (speedup "heavily depends on the choice of the draft model" — khảo sát 350+ config); BentoML "3× Faster LLM Inference" (inference-time optimization — không hy sinh chất lượng); introl 2025 (draft đề xuất 5-8 token verify song song — tận dụng GPU tính song song); research.google "faster and cheaper inference without compromising quality"
 > **Coupling:** 🟢 — thuần inference, không đụng logic agent

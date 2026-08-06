@@ -1,4 +1,4 @@
-# Hướng XXXXXX: Agent Onboarding — khởi tạo agent mới có nền tảng tri thức ngay
+# Hướng EW: Agent Onboarding — khởi tạo agent mới có nền tảng tri thức ngay
 
 > **Nguồn gốc:** DataHub "AI Agent Onboarding: The Missing Discipline" 2026; AgentPatterns "Team Onboarding for AI Agent Workflows" (trust calibration, vocabulary); Microsoft "Building intelligent agents with knowledge sources" (EP07)
 > **Coupling:** 🟢 — thêm bước khởi tạo, runtime không đổi

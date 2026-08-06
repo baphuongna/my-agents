@@ -1,4 +1,4 @@
-# Hướng EEEEEEEE: Embedding Model Evaluation — chọn & đánh giá model embedding đúng dữ liệu, đo recall/NDCG
+# Hướng HD: Embedding Model Evaluation — chọn & đánh giá model embedding đúng dữ liệu, đo recall/NDCG
 
 > **Nguồn gốc:** OpenLayer "Embedding Model Benchmarking Guide" (retrieval quality metrics — "how well embeddings surface relevant content in search/RAG pipelines"); arXiv 2607.23507 "Choosing a Text Embedding Model" (T3EM đạt retrieval quality cao nhất — average nDCG@10 = 0.638 — nhưng cost 7-14×); Weaviate "Evaluation Metrics for Search" (recall@K — "how many relevant items retrieved from the dataset"; MTEB); aimultiple "Open Source Embedding Models Benchmark for RAG" (14 models, 500+ curated queries, legal contracts, Recall@10); unstructured "Best Embedding Model for RAG" (NDCG@10 widely used)
 > **Coupling:** 🟢 — độc lập, chỉ chạm bước embedding trong ingest/retrieval

@@ -1,4 +1,4 @@
-# Hướng KKKKKKKK: Tool Result Compression — nén kết quả tool/conversation trước khi vào context của LLM
+# Hướng HJ: Tool Result Compression — nén kết quả tool/conversation trước khi vào context của LLM
 
 > **Nguồn gốc:** factory.ai "Compressing Context" (nén conversation on-the-fly bằng summarization model — giữ max tokens); Morph "Context Compaction" (giảm context window bằng cách xóa low-signal tokens thay vì viết lại — verbatim compaction vs rewrite); OneUptime "How to Build Context Compression" (nén trước khi gửi — giảm token 50-80% mà giữ thông tin); arXiv 2507.20198 "Multimodal Long-Context Token Compression" (survey); kargarisaac "Context Compaction" (compaction — nén không mất essence, mở rộng window hiệu quả tới triệu token)
 > **Coupling:** 🟡 — chạm mọi chỗ nhồi context (tool results, history)

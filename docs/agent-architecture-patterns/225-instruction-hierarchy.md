@@ -1,4 +1,4 @@
-# Hướng RRRRRRRR: Instruction Hierarchy — xếp hạng ưu tiên chỉ thị (system > tool > user > injected) để chống lạm dụng
+# Hướng HQ: Instruction Hierarchy — xếp hạng ưu tiên chỉ thị (system > tool > user > injected) để chống lạm dụng
 
 > **Nguồn gốc:** OpenAI "The Instruction Hierarchy: Training LLMs to Prioritize" (arXiv 2404.13208 — "LLMs often consider system prompts same priority as text from untrusted users and third-party content — bugs"); HuggingFace papers (hierarchy "increases robustness against malicious prompts selectively prioritizing system instructions"); HiddenLayer "How LLMs Learn Roles" ("highest priority set = system prompt/developer message"); gend.co (hierarchy = security framework — train LLM prioritize based on source); Clioapp ("prioritizes system messages over user and both over third-party content like web search results")
 > **Coupling:** 🟡 — cách viết prompt/cấu trúc context cả hệ

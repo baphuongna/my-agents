@@ -1,4 +1,4 @@
-# Hướng QQQQQQQQ: Knowledge Editing — sửa fact trong model không cần fine-tune (ROME/MEMIT)
+# Hướng HP: Knowledge Editing — sửa fact trong model không cần fine-tune (ROME/MEMIT)
 
 > **Nguồn gốc:** ROME (rome.baulab.info) "Locating and Editing Factual Associations in GPT" (rank-one update cho MLP module — key-value view); arXiv 2401.07453 "Model Editing at Scale leads to Gradual and Catastrophic" ("ROME updates single layer, MEMIT updates multiple layers — edit at scale"); TACL "MAKE: Memory-Associated Knowledge Editing" (ROME — update weight matrix FFN để fit target); emergentmind "Rank-One Model Editing" (closed-form — precise rewriting factual associations); arXiv 2401.07453/ACL "Can We Continually Edit Language Models?" (edit nhiều lần — degradation); jasonforjoy "Model Editing Harms LLMs" (editing quá nhiều → overfit editing facts)
 > **Coupling:** 🟡 — đổi trọng số model (dùng chung nhiều nơi)

@@ -1,4 +1,4 @@
-# Hướng OO: Tool Registry + Permission Matrix — schema tập trung, least-privilege
+# Hướng AN: Tool Registry + Permission Matrix — schema tập trung, least-privilege
 
 > **Nguồn gốc:** Plugin systems (Emacs/VS Code); OpenAI function calling schemas (2023)
 > **Coupling:** 🟡 Public API — tools phải đăng ký qua registry
@@ -93,7 +93,7 @@ async function guardToolCall(
 | ✅ Prompt stable tier sinh từ registry | ❌ Roles lệch với code → tool "ma" (đã có test) |
 | ✅ Đã có sẵn phần lớn (agent + core + bridge) | |
 
-## Khác Policy Engine (Hướng O)
+## Khác Policy Engine (Hướng P)
 
 | | O: Policy Engine | OO: Tool Registry |
 |---|---|---|

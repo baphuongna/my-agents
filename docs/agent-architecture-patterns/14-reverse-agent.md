@@ -1,4 +1,4 @@
-# Hướng M: Reverse Agent — mya LÀ agent, agents khác LÀ tools
+# Hướng N: Reverse Agent — mya LÀ agent, agents khác LÀ tools
 
 > **Coupling:** 🟢 Zero — agents là function calls
 > **Agent-agnostic:** ✅ — bất kỳ CLI agent
@@ -141,7 +141,7 @@ mya LLM (turn 3):
 
 ## Khác pi-crew
 
-pi-crew cũng spawn subagents. Nhưng pi-crew găm vào pi. Hướng M:
+pi-crew cũng spawn subagents. Nhưng pi-crew găm vào pi. Hướng N:
 - mya có runTurn() riêng (không cần pi's loop)
 - Agents khác là TOOLS (không phải subagents trong pi)
 - mya's LLM quyết định khi nào gọi agent nào

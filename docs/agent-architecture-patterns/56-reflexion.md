@@ -1,4 +1,4 @@
-# Hướng EEE: Reflexion — tự đánh giá, ghi nhớ lỗi, thử lại
+# Hướng BD: Reflexion — tự đánh giá, ghi nhớ lỗi, thử lại
 
 > **Nguồn gốc:** Shinn et al., 2023 (NeurIPS; arXiv 2303.11366)
 > **Coupling:** 🟢 — chỉ quanh 1 agent + bộ nhớ phản hồi

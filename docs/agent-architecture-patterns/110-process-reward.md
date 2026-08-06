@@ -1,4 +1,4 @@
-# Hướng GGGGG: Process Reward — chấm điểm từng bước thay vì chỉ kết quả cuối
+# Hướng DF: Process Reward — chấm điểm từng bước thay vì chỉ kết quả cuối
 
 > **Nguồn gốc:** Process Reward Models / process supervision (OpenAI PRM800K 2023→ 2025-2026 agents); emergentmind
 > **Coupling:** 🟢 — tầng giám sát, không đổi agent

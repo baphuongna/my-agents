@@ -1,4 +1,4 @@
-# Hướng WWWWWW: Intent Router — phân lớp ý định user rồi chuyển đúng agent
+# Hướng EV: Intent Router — phân lớp ý định user rồi chuyển đúng agent
 
 > **Nguồn gốc:** NVIDIA AI-Q Intent Classifier Blueprint ("3 roles 1 LLM call: intent classification + meta response + depth"); Tian Pan "The Intent Classification Layer Most Agent Routers Skip" 2026 (417 tools → 20% accuracy khi không có layer); Zep "Semantic Similarity as Intent Router"; WonderLab "Intent Recognition and Routing"
 > **Coupling:** 🟢 — thêm lớp phân lớp trước, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng LLL: HTN Planning — phân rã task có cấu trúc phương thức
+# Hướng BK: HTN Planning — phân rã task có cấu trúc phương thức
 
 > **Nguồn gốc:** Erol et al., 1994; SHOP2 (Nau et al., 2003); HTN + LLM 2025 (arXiv 2605.07707)
 > **Coupling:** 🟢 — planner chạy trên task store, không phụ thuộc agent

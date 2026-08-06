@@ -1,4 +1,4 @@
-# Hướng RRRRRR: Data Flywheel — dữ liệu production quay lại cải thiện agent liên tục
+# Hướng EQ: Data Flywheel — dữ liệu production quay lại cải thiện agent liên tục
 
 > **Nguồn gốc:** arXiv 2510.06674 "A Data Flywheel for Continuous Improvement in LLM Agents" (Agent-in-the-Loop, EMNLP 2025 Industry); NVIDIA Data Flywheel Blueprint (distillation/fine-tuning loop); Freeplay "Agent Data Flywheel"; Augment "Agent Learning Flywheel" (execute→coach→distill→improve)
 > **Coupling:** 🟢 — thêm vòng hồi tiếp, runtime không đổi

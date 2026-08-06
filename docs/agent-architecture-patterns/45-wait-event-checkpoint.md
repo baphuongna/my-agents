@@ -1,4 +1,4 @@
-# Hướng TT: Durable Wait-for-Event — checkpoint, pause, resume
+# Hướng AS: Durable Wait-for-Event — checkpoint, pause, resume
 
 > **Nguồn gốc:** LangGraph checkpointing; Temporal durable execution; AWS Step Functions wait-for-callback
 > **Coupling:** 🟢 — agents không biết mình bị pause

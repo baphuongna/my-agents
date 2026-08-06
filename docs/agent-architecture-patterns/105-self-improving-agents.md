@@ -1,4 +1,4 @@
-# Hướng BBBBB: Self-Improving Agents — agent tự tích lũy kinh nghiệm thành năng lực
+# Hướng DA: Self-Improving Agents — agent tự tích lũy kinh nghiệm thành năng lực
 
 > **Nguồn gốc:** "Self-Improvements in Modern Agentic Systems: A Survey" (arXiv 2607.13104, 2026); Gao "Survey of Self-Evolving Agents" (222 cites); OpenAI cookbook
 > **Coupling:** 🟡 — vòng hồi quy cần cổng kiểm soát

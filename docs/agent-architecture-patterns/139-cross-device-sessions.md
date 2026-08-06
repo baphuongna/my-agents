@@ -1,4 +1,4 @@
-# Hướng JJJJJJ: Cross-Device Sessions — session/context/env nhất quán khi đổi máy
+# Hướng EI: Cross-Device Sessions — session/context/env nhất quán khi đổi máy
 
 > **Nguồn gốc:** Ably "Multi-device AI session continuity" (channel-based architecture); Fast.io "AI Agent Offline Sync Guide 2026"; Warp "Agent Session Sharing"; Anthropic Cursor/Claude Code cross-device session requests (x/61398)
 > **Coupling:** 🟡 — session state phải tách khỏi máy (transport riêng)

@@ -1,4 +1,4 @@
-# Hướng HHHHH: Tool Description Engineering — viết mô tả tool để agent chọn đúng
+# Hướng DG: Tool Description Engineering — viết mô tả tool để agent chọn đúng
 
 > **Nguồn gốc:** "Writing Effective Tools for AI Agents" (Anthropic engineering); Paragon "Optimize Tool Calling" 2026
 > **Coupling:** 🟢 — metadata thay đổi, runtime không đổi

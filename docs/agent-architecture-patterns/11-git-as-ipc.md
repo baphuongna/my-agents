@@ -1,4 +1,4 @@
-# Hướng J: Git-as-IPC — agents giao tiếp qua commits/PRs
+# Hướng K: Git-as-IPC — agents giao tiếp qua commits/PRs
 
 > **Coupling:** 🟢 Git — zero infrastructure
 > **Agent-agnostic:** ✅ — bất kỳ agent dùng git

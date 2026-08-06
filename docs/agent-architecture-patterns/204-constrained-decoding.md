@@ -1,4 +1,4 @@
-# Hướng WWWWWWWW: Constrained Decoding — ép model sinh ra output đúng schema ngay từ token
+# Hướng GV: Constrained Decoding — ép model sinh ra output đúng schema ngay từ token
 
 > **Nguồn gốc:** arXiv 2501.10868 "Generating Structured Outputs from Language Models" ("Constrained decoding frameworks have standardized around JSON Schema… most uses guaranteeing constraint"); MLC "Achieving Efficient, Flexible, and Portable Structured Generation with XGrammar" (specify format + enforce during decoding); tianpan.co "Grammar-Constrained Generation" (constraints guarantee schema-valid at token level — "eliminating the validate-retry loop entirely"); zeroentropy "forcing LLM output to conform to a grammar/schema/regex by masking the next-token distribution"; NVIDIA NIM (guided_json)
 > **Coupling:** 🟡 — chạm mọi tool-call/output của agent

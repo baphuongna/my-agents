@@ -1,4 +1,4 @@
-# Hướng QQQQQ: Artifact Catalog & Multi-Artifact Versioning — quản artifact agent theo phiên bản
+# Hướng DP: Artifact Catalog & Multi-Artifact Versioning — quản artifact agent theo phiên bản
 
 > **Nguồn gốc:** "Multi-Artifact Versioning (MAV)" (SSRN 2026); solo.io agentregistry; fast.io agent artifacts guide 2025
 > **Coupling:** 🟢 — tầng lưu trữ, agent không đổi

@@ -1,4 +1,4 @@
-# Hướng GGGGGG: Time-Travel Debugging — ghi lại mọi bước, tua ngược tái dựng lỗi
+# Hướng EF: Time-Travel Debugging — ghi lại mọi bước, tua ngược tái dựng lỗi
 
 > **Nguồn gốc:** Reddit "Time-travel debugger for AI agents" (flight recorder); Undo.io "Agentic Debugging with Time Travel" (MCP); Tian Pan "Deterministic Replay: Debug AI Agents" 2026; Temporal "Time-travel debugging production code"
 > **Coupling:** 🟢 — ghi event, không đổi runtime

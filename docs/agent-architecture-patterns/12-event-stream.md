@@ -1,4 +1,4 @@
-# Hướng K: Event-Sourced Ledger — append-only log, derive state
+# Hướng L: Event-Sourced Ledger — append-only log, derive state
 
 > **Coupling:** 🟢 Log — agents produce events, mya consumes
 > **Agent-agnostic:** ✅ — bất kỳ agent emit events

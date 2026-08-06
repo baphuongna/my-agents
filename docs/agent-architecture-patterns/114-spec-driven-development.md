@@ -1,4 +1,4 @@
-# Hướng KKKKK: Spec-Driven Development — spec là nguồn sự thật, code sinh từ đó
+# Hướng DJ: Spec-Driven Development — spec là nguồn sự thật, code sinh từ đó
 
 > **Nguồn gốc:** GitHub Spec-Kit (2025); "Spec-Driven Development: From Code to Contract" (arXiv 2602.00180, 2026); addyosmani "Good Spec" 2026
 > **Coupling:** 🟢 — spec là dữ liệu, runtime không đổi

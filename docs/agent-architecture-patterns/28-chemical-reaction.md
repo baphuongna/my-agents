@@ -1,4 +1,4 @@
-# Hướng CC: Chemical Reaction Network — computation là emergent
+# Hướng AB: Chemical Reaction Network — computation là emergent
 
 > **Nguồn gốc:** Gamma calculus (Banâtre & Métayer, 1986), Chemical Abstract Machine (Berry & Boudol, 1990)
 > **Coupling:** 🟡 Reaction rules (pattern → transformation)

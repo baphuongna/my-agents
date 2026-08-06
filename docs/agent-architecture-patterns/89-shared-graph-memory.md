@@ -1,4 +1,4 @@
-# Hướng LLLL: Shared Graph Memory — nhiều agents cùng đọc/ghi 1 graph tri thức
+# Hướng CK: Shared Graph Memory — nhiều agents cùng đọc/ghi 1 graph tri thức
 
 > **Nguồn gốc:** "Multi-Agent Shared Graph Memory" (NODES AI 2026); arXiv 2602.05665 (2026)
 > **Coupling:** 🟡 — chia sẻ qua store, không qua message

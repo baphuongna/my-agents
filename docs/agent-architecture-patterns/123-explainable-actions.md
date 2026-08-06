@@ -1,4 +1,4 @@
-# Hướng TTTTT: Explainable Actions — agent minh bạch lý do từng hành động
+# Hướng DS: Explainable Actions — agent minh bạch lý do từng hành động
 
 > **Nguồn gốc:** "Towards Responsible and Explainable AI Agents" (arXiv 2512.21699); loginradius/token.security 2026
 > **Coupling:** 🟢 — tầng xuất, runtime không đổi

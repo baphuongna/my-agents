@@ -1,4 +1,4 @@
-# Hướng RR: Routing — mode selector + multi-model routing
+# Hướng AQ: Routing — mode selector + multi-model routing
 
 > **Nguồn gốc:** Anthropic "Building Effective Agents" — routing workflow; Google ADK Coordinator/Dispatcher
 > **Coupling:** 🟢 — transparent, dispatch trước khi gọi

@@ -1,4 +1,4 @@
-# Hướng XXXXXXXX: Self-Consistency Sampling — sinh nhiều path reasoning rồi bỏ phiếu đa số
+# Hướng GW: Self-Consistency Sampling — sinh nhiều path reasoning rồi bỏ phiếu đa số
 
 > **Nguồn gốc:** Wang X et al. "Self-Consistency Improves Chain of Thought Reasoning" (samples 5262 cites — majority vote among final answers của nhiều reasoning chains); arXiv 2505.10772 "Ranked Voting based Self-Consistency" (majority voting "enhances CoT reasoning — select the highest self-consistency answer"); NAACL 2025 "Leveraging Reasoning Paths for Efficient LLM Sampling" (self-consistency mitigates hallucination — sample multiple paths); research.google "Confidence Improves Self-Consistency"; zeroentropy "self-consistency is the cheapest test-time-compute trick"
 > **Coupling:** 🟢 — độc lập, chỉ thay mỗi bước suy luận gọi model

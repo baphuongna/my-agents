@@ -1,4 +1,4 @@
-# Hướng KKKK: Hybrid Graph+Vector Memory — vừa tìm gần đúng, vừa suy luận quan hệ
+# Hướng CJ: Hybrid Graph+Vector Memory — vừa tìm gần đúng, vừa suy luận quan hệ
 
 > **Nguồn gốc:** "Graph-based Agent Memory: Taxonomy, Techniques" (arXiv 2602.05665, 2026); atlan/digitalapplied 2026
 > **Coupling:** 🟡 — đọc/ghi có 2 index

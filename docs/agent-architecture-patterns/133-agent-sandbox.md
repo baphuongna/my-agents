@@ -1,4 +1,4 @@
-# Hướng DDDDDD: Agent Sandbox — cô lập runtime để agent chạy code không tin cậy
+# Hướng EC: Agent Sandbox — cô lập runtime để agent chạy code không tin cậy
 
 > **Nguồn gốc:** Edera "AI Agent Sandbox vs Containers" 2026; Augment Code "Agent Execution Sandbox" (microVMs, default-deny); Northflank "How to sandbox AI agents in 2026" (Firecracker/gVisor); Blaxel "Container Escape Vulnerabilities" 2026; CSA "AI Coding Agent Sandbox Escapes" 2026
 > **Coupling:** 🟡 — thay đổi cách thực thi lệnh (shell/MCP phải đi qua sandbox)

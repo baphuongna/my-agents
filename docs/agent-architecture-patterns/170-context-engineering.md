@@ -1,4 +1,4 @@
-# Hướng OOOOOOO: Context Engineering & Token Budget — quản lý ngữ cảnh để token hiệu quả nhất
+# Hướng FN: Context Engineering & Token Budget — quản lý ngữ cảnh để token hiệu quả nhất
 
 > **Nguồn gốc:** MindStudio "Token Reduction Strategies — 8 Techniques" (semantic compression, RTK, logs to SQLite, capped thinking → 50-99% cost cut with near-zero quality loss); Reddit r/PromptEngineering (Hierarchical Summarization, Rolling Context, Explicit budget); elvex "Optimize Context Windows: 7 Strategies" (Context Budgets — max token limits enforced by automated trimming, Tiered); maxim "Context Window Management" (200K+ token windows don't eliminate budgeting — linear cost)
 > **Coupling:** 🟡 — các thành phần đồng ý chung cơ chế nén/ngân sách

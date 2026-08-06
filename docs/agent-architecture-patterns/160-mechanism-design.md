@@ -1,4 +1,4 @@
-# Hướng EEEEEEE: Mechanism Design — thiết kế "luật chơi" để agent phối hợp tự nguyện
+# Hướng FD: Mechanism Design — thiết kế "luật chơi" để agent phối hợp tự nguyện
 
 > **Nguồn gốc:** Hurwicz (Nobel 2007, incentive compatibility); Parkes "Dynamic Incentive Mechanisms" (31 cites); Garg "Foundations of Mechanism Design" tutorial (81 cites); Wikipedia Mechanism Design (economic engineering)
 > **Coupling:** 🟢 — thêm lớp luật chơi, runtime không đổi

@@ -1,4 +1,4 @@
-# Hướng IIIIII: Agent Software Supply Chain — ký và xác minh skill/tool/model trước khi dùng
+# Hướng EH: Agent Software Supply Chain — ký và xác minh skill/tool/model trước khi dùng
 
 > **Nguồn gốc:** ReversingLabs "How AI agents upend software supply chain security"; Coalition for Secure AI "Model Signing"; JFrog "Supply Chain State of Union 2026"; Nolabs "Sigstore + AI Agent Provenance"; Cloudsmith 2026 Guide
 > **Coupling:** 🟢 — thêm lớp xác minh khi nạp, runtime không đổi

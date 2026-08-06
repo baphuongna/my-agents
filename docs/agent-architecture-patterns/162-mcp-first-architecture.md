@@ -1,4 +1,4 @@
-# Hướng GGGGGGG: MCP-First Architecture — agent là MCP server/client, mọi thứ qua protocol
+# Hướng FF: MCP-First Architecture — agent là MCP server/client, mọi thứ qua protocol
 
 > **Nguồn gốc:** arXiv 2505.02279 "A Survey of Agent Interoperability Protocols" (MCP/ACP/A2A); AWS "Open Protocols for Agent Interoperability" (agents as MCP servers — microservice-like); CSA "Agentic MCP Security Best Practices v1"; Backslash "What is MCP"
 > **Coupling:** 🟡 — các component phải lộ qua MCP (protocol-bound)

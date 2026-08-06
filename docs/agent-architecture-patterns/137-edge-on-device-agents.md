@@ -1,4 +1,4 @@
-# Hướng HHHHHH: Edge/On-Device Agents — agent chạy local, offline, dữ liệu không rời máy
+# Hướng EG: Edge/On-Device Agents — agent chạy local, offline, dữ liệu không rời máy
 
 > **Nguồn gốc:** Qualcomm "Run Nexa AI agents locally on Snapdragon" 2026 (Hexagon NPU); Medium "Edge AI Dominance 2026 — 80% inference locally"; Petronella "Edge-First AI Agents: Offline, Private"; Crewdle "On-Device AI and Data Sovereignty 2026"
 > **Coupling:** 🟡 — runtime local thay cloud (model inference thay đổi)

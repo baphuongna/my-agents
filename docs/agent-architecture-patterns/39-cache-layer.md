@@ -1,4 +1,4 @@
-# Hướng NN: Cache Layer — tool-result cache, semantic cache, prompt cache
+# Hướng AM: Cache Layer — tool-result cache, semantic cache, prompt cache
 
 > **Nguồn gốc:** Caching classic (CPU → memcached, 2003); LLM prompt caching (Anthropic 2024)
 > **Coupling:** 🟢 — transparent, nằm giữa mya ↔ provider/tools

@@ -1,4 +1,4 @@
-# Hướng LLLLL: Pair Programming Agents — Navigator lập kế hoạch, Driver thực thi
+# Hướng DK: Pair Programming Agents — Navigator lập kế hoạch, Driver thực thi
 
 > **Nguồn gốc:** PairCoder (ACM 2024, 56 cites; ACL 2026 findings); arXiv 2604.10300 "LLM Agents for Pair Programming"
 > **Coupling:** 🟢 — 2 agent tách vai, không đổi runtime khác

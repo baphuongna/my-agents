@@ -1,4 +1,4 @@
-# Hướng CCCC: Context Engineering — chủ động thiết kế context cho agent
+# Hướng CB: Context Engineering — chủ động thiết kế context cho agent
 
 > **Nguồn gốc:** arXiv 2603.15690 "Engineering Context, Structure, Evolution Entropy" (2026); cộng đồng 2025-2026
 > **Coupling:** 🟢 — context là dữ liệu, đổi không đụng code

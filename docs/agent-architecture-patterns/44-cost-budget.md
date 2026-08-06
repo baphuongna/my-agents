@@ -1,4 +1,4 @@
-# Hướng SS: Cost & Step Budget Gating — trần cứng, chống chạy lố
+# Hướng AR: Cost & Step Budget Gating — trần cứng, chống chạy lố
 
 > **Nguồn gốc:** agentpatternscatalog "safety-control" — Step Budget, Cost Gating; agentic loop-bounded property
 > **Coupling:** 🟢 — mya nội bộ, agents không cần biết
@@ -12,7 +12,7 @@
 
 ## Mô tả
 
-Mỗi task có ledger riêng: tokens (in+out), cost ước lượng (theo profile model), steps (tool calls + turns). Hết ngân sách → **graceful degrade**: đổi model rẻ hơn, giảm context (gọi MM compaction), rồi checkpoint + báo user. Khác Cache (Hướng NN — tiết kiệm khi *không* cần gọi): budget là *kiểm soát* khi đã gọi quá nhiều. Nhận định "nửa cost là overhead tất định" → budget cũng phải tính cost overhead nội bộ.
+Mỗi task có ledger riêng: tokens (in+out), cost ước lượng (theo profile model), steps (tool calls + turns). Hết ngân sách → **graceful degrade**: đổi model rẻ hơn, giảm context (gọi MM compaction), rồi checkpoint + báo user. Khác Cache (Hướng AM — tiết kiệm khi *không* cần gọi): budget là *kiểm soát* khi đã gọi quá nhiều. Nhận định "nửa cost là overhead tất định" → budget cũng phải tính cost overhead nội bộ.
 
 ## Kiến trúc
 
@@ -45,7 +45,7 @@ Mỗi task có ledger riêng: tokens (in+out), cost ước lượng (theo profil
 // ✅ packages/prompts — compaction sẵn (giảm context khi gần cạn)
 
 // ❌ THIẾU: ledger token/cost theo TASK (không phải theo channel).
-//    Event ledger (Hướng K) đã có costProjection — chỉ cần biến thành gate.
+//    Event ledger (Hướng L) đã có costProjection — chỉ cần biến thành gate.
 ```
 
 ## Implementation
@@ -86,7 +86,7 @@ class TaskBudget {
   }
 }
 
-// Wire: streamWithFallback() gọi preTurn() → "stop" thì checkpoint + escalate (Hướng UU).
+// Wire: streamWithFallback() gọi preTurn() → "stop" thì checkpoint + escalate (Hướng AT).
 ```
 
 ## Được / Mất

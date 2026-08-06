@@ -1,4 +1,4 @@
-# Hướng MMMM: Prompt/Context Caching — cache prefix prompt tái sử dụng
+# Hướng CL: Prompt/Context Caching — cache prefix prompt tái sử dụng
 
 > **Nguồn gốc:** "Evaluation of Prompt Caching for Long-Horizon Agentic" (arXiv 2601.06007, 2026); OpenAI cookbook prompt_caching101
 > **Coupling:** 🟢 — tầng LLM client, agent không đổi

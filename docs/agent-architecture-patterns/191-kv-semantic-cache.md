@@ -1,4 +1,4 @@
-# Hướng JJJJJJJJ: KV & Semantic Cache — tầng cache LLM 2 lớp: KV (inference) + semantic (output reuse)
+# Hướng GI: KV & Semantic Cache — tầng cache LLM 2 lớp: KV (inference) + semantic (output reuse)
 
 > **Nguồn gốc:** Sebastian Raschka "What is a KV cache" (stores key/value tensors từ attention — inference optimization); machinelearningmastery "Complete Guide to Inference Caching" (KV + semantic + prompt caching giảm cost/latency); Medium mrschneider "Semantic vs KV Cache" (KV — internal representations; semantic — reuse kết quả tương tự); Spheron "Semantic Caching" (semantic cắt 30-70% inference cost — GPTCache/Redis); SafeKV (arXiv 2508.08438 — KV-cache prompt leakage side-channel)
 > **Coupling:** 🟢 — lớp hạ tầng, runtime không đổi

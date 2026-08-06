@@ -1,4 +1,4 @@
-# Hướng KKKKKK: Agent Personalization — agent thích nghi theo người dùng qua memory preference
+# Hướng EJ: Agent Personalization — agent thích nghi theo người dùng qua memory preference
 
 > **Nguồn gốc:** AdaPA-Agent (NeurIPS 2025, Adaptive Preference Arithmetic); arXiv 2409.11192 "Long-Term Memory for Personal AI Systems"; mem0/memVerge "AI Personalization Memory"; Playlab Adaptive Memory
 > **Coupling:** 🟢 — thêm lớp preference, runtime không đổi

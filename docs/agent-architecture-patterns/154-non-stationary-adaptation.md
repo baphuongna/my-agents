@@ -1,4 +1,4 @@
-# Hướng YYYYYY: Non-Stationary Adaptation — agent phát hiện môi trường đổi, cập nhật tri thức
+# Hướng EX: Non-Stationary Adaptation — agent phát hiện môi trường đổi, cập nhật tri thức
 
 > **Nguồn gốc:** arXiv 2505.17902 "Evolving ML in Non-Stationary Environments" (Data Drift / Concept Drift / Catastrophic Forgetting); Evidently AI "Concept Drift"; arXiv 2602.1841 "LLM-Agent Framework for Adaptive Task Allocation" (state modeling, semantic context encoding); Medium "Continuous Adaptation in Non-Stationary RL"
 > **Coupling:** 🟢 — thêm lớp phát hiện/cập nhật, runtime không đổi

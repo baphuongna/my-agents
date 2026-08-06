@@ -1,4 +1,4 @@
-# Hướng YYY: PDDL Classical Planning — formal planner thay lời nói tự do
+# Hướng BX: PDDL Classical Planning — formal planner thay lời nói tự do
 
 > **Nguồn gốc:** PDDL (McDermott 1998); LLM+P (2023); "Classical Planning with LLM-Generated Heuristics" (NeurIPS 2025)
 > **Coupling:** 🟢 Protocol — domain planner ↔ task store

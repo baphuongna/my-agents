@@ -1,4 +1,4 @@
-# Hướng AAAAA: Task Decomposition — tách task lớn thành cây subtask có chốt kiểm
+# Hướng CZ: Task Decomposition — tách task lớn thành cây subtask có chốt kiểm
 
 > **Nguồn gốc:** "Hierarchical LLM Multi-Agent with Task Decomposition" (arXiv 2602.21670, 2026); oneuptime 2026; emergentmind
 > **Coupling:** 🟢 — tầng planning, agent không đổi

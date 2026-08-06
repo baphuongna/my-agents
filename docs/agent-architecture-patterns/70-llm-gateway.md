@@ -1,4 +1,4 @@
-# Hướng SSS: LLM Gateway — 1 endpoint cho mọi LLM provider
+# Hướng BR: LLM Gateway — 1 endpoint cho mọi LLM provider
 
 > **Nguồn gốc:** LiteLLM / OpenRouter / Portkey (2024-2026); TrueFoundry 2026 "AI Gateway"
 > **Coupling:** 🟢 — app chỉ biết 1 API, gateway lo đa provider

@@ -1,4 +1,4 @@
-# Hướng R: pi RPC Bridge — pi đã có 33 commands
+# Hướng I: pi RPC Bridge — pi đã có 33 commands
 
 > **Coupling:** 🟢 Zero — JSON-RPC over stdio, KHÔNG import @earendil-works/*
 > **Agent-agnostic:** ⚠️ — pi-specific (nhưng pi là open-source CLI)

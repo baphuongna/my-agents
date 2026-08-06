@@ -1,4 +1,4 @@
-# Hướng CCCCC: RAG Poisoning Defense — chống tài liệu độc hại vào knowledge base
+# Hướng DB: RAG Poisoning Defense — chống tài liệu độc hại vào knowledge base
 
 > **Nguồn gốc:** "Corpus-Dependent Poisoning Attacks and Defenses" (arXiv 2603.18034, 2026); promptfoo RAG poisoning; ACM taxonomy 9 attacks
 > **Coupling:** 🟡 — tầng ingestion + retrieval

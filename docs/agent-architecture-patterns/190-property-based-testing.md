@@ -1,4 +1,4 @@
-# Hướng IIIIIIII: Property-Based Testing for Agents — test bằng tính chất thay vì ví dụ; fuzz + shrink
+# Hướng GH: Property-Based Testing for Agents — test bằng tính chất thay vì ví dụ; fuzz + shrink
 
 > **Nguồn gốc:** Anthropic Research "Finding Bugs with Claude and Property-Based Testing" (PBT framework tự tìm counterexample bằng cách sinh input hợp lệ); arXiv 2506.18315 "Property-Generated Solver" (PBT validate high-level program properties); mayhem.security (property-based fuzzing — test định nghĩa loại input, không ví dụ); InfoQ "Fuzzy Unit Testing" (property tests viết cùng unit/integration — fuzz phần lớn)
 > **Coupling:** 🟢 — lớp test, runtime không đổi

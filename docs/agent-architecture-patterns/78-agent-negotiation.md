@@ -1,4 +1,4 @@
-# Hướng AAAA: Multi-Agent Negotiation — đàm phán hai chiều giữa agents
+# Hướng BZ: Multi-Agent Negotiation — đàm phán hai chiều giữa agents
 
 > **Nguồn gốc:** AgenticPay (arXiv 2602.06008, 2026); ACM 2026 bilateral negotiation; game theory → Diplomacy
 > **Coupling:** 🟡 — 2 phía đối thoại, cần protocol chung

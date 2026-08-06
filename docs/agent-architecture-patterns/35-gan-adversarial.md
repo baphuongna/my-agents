@@ -1,4 +1,4 @@
-# Hướng JJ: GAN-Style Adversarial — agent sinh, critic chống
+# Hướng AI: GAN-Style Adversarial — agent sinh, critic chống
 
 > **Nguồn gốc:** Generative Adversarial Networks (Goodfellow et al., 2014)
 > **Coupling:** 🟡 Generator vs Discriminator

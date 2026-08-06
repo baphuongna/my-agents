@@ -1,4 +1,4 @@
-# Hướng MMMMMMMM: Multimodal Output Generation — agent tạo ảnh/video/audio, không chỉ trả text
+# Hướng HL: Multimodal Output Generation — agent tạo ảnh/video/audio, không chỉ trả text
 
 > **Nguồn gốc:** arXiv 2601.03250 "A Versatile Multimodal Agent for Multimedia Content Generation" (MultiMedia-Agent — "emphasizing the interplay between different modalities for richer content generation"); NVIDIA "Build Multimodal Visual AI Agents Powered by NIM" (VLMs add vision — process images, videos); futureagi "How Multimodal LLMs Work in 2026" (image + question → text; vision encoders); Lyzr "What is Multimodal AI?" (software process + integrate information từ multiple types: text, images, audio, video, sensor); Medium "Rise of Large Multimodal Models" (jointly process + reason across modalities)
 > **Coupling:** 🟡 — mở rộng pipeline output (thêm tool sinh media + xử lý)

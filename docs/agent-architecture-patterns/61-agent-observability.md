@@ -1,4 +1,4 @@
-# Hướng JJJ: Agent Observability — trace từng bước reasoning + tool call
+# Hướng BI: Agent Observability — trace từng bước reasoning + tool call
 
 > **Nguồn gốc:** OpenTelemetry GenAI semantic conventions (2025); Red Hat 2026; LangSmith/Langfuse
 > **Coupling:** 🟢 — telemetry qua span emit, không ràng buộc core

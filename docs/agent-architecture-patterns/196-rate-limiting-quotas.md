@@ -1,4 +1,4 @@
-# Hướng OOOOOOOO: Rate Limiting & Quotas — chặn agent đốt ngân sách/API: token bucket + quota + circuit breaker
+# Hướng GN: Rate Limiting & Quotas — chặn agent đốt ngân sách/API: token bucket + quota + circuit breaker
 
 > **Nguồn gốc:** TrueFoundry "Rate Limiting AI Agents" (prevent runaway agent loops — destroy budget in minutes — token buckets, circuit breakers); neuraltrust "Rate Limiting & Throttling for AI Agents" (control costs, prevent abuse); tetrate "Understanding Rate Limiting in AI Systems" (control model usage cost — restrict expensive inference); Tamir Dresher "9 AI Agents, One API Quota" (rate limiting multi-agent = coordination problem, không phải retry); zuplo "Rate Limit Beyond Request Counts" (short-term limits + long-term quotas theo plan; request-count + token-based)
 > **Coupling:** 🟡 — mọi LLM/tool call phải qua limiter

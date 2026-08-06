@@ -1,4 +1,4 @@
-# Hướng FFFF: Tool Discovery & Registry Network — tìm/cài tool theo nhu cầu
+# Hướng CE: Tool Discovery & Registry Network — tìm/cài tool theo nhu cầu
 
 > **Nguồn gốc:** Smithery / MCPHub / modelcontextprotocol.io servers (2025-2026); MCP ecosystem
 > **Coupling:** 🟢 Protocol — tool qua MCP, thêm/bớt không đụng code

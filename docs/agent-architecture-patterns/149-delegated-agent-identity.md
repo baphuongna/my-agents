@@ -1,4 +1,4 @@
-# Hướng TTTTTT: Delegated Agent Identity — agent hành động thay user, có quyền riêng + audit
+# Hướng ES: Delegated Agent Identity — agent hành động thay user, có quyền riêng + audit
 
 > **Nguồn gốc:** OpenID "Identity Management for Agentic AI" 2025 (OAuth 2.1, "on-behalf-of"); ScaleKit "Delegated Agent Access" (scoped, auditable); arXiv 2501.09674 "Authenticated Delegation and Authorized AI Agents"; CSA Agent Identity Governance Framework v1; WorkOS "AI agent authentication guide"
 > **Coupling:** 🟡 — identity phải thấm xác thực/ủy quyền mọi API call

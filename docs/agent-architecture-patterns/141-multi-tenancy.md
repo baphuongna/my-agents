@@ -1,4 +1,4 @@
-# Hướng LLLLLL: Multi-Tenancy — cô lập dữ liệu/quyền/ngân sách giữa các người dùng
+# Hướng EK: Multi-Tenancy — cô lập dữ liệu/quyền/ngân sách giữa các người dùng
 
 > **Nguồn gốc:** ScaleKit "Access Control for Multi-Tenant AI Agents" (channel-owned OAuth); LoginRadius "Isolating Misbehaving Tenants"; Blaxel "Multi-tenant AI agent isolation" (microVM); AWS "Tenant isolation using Bedrock Agents"; Figgo/Reddit tenant isolation 2026
 > **Coupling:** 🟡 — tenant context phải thấm mọi layer (registry, memory, budget)

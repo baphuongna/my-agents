@@ -1,4 +1,4 @@
-# Hướng YYYYYYY: Agent Identity & OAuth — danh tính riêng cho agent: OIDC/OAuth 2.1, token exchange
+# Hướng FX: Agent Identity & OAuth — danh tính riêng cho agent: OIDC/OAuth 2.1, token exchange
 
 > **Nguồn gốc:** OpenID Foundation "Identity Management for Agentic AI" (OAuth/OIDC designed cho user — agents trong shared codebases/chat channels); Curity "SSO for AI Agents with OpenID Connect" (OAuth token exchange để giữ user identity qua agent); SecureAuth "Identity 101 for AI Agents" (OAuth 2.1 + OIDC cho enterprise); IETF draft-klrc-aiagent-auth (model auth/authorization cho agent interactions)
 > **Coupling:** 🟡 — mọi agent phải có danh tính + token hợp lệ khi gọi

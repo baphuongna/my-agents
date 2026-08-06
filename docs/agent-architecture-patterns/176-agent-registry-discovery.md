@@ -1,4 +1,4 @@
-# Hướng UUUUUUU: Agent Registry & Discovery — "phone book" cho agent: đăng ký, tìm, chọn
+# Hướng FT: Agent Registry & Discovery — "phone book" cho agent: đăng ký, tìm, chọn
 
 > **Nguồn gốc:** TrueFoundry "What is AI Agent Registry" (centralized catalog of autonomous agents and capabilities — "phone book for AI agents"); Google Cloud "Agent Registry concepts" (discovery — consumption-centric capabilities, orchestrators discover registered agents); AWS Bedrock Agent Registry (fully managed — organize, curate, discover resources); Spring "Service Registration and Discovery" (Eureka — self-registration pattern)
 > **Coupling:** 🟡 — mọi agent/tool phải đăng ký + tra cứu qua registry

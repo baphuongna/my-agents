@@ -1,4 +1,4 @@
-# Hướng HHHHHHHH: Interoperability Protocols — chuẩn giao tiếp agent: MCP/A2A/ACP/ANP, chọn đúng lớp
+# Hướng GG: Interoperability Protocols — chuẩn giao tiếp agent: MCP/A2A/ACP/ANP, chọn đúng lớp
 
 > **Nguồn gốc:** arXiv 2602.15055 "A Unified Agent Communication Protocol (ACP)" ("TCP/IP of agents" — giải interoperability crisis); Zylos "A2A, MCP, ACP, ANP" (4 major protocols 2025-26); akka "MCP, A2A, ACP" (ACP — open standard cho interop giữa agents khác framework); ruh.ai "AI Agent Protocols 2026" (standardize cách agent giao tiếp với tools và nhau — chống vendor lock-in); digitalapplied "Ecosystem Map 2026" (MCP, A2A, ACP, UCP — 4 protocols có adoption thật)
 > **Coupling:** 🟡 — các component phải nói chung protocol chuẩn

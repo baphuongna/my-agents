@@ -1,4 +1,4 @@
-# Hướng VVVVVVVV: Failure Detection & Retry Loops — chống lặp vô hạn, lỗi lặp lại không tiến bộ
+# Hướng GU: Failure Detection & Retry Loops — chống lặp vô hạn, lỗi lặp lại không tiến bộ
 
 > **Nguồn gốc:** Towards AI "Building Retries in Agents" (xử lý LLM failures, tool errors, crashed workflows — retry-classify loop); dev.to "7 Patterns That Stop Your AI Agent From Going Rogue" (circuit breakers, retry-classify, guardrails, kill switches); ODSC "The 3 Loops That Break AI Agents in Production" (retry loop — agent thử mãi không tiến bộ, tool loop, reflection loop); CockroachDB "Why Agent Loops Fail in Production" (state approval nằm trong memory — restart xoá context → workflow stuck); Taskade "AI Agent Self-Healing" (rate limit → backoff → retry); Augment Async "survive via durable execution + checkpointing — không restart từ đầu"
 > **Coupling:** 🟡 — chạm mọi loop vòng đời agent

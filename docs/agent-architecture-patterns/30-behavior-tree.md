@@ -1,4 +1,4 @@
-# Hướng EE: Behavior Tree — game AI decision cho agent
+# Hướng AD: Behavior Tree — game AI decision cho agent
 
 > **Nguồn gốc:** Game AI (Halo 2, 2005; popularized bởi Unreal Engine)
 > **Coupling:** 🟡 Tree structure + blackboard

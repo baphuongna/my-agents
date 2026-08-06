@@ -1,4 +1,4 @@
-# Hướng Q: Connection Pool — warm session manager
+# Hướng R: Connection Pool — warm session manager
 
 > **Coupling:** 🟢 Zero — manages subprocess lifecycle
 > **Agent-agnostic:** ✅ — bất kỳ agent

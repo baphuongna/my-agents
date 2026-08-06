@@ -1,4 +1,4 @@
-# Hướng FFFFFFFF: Agent IDE — môi trường phát triển agent trực quan (debug/steer/tune)
+# Hướng FE: Agent IDE — môi trường phát triển agent trực quan (debug/steer/tune)
 
 > **Nguồn gốc:** arXiv 2503.02068 "AGDebugger: Interactive Debugging and Steering of Multi-Agent" (reset agents + edit messages); LangGraph Studio (visual debugging); MindStudio (agent debugger — inspect real time); VS Code multi-agent development 2026
 > **Coupling:** 🟢 — thêm giao diện dev, runtime không đổi

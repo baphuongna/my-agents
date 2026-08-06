@@ -1,4 +1,4 @@
-# Hướng JJJJJ: Tool-Call Benchmark Data — đo tỷ lệ agent chọn/gọi tool đúng
+# Hướng DI: Tool-Call Benchmark Data — đo tỷ lệ agent chọn/gọi tool đúng
 
 > **Nguồn gốc:** ToolACE (openreview, 236 cites); arXiv 2412.15660 enterprise function-calling; Anthropic "Writing effective tools + evaluations"
 > **Coupling:** 🟢 — dataset + metric, runtime không đổi
