@@ -344,3 +344,128 @@
 ## Ghi chú Phần B
 - Tổng 55 hướng, số tiếp theo từ `403` (`OM`) nếu thêm.
 - Các slug gần hướng cũ nhưng khác bản chất đã ghi chú ở cột 'Tránh trùng'.
+---
+
+## PHẦN C — Đào sâu toàn bộ source (2 vòng scan, 2026-08-06)
+
+> Sau vòng đầu 55 hướng (Phần B), đào tiếp 41 repo với 4 subagent độ sâu cao + 2 vòng duplicate-check.
+> Kết quả: **112 hướng mới** (403 → 514), không trùng 400 slug đã có, đã đối chiếu cả nghĩa từ-vựng.
+
+| # | Letter | File (slug) | Nguồn | Ý chính (tránh trùng) |
+|---|---|---|---|---|
+| 403 | OM | `403-windowed-history-retrieval.md` | mem0 | Chọn include-window cho query (message-last / time-based / full history) ở classHistoryContext trước khi hybrid search thay vì fixed top-k |
+| 404 | ON | `404-entity-query-expansion.md` | mem0 | retrieve() mở rộng query bằng entities liên quan lấy từ entity-store trước khi embed |
+| 405 | OO | `405-bm25-entity-boost-fusion.md` | mem0 | Fusion cùng pass giữa lemmatized-BM25, co-occur entity boosts, embedding distance; entity đồng hành boost ở cuối |
+| 406 | OP | `406-near-duplicate-gc.md` | mem0 | Trước khi ghi memory mới: tìm và xóa các memory cũ similarity > threshold để tránh duplicate chồng lấn |
+| 407 | OQ | `407-add-v3-phased-commit.md` | mem0 | Pipeline add có phase riêng extract dedup entity-link với confidence gate từng phase |
+| 408 | OR | `408-provider-vector-plan-swap.md` | mem0 | Chọn embedding provider (bge-mem0/OpenAI) tại init thay vì per-query; tái lập chỉ mục khi đổi model |
+| 409 | OS | `409-slotted-memory-schema.md` | agentmemory | Memory theo 30-40 slot định sẵn với 3 layer, validation schema trước khi ghi thay vì storage tự do |
+| 410 | OT | `410-pre-tool-context-injection.md` | agentmemory | Hooks PreToolUse/PretrackUse chèn ngữ cảnh file đang đọc + lý do vào prompt trước khi tool chạy |
+| 411 | OU | `411-hot-cold-epistemic-tiers.md` | gbrain | Memory chia tầng: extracted-events hot, dirty sang dream-cycle consolidate sang cold takes, query ưu tiên tầng nóng |
+| 412 | OV | `412-dream-cycle-consolidation.md` | gbrain | Vòng xử lý định kỳ: tưới facts, build knowledge-graph cục bộ, giảm tải cold layers, attribution, chống drift |
+| 413 | OW | `413-knowledge-kind-typology.md` | gbrain | Phân biệt kind take/fact/belief/bet/hunch, mỗi kind cách truy vấn và criticality khác |
+| 414 | OX | `414-holder-attributed-confidence.md` | gbrain | Take luôn gắn holder + emotional estimation, query theo confidence holder, số lần xuất hiện, time |
+| 415 | OY | `415-time-travel-snapshot-query.md` | gbrain | Hỏi lại trạng thái tri thức ở thời điểm T, hữu ích khi agent tự review pre-consolidate |
+| 416 | OZ | `416-ontology-schema-packs.md` | gbrain | Đóng gói bộ file type/verbs + extractable facts cho knowledge graph, thêm pack mới không đụng core parser |
+| 417 | PA | `417-per-identity-memory-drift.md` | gbrain | Memory partition theo identity (brain/source), mỗi identity drift riêng, không merge ngầm |
+| 418 | PB | `418-file-watch-incremental-graph.md` | graphify | Watch file tree + git diff cập nhật deltas thay vì rebuild cả graph mỗi lần, cache theo path |
+| 419 | PC | `419-context-aware-inference-layer.md` | graphify | Layer context chứa intentional graph; prompt đi qua degree/search over entity relations để LLM nhận topology file |
+| 420 | PD | `420-cross-platform-runtime-adapters.md` | graphify | Cùng graph chạy cursor/claude/clint qua runtime adapters, không viết lại core |
+| 421 | PE | `421-tiered-review-agent-pipeline.md` | codebase-memory-mcp | 3 agent (GitHub/PR review) + lsp-stale-comment-detection; tiered review |
+| 422 | PF | `422-deterministic-context-compactor.md` | pi-vcc | Thuật toán nén ngữ cảnh deterministic: giữ bucket lớn, ghép cặp mục và sổ vết để tái sinh ngữ cảnh ổn định đo được |
+| 423 | PG | `423-lineage-scoped-recall.md` | pi-vcc | Recall mặc định chỉ hồi theo đường hội thoại đang hoạt động, scope:all mới vươn nhánh retry/sửa — tránh lẫn |
+| 424 | PH | `424-cross-agent-session-library.md` | pi-session-manager | Thư viện lưu session chung cho Pi/Codex/Claude, index/search/recover lịch sử không phụ thuộc engine |
+| 425 | PI | `425-session-branch-tree-reconstruction.md` | pi-session-manager | Tái dựng cây nhánh từ JSONL: mỗi session là cây bằng chứng, suy lá active từ mục cuối, hồ sơ riêng cho nhánh bỏ |
+| 426 | PJ | `426-workflow-call-index-journaling.md` | pi-dynamic-workflows | Journal kết quả theo ${runId}:${callIndex}, replays đúng prefix không đổi, cuộc gọi edit chạy live |
+| 427 | PK | `427-orchestrator-determinism-realm.md` | pi-dynamic-workflows | Sandbox quyết định cấm Date.now()/Math.random() qua VM determinism prelude, đảm bảo orchestrator tái sản xuất |
+| 428 | PL | `428-idle-gated-session-messaging.md` | pi-intercom | Nhắn nhật liên phiên chặn-mở theo idle status, inboundTrigger tự kích hoạt khi bạn idle |
+| 429 | PM | `429-warm-fresh-dual-analysis-server.md` | pi-lens | Hai nhánh phân tích: warm LSP server + worker fresh đọc code mới từ disk — phản ánh commit mới và phản hồi nhanh |
+| 430 | PN | `430-cold-warm-ipc-sidechannel-routing.md` | pi-lens | Routing hai kênh: ưu tiên side-channel IPC nóng, fallback local-без-LSP giữ 150ms tương tác |
+| 431 | PO | `431-verified-ui-action-transition.md` | pi-computer-use | Mỗi act_ui qua validate-prepare-execute-verify, stateId gốc, đợi root-delta settle, khai báo verified/preexisting/failed |
+| 432 | PP | `432-agent-prompt-cache-miss-attribution.md` | pi | Quy gán cacheRead/cacheWrite token mỗi lượt agent vào session stats, biết chính xác lý do/diểm miss prompt cache |
+| 433 | PQ | `433-agent-branch-summarization-backfill.md` | pi | Khi chuyển nhánh thu thập entries đã sửa/đọc trên nhánh bỏ và sinh branch_summary kèm danh sách file |
+| 434 | PR | `434-server-snapshot-broadcast.md` | pi | Mỗi session_snapshot/server_snapshot xếp hàng và broadcast tới mọi connection kèm revision — cho multi-user panel |
+| 435 | PS | `435-session-log-config-entry-scope.md` | pi | Entry header session là root node, toolCall.id link toolResult, branch_summary ghi abandoned — cấu trúc parse |
+| 436 | PT | `436-openclaw-commitments.md` | openclaw | Pass nền trích lời hứa/việc dở từ hội thoại, lưu memory, chỉ gửi todo khi xong |
+| 437 | PU | `437-openclaw-standing-orders.md` | openclaw | Lệnh thường trực 1 lần (phạm vi+trigger+approval) tự áp dụng mọi phiên mới |
+| 438 | PV | `438-openclaw-parallel-specialist-lanes.md` | openclaw | Làn chuyên gia song song coder/savant đọc cùng queue, mỗi lane giữ context ghim cố định |
+| 439 | PW | `439-openclaw-queue-steering.md` | openclaw | Nhập dữ liệu giữa lượt xếp hàng bơm vào prompt ở ranh giới model/tool, cửa sổ yên lặng gom lệnh |
+| 440 | PX | `440-openclaw-active-memory-recall-subagent.md` | openclaw | Hồi ức chủ động qua subagent: main pause, nhận đủ context |
+| 441 | PY | `441-openclaw-dreaming-sleep-phases.md` | openclaw | Pha ngủ light/REM/deep nén trí nhớ theo tầng, tóm gọn/dedupe |
+| 442 | PZ | `442-openclaw-progress-drafts.md` | openclaw | Giữ 1 message trạng thái duy nhất sửa tại chỗ theo tiến trình thay vì spam tin |
+| 443 | QA | `443-openclaw-managed-worktrees.md` | openclaw | Mỗi task một git worktree riêng + worktreeinclude chèn config |
+| 444 | QB | `444-openclaw-channel-docking.md` | openclaw | Chuyển phiên giữa chừng sang kênh khác, lịch sử giữ nguyên |
+| 445 | QC | `445-openclaw-resumable-approval-pipeline.md` | openclaw | Pipeline typed dừng tại cổng phê duyệt, resume nguyên trạng thái |
+| 446 | QD | `446-openhuman-subconscious-steering.md` | openhuman | Vòng ngầm diff trạng thái nén rồi tiêm chỉ đạo ~900 ký tự có hạn tiêu lượt 2 bước vào system prompt |
+| 447 | QE | `447-openhuman-goal-reflection-agent.md` | openhuman | Mỗi đoạn goals agent review mục tiêu so memory/hội thoại rồi điều chỉnh |
+| 448 | QF | `448-openhuman-idle-thread-continuation.md` | openhuman | Heartbeat tự tạo lượt cho luồng có goal khi ngừng lâu, chống vòng lặp dynamic |
+| 449 | QG | `449-openhuman-command-class-gate.md` | openhuman | Phân loại shell thành Read/Write/Network/Install/Destructive (không biết=Write), Allow/Prompt/Block theo trust |
+| 450 | QH | `450-openhuman-agent-proposed-workflow.md` | openhuman | Agent soạn automation n8n-style, chỉ human save mới kích hoạt |
+| 451 | QI | `451-openhuman-memory-diff-readmarker.md` | openhuman | Memory git repo, read-marker để biết cái gì đổi chưa đọc, diff |
+| 452 | QJ | `452-inter-client-user-message-envelope.md` | MyAgents | Bọc JSON cấu trúc trong user message giả làm envelope chuyển Cloud->Desktop->CLI không cần broker |
+| 453 | QK | `453-herdr-screen-manifest-agent-state.md` | herdr | TOML-manifest + regex scan terminal phát hiện agent state (blocked/working/done/idle) |
+| 454 | QL | `454-oh-my-pi-stream-abort-rule-injection.md` | oh-my-pi | Cookie regex mid-stream abort, tiêm rule vào system-reminder, retry đúng điểm |
+| 455 | QM | `455-oh-my-pi-fuzzy-kernel-tool-reentry.md` | oh-my-pi | Kernel Python/JS bền eval gọi lại tool agent qua loopback bridge |
+| 456 | QN | `456-oh-my-pi-lsp-wired-edits.md` | oh-my-pi | LSP đan mọi đường sửa: willRenameFiles cập re-export/barrel trước khi move file |
+| 457 | QO | `457-oh-my-pi-dap-driven-debugging.md` | oh-my-pi | Agent debug qua DAP thực đặt breakpoint, step tới frame lỗi, đọc biến |
+| 458 | QP | `458-oh-my-pi-advisor-second-model.md` | oh-my-pi | Model 2 chạy mọi lượt với context riêng, góp ý lo ngại vào dòng, agent chính từ chối được |
+| 459 | QQ | `459-oh-my-pi-conflict-uri-resolution.md` | oh-my-pi | Conflict URI conflict://N, giải @theirs/@ours/@base batch conflict://* |
+| 460 | QR | `460-oh-my-pi-atomic-commit-splitting.md` | oh-my-pi | Tách thay đổi không liên quan thành commit nhỏ dependency-order |
+| 461 | QS | `461-oh-my-pi-collab-session-relay.md` | oh-my-pi | Relay session live link+QR, co-view, client-side frame giao kèo |
+| 462 | QT | `462-hermes-incremental-micro-compaction.md` | hermes-agent | Nén micro mỗi lượt chỉ gấp lượt-cũ-nhất thành summary giữ gần nhất (không nén toàn phiên đột ngột) |
+| 463 | QU | `463-openviking-typed-query-retrieval.md` | OpenViking | Phân tích ý định sinh n câu hỏi đánh type 0-5 prioritry gọi find/search từng loại |
+| 464 | QV | `464-mya-v1-hardware-peripheral-tools.md` | mya-v1 | Tool phần cứng GPIO/I2C/SPI/USB qua trait Peripheral điều khiển thế giới thật D1 mini etc |
+| 465 | QW | `465-fff-frequency-ranked-fuzzy-finder.md` | fff | Path fuzzy cho typo và rank theo tần suất truy truyền file đã đọc gần |
+| 466 | QX | `466-context-citation-attribution.md` | system_prompts_leaks | Codex oai-mem-citation rollout-id, Warp citations khi dùng context ngoài/rules machine-parsable |
+| 467 | QY | `467-staged-memory-writes.md` | system_prompts_leaks | Codex memory qua staging file <ts>-<slug>.md rồi async apply, review/rollback được |
+| 468 | QZ | `468-text-embedded-ui-directives.md` | system_prompts_leaks | Model emit directives ::git-commit{} trong final text, harness parse để exec side-effect UI |
+| 469 | RA | `469-terminal-state-as-files.md` | system_prompts_leaks | Cursor mỗi terminal là file text (pid/cwd/last_command/exit + output) agent đọc quan sát |
+| 470 | RB | `470-runtime-transition-reminders.md` | system_prompts_leaks | Harness tự inject system-reminder khi model đổi/container restart/enter team → re-align agent |
+| 471 | RC | `471-phase-topics-broadcast.md` | system_prompts_leaks | Gemini update_topic publish chapter title+summary mỗi phase 3-10 turns |
+| 472 | RD | `472-jittered-bounded-scheduling.md` | system_prompts_leaks | Claude CronCreate deterministic jitter né :00/:30, job chạy khi REPL idle, session-only expire 7d |
+| 473 | RE | `473-permission-allowlist-mining.md` | system_prompts_leaks | /allowlist từ transcripts tìm lệnh lặp lại tự sinh prioritized, giảm dialoge |
+| 474 | RF | `474-fuzzy-code-emulator.md` | Awesome-Code-as-Agent-Harness-Papers | Chain-of-Code LM-augmented emulator chạy phần khả thi, LLM đoán phần còn lại |
+| 475 | RG | `475-plan-after-trial.md` | Awesome-Code-as-Agent-Harness-Papers | PaT run trial trước khi planning dựa evidence thực thi |
+| 476 | RH | `476-fuzzer-crash-feedback.md` | Awesome-Code-as-Agent-Harness-Papers | AutoSafeCoder dùng fuzzer crash traces + static warnings làm gated verification |
+| 477 | RI | `477-agent-out-of-sync-recovery.md` | Awesome-Code-as-Agent-Harness-Papers | SyncMind đo out-of-sync giữa agent và shared harness state, kéo về |
+| 478 | RJ | `478-transactional-action-sandbox.md` | Awesome-Code-as-Agent-Harness-Papers | Mọi ghi FS transaction rollback atomic snapshot |
+| 479 | RK | `479-server-side-tool-profiles.md` | codebase-memory-mcp | MCP server 3 tier per client (Scout/Verify/Audit) + fallback, child-MCP unsafe babysit |
+| 480 | RL | `480-thread-scoped-worktree.md` | system_prompts_leaks | Codex mỗi thread là worktree riêng codex/, pendingWorktreeId, fork_thread/handoff/pin/archive |
+| 481 | RM | `481-decision-complete-plan-contract.md` | system_prompts_leaks | Codex Plan Mode <proposed_plan> decision-complete, explore-first, handoff contract |
+| 482 | RN | `482-memory-index-in-context.md` | system_prompts_leaks | Claude MEMORY.md index 1-line/hook in context, mỗi fact 1 file frontmatter name+description |
+| 483 | RO | `483-session-resume-category-snapshot.md` | context-mode | Hook PreCompact phân loại mọi event thành snapshot XML <2KB kèm câu truy vấn gợi ý cho từng mục; sau compact agent search lại không hỏi lại người dùng |
+| 484 | RP | `484-per-agent-context-search-throttle.md` | context-mode | Bộ đếm rolling-window theo từng agent-context: vượt soft-cap thu hẹp kết quả, hard-cap chặn; fan-out subagent không ăn hạn mức nhau, evict fail-open |
+| 485 | RQ | `485-out-of-band-byte-marker-bridge.md` | context-mode | MCP server ghi số byte vào file marker khóa theo basename session DB; hook PostToolUse tiêu thụ consume-once để gửi telemetry qua filesystem |
+| 486 | RR | `486-soft-shell-exit-classifier.md` | context-mode | Phân loại exit code 1 của shell là lỗi mềm nếu stdout có nội dung: trả stdout bình thường thay vì báo lỗi |
+| 487 | RS | `487-real-conversation-import-gate.md` | ctx | Cổng chặn import: chỉ coi thành công khi có >=1 event hội thoại thật do provider viết; metadata-only/tool-only không đủ, tránh index rác |
+| 488 | RT | `488-transcript-retention-policy.md` | ctx | Chính sách giữ nội dung theo trường: text giới hạn ký tự, metadata-only cho diff/patch, ghi rõ mode omitted + original_bytes |
+| 489 | RU | `489-deterministic-rollup-semantic-corpus.md` | ctx | Corpus ngữ nghĩa không dùng LLM: lite_turn + rollup xác định từ metadata, projection bền vững |
+| 490 | RV | `490-readiness-gated-search-freshness.md` | ctx | Daemon sở hữu indexing, search chỉ đọc index cũ; index wait --lexical/--semantic cho foreground chờ readiness |
+| 491 | RW | `491-cache-invalidation-aware-compression.md` | headroom | Định giá nén theo chi phí vô hiệu hóa prefix cache provider: net_mutation_gain + break-even reads quyết định sửa hay giữ |
+| 492 | RX | `492-auth-tiered-compression-policy.md` | headroom | Chính sách nén phân hạng theo kiểu xác thực: Subscription nén nhẹ giữ prompt cache khách trả phí, PAYG/OAuth nén mạnh |
+| 493 | RY | `493-reversible-context-compression.md` | headroom | CCR nén mất mát có hoàn nguyên: bản gốc giữ local TTL, LLM gọi headroom_retrieve khi cần chi tiết |
+| 494 | RZ | `494-holdout-control-savings-accounting.md` | headroom | Giữ 10% hội thoại làm nhóm đối chứng để báo savings measured thay vì estimated kèm khoảng tin cậy |
+| 495 | SA | `495-never-worse-output-guard.md` | rtk | Guard không bao giờ tệ hơn bản thô: filter xong token ước tính lớn hơn thì trả nguyên vẹn, luật fallback khi filter lỗi |
+| 496 | SB | `496-tee-full-output-recovery-hint.md` | rtk | Nén output nhưng tee bản đầy đủ ra file xoay vòng 20 file 0600, in hint shell-safe cho agent mở lại khi lệnh fail |
+| 497 | SC | `497-project-filter-trust-records.md` | hypa | Filter DSL trong repo .hypa/ không tự chạy: phải cấp trust tường minh qua hypa trust status/filters |
+| 498 | SD | `498-compression-attribution-footer.md` | hypa | Footer tự khai [hypa: 1200->340 tok, -72%, reducer=dotnet-build]; agent luôn biết bộ giảm nào chạy, dùng hypa rewrite xem trước |
+| 499 | SE | `499-user-proficiency-adaptive-communication.md` | harness | Phát hiện trình độ người dùng từ tín hiệu hội thoại rồi tự chỉnh tone giải thích |
+| 500 | SF | `500-harness-config-drift-detection.md` | harness | Meta-skill audit trạng thái harness: đối chiếu agent/skill hiện có với lịch sử đăng ký trong CLAUDE.md để phát hiện drift |
+| 501 | SG | `501-tool-argument-hallucination-guard.md` | openpi | Guard bắt tool_call tước bỏ đối số task_id/conversation_id không hợp lệ trước khi chạy, fail-loud chống LLM bịa UUID |
+| 502 | SH | `502-deferred-simplification-ledger.md` | ponytail | Comment ponytail: ghi ceiling + upgrade trigger thu hoạch vào debt ledger; audit gắn cờ marker thiếu trigger |
+| 503 | SI | `503-anti-slop-triage-taxonomy.md` | claw-code | Phân loại triage issue/PR agent sinh: actional bug/docs/feature, duplicate, spam, generated-slop (đòi dẫn chứng), unsafe, not-reproducible; ledged not curate |
+| 504 | SJ | `504-workspace-clone-session-partitioning.md` | claw-code | Session phân vùng theo fingerprint FNV-1a 16 ký tự đường dẫn workspace canonical: hai clone không thấy session nhau |
+| 505 | SK | `505-runtime-api-key-rotation.md` | pi-soly | Xoay key khi 429/401: multi key/provider, setRuntimeApiKey override không persist, cooldownMs, tích hợp AuthStorage |
+| 506 | SL | `506-multi-question-structured-picker.md` | pi-soly | Picker đa câu hỏi form (single ⭐ default, multi min/max, ô Other) thay hỏi tự do; kết quả ghi PLAN.md |
+| 507 | SM | `507-truncated-tool-call-fail-closed.md` | pi-agent-core | stopReason=length làm mọi tool call trong message cắt cụt bị đánh dấu lỗi thay vì thiếu - vì arguments qua JSON-salvage có thể thiếu đuôi; chặn chạy lệnh hỏng |
+| 508 | SN | `508-session-html-export.md` | pi-coding-agent | CLI --export chuyển transcript session thành HTML tĩnh: ANSI→HTML, theme, ảnh base64, tool calls collapse/expand |
+| 509 | SO | `509-per-file-mutation-queue.md` | pi-coding-agent | Serialize ghi/sửa theo từng file (key realpath): cùng file nối đuôi tuần tự, khác file song song — chống ghi đè hỏng file |
+| 510 | SP | `510-plugin-abi-shadow-policy.md` | mya-v1 | Kiểm tra ABI-stamp plugin WASM (major trùng), cấm shadow tên builtin (core thắng), load lazy/eager theo bundle |
+| 511 | SQ | `511-provider-ranking-attribution.md` | pi-coding-agent | Header định danh HTTP-Referer/X-OpenRouter-Title tới aggregator để nhận diện agent trên bảng xếp hạng model |
+| 512 | SR | `512-agent-changed-file-git.md` | openpi | IPC AGENT_CHANGED_FILES {count,files} để git panel ghim mục Agent changed filter và sinh commit message từ turn summary |
+| 513 | SS | `513-sandboxed-script-trusted-host-split.md` | pi-extensible-workflows | Tách rõ: workflow scripts chạy sandbox riêng, còn factory/hook/registered-functions/transports chạy trusted host — cùng một codebase đôi đường tin cậy khác nhau, không trộn |
+| 514 | ST | `514-preflight-static-model-resolution.md` | pi-extensible-workflows | Model reference tĩnh được resolve+check ngay preflight; model động resolve khi agent start với run's captured inventory, fail UNKNOWN_MODEL nếu thiếu — phân loại rõ quyết định lúc khởi chạy |
+
+## Ghi chú Phần C
+- Tổng 112 hướng, số tiếp theo từ `515` (`SU`).
+- Nguồn gốc: mem0/agentmemory/gbrain/graphify (memory), context-mode/ctx/headroom/rtk/hypa (context/compression), pi-family, openclaw/openhuman, oh-my-pi, papers, system_prompts_leaks, mya-v1/openpi/herdr/MyAgents/fff.

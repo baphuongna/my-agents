@@ -928,6 +928,87 @@
 
 
 
+### Nhóm — B1: Code & Memory (Phần B — khảo sát source/)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [348-ast-code-knowledge-graph.md](348-ast-code-knowledge-graph.md) | MJ: AST Code Knowledge Graph | 🟡 | ⚠️ (code-index.ts semantic embeddings | 3-4 tuần |
+| [349-synthesis-with-gap-analysis.md](349-synthesis-with-gap-analysis.md) | MK: Synthesis with Gap Analysis | 🟡 | ⚠️ (retrieval + grounding + conflict | 2-3 tuần |
+| [350-agent-session-history-indexing.md](350-agent-session-history-indexing.md) | ML: Agent Session History Indexing | 🟡 | ⚠️ (SQLite store + event-stream + rag | 2-3 tuần |
+| [351-append-only-memory-accumulation.md](351-append-only-memory-accumulation.md) | MM: Append-Only Memory Accumulation | 🟡 | ⚠️ (memory store + graph + lifecycle | 3-4 tuần |
+| [352-memory-confidence-scoring.md](352-memory-confidence-scoring.md) | MN: Memory Confidence Scoring | 🟡 | ⚠️ (lifecycle.ts + weibull.ts + confl | 2-3 tuần |
+| [353-memory-state-versioning.md](353-memory-state-versioning.md) | MO: Memory State Versioning | 🟡 | ⚠️ (brain-store + SQLite sẵn — chưa c | 2-3 tuần |
+| [354-attention-based-memory-decay.md](354-attention-based-memory-decay.md) | MP: Attention-Based Memory Decay | 🟡 | ⚠️ (lifecycle.ts Ebbinghaus decay + w | 2-3 tuần |
+| [355-memory-provenance-traceability.md](355-memory-provenance-traceability.md) | MQ: Memory Provenance Traceability | 🟡 | ⚠️ (graph.ts + grounding.ts + audit s | 2-3 tuần |
+| [356-time-aware-memory-retrieval.md](356-time-aware-memory-retrieval.md) | MR: Time-Aware Memory Retrieval | 🟢 | ⚠️ (retrieve.ts + lifecycle decay + w | 1-2 tuần |
+| [357-entity-trajectory-scoring.md](357-entity-trajectory-scoring.md) | MS: Entity Trajectory Scoring | 🟡 | ⚠️ (graph.ts entity nodes + lifecycle | 2-3 tuần |
+| [358-execution-trace-world-modeling.md](358-execution-trace-world-modeling.md) | MT: Execution Trace World Modeling | 🟡 | ⚠️ (world-model 239 + dream-cycle + t | 4-6 tuần |
+
+### Nhóm — B2: Context & Token (Phần B — khảo sát source/)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [359-content-type-aware-compression.md](359-content-type-aware-compression.md) | MU: Content-Type-Aware Compression | 🟡 | ⚠️ (100 prompt-compression + 218 tool | 1.5-2 tuần |
+| [360-model-output-token-shaping.md](360-model-output-token-shaping.md) | MV: Model Output Token Shaping | 🟢 | ⚠️ (307 verbosity-adapt + 346 slow-fa | 1-1.5 tuần |
+| [361-cache-prefix-preserving-compression.md](361-cache-prefix-preserving-compression.md) | MW: Cache-Prefix-Preserving Compression | 🟡 | ⚠️ (166 prompt-caching-layer + 191 kv | 1.5-2 tuần |
+| [362-event-sourced-session-continuity.md](362-event-sourced-session-continuity.md) | MX: Event-Sourced Session Continuity | 🟡 | ⚠️ (230 event-sourcing-outbox + 242 m | 2-3 tuần |
+| [363-programmatic-context-mining.md](363-programmatic-context-mining.md) | MY: Programmatic Context Mining | 🟡 | ⚠️ (133 agent-sandbox + 179 agent-tes | 2-2.5 tuần |
+| [364-fetch-index-then-search.md](364-fetch-index-then-search.md) | MZ: Fetch-Index-Then-Search | 🟢 | ⚠️ (217 web-browsing + 223 web-search | 1.5-2 tuần |
+| [365-deterministic-command-reducers.md](365-deterministic-command-reducers.md) | NA: Deterministic Command Reducers | 🟢 | ⚠️ (218 tool-output-compression sẵn — | 1.5-2 tuần |
+| [366-seamless-compaction-continuity.md](366-seamless-compaction-continuity.md) | NB: Seamless Compaction Continuity | 🟡 | ⚠️ (121 long-context + 182 conversati | 2-2.5 tuần |
+| [367-designated-scratchpad.md](367-designated-scratchpad.md) | NC: Designated Scratchpad | 🟢 | ⚠️ (133 agent-sandbox + filesystem to | 0.5-1 tuần |
+
+### Nhóm — B3: Editing & Workflow (Phần B — khảo sát source/)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [368-hash-anchored-editing.md](368-hash-anchored-editing.md) | ND: Hash-Anchored Editing | 🟡 | ⚠️ (edit tool sẵn — chưa có hash-anch | 2-3 tuần |
+| [369-mandatory-undo-precondition.md](369-mandatory-undo-precondition.md) | NE: Mandatory Undo Precondition | 🟡 | ⚠️ (edit tool + git sẵn — chưa có pre | 1-2 tuần |
+| [370-read-tracked-edit-guard.md](370-read-tracked-edit-guard.md) | NF: Read-Tracked Edit Guard | 🟡 | ⚠️ (read tool + edit tool sẵn — chưa | 2 tuần |
+| [371-impact-cascade-diagnostics.md](371-impact-cascade-diagnostics.md) | NG: Impact Cascade Diagnostics | 🟡 | ⚠️ (edit + diagnostics sẵn — chưa có | 3-4 tuần |
+| [372-diagnostic-triage-dispositions.md](372-diagnostic-triage-dispositions.md) | NH: Diagnostic Triage Dispositions | 🟢 | ⚠️ (diagnostics sẵn — chưa có disposi | 2 tuần |
+| [373-plan-as-branch-workflow.md](373-plan-as-branch-workflow.md) | NI: Plan-as-Branch Workflow | 🟡 | ⚠️ (git + agent-loop sẵn — chưa có pl | 2-3 tuần |
+| [374-conditional-rule-loading.md](374-conditional-rule-loading.md) | NJ: Conditional Rule Loading | 🟡 | ⚠️ (system prompt injection sẵn — chư | 2 tuần |
+| [375-differential-workflow-resume.md](375-differential-workflow-resume.md) | NK: Differential Workflow Resume | 🟡 | ⚠️ (subagent + workflow sẵn — chưa có | 3-4 tuần |
+| [376-model-tier-routing.md](376-model-tier-routing.md) | NL: Model Tier Routing | 🟢 | ⚠️ (model config sẵn — chưa có per-ca | 2 tuần |
+| [377-tool-execution-order-preservation.md](377-tool-execution-order-preservation.md) | NM: Tool Execution Order Preservation | 🟡 | ⚠️ (parallel tool calls sẵn — chưa có | 2 tuần |
+| [378-single-writer-session-lease.md](378-single-writer-session-lease.md) | NN: Single-Writer Session Lease | 🟢 | ⚠️ (session JSONL sẵn — chưa có lease | 2 tuần |
+| [379-workflow-keyword-triggering.md](379-workflow-keyword-triggering.md) | NO: Workflow Keyword Triggering | 🟢 | ⚠️ (intent routing sẵn — chưa có keyw | 1-2 tuần |
+| [380-context-filesystem-abstraction.md](380-context-filesystem-abstraction.md) | NP: Context Filesystem Abstraction | 🟡 | ⚠️ (memory + file tools sẵn — chưa có | 3-4 tuần |
+
+### Nhóm — B4: Multi-agent & Platform (Phần B — khảo sát source/)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [381-inter-session-message-broker.md](381-inter-session-message-broker.md) | NQ: Inter-Session Message Broker | 🟢 | ✅ (packages/intercom đã có broker + | 0.5-1 tuần (đã có — tài liệu hóa + mở rộng) |
+| [382-structured-escalation-protocol.md](382-structured-escalation-protocol.md) | NR: Structured Escalation Protocol | 🟢 | ✅ (packages/intercom đã có contact_s | 0.5 tuần (đã có — tài liệu hóa) |
+| [383-omnichannel-agent-gateway.md](383-omnichannel-agent-gateway.md) | NS: Omnichannel Agent Gateway | 🟡 | ⚠️ (gateway + channel-adapters sẵn — | 3-5 tuần |
+| [384-agent-daemon-lifecycle.md](384-agent-daemon-lifecycle.md) | NT: Agent Daemon Lifecycle | 🟡 | ⚠️ (cron + lifecycle-hooks sẵn — chưa | 2-3 tuần |
+| [385-meeting-presence-agents.md](385-meeting-presence-agents.md) | NU: Meeting Presence Agents | 🟡 | ⚠️ (tts + memory sẵn — chưa có meetin | 4-6 tuần |
+| [386-privacy-mode-enforcement.md](386-privacy-mode-enforcement.md) | NV: Privacy Mode Enforcement | 🟡 | ⚠️ (privacy-budget + data-minimizatio | 3-4 tuần |
+| [387-agent-blocked-signaling.md](387-agent-blocked-signaling.md) | NW: Agent Blocked Signaling | 🟢 | ⚠️ (print/TUI + lifecycle-hooks sẵn — | 1.5-2 tuần |
+| [388-skill-lifecycle-curation.md](388-skill-lifecycle-curation.md) | NX: Skill Lifecycle Curation | 🟡 | ⚠️ (packages/skills sẵn — chưa có usa | 2-3 tuần |
+| [389-agent-environment-hibernation.md](389-agent-environment-hibernation.md) | NY: Agent Environment Hibernation | 🟡 | ⚠️ (lifecycle-hooks + memory sẵn — ch | 2-3 tuần |
+| [390-low-cost-agent-triggers.md](390-low-cost-agent-triggers.md) | NZ: Low-Cost Agent Triggers | 🟢 | ⚠️ (cron + lifecycle-hooks sẵn — chưa | 1.5-2 tuần |
+
+### Nhóm — B5: UI · Auth · Trust · Research (Phần B — khảo sát source/)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [391-biometric-agent-gate.md](391-biometric-agent-gate.md) | OA: Biometric Agent Gate | 🟢 | ⚠️ (desktop + rpc + permission-prompt | 2-3 tuần |
+| [392-trust-scoped-context-blocks.md](392-trust-scoped-context-blocks.md) | OB: Trust-Scoped Context Blocks | 🟡 | ⚠️ (context assembly + message types | 2-3 tuần |
+| [393-dual-channel-agent-communication.md](393-dual-channel-agent-communication.md) | OC: Dual-Channel Agent Communication | 🟢 | ⚠️ (streaming + print/TUI sẵn — chưa | 1.5-2 tuần |
+| [394-safeguard-model-tiering.md](394-safeguard-model-tiering.md) | OD: Safeguard Model Tiering | 🟡 | ⚠️ (model-cascade + tier-routing sẵn | 2-3 tuần |
+| [395-minimal-code-ladder.md](395-minimal-code-ladder.md) | OE: Minimal Code Ladder | 🟢 | ⚠️ (codebase search + tool registry s | 1-2 tuần |
+| [396-repository-graph-planning.md](396-repository-graph-planning.md) | OF: Repository Graph Planning | 🟡 | ⚠️ (file-watcher + symbol search sẵn | 3-4 tuần |
+| [397-adaptive-topology-search.md](397-adaptive-topology-search.md) | OG: Adaptive Topology Search | 🟡 | ⚠️ (subagent + workflows sẵn — chưa c | 3-4 tuần |
+| [398-test-gated-convergence.md](398-test-gated-convergence.md) | OH: Test-Gated Convergence | 🟢 | ⚠️ (tool-test-harness + test runner s | 1.5-2 tuần |
+| [399-rl-from-execution-feedback.md](399-rl-from-execution-feedback.md) | OI: RL from Execution Feedback | 🟡 | ⚠️ (tool-test-harness + eval sẵn — ch | 6-8 tuần |
+| [400-harness-as-distillation-surface.md](400-harness-as-distillation-surface.md) | OJ: Harness as Distillation Surface | 🟡 | ⚠️ (eval + test-harness sẵn — chưa có | 5-7 tuần |
+| [401-observability-driven-harness.md](401-observability-driven-harness.md) | OK: Observability-Driven Harness | 🟡 | ⚠️ (eval + tool-test-harness + lifecy | 4-5 tuần |
+| [402-request-type-authorization.md](402-request-type-authorization.md) | OL: Request Type Authorization | 🟢 | ⚠️ (permission-prompt + dynamic-permi | 2-3 tuần |
+
+
 ## So sánh nhanh
 
 ```
