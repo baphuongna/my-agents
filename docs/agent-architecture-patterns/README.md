@@ -137,6 +137,311 @@
 | [64-mcp-gateway.md](64-mcp-gateway.md) | BL: MCP Gateway | 🟢 Protocol | ⚠️ (mcp-client+oauth sẵn) | 1-2 tuần |
 | [65-tool-maker.md](65-tool-maker.md) | BM: Tool Maker | 🟢 | ⚠️ (registry+eval sẵn) | 1-2 tuần |
 
+
+### Nhóm 70: Security Ops (Vòng 54)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [234-secret-rotation.md](234-secret-rotation.md) | HZ: Secret Rotation | 🟡 | ⚠️ (SecretStore.rotate/revoke sẵn — thiếu s | 2-3 tuần |
+| [235-output-moderation.md](235-output-moderation.md) | IA: Output Moderation | 🟡 | ⚠️ (redact + threat-scan sẵn — thiếu modera | 2-3 tuần |
+| [236-behavior-anomaly.md](236-behavior-anomaly.md) | IB: Behavior Anomaly | 🟢 | ⚠️ (audit + telemetry sẵn — thiếu baseline  | 2-3 tuần |
+
+### Nhóm 71: Uncertainty & World (Vòng 55)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [237-conformant-planning.md](237-conformant-planning.md) | IC: Conformant Planning | 🟡 | ❌ (có lookahead-tree 185 + structured-reas | 3-5 tuần |
+| [238-uncertainty-quantification.md](238-uncertainty-quantification.md) | ID: Uncertainty Quantification | 🟡 | ⚠️ (budget/threat-scan sẵn — thiếu confiden | 2-3 tuần |
+| [239-world-model.md](239-world-model.md) | IE: World Model | 🟡 | ⚠️ (memory graph + lookahead 185 — thiếu pr | 4-6 tuần |
+
+### Nhóm 72: Data & Privacy (Vòng 56)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [240-data-lineage.md](240-data-lineage.md) | IF: Data Lineage | 🟡 | ⚠️ (audit 198 + memory graph sẵn — thiếu pr | 2-3 tuần |
+| [241-differential-privacy.md](241-differential-privacy.md) | IG: Differential Privacy | 🔴 | ❌ (redact 214 + audit 198 sẵn — thiếu DP n | 4-6 tuần |
+| [242-memory-rollback.md](242-memory-rollback.md) | IH: Memory Rollback | 🟡 | ⚠️ (memory brain-store + lifecycle sẵn — th | 2-3 tuần |
+
+### Nhóm 73: Ops & SLO (Vòng 57)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [243-agent-slo-sli.md](243-agent-slo-sli.md) | II: Agent SLO/SLI | 🟢 | ⚠️ (telemetry + cost sẵn — thiếu SLO target | 2-3 tuần |
+| [244-incident-runbooks.md](244-incident-runbooks.md) | IJ: Incident Runbook | 🟡 | ⚠️ (retry 203 + self-heal 169 + DLQ 231 sẵn | 2-3 tuần |
+| [245-capacity-planning.md](245-capacity-planning.md) | IK: Capacity Planning | 🟢 | ⚠️ (cost + budget + rate-limit sẵn — thiếu  | 2-3 tuần |
+
+### Nhóm 74: Eval Advanced (Vòng 58)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [246-judge-calibration.md](246-judge-calibration.md) | IL: Judge Calibration | 🟡 | ⚠️ (eval harness + council sẵn — thiếu judg | 2-3 tuần |
+| [247-differential-testing.md](247-differential-testing.md) | IM: Differential Testing | 🟢 | ⚠️ (eval harness + versioning 135 sẵn — thi | 1-2 tuần |
+| [248-success-criteria-engineering.md](248-success-criteria-engineering.md) | IN: Success Criteria Engineering | 🟡 | ⚠️ (eval tiers + structured-output 175 sẵn  | 1-2 tuần |
+
+### Nhóm 75: Time & Speed (Vòng 59)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [249-priority-scheduling.md](249-priority-scheduling.md) | IO: Priority Scheduling | 🟡 | ⚠️ (kanban queue + 215 deadline-bound sẵn — | 2 tuần |
+| [250-context-prefetching.md](250-context-prefetching.md) | IP: Context Prefetching | 🟡 | ⚠️ (prompt-cache 166 + semantic-cache 191 s | 2 tuần |
+| [251-time-aware-planning.md](251-time-aware-planning.md) | IQ: Time-Aware Planning | 🟡 | ⚠️ (cron 148 + 215 deadline-bound + time he | 3-4 tuần |
+
+### Nhóm 76: User Experience (Vòng 60)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [252-command-palette.md](252-command-palette.md) | IR: Command Palette | 🟡 | ⚠️ (tool registry sẵn — thiếu fuzzy search  | 2-3 tuần |
+| [253-change-preview-diff.md](253-change-preview-diff.md) | IS: Change Preview & Diff | 🟡 | ⚠️ (hashline-edit-pro diff sẵn — thiếu pre- | 2-3 tuần |
+| [254-offline-first.md](254-offline-first.md) | IT: Offline-First | 🟡 | ⚠️ (task queue + retry sẵn — thiếu sync eng | 3-4 tuần |
+
+### Nhóm 77: Emergence & Cooperation (Vòng 61)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [255-emergent-behavior-detection.md](255-emergent-behavior-detection.md) | IU: Emergent Behavior Detection | 🟡 | ⚠️ (audit + drift detection sẵn — thiếu ano | 2-3 tuần |
+| [256-contract-net-protocol.md](256-contract-net-protocol.md) | IV: Contract-Net Protocol | 🟢 | ⚠️ (202 agent-communication + task delegati | 2-3 tuần |
+| [257-blast-radius-containment.md](257-blast-radius-containment.md) | IW: Blast Radius Containment | 🟡 | ⚠️ (sandbox + permission scope sẵn — thiếu  | 2-3 tuần |
+
+### Nhóm 78: Model Security (Vòng 62)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [258-model-poisoning-detection.md](258-model-poisoning-detection.md) | IX: Model Poisoning Detection | 🔴 | ❌ (không có model eval pipeline) | 4-6 tuần |
+| [259-prompt-hardening.md](259-prompt-hardening.md) | IY: Prompt Hardening | 🟡 | ⚠️ (GR 200 injection defense sẵn — thiếu st | 3-4 tuần |
+| [260-tool-arg-injection.md](260-tool-arg-injection.md) | IZ: Tool-Argument Injection | 🟡 | ⚠️ (tool schema + Zod validation sẵn — thiế | 2-3 tuần |
+
+### Nhóm 79: Ops at Scale (Vòng 63)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [261-multi-region-failover.md](261-multi-region-failover.md) | JA: Multi-Region Failover | 🔴 | ❌ (provider failover sẵn — thiếu region ro | 4-6 tuần |
+| [262-compliance-automation.md](262-compliance-automation.md) | JB: Compliance Automation | 🟡 | ⚠️ (audit-trails 198 + PII redaction 214 sẵ | 3-5 tuần |
+| [263-collaborative-sessions.md](263-collaborative-sessions.md) | JC: Collaborative Sessions | 🔴 | ❌ (single-session sẵn — thiếu CRDT merge + | 4-6 tuần |
+
+### Nhóm 80: Cognition (Vòng 64)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [264-temporal-knowledge.md](264-temporal-knowledge.md) | JD: Temporal Knowledge | 🟡 | ⚠️ (memory store + core.time sẵn — thiếu ti | 3-4 tuần |
+| [265-hallucination-detection.md](265-hallucination-detection.md) | JE: Hallucination Detection | 🟡 | ⚠️ (219 grounding + 205 self-consistency sẵ | 3-4 tuần |
+| [266-runaway-loop-detection.md](266-runaway-loop-detection.md) | JF: Runaway Loop Detection | 🟡 | ⚠️ (203 retry-limit + 42 circuit-breaker sẵ | 2-3 tuần |
+
+### Nhóm 81: Novel Architectures (Vòng 65)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [267-neural-symbolic.md](267-neural-symbolic.md) | JG: Neuro-Symbolic | 🟡 | ⚠️ (tool call + structured output sẵn — thi | 4-6 tuần |
+| [268-petri-net-workflow.md](268-petri-net-workflow.md) | JH: Petri Net Workflow | 🟢 | ⚠️ (pi-extensible-workflows + pi-dynamic-wo | 3-5 tuần |
+| [269-counterfactual-reasoning.md](269-counterfactual-reasoning.md) | JI: Counterfactual Reasoning | 🟡 | ⚠️ (104 task-decomp + planning sẵn — thiếu  | 3-4 tuần |
+
+### Nhóm 82: Performance (Vòng 66)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [270-request-coalescing.md](270-request-coalescing.md) | JJ: Request Coalescing | 🟡 | ⚠️ (semantic cache sẵn — chưa có single-fli | 1-2 tuần |
+| [271-speculative-task-execution.md](271-speculative-task-execution.md) | JK: Speculative Task Execution | 🟡 | ⚠️ (parallel executor chưa có — chưa có spe | 2-4 tuần |
+| [272-graceful-degradation.md](272-graceful-degradation.md) | JL: Graceful Degradation | 🟡 | ⚠️ (feature flag sẵn HM; chưa có degradatio | 2-3 tuần |
+
+### Nhóm 83: Security & Trust (Vòng 67)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [273-signed-agent-actions.md](273-signed-agent-actions.md) | JM: Signed Agent Actions | 🟡 | ⚠️ (audit log sẵn GP — chưa có chữ ký số) | 2-4 tuần |
+| [274-containerized-tool-execution.md](274-containerized-tool-execution.md) | JN: Containerized Tool Execution | 🔴 | ⚠️ (sandbox EC sẵn — chưa có per-tool conta | 3-6 tuần |
+| [275-ssrf-via-tools.md](275-ssrf-via-tools.md) | JO: SSRF Prevention | 🟡 | ⚠️ (fetch tool sẵn — chưa có allowlist/bloc | 1-3 tuần |
+
+### Nhóm 84: Memory & Learning (Vòng 68)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [276-procedural-memory.md](276-procedural-memory.md) | JP: Procedural Memory | 🟡 | ⚠️ (hierarchical memory FI sẵn — chưa tách  | 2-4 tuần |
+| [277-reasoning-memoization.md](277-reasoning-memoization.md) | JQ: Reasoning Memoization | 🟡 | ⚠️ (semantic cache GI sẵn — chưa có reasoni | 1-2 tuần |
+| [278-after-action-review.md](278-after-action-review.md) | JR: After-Action Review | 🟡 | ⚠️ (self-improving DA sẵn — chưa có formal  | 1-2 tuần |
+
+### Nhóm 85: Distributed State (Vòng 69)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [279-crdt-agent-state.md](279-crdt-agent-state.md) | JS: CRDT Agent State | 🟡 | ❌ (SQLite state — chưa có CRDT merge) | 3-6 tuần |
+| [280-optimistic-concurrency.md](280-optimistic-concurrency.md) | JT: Optimistic Concurrency | 🟡 | ⚠️ (SQLite — chưa có version/CAS retry) | 1-2 tuần |
+| [281-tool-idempotency-keys.md](281-tool-idempotency-keys.md) | JU: Idempotency Keys | 🟡 | ⚠️ (retry GU sẵn — chưa có idempotency-key  | 1-2 tuần |
+
+### Nhóm 86: Data Security (Vòng 70)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [282-encrypted-memory-at-rest.md](282-encrypted-memory-at-rest.md) | JV: Encrypted Memory at-Rest | 🟡 | ⚠️ (memory store sẵn — chưa có encryption l | 2-4 tuần |
+| [283-data-classification.md](283-data-classification.md) | JW: Data Classification | 🟡 | ⚠️ (PII detect HF sẵn — chưa có classificat | 2-4 tuần |
+| [284-data-minimization.md](284-data-minimization.md) | JX: Data Minimization | 🟡 | ⚠️ (prompt compression CV sẵn — chưa có exp | 1-2 tuần |
+
+### Nhóm 87: Prompt Techniques (Vòng 71)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [285-step-back-prompting.md](285-step-back-prompting.md) | JY: Step-Back Prompting | 🟢 | ❌ (chưa có step-back prompt template) | 0.5-1 tuần |
+| [286-chain-of-verification.md](286-chain-of-verification.md) | JZ: Chain-of-Verification (CoVe) | 🟢 | ❌ (chưa có CoVe loop) | 0.5-1.5 tuần |
+| [287-program-aided-lm.md](287-program-aided-lm.md) | KA: Program-Aided Language Models (PAL) | 🟡 | ⚠️ (code-exec tool + sandbox sẵn — chưa có  | 1-2 tuần |
+
+### Nhóm 88: Tooling (Vòng 72)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [288-tool-polyfill-fallback.md](288-tool-polyfill-fallback.md) | KB: Tool Polyfill & Fallback | 🟡 | ⚠️ (tool registry sẵn — chưa có polyfill/fa | 1-2 tuần |
+| [289-tool-dry-run.md](289-tool-dry-run.md) | KC: Tool Dry-Run | 🟡 | ⚠️ (approval gate HR sẵn — chưa có dry-run  | 1-2 tuần |
+| [290-tool-precondition-checks.md](290-tool-precondition-checks.md) | KD: Tool Precondition Checks | 🟢 | ⚠️ (tool có schema validation — chưa có sta | 0.5-1.5 tuần |
+
+### Nhóm 89: Multi-agent Ops (Vòng 73)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [291-cancel-propagation.md](291-cancel-propagation.md) | KE: Cancel Propagation | 🟡 | ⚠️ (subagent spawn sẵn — thiếu AbortSignal  | 1-2 tuần |
+| [292-agent-lifecycle-hooks.md](292-agent-lifecycle-hooks.md) | KF: Agent Lifecycle Hooks | 🟡 | ⚠️ (pool start/stop sẵn — thiếu hook regist | 1 tuần |
+| [293-hermetic-config.md](293-hermetic-config.md) | KG: Hermetic Config | 🟢 | ⚠️ (config sẵn — thiếu pinning + hashing) | 1 tuần |
+
+### Nhóm 90: Communication Contracts (Vòng 74)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [294-agent-message-contracts.md](294-agent-message-contracts.md) | KH: Agent Message Contracts | 🟢 | ⚠️ (tool schema sẵn — thiếu message contrac | 1-2 tuần |
+| [295-agent-error-codes.md](295-agent-error-codes.md) | KI: Agent Error Codes | 🟢 | ⚠️ (retry/catch sẵn — thiếu code chuẩn + ta | 1 tuần |
+| [296-agent-diagnostics-cli.md](296-agent-diagnostics-cli.md) | KJ: Agent Diagnostics CLI | 🟢 | ⚠️ (logs/otel sẵn — thiếu lệnh chẩn đoán tổ | 1-2 tuần |
+
+### Nhóm 91: Eval & QA (Vòng 75)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [297-golden-trace-replay.md](297-golden-trace-replay.md) | KK: Golden Trace Replay | 🟢 | ⚠️ (trajectory-replay sẵn — thiếu golden se | 1-2 tuần |
+| [298-mock-llm-server.md](298-mock-llm-server.md) | KL: Mock LLM Server | 🟢 | ⚠️ (eval-harness sẵn — thiếu mock LLM endpo | 1 tuần |
+| [299-regression-gates-ci.md](299-regression-gates-ci.md) | KM: Regression Gates CI | 🟢 | ⚠️ (eval-harness/CI sẵn — thiếu threshold g | 1-2 tuần |
+
+### Nhóm 92: Scheduling & Cost (Vòng 76)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [300-offpeak-batch-window.md](300-offpeak-batch-window.md) | KN: Off-Peak Batch Window | 🟢 | ⚠️ (batch/scheduled sẵn — thiếu off-peak de | 1-2 tuần |
+| [301-latency-budget-routing.md](301-latency-budget-routing.md) | KO: Latency-Budget Routing | 🟢 | ⚠️ (routing/cascade sẵn — thiếu latency-bud | 1-2 tuần |
+| [302-inference-budget-arbitration.md](302-inference-budget-arbitration.md) | KP: Inference Budget Arbitration | 🟡 | ⚠️ (cost-budget sẵn — thiếu arbitration nhi | 1-2 tuần |
+
+### Nhóm 93: Security Testing (Vòng 77)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [303-redteam-automation.md](303-redteam-automation.md) | KQ: Redteam Automation | 🟢 | ⚠️ (red-teaming doc sẵn — thiếu pipeline tự | 2-3 tuần |
+| [304-prompt-fuzzing.md](304-prompt-fuzzing.md) | KR: Prompt Fuzzing | 🟢 | ⚠️ (property-based testing sẵn — thiếu prom | 1-2 tuần |
+| [305-security-eval-suite.md](305-security-eval-suite.md) | KS: Security Eval Suite | 🟢 | ⚠️ (eval-harness sẵn — thiếu benchmark bảo  | 2 tuần |
+
+### Nhóm 94: UX Advanced (Vòng 78)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [306-multi-window-views.md](306-multi-window-views.md) | KT: Multi-Window Views | 🟡 | ⚠️ (TUI sẵn — thiếu layout đa-ô có thể cấu  | 2-3 tuần |
+| [307-output-verbosity-adapt.md](307-output-verbosity-adapt.md) | KU: Output Verbosity Adapt | 🟢 | ⚠️ (config sẵn — thiếu adaptive logic) | 1 tuần |
+| [308-first-run-experience.md](308-first-run-experience.md) | KV: First-Run Experience | 🟡 | ⚠️ (onboarding doc sẵn — thiếu guided flow) | 2 tuần |
+
+### Nhóm 95: Inference Ops (Vòng 79)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [309-autoscaling-llm.md](309-autoscaling-llm.md) | KW: Autoscaling LLM | 🟡 | ⚠️ (rate-limit/pool sẵn — thiếu autoscale l | 2-3 tuần |
+| [310-inference-slot-scheduler.md](310-inference-slot-scheduler.md) | KX: Inference Slot Scheduler | 🟡 | ⚠️ (rate-limit/pool sẵn — thiếu slot schedu | 2-3 tuần |
+| [311-warm-pool-cache.md](311-warm-pool-cache.md) | KY: Warm Pool / Model Cache | 🟡 | ⚠️ (connection-pool/prompt-cache sẵn — thiế | 1-2 tuần |
+
+### Nhóm 96: Knowledge (Vòng 80)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [312-knowledge-retention-policy.md](312-knowledge-retention-policy.md) | KZ: Knowledge Retention Policy | 🟡 | ⚠️ (memory store + distill sẵn — thiếu TTL  | 2-3 tuần |
+| [313-incremental-kb-build.md](313-incremental-kb-build.md) | LA: Incremental KB Build | 🟡 | ⚠️ (distill + memory + embed sẵn — thiếu in | 3-4 tuần |
+| [314-knowledge-conflict-merge.md](314-knowledge-conflict-merge.md) | LB: Knowledge Conflict Merge | 🟡 | ⚠️ (memory + embed dedup sẵn — thiếu confli | 3-4 tuần |
+
+### Nhóm 97: Coordination (Vòng 81)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [315-plan-merge-agents.md](315-plan-merge-agents.md) | LC: Plan Merge Agents | 🟡 | ⚠️ (104 task-decomp + subagents + planning  | 4-5 tuần |
+| [316-resource-negotiation.md](316-resource-negotiation.md) | LD: Resource Negotiation | 🟡 | ⚠️ (256 contract-net + 302 inference-budget | 4-5 tuần |
+| [317-cross-agent-txn.md](317-cross-agent-txn.md) | LE: Cross-Agent Transaction | 🟡 | ⚠️ (subagents + tool-call sẵn — thiếu saga  | 4-6 tuần |
+
+### Nhóm 98: Observability Deep (Vòng 82)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [318-token-trace-visual.md](318-token-trace-visual.md) | LF: Token-Level Trace Visual | 🟡 | ⚠️ (provider + agent-loop + tool-call sẵn — | 3-4 tuần |
+| [319-latency-breakdown.md](319-latency-breakdown.md) | LG: Latency Breakdown | 🟢 | ⚠️ (agent-loop + provider + tool-call sẵn — | 2-3 tuần |
+| [320-cost-per-step.md](320-cost-per-step.md) | LH: Cost Per Step | 🟢 | ⚠️ (provider + agent-loop + 302 budget sẵn  | 2-3 tuần |
+
+### Nhóm 99: Testing Reliability (Vòng 83)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [321-flaky-test-stabilization.md](321-flaky-test-stabilization.md) | LI: Flaky Test Stabilization | 🟡 | ⚠️ (vitest + test harness sẵn — thiếu flaky | 3-4 tuần |
+| [322-chaos-agents.md](322-chaos-agents.md) | LJ: Chaos Agents | 🟡 | ⚠️ (tool-call + agent-loop + retry sẵn — th | 3-4 tuần |
+| [323-load-testing-agents.md](323-load-testing-agents.md) | LK: Load Testing Agents | 🟢 | ⚠️ (agent-loop + concurrency + provider sẵn | 3-4 tuần |
+
+### Nhóm 100: Model Updates (Vòng 84)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [324-model-upgrade-rollout.md](324-model-upgrade-rollout.md) | LL: Model Upgrade Rollout | 🟡 | ⚠️ (178 routing + eval + provider sẵn — thi | 3-4 tuần |
+| [325-model-retirement.md](325-model-retirement.md) | LM: Model Retirement | 🟡 | ⚠️ (178 routing + prompts + eval sẵn — thiế | 2-3 tuần |
+| [326-embedding-model-switch.md](326-embedding-model-switch.md) | LN: Embedding Model Switch | 🟡 | ⚠️ (packages/memory + embed sẵn — thiếu re- | 3-4 tuần |
+
+### Nhóm 101: Agent Interaction (Vòng 85)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [327-interruptible-agents.md](327-interruptible-agents.md) | LO: Interruptible Agents | 🟡 | ⚠️ (agent-loop + checkpoint sẵn — thiếu int | 3-4 tuần |
+| [328-deferred-questions.md](328-deferred-questions.md) | LP: Deferred Questions | 🟢 | ⚠️ (agent-loop + mailbox/channel sẵn — thiế | 2-3 tuần |
+| [329-quick-action-shortcuts.md](329-quick-action-shortcuts.md) | LQ: Quick Action Shortcuts | 🟢 | ⚠️ (agent-loop + history + commands sẵn — t | 2 tuần |
+
+### Nhóm 102: Safety (Vòng 86)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [330-safety-case-evidence.md](330-safety-case-evidence.md) | LR: Safety Case Evidence | 🟡 | ❌ (audit log sẵn — chưa có structured safe | 2-3 tuần |
+| [331-escalation-timeouts.md](331-escalation-timeouts.md) | LS: Escalation Timeouts | 🟢 | ⚠️ (timeout/throttle sẵn — chưa có escalati | 1-2 tuần |
+| [332-runtime-policy-enforcement.md](332-runtime-policy-enforcement.md) | LT: Runtime Policy Enforcement | 🟡 | ⚠️ (permissions/validation sẵn — chưa có dy | 1.5-2.5 tuần |
+
+### Nhóm 103: Data Ops (Vòng 87)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [333-data-versioning.md](333-data-versioning.md) | LU: Data Versioning | 🟡 | ❌ (eval log sẵn — chưa có dataset versioni | 1.5-2.5 tuần |
+| [334-synthetic-data-quality.md](334-synthetic-data-quality.md) | LV: Synthetic Data Quality | 🟡 | ❌ (eval framework sẵn — chưa có synthetic  | 1.5-2.5 tuần |
+| [335-feedback-flywheel.md](335-feedback-flywheel.md) | LW: Feedback Flywheel | 🟡 | ⚠️ (eval/correction log sẵn — chưa có feedb | 2-3 tuần |
+
+### Nhóm 104: Tool Ecosystem (Vòng 88)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [336-tool-discovery-gateway.md](336-tool-discovery-gateway.md) | LX: Tool Discovery Gateway | 🟡 | ⚠️ (tool-registry sẵn — chưa có multi-sourc | 1.5-2.5 tuần |
+| [337-context-tool-reco.md](337-context-tool-reco.md) | LY: Context-Aware Tool Recommendation | 🟡 | ❌ (tool list sẵn — chưa có context-based r | 1.5-2.5 tuần |
+| [338-tool-usage-insights.md](338-tool-usage-insights.md) | LZ: Tool Usage Insights | 🟢 | ⚠️ (audit log/telemetry sẵn — chưa có patte | 1-2 tuần |
+
+### Nhóm 105: Comm Protocols (Vòng 89)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [339-agent-middleware.md](339-agent-middleware.md) | MA: Agent Middleware | 🟡 | ⚠️ (agent loop sẵn — chưa có pluggable midd | 1-2 tuần |
+| [340-event-schema-registry.md](340-event-schema-registry.md) | MB: Event Schema Registry | 🟡 | ⚠️ (event-sourcing sẵn — chưa có schema reg | 1.5-2.5 tuần |
+| [341-async-req-reply.md](341-async-req-reply.md) | MC: Async Request-Reply | 🟡 | ⚠️ (agent messaging sẵn — chưa có correlati | 1-2 tuần |
+
+### Nhóm 106: Output Quality (Vòng 90)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [342-output-quality-pipeline.md](342-output-quality-pipeline.md) | MD: Output Quality Pipeline | 🟢 | ⚠️ (validation/guardrail sẵn — chưa có stru | 1-2 tuần |
+| [343-answer-relevance-score.md](343-answer-relevance-score.md) | ME: Answer Relevance Score | 🟢 | ❌ (eval framework sẵn — chưa có relevance/ | 1-2 tuần |
+| [344-citation-health-check.md](344-citation-health-check.md) | MF: Citation Health Check | 🟢 | ❌ (output ready — chưa có citation validat | 0.5-1.5 tuần |
+
+### Nhóm 107: Synthesis (Vòng 91)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [345-adaptive-goal-priorities.md](345-adaptive-goal-priorities.md) | MG: Adaptive Goal Priorities | 🟡 | ⚠️ (task decomposition sẵn — chưa có dynami | 2-3 tuần |
+| [346-slow-fast-reasoning.md](346-slow-fast-reasoning.md) | MH: Slow-Fast Reasoning | 🟡 | ⚠️ (CoT/step-back sẵn — chưa có dual-system | 1.5-2.5 tuần |
+| [347-privacy-budget-agent.md](347-privacy-budget-agent.md) | MI: Privacy Budget Agent | 🟡 | ⚠️ (data-minimization/classification sẵn —  | 2-3 tuần |
+
 ### Nhóm 14: Reliability Testing, Deployment & Priority Layers (MỚI BỔ SUNG — web research 2026)
 
 | File | Hướng | Coupling | Code sẵn? | Effort |
