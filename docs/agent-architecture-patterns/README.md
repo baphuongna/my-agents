@@ -1171,6 +1171,223 @@
 | [528-retrieval-trajectory-inspection.md](528-retrieval-trajectory-inspection.md) | TH: Retrieval Trajectory Inspection | 🟢 | ❌ (chưa có retrieval-trajectory logg | 2-3 tuần |
 
 
+### Nhóm — Phần D: 9arm-skills (529-531)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [529-cheap-model-delegation.md](529-cheap-model-delegation.md) | TI: Cheap Model Delegation | 🟢 | ⚠️ (subagent pool + spawnSubagent sẵn | 1-2 tuần |
+| [530-clean-handoff-ritual.md](530-clean-handoff-ritual.md) | TJ: Clean Handoff Ritual | 🟢 | ⚠️ (session + spill + memory sẵn — ch | 1-2 tuần |
+| [531-debug-mantra-discipline.md](531-debug-mantra-discipline.md) | TK: Debug Mantra Discipline | 🟢 | ✅ (skill system + system prompt sẵn | 0.5-1 tuần |
+
+### Nhóm — Phần D: ClaudeSkills (532-538)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [532-routing-eval-cases.md](532-routing-eval-cases.md) | TL: Routing Eval Cases | 🟡 | ⚠️ (eval harness + ParityScenario sẵn | 1-2 tuần |
+| [533-brief-full-delta-modes.md](533-brief-full-delta-modes.md) | TM: Brief / Full / Delta Modes | 🟢 | ⚠️ (eval harness + spill sẵn — chưa c | 1-2 tuần |
+| [534-run-summary-observability.md](534-run-summary-observability.md) | TN: Run Summary Observability | 🟢 | ⚠️ (telemetry + audit log sẵn — chưa | 1 tuần |
+| [535-degraded-mode-shrink.md](535-degraded-mode-shrink.md) | TO: Degraded Mode Shrink | 🟡 | ⚠️ (workflow runner + DegradedResult | 2-3 tuần |
+| [536-skill-policy-boundary.md](536-skill-policy-boundary.md) | TP: Skill Policy Boundary | 🟢 | ⚠️ (threat-scan + redact sẵn — chưa c | 1-2 tuần |
+| [537-handoff-session-reset.md](537-handoff-session-reset.md) | TQ: Handoff Session Reset | 🟢 | ❌ (chưa có handoff-format schema + w | 1-2 tuần |
+| [538-skill-curated-promotion.md](538-skill-curated-promotion.md) | TR: Skill Curated Promotion | 🟡 | ⚠️ (SkillStore + curator sẵn — chưa c | 2-3 tuần |
+
+### Nhóm — Phần D: DISTILL-R2 (563-567)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [563-fidelity-scorecard-persistence.md](563-fidelity-scorecard-persistence.md) | UQ: Fidelity-Scorecard Persistence | 🟢 | ⚠️ (eval + llm-as-judge sẵn — chưa có | 2-3 tuần |
+| [564-benchmark-anti-cheating.md](564-benchmark-anti-cheating.md) | UR: Benchmark Anti-Cheating | 🟢 | ❌ (chưa có example/test overlap dete | 1-2 tuần |
+| [565-corpus-pii-scrubbing.md](565-corpus-pii-scrubbing.md) | US: Corpus PII-Scrubbing | 🟢 | ❌ (chưa có PII-scrubber) | **Effort: | 1-2 tuần |
+| [566-source-liveness-gate.md](566-source-liveness-gate.md) | UT: Source-Liveness Gate | 🟢 | ⚠️ (tools fetch sẵn — chưa có batch U | 1-2 tuần |
+| [567-selective-self-disclosure.md](567-selective-self-disclosure.md) | UU: Selective Self-Disclosure | 🟢 | ❌ (chưa có topic-selector + disclosu | 2-3 tuần |
+
+### Nhóm — Phần D: Deep-Research-skills (561-562)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [561-outline-first-research.md](561-outline-first-research.md) | UO: Outline-First Research | 🟢 | ⚠️ (workflows + subagents sẵn — chưa | 2-3 tuần |
+| [562-search-site-module-routing.md](562-search-site-module-routing.md) | UP: Search-Site-Module Routing | 🟢 | ⚠️ (tools search sẵn — chưa có source | 2-3 tuần |
+
+### Nhóm — Phần D: ECC (547-554)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [547-memory-persistence-hooks.md](547-memory-persistence-hooks.md) | UA: Memory Persistence Hooks | 🟡 | ⚠️ (session + memory store sẵn — chưa | 2-3 tuần |
+| [548-instinct-continuous-learning.md](548-instinct-continuous-learning.md) | UB: Instinct Continuous Learning | 🟡 | ⚠️ (tool dispatch + memory sẵn — chưa | 3-4 tuần |
+| [549-strategic-compact-reminder.md](549-strategic-compact-reminder.md) | UC: Strategic Compact Reminder | 🟢 | ⚠️ (compress + idle-trigger sẵn — chư | 2 tuần |
+| [550-self-eval-evidence-rubric.md](550-self-eval-evidence-rubric.md) | UD: Self-Eval Evidence Rubric | 🟡 | ⚠️ (eval + audit sẵn — chưa có self-e | 2-3 tuần |
+| [551-worktree-lifecycle-service.md](551-worktree-lifecycle-service.md) | UE: Worktree Lifecycle Service | 🟡 | ⚠️ (git ops + sync sẵn — chưa có work | 3-4 tuần |
+| [552-mcp-inventory-consolidation.md](552-mcp-inventory-consolidation.md) | UF: MCP Inventory Consolidation | 🟡 | ⚠️ (MCP tool + composio sẵn — chưa có | 2-3 tuần |
+| [553-harness-adapter-matrix.md](553-harness-adapter-matrix.md) | UG: Harness Adapter Matrix | 🟢 | ⚠️ (harness context sẵn — chưa có cro | 2 tuần |
+| [554-observer-loop-guard.md](554-observer-loop-guard.md) | UH: Observer Loop Guard | 🟡 | ⚠️ (telemetry + audit sẵn — chưa có t | 2-3 tuần |
+
+### Nhóm — Phần D: Understand-Anything (638-644)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [638-intermediate-results-on-disk.md](638-intermediate-results-on-disk.md) | XN: Intermediate Results On Disk | 🟡 | ⚠️ (có spill.ts + subagent — chưa có | 1-2 tuần |
+| [639-incremental-fingerprint-analysis.md](639-incremental-fingerprint-analysis.md) | XO: Incremental Fingerprint Analysis | 🟡 | ⚠️ (có codegraph.ts build — chưa có f | 2 tuần |
+| [640-token-gated-dashboard.md](640-token-gated-dashboard.md) | XP: Token-Gated Dashboard | 🟡 | ⚠️ (có web dashboard + signing — chưa | 1-2 tuần |
+| [641-diff-ripple-analysis.md](641-diff-ripple-analysis.md) | XQ: Diff Ripple Analysis | 🟢 | ⚠️ (có codegraph + reference-graph — | 1-2 tuần |
+| [642-topology-driven-tours.md](642-topology-driven-tours.md) | XR: Topology-Driven Tours | 🟡 | ⚠️ (có codegraph + reference-graph — | 2-3 tuần |
+| [643-omitted-model-frontmatter.md](643-omitted-model-frontmatter.md) | XS: Omitted Model Frontmatter | 🟢 | ⚠️ (model field optional đã có — chưa | <1 tuần |
+| [644-worktree-output-redirect.md](644-worktree-output-redirect.md) | XT: Worktree Output Redirect | 🟢 | ⚠️ (có tools path — chưa có worktree | 1 tuần |
+
+### Nhóm — Phần D: claw-code (555-560)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [555-permission-mode-tooling.md](555-permission-mode-tooling.md) | UI: Permission Mode Tooling | 🟡 | ⚠️ (permission + approval sẵn — chưa | 2-3 tuần |
+| [556-sidecar-rag-retrieval.md](556-sidecar-rag-retrieval.md) | UJ: Sidecar RAG Retrieval | 🟡 | ⚠️ (RAG + embeddings sẵn — chưa có si | 3-4 tuần |
+| [557-lean-ndjson-agent.md](557-lean-ndjson-agent.md) | UK: Lean NDJSON Agent | 🟢 | ⚠️ (agent loop + tools sẵn — chưa có | 2 tuần |
+| [558-plugin-hook-aggregation.md](558-plugin-hook-aggregation.md) | UL: Plugin Hook Aggregation | 🟡 | ⚠️ (tools + skills sẵn — chưa có plug | 2-3 tuần |
+| [559-mock-parity-harness.md](559-mock-parity-harness.md) | UM: Mock-Parity Harness | 🟡 | ⚠️ (eval + tool-mocking sẵn — chưa có | 3-4 tuần |
+| [560-session-fork-compaction.md](560-session-fork-compaction.md) | UN: Session Fork-Compaction | 🟡 | ⚠️ (session persist/restore sẵn — chư | 4-5 tuần |
+
+### Nhóm — Phần D: deer-flow (539-546)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [539-deferred-skill-discovery.md](539-deferred-skill-discovery.md) | TS: Deferred Skill Discovery | 🟢 | ✅ (SkillStore progressive disclosure | 1 tuần |
+| [540-slash-skill-activation.md](540-slash-skill-activation.md) | TT: Slash Skill Activation | 🟡 | ⚠️ (SkillStore + loadBody sẵn — chưa | 2-3 tuần |
+| [541-request-scoped-secrets.md](541-request-scoped-secrets.md) | TU: Request-Scoped Secrets | 🟡 | ⚠️ (SecretStore + redact sẵn — chưa c | 2-3 tuần |
+| [542-subagent-turn-budget-recovery.md](542-subagent-turn-budget-recovery.md) | TV: Subagent Turn-Budget Recovery | 🟡 | ⚠️ (subagent pool + lifecycle sẵn — c | 2-3 tuần |
+| [543-durable-context-projection.md](543-durable-context-projection.md) | TW: Durable Context Projection | 🟡 | ❌ (chưa có pre-compaction capture + | 3-4 tuần |
+| [544-debounced-memory-queue.md](544-debounced-memory-queue.md) | TX: Debounced Memory Queue | 🟢 | ⚠️ (memory store sẵn — chưa có deboun | 2-3 tuần |
+| [545-config-hot-reload-boundary.md](545-config-hot-reload-boundary.md) | TY: Config Hot-Reload Boundary | 🟡 | ⚠️ (config load sẵn — chưa có STARTUP | 2 tuần |
+| [546-harness-import-firewall.md](546-harness-import-firewall.md) | TZ: Harness Import Firewall | 🟢 | ⚠️ (lint-deps sẵn — chưa có harness-s | 1-2 tuần |
+
+### Nhóm — Phần D: effective-html (568-570)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [568-bundled-example-corpus.md](568-bundled-example-corpus.md) | UV: Bundled Example Corpus | 🟢 | ⚠️ (skills artifact sẵn — chưa có bun | 1-2 tuần |
+| [569-multi-harness-plugin-packaging.md](569-multi-harness-plugin-packaging.md) | UW: Multi-Harness Plugin Packaging | 🟡 | ⚠️ (bundle.mjs + skills sẵn — chưa có | 2-3 tuần |
+| [570-fullscreen-svg-diagram.md](570-fullscreen-svg-diagram.md) | UX: Fullscreen SVG Diagram | 🟢 | ⚠️ (tools + print sẵn — chưa có SVG-d | 2-3 tuần |
+
+### Nhóm — Phần D: nuwa-skill (571-577)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [571-cognitive-os-distillation.md](571-cognitive-os-distillation.md) | UY: Cognitive-OS Distillation | 🟡 | ⚠️ (prompts + skills sẵn — chưa có 5- | 3-4 tuần |
+| [572-triple-verified-mental-model.md](572-triple-verified-mental-model.md) | UZ: Triple-Verified Mental Model | 🟢 | ❌ (chưa có 3-tier verify pipeline) | | 3-4 tuần |
+| [573-parallel-source-silo-agents.md](573-parallel-source-silo-agents.md) | VA: Parallel Source-Silo Agents | 🟡 | ⚠️ (subagents + workflows sẵn — chưa | 2-3 tuần |
+| [574-persona-agentic-protocol.md](574-persona-agentic-protocol.md) | VB: Persona Agentic Protocol | 🟡 | ⚠️ (skills + tools + RAG sẵn — chưa c | 3-4 tuần |
+| [575-honest-boundary-contract.md](575-honest-boundary-contract.md) | VC: Honest Boundary Contract | 🟢 | ⚠️ (skill meta + tool-test-harness sẵ | 2-3 tuần |
+| [576-source-blacklist-policy.md](576-source-blacklist-policy.md) | VD: Source Blacklist Policy | 🟢 | ⚠️ (RAG retrieval sẵn — chưa có sourc | 2-3 tuần |
+| [577-failure-degrade-matrix.md](577-failure-degrade-matrix.md) | VE: Failure Degrade Matrix | 🟡 | ❌ (chưa có trigger→first-aid→fallbac | 3-4 tuần |
+
+### Nhóm — Phần D: oh-my-pi (578-581)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [578-git-bare-checkpoint-engine.md](578-git-bare-checkpoint-engine.md) | VF: Git-Bare Checkpoint Engine | 🟡 | ⚠️ (bash git + session turn sẵn — chư | 3-4 tuần |
+| [579-split-scope-restore.md](579-split-scope-restore.md) | VG: Split-Scope Restore | 🟢 | ⚠️ (git-checkpoint + session restore | 2-3 tuần |
+| [580-nested-repo-boundary.md](580-nested-repo-boundary.md) | VH: Nested-Repo Boundary | 🟢 | ⚠️ (git-checkpoint sẵn — chưa có nest | 2-3 tuần |
+| [581-curated-meta-package.md](581-curated-meta-package.md) | VI: Curated Meta-Package | 🟡 | ⚠️ (skills/extensions registry sẵn — | 3-4 tuần |
+
+### Nhóm — Phần D: opencode (611-617)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [611-subagent-depth-gating.md](611-subagent-depth-gating.md) | WM: Subagent Depth Gating | 🟡 | ⚠️ (subagent pool + lifecycle sẵn — c | 2 tuần |
+| [612-background-subagent-registry.md](612-background-subagent-registry.md) | WN: Background Subagent Registry | 🟡 | ⚠️ (subagent pool + async sẵn — chưa | 2-3 tuần |
+| [613-persistent-session-todo.md](613-persistent-session-todo.md) | WO: Persistent Session Todo | 🟢 | ⚠️ (session + tools sẵn — chưa có tod | 1-2 tuần |
+| [614-prune-protect-compaction.md](614-prune-protect-compaction.md) | WP: Prune-Protect Compaction | 🟡 | ⚠️ (compaction + spill sẵn — chưa có | 2 tuần |
+| [615-mcp-local-oauth-provider.md](615-mcp-local-oauth-provider.md) | WQ: MCP Local OAuth Provider | 🟡 | ⚠️ (gateway + secrets sẵn — chưa có l | 2-3 tuần |
+| [616-remote-skill-index-install.md](616-remote-skill-index-install.md) | WR: Remote Skill Index Install | 🟡 | ⚠️ (skills + curator sẵn — chưa có re | 2 tuần |
+| [617-markdown-agent-definition.md](617-markdown-agent-definition.md) | WS: Markdown Agent Definition | 🟢 | ⚠️ (agent + skills frontmatter sẵn — | 2 tuần |
+
+### Nhóm — Phần D: pi (606-610)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [606-threshold-auto-compaction.md](606-threshold-auto-compaction.md) | WH: Threshold Auto-Compaction | 🟡 | ⚠️ (session/history + compaction sẵn | 2-3 tuần |
+| [607-event-intercept-extensions.md](607-event-intercept-extensions.md) | WI: Event Intercept Extensions | 🟡 | ⚠️ (extension system + events sẵn — c | 2-3 tuần |
+| [608-skill-description-only-discovery.md](608-skill-description-only-discovery.md) | WJ: Skill Description-Only Discovery | 🟢 | ⚠️ (skills + curator sẵn — chưa có de | 1-2 tuần |
+| [609-prompt-template-arg-grammar.md](609-prompt-template-arg-grammar.md) | WK: Prompt Template Arg Grammar | 🟢 | ⚠️ (prompts + skills sẵn — chưa có te | 2 tuần |
+| [610-directory-trust-gate.md](610-directory-trust-gate.md) | WL: Directory Trust Gate | 🟡 | ⚠️ (permission + trust sẵn — chưa có | 2 tuần |
+
+### Nhóm — Phần D: pi-agent-flow (596-601)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [596-uuid-tagged-steering-hint.md](596-uuid-tagged-steering-hint.md) | VX: UUID-Tagged Steering Hint | 🟢 | ⚠️ (system message + steer sẵn — chưa | 1-2 tuần |
+| [597-sanitized-context-fork.md](597-sanitized-context-fork.md) | VY: Sanitized Context Fork | 🟡 | ⚠️ (subagent + redact sẵn — chưa có f | 2 tuần |
+| [598-warp-new-session-transfer.md](598-warp-new-session-transfer.md) | VZ: Warp New Session Transfer | 🔴 | ❌ (cần warp extractor + session-buil | 3-4 tuần |
+| [599-evidence-confidence-markers.md](599-evidence-confidence-markers.md) | WA: Evidence Confidence Markers | 🟢 | ⚠️ (system prompt + parser sẵn — chưa | 1-2 tuần |
+| [600-structured-json-flow-report.md](600-structured-json-flow-report.md) | WB: Structured JSON Flow Report | 🟢 | ⚠️ (parser + prompt sẵn — chưa có JSO | 1-2 tuần |
+| [601-batch-op-normalization.md](601-batch-op-normalization.md) | WC: Batch Op Normalization | 🟡 | ✅ (read/write/edit/bash tools sẵn — | 1-2 tuần |
+
+### Nhóm — Phần D: pi-autoresearch (589-595)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [589-autonomous-experiment-loop.md](589-autonomous-experiment-loop.md) | VQ: Autonomous Experiment Loop | 🟡 | ⚠️ (agent loop + tools sẵn — chưa có | 2-3 tuần |
+| [590-resumable-dual-session-files.md](590-resumable-dual-session-files.md) | VR: Resumable Dual Session Files | 🟢 | ⚠️ (session + log sẵn — chưa có dual- | 1-2 tuần |
+| [591-compaction-rehydration.md](591-compaction-rehydration.md) | VS: Compaction Rehydration | 🟢 | ⚠️ (compaction + session sẵn — chưa c | 1-2 tuần |
+| [592-hook-steer-contract.md](592-hook-steer-contract.md) | VT: Hook Steer Contract | 🟡 | ⚠️ (hooks + steer sẵn — chưa có stdin | 2 tuần |
+| [593-backpressure-check-gate.md](593-backpressure-check-gate.md) | VU: Backpressure Check Gate | 🟡 | ⚠️ (gate logic sẵn — chưa có checks.s | 1-2 tuần |
+| [594-extension-skill-separation.md](594-extension-skill-separation.md) | VV: Extension Skill Separation | 🟢 | ✅ (skills package sẵn — chỉ cần exte | 1-2 tuần |
+| [595-finalize-independent-branches.md](595-finalize-independent-branches.md) | VW: Finalize Independent Branches | 🟡 | ⚠️ (git ops sẵn — chưa có independent | 2 tuần |
+
+### Nhóm — Phần D: pi-bar (602-605)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [602-responsive-collapse-order.md](602-responsive-collapse-order.md) | WD: Responsive Collapse Order | 🟢 | ⚠️ (statusbar + print sẵn — chưa có c | 1-2 tuần |
+| [603-template-eval-token-mix.md](603-template-eval-token-mix.md) | WE: Template Eval Token Mix | 🟢 | ⚠️ (print/template sẵn — chưa có eval | 1-2 tuần |
+| [604-ordered-state-matching.md](604-ordered-state-matching.md) | WF: Ordered State Matching | 🟢 | ⚠️ (TUI + render sẵn — chưa có ordere | 1-2 tuần |
+| [605-keyed-status-catchall.md](605-keyed-status-catchall.md) | WG: Keyed Status Catchall | 🟢 | ⚠️ (TUI render sẵn — chưa có keyed st | 1 tuần |
+
+### Nhóm — Phần D: pi-boomerang (582-588)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [582-opaque-context-collapse.md](582-opaque-context-collapse.md) | VJ: Opaque Context Collapse | 🟡 | ⚠️ (subagent + summarizer sẵn — chưa | 3-4 tuần |
+| [583-hidden-orchestrator-handoff.md](583-hidden-orchestrator-handoff.md) | VK: Hidden Orchestrator Handoff | 🟡 | ⚠️ (subagent + summary sẵn — chưa có | 2-3 tuần |
+| [584-anchor-summary-accumulation.md](584-anchor-summary-accumulation.md) | VL: Anchor-Summary Accumulation | 🟢 | ⚠️ (memory + summary sẵn — chưa có an | 2-3 tuần |
+| [585-rethrow-accumulate-loop.md](585-rethrow-accumulate-loop.md) | VM: Rethrow-Accumulate Loop | 🟡 | ⚠️ (agent-loop + summarizer sẵn — chư | 3-4 tuần |
+| [586-per-step-model-switching.md](586-per-step-model-switching.md) | VN: Per-Step Model Switching | 🟡 | ⚠️ (catalog + skills sẵn — chưa có pe | 3-4 tuần |
+| [587-one-shot-auto-wrapping.md](587-one-shot-auto-wrapping.md) | VO: One-Shot Auto-Wrapping | 🟢 | ⚠️ (prompt dispatch sẵn — chưa có one | 1-2 tuần |
+| [588-operational-handoff-schema.md](588-operational-handoff-schema.md) | VP: Operational Handoff Schema | 🟢 | ⚠️ (subagent summary sẵn — chưa có fi | 2-3 tuần |
+
+### Nhóm — Phần D: rpiv-mono (618-630)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [618-model-judged-loop-assess.md](618-model-judged-loop-assess.md) | WT: Model-Judged Loop Assess | 🟡 | ⚠️ (council + agent + eval sẵn — chưa | 2-3 tuần |
+| [619-produces-acts-terminal-factories.md](619-produces-acts-terminal-factories.md) | WU: Produces / Acts / Terminal Factories | 🟡 | ⚠️ (workflow runner + worker sẵn — ch | 2-3 tuần |
+| [620-outcome-collector-parser-validator.md](620-outcome-collector-parser-validator.md) | WV: Outcome Collector / Parser / Validator | 🟡 | ⚠️ (audit + telemetry sẵn — chưa có t | 2-3 tuần |
+| [621-workflow-config-layering.md](621-workflow-config-layering.md) | WW: Workflow Config Layering | 🟢 | ⚠️ (skill store + config sẵn — chưa c | 1-2 tuần |
+| [622-predicate-gate-routing.md](622-predicate-gate-routing.md) | WX: Predicate Gate Routing | 🟢 | ⚠️ (orchestration + audit sẵn — chưa | 2-3 tuần |
+| [623-named-artifact-registry.md](623-named-artifact-registry.md) | WY: Named Artifact Registry | 🟢 | ⚠️ (spill + session state sẵn — chưa | 2-3 tuần |
+| [624-tool-capability-reconciliation.md](624-tool-capability-reconciliation.md) | WZ: Tool Capability Reconciliation | 🟡 | ⚠️ (tool dispatch + builtin sẵn — chư | 1-2 tuần |
+| [625-structured-questionnaire-tool.md](625-structured-questionnaire-tool.md) | XA: Structured Questionnaire Tool | 🟡 | ⚠️ (approval tool sẵn — chưa có struc | 2-3 tuần |
+| [626-side-conversation-clone.md](626-side-conversation-clone.md) | XB: Side Conversation Clone | 🟡 | ⚠️ (subagent + session sẵn — chưa có | 2-3 tuần |
+| [627-bounded-telemetry-dispatcher.md](627-bounded-telemetry-dispatcher.md) | XC: Bounded Telemetry Dispatcher | 🟡 | ⚠️ (telemetry + audit sẵn — chưa có b | 2-3 tuần |
+| [628-subfolder-guidance-injection.md](628-subfolder-guidance-injection.md) | XD: Subfolder Guidance Injection | 🟡 | ⚠️ (prompts + session sẵn — chưa có s | 2-3 tuần |
+| [629-skill-shell-placeholders.md](629-skill-shell-placeholders.md) | XE: Skill Shell Placeholders | 🟡 | ⚠️ (skill store + bash sẵn — chưa có | 2-3 tuần |
+| [630-pluggable-web-providers.md](630-pluggable-web-providers.md) | XF: Pluggable Web Providers | 🟡 | ⚠️ (tool registry + dispatch sẵn — ch | 2-3 tuần |
+
+### Nhóm — Phần D: scientific-agent-skills (631-637)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [631-deterministic-db-lookup.md](631-deterministic-db-lookup.md) | XG: Deterministic DB Lookup | 🟡 | ⚠️ (skills + web-fetch sẵn — chưa có | 3-4 tuần |
+| [632-workflow-mining-autoskill.md](632-workflow-mining-autoskill.md) | XH: Workflow Mining Autoskill | 🔴 | ❌ (chưa có capture + embedding + ski | 5-6 tuần |
+| [633-consciousness-council.md](633-consciousness-council.md) | XI: Consciousness Council | 🔴 | ⚠️ (council + adversarial sẵn — chưa | 4-5 tuần |
+| [634-what-if-oracle.md](634-what-if-oracle.md) | XJ: What-If Oracle | 🟢 | ❌ (có skills + prompts — chưa có 6-b | 1-2 tuần |
+| [635-hypothesis-tree-refinement.md](635-hypothesis-tree-refinement.md) | XK: Hypothesis Tree Refinement | 🟡 | ❌ (có eval + memory — chưa có hypoth | 3-4 tuần |
+| [636-skill-frontmatter-portability.md](636-skill-frontmatter-portability.md) | XL: Skill Frontmatter Portability | 🟢 | ⚠️ (có frontmatter YAML + allowedTool | 1 tuần |
+| [637-security-scan-gate.md](637-security-scan-gate.md) | XM: Security Scan Gate | 🟡 | ⚠️ (có cron scan + audit — chưa có 3- | 2-3 tuần |
+
+### Nhóm — Phần D: x-research-skill (645-645)
+
+| File | Hướng | Coupling | Code sẵn? | Effort |
+|---|---|---|---|---|
+| [645-watchlist-heartbeat.md](645-watchlist-heartbeat.md) | XU: Watchlist Heartbeat | 🟢 | ⚠️ (có cron + channels notify — chưa | 1-2 tuần |
+
 ## So sánh nhanh
 
 ```
