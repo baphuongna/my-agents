@@ -248,7 +248,7 @@ const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
 const session = createAgentSession({
   extensionFactories: [{ name: "mya-bridge", factory: myaBridge }],
 });
-// ← GẤN VÀO PI. Internal API. Pi không OSS → KHÔNG LÀM ĐƯỢC.
+// ← GẤN VÀO PI internal API → mỗi version pi đổi API là vỡ. RPC = black-box, bền hơn.
 
 // HƯỚNG R (RPC bridge):
 const child = spawn("pi", ["--mode", "rpc"]);

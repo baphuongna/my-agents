@@ -62,7 +62,7 @@ mya tạo agent session IN-PROCESS bằng `createAgentSession()` từ `@earendil
 
 | Được | Mất |
 |---|---|
-| ✅ Inject 26 tools trực tiếp | ❌ Găm pi — pi không OSS → chết |
+| ✅ Inject 26 tools trực tiếp | ❌ Găm pi — API nội bộ pi đổi theo version → lock-in (dù pi MIT OSS) |
 | ✅ Hook mọi tool call → Merkle audit | ❌ Không agent-agnostic |
 | ✅ Memory autoCapture real-time | ❌ Provider infra từ pi-ai |
 | ✅ Role overlay (tool filter + model) | ❌ Intercom dùng pi-tui |

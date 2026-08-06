@@ -92,15 +92,14 @@ Entity-009:
 ## Runtime mutation
 
 ```typescript
-// Give reviewer temporary write access
-ecs.addComponent(entity-008, FilesystemTools, { write: ["src/temp/"] });
+// Give reviewer temporary write access (reviewer was read-only)
+ecs.updateComponent(entity-008, FilesystemTools, { read: true, write: ["src/temp/"], bash: 0 });
 
 // Make coder agent also a cron agent
 ecs.addComponent(entity-007, CronSchedule, { cron: "0 9 * * 1" });
 
 // Remove bash access from coder (incident response)
-ecs.removeComponent(entity-007, FilesystemTools);
-ecs.addComponent(entity-007, FilesystemTools, { read: true, write: ["src/"], bash: 0 });
+ecs.updateComponent(entity-007, FilesystemTools, { read: true, write: ["src/"], bash: 0 });
 ```
 
 ## Systems (behavior)

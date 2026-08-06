@@ -2,7 +2,7 @@
 
 > **Nguồn gốc:** Parallel Programming — Linda (Gelernter, Yale, 1985)
 > **Coupling:** 🟢 Associative memory
-> **Agent-agnostic:** ✅ — bất kỳ agent读写 tuple space
+> **Agent-agnostic:** ✅ — bất kỳ agent nào cũng đọc ghi tuple space
 > **Code sẵn:** ✅ SQLite (có thể implement tuple space)
 
 ## Nguồn gốc
@@ -118,7 +118,7 @@ class TupleSpace {
     return row ? JSON.parse(row.data) : null;
   }
 
-  in(pattern: Record<string, unknown>): Record<string, unknown> {
+  async in(pattern: Record<string, unknown>): Promise<Record<string, unknown>> {
     while (true) {
       const { where, params } = this.buildQuery(pattern);
       // Atomic: delete + return (CAS)
